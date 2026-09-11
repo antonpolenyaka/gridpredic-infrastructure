@@ -1,0 +1,14 @@
+{
+  "connector.class": "io.debezium.connector.sqlserver.SqlServerConnector",
+  "database.hostname": "sqlserver",
+  "database.port": "1433",
+  "database.user": "sa",
+  "database.password": "${env:MSSQL_SA_PASSWORD}",
+  "database.names": "TedisNet_EOSA",
+  "topic.prefix": "tedisnet-eosa",
+  "snapshot.mode": "when_needed",
+  "table.include.list": "dbo.SystemBranches,dbo.SystemChanges,dbo.SystemCommandExecutions,dbo.SystemDevices,dbo.SystemDeviceStates,dbo.SystemElectricElectricalBranches,dbo.SystemElectricElectricalCoils,dbo.SystemElectricElectricalLVLines,dbo.SystemElectricElectricalLVSubscribers,dbo.SystemElectricElectricalNodes,dbo.SystemElectricElectricalSwitchTerminals,dbo.SystemElectricElectricalTransformers,dbo.SystemElectricPowerCutElementEvents,dbo.SystemElectricPowerCutElementIntervals,dbo.SystemElectricPowerCutElementStates,dbo.SystemElectricPowerCutEvents,dbo.SystemElectricPowerCutIncidents,dbo.SystemElectricPowerCutIntervals,dbo.SystemElectricProfilePowers,dbo.SystemElements,dbo.SystemEvents,dbo.SystemNetworks,dbo.SystemNodes,dbo.SystemOperations,dbo.SystemTagIntervalSummaries,dbo.SystemTagIntervalValues,dbo.SystemTagIntervalValuesBig,dbo.SystemTags,dbo.SystemTagScales,dbo.SystemTagValueChanges,dbo.SystemTagValues",
+  "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
+  "schema.history.internal.kafka.topic": "schemahistory.tedisnet-eosa",
+  "driver.encrypt": "false"
+}

@@ -1,0 +1,340 @@
+services:
+  minio:
+    image: minio/minio:latest
+
+    restart: unless-stopped
+
+    ports:
+      - "9001:9001"  # MinIO Console
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+    volumes:
+      - minio-data:/data
+      - ./scripts/minio:/scripts:ro
+
+    command: server /data --console-address ":9001"
+
+    post_start:
+      - command: ["/bin/sh", "/scripts/post_start.sh"]
+    
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
+
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+
+    restart: unless-stopped
+
+    ports:
+      - "1433:1433"
+
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      MSSQL_AGENT_ENABLED: "true"
+      MSSQL_MEMORY_LIMIT_MB: "6144"
+
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+      - ./services/sqlserver/backups:/var/opt/mssql/backups:ro
+      - ./scripts/sqlserver:/scripts:ro
+
+    post_start:
+      - command: ["/bin/sh", "/scripts/post_start.sh"]
+    
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
+      start_period: 30m
+
+
+  postgres:
+    image: postgres:17
+
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: metastore_db
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: ${HIVE_METASTORE_DB_PASSWORD}
+
+    volumes:
+      - hive-db:/var/lib/postgresql/data
+      - ./scripts/postgres:/scripts:ro
+    
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
+
+
+  hive:
+    build:
+      context: ./services/hive
+
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+    environment:
+      SERVICE_NAME: "metastore"
+      DB_DRIVER: "postgres"
+
+      SERVICE_OPTS: >-
+        -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
+        -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore_db
+        -Djavax.jdo.option.ConnectionUserName=hive
+        -Djavax.jdo.option.ConnectionPassword=${HIVE_METASTORE_DB_PASSWORD}
+
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+
+    volumes:
+      - ./services/hive/conf/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./scripts/hive:/scripts:ro
+    
+    healthcheck:
+      test: ["CMD", "/bin/bash", "/scripts/healthcheck.sh"]
+
+
+  spark-master:
+    build:
+      context: ./services/spark
+
+    restart: unless-stopped
+
+    depends_on:
+      minio:
+        condition: service_healthy
+      hive:
+        condition: service_healthy
+
+    ports:
+      - "8080:8080"  # Spark Master UI
+      - "4041:4040"  # Spark Application UI for streaming jobs
+
+    environment:
+      SPARK_CONF_DIR: "/app/conf"
+
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+
+    volumes:
+      - ./services/spark/conf:/app/conf:ro
+      - ./services/spark/jobs:/app/jobs:ro
+      - ./scripts/spark-master:/scripts:ro
+
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+
+    post_start:
+      - command: ["/bin/sh", "/scripts/post_start.sh"]
+
+    healthcheck:
+      test: ["CMD", "/bin/bash", "/scripts/healthcheck.sh"]
+      start_period: 5m
+
+
+  spark-worker:
+    build:
+      context: ./services/spark
+
+    restart: unless-stopped
+
+    depends_on:
+      spark-master:
+        condition: service_healthy
+
+    ports:
+      - "8081:8081"  # Spark Worker UI
+
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+
+    volumes:
+      - ./scripts/spark-worker:/scripts:ro
+
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+
+    healthcheck:
+      test: ["CMD", "/bin/bash", "/scripts/healthcheck.sh"]
+
+
+  spark-history:
+    build:
+      context: ./services/spark
+
+    restart: unless-stopped
+    
+    depends_on:
+      minio:
+        condition: service_healthy
+
+    ports:
+      - "18080:18080"  # Spark History Server UI
+
+    environment:
+      SPARK_CONF_DIR: "/app/conf"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+
+    volumes:
+      - ./services/spark/conf:/app/conf:ro
+      - ./scripts/spark-history:/scripts:ro
+
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+
+    healthcheck:
+      test: ["CMD", "/bin/bash", "/scripts/healthcheck.sh"]
+
+
+  trino:
+    image: trinodb/trino:483
+
+    restart: unless-stopped
+    
+    depends_on:
+      minio:
+        condition: service_healthy
+      hive:
+        condition: service_healthy
+
+    ports:
+      - "8085:8080"  # Trino UI / API
+
+    environment:
+      AWS_ACCESS_KEY: ${MINIO_ROOT_USER}
+      AWS_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+
+    volumes:
+      - ./services/trino/catalog:/etc/trino/catalog:ro
+
+
+  airflow:
+    build:
+      context: ./services/airflow
+    
+    restart: unless-stopped
+
+    depends_on:
+      spark-master:
+        condition: service_healthy
+
+    ports:
+      - "8084:8080"  # Airflow UI
+      - "4040:4040"  # Spark Application UI for batch jobs
+
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
+
+      SPARK_CONF_DIR: "/app/conf"
+
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+
+      MSSQL_USERNAME: "sa"
+      MSSQL_PASSWORD: ${MSSQL_SA_PASSWORD}
+
+    volumes:
+      - airflow-data:/opt/airflow
+      - ./services/airflow/config:/opt/airflow/config:ro
+      - ./services/airflow/dags:/opt/airflow/dags:ro
+      - ./services/spark/conf:/app/conf:ro
+      - ./services/spark/jobs:/app/jobs:ro
+      - ./scripts/airflow:/scripts:ro
+
+    command: standalone
+
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
+
+
+  kafka:
+    image: quay.io/debezium/kafka:3.6
+
+    restart: unless-stopped
+
+    environment:
+      CLUSTER_ID: "oh-sxaDRTcyAr6pFRbXyzA"
+      NODE_ID: "1"
+      NODE_ROLE: "combined"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+
+    volumes:
+      - kafka-data:/kafka/data
+      - ./scripts/kafka:/scripts:ro
+
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
+
+
+  connect:
+    image: quay.io/debezium/connect:3.6
+
+    restart: unless-stopped
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+      sqlserver:
+        condition: service_healthy
+
+    environment:
+      BOOTSTRAP_SERVERS: "kafka:9092"
+      GROUP_ID: "gridpredic-connect"
+      CONFIG_STORAGE_TOPIC: "gridpredic_connect_configs"
+      OFFSET_STORAGE_TOPIC: "gridpredic_connect_offsets"
+      STATUS_STORAGE_TOPIC: "gridpredic_connect_statuses"
+
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+
+      CONNECT_CONFIG_PROVIDERS: "env"
+      CONNECT_CONFIG_PROVIDERS_ENV_CLASS: "org.apache.kafka.common.config.provider.EnvVarConfigProvider"
+    
+    volumes:
+      - ./services/connect/connectors:/connectors:ro
+      - ./scripts/connect:/scripts:ro
+
+    post_start:
+      - command: ["/bin/sh", "/scripts/post_start.sh"]
+
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
+
+
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+
+    restart: unless-stopped
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+      connect:
+        condition: service_healthy
+
+    ports:
+      - "8082:8080"  # Kafka UI
+
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "gridpredic"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: "gridpredic-connect"
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: "http://connect:8083"
+
+
+volumes:
+  airflow-data:
+  hive-db:
+  kafka-data:
+  minio-data:
+  sqlserver-data:

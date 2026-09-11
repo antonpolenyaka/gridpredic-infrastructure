@@ -1,0 +1,262 @@
+{
+  "sources": [
+    {
+      "databases": [
+        "TedisNet_EOSA"
+      ],
+      "tables": [
+        {
+          "name": "HistoricCommandExecutions",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricElectricPowerCutElementEvents",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricElectricPowerCutElementIntervals",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricElectricPowerCutEvents",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricElectricPowerCutIncidents",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricElectricPowerCutIntervals",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricEvents",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricTagIntervalSummaries",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricTagIntervalValues",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricTagIntervalValuesBig",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "HistoricTagValueChanges",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+
+        {
+          "name": "LibChangeTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibColorPropagationTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibDeviceTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibElectricCalendarDates",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibElectricDayTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibElectricElectricalConductors",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibElectricElectricalFaultTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibElectricPowerCutStates",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibElementTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibEnums",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibEnumValues",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibEventLevels",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibEventTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibNodeTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibOperationTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibProtocols",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibQualities",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibQualityDetails",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibQualitySources",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibTagClass_EnumValues_EventLevels",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibTagClasses",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "LibTagValueTypes",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        }
+      ]
+    },
+
+    {
+      "databases": [
+        "Calser_EOSA",
+        "Calser_Pitarch",
+        "Calser_ValleSantaAna"
+      ],
+      "tables": [
+        {
+          "name": "clasificacion_factores",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "comarcas",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "comunidades",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "cts",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "elementos",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "estado_generico",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "incidencias",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "interrupciones",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "municipios",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "paises",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "periodos",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "provincias",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "salidas",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "tipo_elementos",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "tipo_generico",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        }
+      ]
+    }
+  ]
+}

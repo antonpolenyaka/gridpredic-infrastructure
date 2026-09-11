@@ -1,0 +1,13 @@
+# Environment
+.env
+
+# SQL Server backups
+services/sqlserver/backups/
+*.bak
+
+# Python
+__pycache__/
+*.py[cod]
+
+# VS Code
+.vscode/
