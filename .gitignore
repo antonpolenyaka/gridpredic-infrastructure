@@ -2,8 +2,7 @@
 .env
 
 # SQL Server backups
-services/sqlserver/backups/
-*.bak
+services/sqlserver/backups/*.bak
 
 # Python
 __pycache__/
