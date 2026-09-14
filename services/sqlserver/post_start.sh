@@ -27,7 +27,7 @@ echo "Restoring databases..."
     -P "$MSSQL_SA_PASSWORD" \
     -C \
     -b \
-    -i /scripts/sql/restore_databases.sql
+    -i /sql/restore_databases.sql
 
 echo "Database restore completed."
 
@@ -55,7 +55,7 @@ echo "Configuring CDC..."
     -P "$MSSQL_SA_PASSWORD" \
     -C \
     -b \
-    -i /scripts/sql/enable_cdc.sql
+    -i /sql/enable_cdc.sql
 
 echo "CDC is ready."
 echo "Post-start initialization completed."

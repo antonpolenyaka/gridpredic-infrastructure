@@ -6,7 +6,7 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 from airflow.sdk import DAG
 
 CONFIG_PATH = "/opt/airflow/config/sqlserver_batch.json"
-APPLICATION = "/app/jobs/01_bronze/ingest_sqlserver_batch_bronze.py"
+APPLICATION = "/app/jobs/01_bronze/ingest_sqlserver_batch.py"
 
 
 def to_task_id(database: str, table: str) -> str:

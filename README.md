@@ -2,6 +2,15 @@
 
 Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic con Docker Compose.
 
+## Estructura del repositorio
+
+- `services/`: Dockerfiles, configuraciones y scripts de cada servicio. Los backups locales se guardan en `services/sqlserver/backups/` y los archivos `.bak` se excluyen de Git.
+- `pipelines/dags/`: DAGs de Airflow.
+- `pipelines/config/`: configuración de los pipelines.
+- `pipelines/jobs/`: jobs Spark organizados por capas (`00_landing`, `01_bronze` y `02_silver`).
+- `docs/`: documentación y diagrama de arquitectura.
+- `compose.yaml`: definición del entorno local y sus montajes.
+
 ## Flujo de datos
 
 ![Flujo de datos de GridPredic](docs/data-flow.jpeg)
@@ -157,7 +166,7 @@ Conectar con **SQL Server Management Studio (SSMS)**:
 Server: localhost,1433
 Authentication: SQL Server Authentication
 Login: sa
-Password: valor de MSSQL_SA_PASSWORD
+Password: <valor de MSSQL_SA_PASSWORD>
 ```
 
 ### Trino — DBeaver
@@ -167,8 +176,8 @@ Crear una conexión **Trino** en DBeaver:
 ```text
 Host: localhost
 Port: 8085
-User: gridpredic
-Catalog: lakehouse
+Database/Schema: lakehouse
+Username <cualquier valor>
 ```
 
 No hay autenticación por contraseña configurada para Trino en este entorno local.
@@ -205,7 +214,7 @@ En la primera terminal:
 ```bash
 docker compose exec spark-master \
   spark-submit \
-  /app/jobs/00_landing/ingest_sqlserver_streaming_landing.py
+  /app/jobs/00_landing/ingest_sqlserver_streaming.py
 ```
 
 El job consume los eventos CDC de Kafka y los persiste como Parquet en:
@@ -223,7 +232,7 @@ Cuando Landing haya escrito al menos los primeros ficheros Parquet —puede comp
 ```bash
 docker compose exec spark-master \
   spark-submit \
-  /app/jobs/01_bronze/ingest_sqlserver_streaming_bronze.py
+  /app/jobs/01_bronze/ingest_sqlserver_streaming.py
 ```
 
 Este job procesa los eventos CDC de Landing y mantiene las tablas Delta correspondientes en `l1_bronze`.
@@ -244,7 +253,7 @@ Y ejecutar manualmente el DAG:
 ingest_sqlserver_batch_bronze
 ```
 
-El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `services/airflow/config/sqlserver_batch.json` y las cargan como tablas Delta en `l1_bronze`.
+El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `pipelines/config/sqlserver_batch.json` y las cargan como tablas Delta en `l1_bronze`.
 
 ---
 
