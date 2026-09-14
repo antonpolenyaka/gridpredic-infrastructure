@@ -4,21 +4,26 @@ Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic c
 
 ## Estructura del repositorio
 
-- `services/`: Dockerfiles, configuraciones y scripts de cada servicio. Los backups locales se guardan en `services/sqlserver/backups/` y los archivos `.bak` se excluyen de Git.
-- `pipelines/dags/`: DAGs de Airflow.
-- `pipelines/config/`: configuración de los pipelines.
-- `pipelines/jobs/`: jobs Spark organizados por capas (`00_landing`, `01_bronze` y `02_silver`).
-- `docs/`: documentación y diagrama de arquitectura.
-- `compose.yaml`: definición del entorno local y sus montajes.
+```text
+├── compose.yaml      # Servicios, dependencias y montajes
+├── services/         # Dockerfiles, configuración y scripts por servicio
+├── pipelines/
+│   ├── dags/         # Orquestación con Airflow
+│   ├── config/       # Parámetros de los procesos
+│   └── jobs/         # Ingesta y transformación con Spark
+└── docs/             # Documentación y arquitectura
+```
 
-Los DAGs, configuraciones y jobs se agrupan por capa de destino. Los archivos siguen la convención `<tipo>_<capa>_<origen o entidad>[_<batch|streaming>].<extensión>`:
+Dentro de `dags/`, `config/` y `jobs/`, los archivos se agrupan por **capa de destino**: `00_landing/`, `01_bronze/` y `02_silver/`. Solo se crean las carpetas que contienen archivos.
 
-- `dag_bronze_sqlserver.py`: orquestación de la carga Bronze de SQL Server.
-- `config_bronze_sqlserver.json`: configuración de esa carga.
-- `job_bronze_sqlserver_batch.py`: job batch que realiza la ingesta.
-- `job_silver_d_salidas.py`: job batch que transforma la entidad `d_salidas` y escribe la tabla `l2_silver.salidas`.
+Los nombres identifican el **tipo**, la **capa** y el **origen** (Landing/Bronze) o la **entidad** (Silver/Gold). Solo los jobs de Landing y Bronze añaden `batch` o `streaming`:
 
-Landing y Bronze incluyen el origen; Silver y Gold, la entidad o resultado. Solo los jobs de Landing y Bronze incluyen el sufijo `batch` o `streaming`; los jobs de Silver y Gold no lo incluyen; los DAGs y configuraciones actuales corresponden a cargas batch. El DAG `pipelines/dags/01_bronze/dag_bronze_sqlserver.py` conserva su identificador de Airflow `ingest_sqlserver_batch_bronze`.
+```text
+dag_bronze_sqlserver.py
+config_bronze_sqlserver.json
+job_bronze_sqlserver_batch.py
+job_silver_d_salidas.py
+```
 
 ## Flujo de datos
 
