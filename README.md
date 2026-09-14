@@ -11,6 +11,15 @@ Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic c
 - `docs/`: documentación y diagrama de arquitectura.
 - `compose.yaml`: definición del entorno local y sus montajes.
 
+Los DAGs, configuraciones y jobs se agrupan por capa de destino. Los archivos siguen la convención `<tipo>_<capa>_<origen o entidad>[_<batch|streaming>].<extensión>`:
+
+- `dag_bronze_sqlserver.py`: orquestación de la carga Bronze de SQL Server.
+- `config_bronze_sqlserver.json`: configuración de esa carga.
+- `job_bronze_sqlserver_batch.py`: job batch que realiza la ingesta.
+- `job_silver_d_salidas.py`: job batch que transforma la entidad `d_salidas` y escribe la tabla `l2_silver.salidas`.
+
+Landing y Bronze incluyen el origen; Silver y Gold, la entidad o resultado. Solo los jobs de Landing y Bronze incluyen el sufijo `batch` o `streaming`; los jobs de Silver y Gold no lo incluyen; los DAGs y configuraciones actuales corresponden a cargas batch. El DAG `pipelines/dags/01_bronze/dag_bronze_sqlserver.py` conserva su identificador de Airflow `ingest_sqlserver_batch_bronze`.
+
 ## Flujo de datos
 
 ![Flujo de datos de GridPredic](docs/data-flow.jpeg)
@@ -214,7 +223,7 @@ En la primera terminal:
 ```bash
 docker compose exec spark-master \
   spark-submit \
-  /app/jobs/00_landing/ingest_sqlserver_streaming.py
+  /app/jobs/00_landing/job_landing_sqlserver_streaming.py
 ```
 
 El job consume los eventos CDC de Kafka y los persiste como Parquet en:
@@ -232,7 +241,7 @@ Cuando Landing haya escrito al menos los primeros ficheros Parquet —puede comp
 ```bash
 docker compose exec spark-master \
   spark-submit \
-  /app/jobs/01_bronze/ingest_sqlserver_streaming.py
+  /app/jobs/01_bronze/job_bronze_sqlserver_streaming.py
 ```
 
 Este job procesa los eventos CDC de Landing y mantiene las tablas Delta correspondientes en `l1_bronze`.
@@ -253,18 +262,18 @@ Y ejecutar manualmente el DAG:
 ingest_sqlserver_batch_bronze
 ```
 
-El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `pipelines/config/sqlserver_batch.json` y las cargan como tablas Delta en `l1_bronze`.
+El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `pipelines/config/01_bronze/config_bronze_sqlserver.json` y las cargan como tablas Delta en `l1_bronze`.
 
 ---
 
 ## 10. Ejemplo de transformación Silver: `salidas`
 
-Una vez completado correctamente el DAG batch, puede ejecutarse la transformación de ejemplo `transform_salidas.py`:
+Una vez completado correctamente el DAG batch, puede ejecutarse la transformación de ejemplo `job_silver_d_salidas.py`:
 
 ```bash
 docker compose exec spark-master \
   spark-submit \
-  /app/jobs/02_silver/transform_salidas.py
+  /app/jobs/02_silver/job_silver_d_salidas.py
 ```
 
 El job integra las tablas `salidas` de las tres bases Calser y genera:

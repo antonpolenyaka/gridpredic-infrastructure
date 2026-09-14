@@ -5,8 +5,8 @@ from datetime import timedelta
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.sdk import DAG
 
-CONFIG_PATH = "/opt/airflow/config/sqlserver_batch.json"
-APPLICATION = "/app/jobs/01_bronze/ingest_sqlserver_batch.py"
+CONFIG_PATH = "/opt/airflow/config/01_bronze/config_bronze_sqlserver.json"
+APPLICATION = "/app/jobs/01_bronze/job_bronze_sqlserver_batch.py"
 
 
 def to_task_id(database: str, table: str) -> str:
