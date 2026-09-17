@@ -38,7 +38,7 @@ services:
       MSSQL_PID: "Developer"
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
       MSSQL_AGENT_ENABLED: "true"
-      MSSQL_MEMORY_LIMIT_MB: "6144"
+      MSSQL_MEMORY_LIMIT_MB: "2048"
 
     volumes:
       - sqlserver-data:/var/opt/mssql
