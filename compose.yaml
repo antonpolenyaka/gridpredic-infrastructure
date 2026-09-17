@@ -94,6 +94,7 @@ services:
         -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore_db
         -Djavax.jdo.option.ConnectionUserName=hive
         -Djavax.jdo.option.ConnectionPassword=${HIVE_METASTORE_DB_PASSWORD}
+        -Dhive.metastore.disallow.incompatible.col.type.changes=false
 
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
