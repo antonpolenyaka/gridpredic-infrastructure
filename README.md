@@ -22,7 +22,7 @@ Los nombres identifican el **tipo**, la **capa** y el **origen** (Landing/Bronze
 dag_bronze_sqlserver.py
 config_bronze_sqlserver.json
 job_bronze_sqlserver_batch.py
-job_silver_d_salidas.py
+job_silver_f_salidas.py
 ```
 
 ## Flujo de datos
@@ -253,7 +253,7 @@ Este job procesa los eventos CDC de Landing y mantiene las tablas Delta correspo
 
 ---
 
-## 9. Ejecutar el DAG batch de Airflow
+## 9. Ejecutar los DAGs batch de Airflow
 
 Abrir:
 
@@ -261,7 +261,9 @@ Abrir:
 http://localhost:8084
 ```
 
-Y ejecutar manualmente el DAG:
+### 9.1 SQL Server
+
+Ejecutar manualmente el DAG:
 
 ```text
 ingest_sqlserver_batch_bronze
@@ -269,16 +271,26 @@ ingest_sqlserver_batch_bronze
 
 El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `pipelines/config/01_bronze/config_bronze_sqlserver.json` y las cargan como tablas Delta en `l1_bronze`.
 
+### 9.2 Municipios
+
+Ejecutar manualmente el DAG:
+
+```text
+dag_bronze_reference_municipios
+```
+
+El DAG sube `data/reference_data/municipios.xlsx` a MinIO y carga la hoja `Municipios` con Spark, reemplazando la tabla Delta `l1_bronze.reference_municipios`.
+
 ---
 
 ## 10. Ejemplo de transformación Silver: `salidas`
 
-Una vez completado correctamente el DAG batch, puede ejecutarse la transformación de ejemplo `job_silver_d_salidas.py`:
+Una vez completado correctamente el DAG batch, puede ejecutarse la transformación de ejemplo `job_silver_f_salidas.py`:
 
 ```bash
 docker compose exec spark-master \
   spark-submit \
-  /app/jobs/02_silver/job_silver_d_salidas.py
+  /app/jobs/02_silver/job_silver_f_salidas.py
 ```
 
 El job integra las tablas `salidas` de las tres bases Calser y genera:

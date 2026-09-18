@@ -13,7 +13,7 @@ CHECKPOINT_PATH = "s3a://datalake/_checkpoints/00_landing/tedisnet-eosa"
 
 spark = (
     SparkSession.builder
-    .appName("ingest-sqlserver-streaming-landing")
+    .appName("job-landing-sqlserver-streaming")
     .config("spark.executor.memory", "2g")
     .config("spark.cores.max", "2")
     .getOrCreate()

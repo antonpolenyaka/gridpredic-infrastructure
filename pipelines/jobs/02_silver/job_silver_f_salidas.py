@@ -8,7 +8,7 @@ TARGET_TABLE = "l2_silver.salidas"
 
 spark = (
     SparkSession.builder
-    .appName("transform-salidas")
+    .appName("job-silver-f_salidas")
     .getOrCreate()
 )
 

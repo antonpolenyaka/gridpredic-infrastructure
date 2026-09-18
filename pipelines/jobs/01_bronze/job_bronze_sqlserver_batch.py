@@ -94,7 +94,7 @@ target_table = (
 
 spark = (
     SparkSession.builder
-    .appName(f"ingest-sqlserver-batch-{target_table}")
+    .appName(f"job-bronze-sqlserver-batch-{target_table.split('.')[-1]}")
     .getOrCreate()
 )
 

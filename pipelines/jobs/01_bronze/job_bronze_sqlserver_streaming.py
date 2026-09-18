@@ -451,7 +451,7 @@ def process_batch(batch_df, batch_id: int):
 
 spark = (
     SparkSession.builder
-    .appName("ingest-sqlserver-streaming-bronze")
+    .appName("job-bronze-sqlserver-streaming")
     .config("spark.executor.memory", "4g")
     .config("spark.cores.max", "2")
     .getOrCreate()
