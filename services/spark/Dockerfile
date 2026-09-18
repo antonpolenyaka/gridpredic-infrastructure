@@ -2,7 +2,9 @@ FROM apache/spark:4.0.4
 
 USER root
 
-RUN pip install --no-cache-dir "delta-spark==4.0.1"
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir "delta-spark==4.0.1" \
+    -r /tmp/requirements.txt
 
 ADD https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.4.1/hadoop-aws-3.4.1.jar \
     /opt/spark/jars/hadoop-aws-3.4.1.jar

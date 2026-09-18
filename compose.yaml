@@ -223,6 +223,8 @@ services:
   airflow:
     build:
       context: ./services/airflow
+      additional_contexts:
+        spark: ./services/spark
     
     restart: unless-stopped
 
@@ -248,6 +250,7 @@ services:
 
     volumes:
       - airflow-data:/opt/airflow
+      - ./data:/app/data:ro
       - ./pipelines/config:/opt/airflow/config:ro
       - ./pipelines/dags:/opt/airflow/dags:ro
       - ./services/spark/conf:/app/conf:ro

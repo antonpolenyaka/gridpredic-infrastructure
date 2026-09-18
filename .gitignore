@@ -1,6 +1,9 @@
 # Environment
 .env
 
+# Logs
+*.log
+
 # SQL Server backups
 services/sqlserver/backups/*.bak
 

@@ -1,4 +1,4 @@
-FROM apache/airflow:slim-3.3.1
+FROM apache/airflow:slim-3.3.1-python3.10
 
 USER root
 
@@ -13,7 +13,10 @@ ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 USER airflow
 
+COPY --from=spark requirements.txt /tmp/requirements-spark.txt
 RUN pip install --no-cache-dir \
     "apache-airflow==3.3.1" \
     "apache-airflow-providers-apache-spark[pyspark]==6.3.2" \
-    "pyspark==4.0.4"
+    "pyspark==4.0.4" \
+    "boto3==1.43.75" \
+    -r /tmp/requirements-spark.txt
