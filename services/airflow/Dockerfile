@@ -1,4 +1,4 @@
-FROM apache/airflow:slim-3.3.1-python3.10
+FROM apache/airflow:slim-3.3.2-python3.10
 
 USER root
 
@@ -9,14 +9,14 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-
 USER airflow
+
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 COPY --from=spark requirements.txt /tmp/requirements-spark.txt
 RUN pip install --no-cache-dir \
-    "apache-airflow==3.3.1" \
+    "apache-airflow==3.3.2" \
     "apache-airflow-providers-apache-spark[pyspark]==6.3.2" \
-    "pyspark==4.0.4" \
+    "pyspark==4.2.0" \
     "boto3==1.43.75" \
     -r /tmp/requirements-spark.txt
