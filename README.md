@@ -44,6 +44,21 @@ job_silver_f_salidas.py
 | Consulta | **Trino** | Motor SQL sobre el lakehouse |
 | Operación | **Kafka UI + Spark History Server** | Inspección de Kafka y ejecuciones Spark |
 
+> **Nota sobre la imagen de MinIO.** MinIO dejó de publicar sus imágenes community en Docker Hub en octubre de 2025, por lo que `minio/minio` ya no puede descargarse de allí. El síntoma al levantar el stack es un error engañoso, porque habla de permisos cuando en realidad el repositorio no existe:
+>
+> ```text
+> Error response from daemon: pull access denied for minio/minio,
+> repository does not exist or may require 'docker login'
+> ```
+>
+> El `compose.yaml` apunta por ese motivo a Quay, donde las imágenes siguen publicadas, y fija un release concreto en lugar de `latest` para que el entorno sea reproducible:
+>
+> ```yaml
+> image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+> ```
+>
+> La imagen es equivalente a la de Docker Hub: mismo entrypoint, mismas variables `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD`, y sigue incluyendo el cliente `mc` del que dependen los scripts de `infra/minio/`.
+
 ---
 
 ## 1. Requisitos mínimos del ordenador
@@ -52,9 +67,21 @@ Para ejecutar todo el stack localmente:
 
 - **CPU:** 4 cores.
 - **RAM:** 16 GB.
-- **Disco libre:** al menos **120 GB**. Los cuatro backups ocupan aproximadamente **61,4 GB** y las bases restauradas requieren espacio adicional.
+- **Disco libre:** al menos **350 GB**, repartidos según el desglose siguiente.
 
 Se recomienda asignar a Docker Desktop al menos **4 CPU y 12 GB de RAM**.
+
+### 1.1 Desglose del espacio en disco
+
+| Concepto | Dónde se almacena | Tamaño aproximado |
+| --- | --- | --- |
+| Los cuatro backups `.bak` | Carpeta del repositorio | 61,4 GB |
+| `sqlserver-data` (las cuatro bases restauradas) | Disco virtual de Docker | 200 - 250 GB |
+| `minio-data` (Landing y Delta Lake, crece con el uso) | Disco virtual de Docker | 50 GB en adelante |
+| Imágenes y caché de construcción (Spark, Hive, Airflow, Trino, Kafka) | Disco virtual de Docker | 25 - 35 GB |
+| `kafka-data`, `airflow-data`, `hive-db` | Disco virtual de Docker | 5 - 10 GB |
+
+La mayor parte del consumo no cae en la carpeta del repositorio, sino en el **disco virtual de Docker**, que por defecto se crea en la unidad del sistema. Si esa unidad va justa de espacio, hay que moverlo antes del primer arranque: ver el apartado 3.
 
 ---
 
@@ -76,7 +103,46 @@ docker compose version
 
 ---
 
-## 3. Clonar el repositorio
+## 3. Ubicar los datos de Docker fuera del disco del sistema
+
+**Motivo.** Los volúmenes declarados en `compose.yaml` (`sqlserver-data`, `minio-data`, `kafka-data`, `airflow-data`, `hive-db`) no son carpetas del sistema de archivos del anfitrión: viven dentro del **disco virtual de Docker**, junto con las imágenes y la caché de construcción. Ese disco se crea por defecto en la unidad del sistema, con independencia de dónde esté clonado el repositorio. Con `TedisNet_EOSA` restaurada se superan holgadamente los 250 GB, de modo que si la unidad del sistema no dispone de ese margen el arranque se interrumpe a media restauración y hay que empezar de cero.
+
+**Windows (Docker Desktop).** Antes del primer arranque:
+
+1. Detener el stack, si estuviera levantado:
+
+   ```bash
+   docker compose down
+   ```
+
+2. Crear la carpeta destino en la unidad con espacio, por ejemplo `D:\DockerData`.
+3. Abrir Docker Desktop -> Settings -> Resources -> Advanced -> "Disk image location" y seleccionar esa carpeta.
+4. Pulsar Apply & restart. Docker mueve el disco virtual y reinicia su máquina virtual.
+
+Comprobación desde PowerShell:
+
+```powershell
+Get-ChildItem D:\DockerData -Recurse -Filter *.vhdx |
+    Select-Object FullName, @{n='GB';e={[math]::Round($_.Length/1GB,2)}}
+```
+
+Debe aparecer `docker_data.vhdx` en la ruta elegida.
+
+**macOS (Docker Desktop).** Misma opción: Settings -> Resources -> Advanced -> "Disk image location".
+
+**Linux.** Ajustar `data-root` en `/etc/docker/daemon.json` y reiniciar el servicio:
+
+```json
+{
+  "data-root": "/mnt/datos/docker"
+}
+```
+
+El cambio es global de Docker, no específico de este proyecto: afecta a todas las imágenes y volúmenes de la máquina.
+
+---
+
+## 4. Clonar el repositorio
 
 ```bash
 git clone https://github.com/antonpolenyaka/gridpredic-infrastructure.git
@@ -87,7 +153,7 @@ Todos los comandos siguientes se ejecutan desde la raíz del repositorio.
 
 ---
 
-## 4. Añadir los backups de SQL Server
+## 5. Añadir los backups de SQL Server
 
 Crear, si no existe, la carpeta:
 
@@ -115,7 +181,7 @@ Durante el arranque se restauran como:
 
 ---
 
-## 5. Crear el archivo `.env`
+## 6. Crear el archivo `.env`
 
 Duplicar `.env.example` como `.env`:
 
@@ -134,9 +200,23 @@ MSSQL_SA_PASSWORD=<PASSWORD>
 
 `MSSQL_SA_PASSWORD` debe cumplir la política de complejidad de SQL Server.
 
+> **No utilizar el carácter `$` en las contraseñas.** Compose interpola variables también dentro del propio `.env`, de manera que una contraseña como `hM7#kL9$vE2@wQ4x` se resuelve como `hM7#kL9@wQ4x`: el servicio se inicializa con una contraseña distinta de la escrita y a partir de ahí nada cuadra. El síntoma es un aviso al ejecutar cualquier comando de Compose:
+>
+> ```text
+> WARN[0000] The "vE2" variable is not set. Defaulting to a blank string.
+> ```
+>
+> Si se necesita un `$` literal hay que duplicarlo (`$$`).
+
+Antes de arrancar conviene verificar que las contraseñas se resuelven enteras y que no aparece ningún aviso:
+
+```bash
+docker compose config
+```
+
 ---
 
-## 6. Levantar la infraestructura
+## 7. Levantar la infraestructura
 
 ```bash
 docker compose up -d --build --wait
@@ -159,7 +239,7 @@ Durante el arranque se realiza automáticamente:
 
 ---
 
-## 7. Puertos y herramientas de acceso
+## 8. Puertos y herramientas de acceso
 
 | Servicio | Dirección | Uso |
 | --- | --- | --- |
@@ -217,11 +297,11 @@ docker compose exec airflow cat /opt/airflow/simple_auth_manager_passwords.json.
 
 ---
 
-## 8. Ejecutar los jobs de streaming
+## 9. Ejecutar los jobs de streaming
 
 Los dos jobs son procesos continuos, por lo que conviene ejecutarlos en **dos terminales diferentes**.
 
-### 8.1 Landing
+### 9.1 Landing
 
 En la primera terminal:
 
@@ -237,7 +317,7 @@ El job consume los eventos CDC de Kafka y los persiste como Parquet en:
 s3a://datalake/00_landing/tedisnet-eosa
 ```
 
-### 8.2 Bronze
+### 9.2 Bronze
 
 **No arrancar Bronze inmediatamente.** Su esquema se obtiene leyendo los ficheros ya existentes en Landing.
 
@@ -253,7 +333,7 @@ Este job procesa los eventos CDC de Landing y mantiene las tablas Delta correspo
 
 ---
 
-## 9. Ejecutar los DAGs batch de Airflow
+## 10. Ejecutar los DAGs batch de Airflow
 
 Abrir:
 
@@ -261,7 +341,7 @@ Abrir:
 http://localhost:8084
 ```
 
-### 9.1 SQL Server
+### 10.1 SQL Server
 
 Ejecutar manualmente el DAG:
 
@@ -271,7 +351,7 @@ ingest_sqlserver_batch_bronze
 
 El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `etl/config/01_bronze/config_bronze_sqlserver.json` y las cargan como tablas Delta en `l1_bronze`.
 
-### 9.2 Municipios
+### 10.2 Municipios
 
 Ejecutar manualmente el DAG:
 
@@ -283,7 +363,7 @@ El DAG sube `data/reference_data/municipios.xlsx` a MinIO y carga la hoja `Munic
 
 ---
 
-## 10. Ejemplo de transformación Silver: `salidas`
+## 11. Ejemplo de transformación Silver: `salidas`
 
 Una vez completado correctamente el DAG batch, puede ejecutarse la transformación de ejemplo `job_silver_f_salidas.py`:
 

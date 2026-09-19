@@ -1,6 +1,9 @@
 # Environment
 .env
 
+# Copias de seguridad locales con marca de tiempo (fichero.ext.bak_AAAAMMDD_HHMMSS)
+*.bak_*
+
 # Logs
 *.log
 
