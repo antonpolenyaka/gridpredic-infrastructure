@@ -6,8 +6,8 @@ Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic c
 
 ```text
 ├── compose.yaml      # Servicios, dependencias y montajes
-├── services/         # Dockerfiles, configuración y scripts por servicio
-├── pipelines/
+├── infra/            # Dockerfiles, configuración y scripts por componente
+├── etl/
 │   ├── dags/         # Orquestación con Airflow
 │   ├── config/       # Parámetros de los procesos
 │   └── jobs/         # Ingesta y transformación con Spark
@@ -92,7 +92,7 @@ Todos los comandos siguientes se ejecutan desde la raíz del repositorio.
 Crear, si no existe, la carpeta:
 
 ```text
-services/sqlserver/backups/
+infra/sqlserver/backups/
 ```
 
 Copiar dentro los cuatro backups con estos nombres exactos:
@@ -269,7 +269,7 @@ Ejecutar manualmente el DAG:
 ingest_sqlserver_batch_bronze
 ```
 
-El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `pipelines/config/01_bronze/config_bronze_sqlserver.json` y las cargan como tablas Delta en `l1_bronze`.
+El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `etl/config/01_bronze/config_bronze_sqlserver.json` y las cargan como tablas Delta en `l1_bronze`.
 
 ### 9.2 Municipios
 

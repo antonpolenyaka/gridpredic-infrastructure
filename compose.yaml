@@ -13,8 +13,8 @@ services:
 
     volumes:
       - minio-data:/data
-      - ./services/minio/healthcheck.sh:/scripts/healthcheck.sh:ro
-      - ./services/minio/post_start.sh:/scripts/post_start.sh:ro
+      - ./infra/minio/healthcheck.sh:/scripts/healthcheck.sh:ro
+      - ./infra/minio/post_start.sh:/scripts/post_start.sh:ro
 
     command: server /data --console-address ":9001"
 
@@ -42,10 +42,10 @@ services:
 
     volumes:
       - sqlserver-data:/var/opt/mssql
-      - ./services/sqlserver/backups:/var/opt/mssql/backups:ro
-      - ./services/sqlserver/healthcheck.sh:/scripts/healthcheck.sh:ro
-      - ./services/sqlserver/post_start.sh:/scripts/post_start.sh:ro
-      - ./services/sqlserver/scripts:/sql:ro
+      - ./infra/sqlserver/backups:/var/opt/mssql/backups:ro
+      - ./infra/sqlserver/healthcheck.sh:/scripts/healthcheck.sh:ro
+      - ./infra/sqlserver/post_start.sh:/scripts/post_start.sh:ro
+      - ./infra/sqlserver/scripts:/sql:ro
 
     post_start:
       - command: ["/bin/sh", "/scripts/post_start.sh"]
@@ -67,7 +67,7 @@ services:
 
     volumes:
       - hive-db:/var/lib/postgresql/data
-      - ./services/postgres/healthcheck.sh:/scripts/healthcheck.sh:ro
+      - ./infra/postgres/healthcheck.sh:/scripts/healthcheck.sh:ro
     
     healthcheck:
       test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
@@ -75,7 +75,7 @@ services:
 
   hive:
     build:
-      context: ./services/hive
+      context: ./infra/hive
 
     restart: unless-stopped
 
@@ -100,8 +100,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
 
     volumes:
-      - ./services/hive/conf/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
-      - ./services/hive/healthcheck.sh:/scripts/healthcheck.sh:ro
+      - ./infra/hive/conf/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./infra/hive/healthcheck.sh:/scripts/healthcheck.sh:ro
     
     healthcheck:
       test: ["CMD", "/bin/bash", "/scripts/healthcheck.sh"]
@@ -109,7 +109,7 @@ services:
 
   spark-master:
     build:
-      context: ./services/spark
+      context: ./infra/spark
 
     restart: unless-stopped
 
@@ -130,9 +130,9 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
 
     volumes:
-      - ./services/spark/conf:/app/conf:ro
-      - ./pipelines/jobs:/app/jobs:ro
-      - ./services/spark/master:/scripts:ro
+      - ./infra/spark/conf:/app/conf:ro
+      - ./etl/jobs:/app/jobs:ro
+      - ./infra/spark/master:/scripts:ro
 
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
 
@@ -146,7 +146,7 @@ services:
 
   spark-worker:
     build:
-      context: ./services/spark
+      context: ./infra/spark
 
     restart: unless-stopped
 
@@ -162,7 +162,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
 
     volumes:
-      - ./services/spark/worker:/scripts:ro
+      - ./infra/spark/worker:/scripts:ro
 
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
 
@@ -172,7 +172,7 @@ services:
 
   spark-history:
     build:
-      context: ./services/spark
+      context: ./infra/spark
 
     restart: unless-stopped
     
@@ -189,8 +189,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
 
     volumes:
-      - ./services/spark/conf:/app/conf:ro
-      - ./services/spark/history:/scripts:ro
+      - ./infra/spark/conf:/app/conf:ro
+      - ./infra/spark/history:/scripts:ro
 
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
 
@@ -217,14 +217,14 @@ services:
       AWS_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
 
     volumes:
-      - ./services/trino/catalog:/etc/trino/catalog:ro
+      - ./infra/trino/catalog:/etc/trino/catalog:ro
 
 
   airflow:
     build:
-      context: ./services/airflow
+      context: ./infra/airflow
       additional_contexts:
-        spark: ./services/spark
+        spark: ./infra/spark
     
     restart: unless-stopped
 
@@ -251,11 +251,11 @@ services:
     volumes:
       - airflow-data:/opt/airflow
       - ./data:/app/data:ro
-      - ./pipelines/config:/opt/airflow/config:ro
-      - ./pipelines/dags:/opt/airflow/dags:ro
-      - ./services/spark/conf:/app/conf:ro
-      - ./pipelines/jobs:/app/jobs:ro
-      - ./services/airflow/healthcheck.sh:/scripts/healthcheck.sh:ro
+      - ./etl/config:/opt/airflow/config:ro
+      - ./etl/dags:/opt/airflow/dags:ro
+      - ./infra/spark/conf:/app/conf:ro
+      - ./etl/jobs:/app/jobs:ro
+      - ./infra/airflow/healthcheck.sh:/scripts/healthcheck.sh:ro
 
     command: standalone
 
@@ -278,13 +278,13 @@ services:
 
     volumes:
       - kafka-data:/kafka/data
-      - ./services/kafka/healthcheck.sh:/scripts/healthcheck.sh:ro
+      - ./infra/kafka/healthcheck.sh:/scripts/healthcheck.sh:ro
 
     healthcheck:
       test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
 
 
-  connect:
+  kafka-connect:
     image: quay.io/debezium/connect:3.6
 
     restart: unless-stopped
@@ -308,9 +308,9 @@ services:
       CONNECT_CONFIG_PROVIDERS_ENV_CLASS: "org.apache.kafka.common.config.provider.EnvVarConfigProvider"
     
     volumes:
-      - ./services/connect/connectors:/connectors:ro
-      - ./services/connect/healthcheck.sh:/scripts/healthcheck.sh:ro
-      - ./services/connect/post_start.sh:/scripts/post_start.sh:ro
+      - ./infra/kafka-connect/connectors:/connectors:ro
+      - ./infra/kafka-connect/healthcheck.sh:/scripts/healthcheck.sh:ro
+      - ./infra/kafka-connect/post_start.sh:/scripts/post_start.sh:ro
 
     post_start:
       - command: ["/bin/sh", "/scripts/post_start.sh"]
@@ -327,7 +327,7 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      connect:
+      kafka-connect:
         condition: service_healthy
 
     ports:
@@ -337,7 +337,7 @@ services:
       KAFKA_CLUSTERS_0_NAME: "gridpredic"
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: "gridpredic-connect"
-      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: "http://connect:8083"
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: "http://kafka-connect:8083"
 
 
 volumes:
