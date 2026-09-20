@@ -105,6 +105,7 @@ services:
     
     healthcheck:
       test: ["CMD", "/bin/bash", "/scripts/healthcheck.sh"]
+      start_period: 5m
 
 
   spark-master:
@@ -120,7 +121,7 @@ services:
         condition: service_healthy
 
     ports:
-      - "8080:8080"  # Spark Master UI
+      - "${SPARK_MASTER_UI_PORT:-8080}:8080"  # Spark Master UI
       - "4041:4040"  # Spark Application UI for streaming jobs
 
     environment:
@@ -130,6 +131,10 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
 
     volumes:
+      # Ivy resolves spark.jars.packages and the Hive metastore jars under
+      # $HOME/.ivy2.5.2. Without a volume the ~320 jars are downloaded again
+      # every time the container is recreated.
+      - ivy-spark-master:/root/.ivy2.5.2
       - ./infra/spark/conf:/app/conf:ro
       - ./etl/jobs:/app/jobs:ro
       - ./infra/spark/master:/scripts:ro
@@ -141,7 +146,7 @@ services:
 
     healthcheck:
       test: ["CMD", "/bin/bash", "/scripts/healthcheck.sh"]
-      start_period: 5m
+      start_period: 20m
 
 
   spark-worker:
@@ -168,6 +173,7 @@ services:
 
     healthcheck:
       test: ["CMD", "/bin/bash", "/scripts/healthcheck.sh"]
+      start_period: 2m
 
 
   spark-history:
@@ -196,6 +202,7 @@ services:
 
     healthcheck:
       test: ["CMD", "/bin/bash", "/scripts/healthcheck.sh"]
+      start_period: 5m
 
 
   trino:
@@ -250,6 +257,9 @@ services:
 
     volumes:
       - airflow-data:/opt/airflow
+      # Same reason as spark-master: this container also runs spark-submit,
+      # with its own cache because Ivy does not lock by default.
+      - ivy-airflow:/home/airflow/.ivy2.5.2
       - ./data:/app/data:ro
       - ./etl/config:/opt/airflow/config:ro
       - ./etl/dags:/opt/airflow/dags:ro
@@ -261,6 +271,7 @@ services:
 
     healthcheck:
       test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
+      start_period: 10m
 
 
   kafka:
@@ -343,6 +354,8 @@ services:
 volumes:
   airflow-data:
   hive-db:
+  ivy-airflow:
+  ivy-spark-master:
   kafka-data:
   minio-data:
   sqlserver-data:

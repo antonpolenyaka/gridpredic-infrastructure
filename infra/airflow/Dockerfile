@@ -20,3 +20,13 @@ RUN pip install --no-cache-dir \
     "pyspark==4.2.0" \
     "boto3==1.43.75" \
     -r /tmp/requirements-spark.txt
+
+# The Ivy cache is mounted as a named volume. The directory must exist and
+# belong to the airflow user, otherwise the volume is created as root and
+# spark-submit cannot write to it.
+USER root
+
+RUN mkdir -p /home/airflow/.ivy2.5.2 \
+    && chown airflow:root /home/airflow/.ivy2.5.2
+
+USER airflow

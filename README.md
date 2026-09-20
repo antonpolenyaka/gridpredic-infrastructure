@@ -224,7 +224,19 @@ docker compose up -d --build --wait
 
 Los `healthchecks` y las dependencias del Compose controlan el orden de inicialización. Cuando el comando termina correctamente, el entorno está listo para utilizarse.
 
-El primer arranque puede tardar varios minutos mientras se construyen las imágenes, se restauran las bases de datos y Spark resuelve sus dependencias iniciales.
+El primer arranque es largo. Como referencia, en un portátil con 4 cores y 12 GB asignados a Docker:
+
+| Fase | Duración aproximada |
+| --- | --- |
+| Descarga de imágenes y construcción de Spark, Hive y Airflow | 10 - 15 min |
+| Restauración de las cuatro bases en SQL Server | 60 - 70 min |
+| Resolución de dependencias de Spark en `spark-master` | 10 min |
+
+La restauración manda: el backup de `TedisNet_EOSA` son 63,5 GB y se lee desde una ruta del anfitrión montada en la máquina virtual de Docker, a unos 60 MB/s. Por eso el healthcheck de `sqlserver` tiene un `start_period` de 30 minutos.
+
+Los `start_period` de los healthchecks están dimensionados para ese primer arranque. Si se reducen, Compose da por fallidos servicios que en realidad están inicializándose y aborta la cadena de dependencias, aunque los contenedores acaben levantando solos.
+
+La resolución de dependencias de Spark merece una nota aparte. Entre `spark.jars.packages` y `spark.sql.hive.metastore.jars maven` se descargan unos 320 jars de Maven Central. Esa caché se guarda en los volúmenes `ivy-spark-master` e `ivy-airflow`, de forma que solo se paga una vez y sobrevive a la recreación de los contenedores. Son dos volúmenes separados a propósito: Ivy no usa bloqueo de ficheros por defecto y los dos servicios pueden resolver a la vez.
 
 Durante el arranque se realiza automáticamente:
 
@@ -251,6 +263,27 @@ Durante el arranque se realiza automáticamente:
 | Trino | http://localhost:8085 | Endpoint/UI del motor SQL |
 | MinIO Console | http://localhost:9001 | Navegación por buckets y objetos |
 | Spark History Server | http://localhost:18080 | Histórico de aplicaciones Spark |
+
+> **Si algún puerto está ocupado en tu máquina.** El puerto 8080 de la UI de Spark Master es configurable desde el `.env` con `SPARK_MASTER_UI_PORT`, porque en Windows suele estar tomado por IIS u otro servicio sobre `http.sys`. El síntoma al levantar el stack es:
+>
+> ```text
+> Error response from daemon: ports are not available: exposing port TCP
+> 0.0.0.0:8080 -> 127.0.0.1:0: listen tcp 0.0.0.0:8080: bind: An attempt was
+> made to access a socket in a way forbidden by its access permissions
+> ```
+>
+> Para comprobar quién lo tiene, en PowerShell como administrador:
+>
+> ```powershell
+> Get-NetTCPConnection -LocalPort 8080 | Select-Object State, OwningProcess
+> netsh interface ipv4 show excludedportrange protocol=tcp
+> ```
+>
+> Un `OwningProcess` igual a 4 significa que lo retiene el kernel por una reserva de `http.sys`. Lo más rápido es dejarlo estar y asignar otro puerto en el `.env`:
+>
+> ```dotenv
+> SPARK_MASTER_UI_PORT=8090
+> ```
 
 ### SQL Server — SSMS
 
