@@ -232,6 +232,11 @@
           "write_mode": "OVERWRITE"
         },
         {
+          "name": "parametros_configuracion",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
           "name": "periodos",
           "extract_mode": "FULL",
           "write_mode": "OVERWRITE"
