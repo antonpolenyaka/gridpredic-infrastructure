@@ -11,6 +11,7 @@ Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic c
 │   ├── dags/         # Orquestación con Airflow
 │   ├── config/       # Parámetros de los procesos
 │   └── jobs/         # Ingesta y transformación con Spark
+├── tests/            # Pruebas locales de los jobs
 └── docs/             # Documentación y arquitectura
 ```
 
@@ -22,14 +23,14 @@ Los nombres identifican el **tipo**, la **capa** y el **origen** (Landing/Bronze
 dag_bronze_sqlserver.py
 config_bronze_sqlserver.json
 job_bronze_sqlserver_batch.py
-job_silver_f_salidas.py
+job_silver_d_salida.py
 ```
 
 ## Flujo de datos
 
 ![Flujo de datos de GridPredic](docs/data-flow.jpeg)
 
-> El diagrama representa la arquitectura objetivo. Actualmente este repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, además de un ejemplo de transformación Silver.
+> El diagrama representa la arquitectura objetivo. Actualmente este repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, y la capa Silver completa (ver apartado 11).
 
 ## Stack tecnológico
 
@@ -396,26 +397,50 @@ El DAG sube `data/reference_data/municipios.xlsx` a MinIO y carga la hoja `Munic
 
 ---
 
-## 11. Ejemplo de transformación Silver: `salidas`
+## 11. Capa Silver
 
-Una vez completado correctamente el DAG batch, puede ejecutarse la transformación de ejemplo `job_silver_f_salidas.py`:
+Silver toma las tablas de Bronze y deja una sola versión válida de cada registro: sin duplicados, sin lecturas de calidad mala, sin huérfanos, con la distribuidora resuelta y con las anomalías marcadas en columnas booleanas en vez de borradas. Las reglas, el motivo de cada una y lo que queda para Gold están en [docs/silver-layer.md](docs/silver-layer.md).
+
+Requisito: haber ejecutado el DAG batch de Bronze y los dos jobs de streaming al menos una vez, porque `SystemElements`, `SystemTags` y `SystemNodes` llegan por CDC.
+
+Ejecutar manualmente el DAG:
+
+```text
+dag_silver
+```
+
+El DAG lee el orden y las dependencias de `etl/config/02_silver/config_silver.json` y termina con `job_silver_dq_checks.py`, que comprueba la integridad entre tablas, la cobertura de la clave Calser - TedisNet y la alineación horaria entre las dos fuentes.
+
+También se puede lanzar un job suelto, por ejemplo:
 
 ```bash
 docker compose exec spark-master \
   spark-submit \
-  /app/jobs/02_silver/job_silver_f_salidas.py
+  /app/jobs/02_silver/job_silver_f_interrupcion.py
 ```
 
-El job integra las tablas `salidas` de las tres bases Calser y genera:
+La serie grande de medidas se procesa por meses y solo sobrescribe los meses indicados:
 
-```text
-l2_silver.salidas
+```bash
+docker compose exec spark-master \
+  spark-submit \
+  /app/jobs/02_silver/job_silver_f_tag_interval_value.py --desde 2026-01 --hasta 2026-03
 ```
 
-Puede comprobarse desde Trino/DBeaver, por ejemplo:
+Resultado de calidad de cada ejecución desde Trino/DBeaver:
 
 ```sql
-SELECT *
-FROM lakehouse.l2_silver.salidas
-LIMIT 100;
+SELECT job, entidad, ambito, metrica, valor, total, pct, estado
+FROM lakehouse.l2_silver.dq_metrics
+ORDER BY ts DESC
+LIMIT 200;
+```
+
+Las filas descartadas de cada tabla están en `l2_silver.<tabla>_rejected`, con el motivo en `_motivo`.
+
+Prueba local sin Docker (Spark local con tablas Bronze de ejemplo):
+
+```bash
+pip install pyspark==4.2.0 delta-spark==4.4.0 pytest
+python -m pytest tests/02_silver -q
 ```
