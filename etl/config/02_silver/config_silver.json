@@ -1,0 +1,82 @@
+{
+  "fail_on_review": false,
+  "default_conf": {
+    "spark.cores.max": "2",
+    "spark.executor.memory": "2g"
+  },
+  "jobs": [
+    {
+      "name": "d_elemento",
+      "depends_on": []
+    },
+    {
+      "name": "d_periodo",
+      "depends_on": []
+    },
+    {
+      "name": "d_municipio",
+      "depends_on": []
+    },
+    {
+      "name": "d_tipo_generico",
+      "depends_on": []
+    },
+    {
+      "name": "d_ct",
+      "depends_on": ["d_municipio", "d_elemento"]
+    },
+    {
+      "name": "d_salida",
+      "depends_on": ["d_ct"]
+    },
+    {
+      "name": "f_incidencia",
+      "depends_on": []
+    },
+    {
+      "name": "f_interrupcion",
+      "depends_on": ["d_ct", "f_incidencia", "d_periodo"]
+    },
+    {
+      "name": "d_tag",
+      "depends_on": ["d_elemento"]
+    },
+    {
+      "name": "f_tag_value_change",
+      "depends_on": ["d_tag"]
+    },
+    {
+      "name": "f_evento",
+      "depends_on": ["f_tag_value_change"]
+    },
+    {
+      "name": "f_command_execution",
+      "depends_on": []
+    },
+    {
+      "name": "f_corte",
+      "depends_on": ["d_elemento", "f_command_execution"]
+    },
+    {
+      "name": "f_tag_interval_value",
+      "depends_on": ["d_tag"],
+      "args": ["--desde", "2021-01"],
+      "conf": {
+        "spark.cores.max": "2",
+        "spark.executor.memory": "4g",
+        "spark.sql.shuffle.partitions": "64"
+      }
+    },
+    {
+      "name": "dq_checks",
+      "depends_on": [
+        "d_salida",
+        "d_tipo_generico",
+        "f_interrupcion",
+        "f_evento",
+        "f_corte",
+        "f_tag_interval_value"
+      ]
+    }
+  ]
+}
