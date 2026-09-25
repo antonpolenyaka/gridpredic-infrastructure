@@ -52,13 +52,20 @@ job_silver_d_salida.py
 > repository does not exist or may require 'docker login'
 > ```
 >
-> El `compose.yaml` apunta por ese motivo a Quay, donde las imágenes siguen publicadas, y fija un release concreto en lugar de `latest` para que el entorno sea reproducible:
+> Durante un tiempo sirvió Quay (`quay.io/minio/minio`), pero a finales de septiembre de 2026 ese repositorio también pasó a pedir autenticación y el pull falla con:
 >
-> ```yaml
-> image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+> ```text
+> failed to resolve reference "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z":
+> unexpected status from HEAD request ... 401 UNAUTHORIZED
 > ```
 >
-> La imagen es equivalente a la de Docker Hub: mismo entrypoint, mismas variables `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD`, y sigue incluyendo el cliente `mc` del que dependen los scripts de `infra/minio/`.
+> El `compose.yaml` usa ahora la imagen de Pigsty, un fork mantenido del servidor MinIO, con un release fijo en lugar de `latest` para que el entorno sea reproducible:
+>
+> ```yaml
+> image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+> ```
+>
+> Es un reemplazo directo: mismo binario `minio`, mismas variables `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD`, y trae el cliente `mc` del que dependen los scripts de `infra/minio/`.
 
 ---
 
