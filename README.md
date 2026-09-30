@@ -62,7 +62,7 @@ job_silver_d_salida.py
 | Fuentes | **SQL Server 2022** | Bases de datos operacionales y fuentes batch |
 | CDC y mensajería | **Debezium, Kafka, Kafka Connect** | Captura y transporte de cambios en tiempo real |
 | Orquestación | **Apache Airflow** | Orquestación de las cargas batch |
-| Procesamiento | **Apache Spark 4 + Delta Lake** | Ingesta streaming/batch y transformaciones Bronze → Silver → Gold |
+| Procesamiento | **Apache Spark 4 + Delta Lake** | Ingesta streaming/batch y transformaciones Bronze -> Silver -> Gold |
 | Almacenamiento | **MinIO** | Object Storage compatible con S3 para Landing y Delta Lake |
 | Catálogo | **Hive Metastore + PostgreSQL** | Catálogo compartido de las tablas Delta |
 | Consulta | **Trino** | Motor SQL sobre el lakehouse |
@@ -316,7 +316,7 @@ Durante el arranque se realiza automáticamente:
 > SPARK_MASTER_UI_PORT=8090
 > ```
 
-### SQL Server — SSMS
+### SQL Server - SSMS
 
 Conectar con **SQL Server Management Studio (SSMS)**:
 
@@ -327,7 +327,7 @@ Login: sa
 Password: <valor de MSSQL_SA_PASSWORD>
 ```
 
-### Trino — DBeaver
+### Trino - DBeaver
 
 Crear una conexión **Trino** en DBeaver:
 
@@ -385,7 +385,7 @@ s3a://datalake/00_landing/tedisnet-eosa
 
 **No arrancar Bronze inmediatamente.** Su esquema se obtiene leyendo los ficheros ya existentes en Landing.
 
-Cuando Landing haya escrito al menos los primeros ficheros Parquet —puede comprobarse desde la consola de MinIO—, abrir una segunda terminal y ejecutar:
+Cuando Landing haya escrito al menos los primeros ficheros Parquet (puede comprobarse desde la consola de MinIO), abrir una segunda terminal y ejecutar:
 
 ```bash
 docker compose exec spark-master \
