@@ -16,3 +16,13 @@ __pycache__/
 
 # VS Code
 .vscode/
+# Cachés de desarrollo local
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Salidas de las pruebas manuales
+_runlogs/*.csv
