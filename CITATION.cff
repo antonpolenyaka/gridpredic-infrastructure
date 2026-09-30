@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "Si usas este repositorio, cítalo así."
+title: "GridPredic infrastructure: plataforma de datos para la predicción de interrupciones en redes de distribución eléctrica"
+type: software
+version: 0.4.0
+date-released: "2026-09-30"
+repository-code: "https://github.com/antonpolenyaka/gridpredic-infrastructure"
+authors:
+  - family-names: "Morancho i Poyatos"
+    given-names: "Josep"
+  - family-names: "Shebarshinov Polenyaka"
+    given-names: "Anton"
+keywords:
+  - power grid
+  - outage prediction
+  - SCADA
+  - lakehouse
+  - Delta Lake
+  - MLOps
