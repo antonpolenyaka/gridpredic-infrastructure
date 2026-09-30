@@ -1,0 +1,35 @@
+[project]
+name = "gridpredic-infrastructure"
+version = "0.4.0"
+description = "Plataforma de datos de GridPredic: ingesta de Calser y TedisNet a un lakehouse Delta (Bronze, Silver, Gold) con Airflow y Spark en Docker Compose"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Josep Morancho i Poyatos" },
+  { name = "Anton Shebarshinov Polenyaka" },
+]
+
+# El código no se instala como paquete: los jobs se lanzan con spark-submit desde
+# Airflow y los tests los cargan por ruta. Este fichero centraliza la configuración
+# de las herramientas de desarrollo.
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["_runlogs", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+# E501: hay consultas SQL y rutas largas en los jobs; el límite de 120 se aplica al resto.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Los tests insertan la carpeta de jobs en sys.path antes de importar (E402) y
+# cargan las fixtures con nombres que ruff considera no usados.
+"tests/**" = ["E402", "F401", "F811"]
+# Variable calculada y no usada en el parseo del esquema de Debezium; pendiente de limpieza.
+"etl/jobs/01_bronze/job_bronze_sqlserver_streaming.py" = ["F841"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
