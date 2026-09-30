@@ -1,0 +1,57 @@
+# Integración continua: se ejecuta en cada pull request y en cada push a main.
+# Tres comprobaciones independientes, de más rápida a más lenta:
+#   1. lint: ruff sobre todo el código Python.
+#   2. compose: compose.yaml se resuelve sin avisos con las variables de .env.example.
+#   3. silver-smoke: el test de extremo a extremo de la capa Silver en un Spark local,
+#      el mismo que se ejecuta en el portátil con `make test`.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff==0.15.11
+      - run: ruff check .
+
+  compose:
+    name: Validar compose.yaml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolver el fichero de Compose con las variables de ejemplo
+        run: |
+          cp .env.example .env
+          docker compose version
+          docker compose config --quiet
+
+  silver-smoke:
+    name: Test Silver (Spark local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Cache de los jars de Delta que descarga el test
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2.5.2
+          key: ivy-delta-4.4.0
+      - run: python -m pytest tests/02_silver -q

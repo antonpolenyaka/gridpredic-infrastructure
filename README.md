@@ -2,18 +2,41 @@
 
 Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic con Docker Compose.
 
+GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka en el Máster en Data Science and Engineering de la UPC School (2025-2026): un sistema que predice, con 1 a 3 horas de antelación, las interrupciones de suministro en la red de media tensión de una distribuidora eléctrica, a partir del histórico de interrupciones (aplicación Calser) y de la telemetría del SCADA TedisNet. Este repositorio contiene la plataforma de datos y el pipeline que construye el dataset de entrenamiento; el modelo llega en el siguiente hito.
+
+## Documentación
+
+| Documento | Qué cuenta |
+| --- | --- |
+| [docs/dataset_card.md](docs/dataset_card.md) | Ficha del dataset (formato Hugging Face): fuentes, volumen, estructura por zonas, target, sesgos, versionado |
+| [docs/model_card.md](docs/model_card.md) | Ficha del modelo (formato Hugging Face): uso previsto y excluido, features, métricas y criterios de aceptación |
+| [docs/silver-layer.md](docs/silver-layer.md) | Reglas de la capa Silver, tabla a tabla, y por qué |
+| [docs/project-structure.md](docs/project-structure.md) | Estructura del repositorio y su relación con Cookiecutter Data Science |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | GitHub Flow tal como lo aplicamos, reglas de commits y versionado de datos |
+| [CHANGELOG.md](CHANGELOG.md) | Historial de versiones |
+
 ## Estructura del repositorio
 
 ```text
-├── compose.yaml      # Servicios, dependencias y montajes
-├── infra/            # Dockerfiles, configuración y scripts por componente
+├── compose.yaml            # Servicios, dependencias y montajes
+├── .env.example            # Plantilla de credenciales
+├── requirements.txt        # Entorno local para tests y linter (sin Docker)
+├── pyproject.toml          # Configuración de ruff y pytest
+├── Makefile                # Atajos: make up, make test, make lint...
+├── .github/                # Plantillas de PR e issues, CODEOWNERS y CI
+├── infra/                  # Dockerfiles, configuración y scripts por componente
 ├── etl/
-│   ├── dags/         # Orquestación con Airflow
-│   ├── config/       # Parámetros de los procesos
-│   └── jobs/         # Ingesta y transformación con Spark
-├── tests/            # Pruebas locales de los jobs
-└── docs/             # Documentación y arquitectura
+│   ├── dags/               # Orquestación con Airflow
+│   ├── config/             # Parámetros de los procesos
+│   └── jobs/               # Ingesta y transformación con Spark
+├── data/reference_data/    # Datos de referencia pequeños (municipios)
+├── docs/                   # Cards, diseño de Silver, flujo de datos, estructura
+├── notebooks/              # Exploración (convención en su README)
+├── tests/                  # Pruebas locales de los jobs
+└── _runlogs/               # Scripts de pruebas manuales (los logs se ignoran)
 ```
+
+La estructura sigue la idea de Cookiecutter Data Science adaptada a un pipeline que corre en Spark y Airflow: la correspondencia carpeta a carpeta está en [docs/project-structure.md](docs/project-structure.md).
 
 Dentro de `dags/`, `config/` y `jobs/`, los archivos se agrupan por **capa de destino**: `00_landing/`, `01_bronze/` y `02_silver/`. Solo se crean las carpetas que contienen archivos.
 
@@ -39,7 +62,7 @@ job_silver_d_salida.py
 | Fuentes | **SQL Server 2022** | Bases de datos operacionales y fuentes batch |
 | CDC y mensajería | **Debezium, Kafka, Kafka Connect** | Captura y transporte de cambios en tiempo real |
 | Orquestación | **Apache Airflow** | Orquestación de las cargas batch |
-| Procesamiento | **Apache Spark 4 + Delta Lake** | Ingesta streaming/batch y transformaciones Bronze → Silver → Gold |
+| Procesamiento | **Apache Spark 4 + Delta Lake** | Ingesta streaming/batch y transformaciones Bronze -> Silver -> Gold |
 | Almacenamiento | **MinIO** | Object Storage compatible con S3 para Landing y Delta Lake |
 | Catálogo | **Hive Metastore + PostgreSQL** | Catálogo compartido de las tablas Delta |
 | Consulta | **Trino** | Motor SQL sobre el lakehouse |
@@ -293,7 +316,7 @@ Durante el arranque se realiza automáticamente:
 > SPARK_MASTER_UI_PORT=8090
 > ```
 
-### SQL Server — SSMS
+### SQL Server - SSMS
 
 Conectar con **SQL Server Management Studio (SSMS)**:
 
@@ -304,7 +327,7 @@ Login: sa
 Password: <valor de MSSQL_SA_PASSWORD>
 ```
 
-### Trino — DBeaver
+### Trino - DBeaver
 
 Crear una conexión **Trino** en DBeaver:
 
@@ -362,7 +385,7 @@ s3a://datalake/00_landing/tedisnet-eosa
 
 **No arrancar Bronze inmediatamente.** Su esquema se obtiene leyendo los ficheros ya existentes en Landing.
 
-Cuando Landing haya escrito al menos los primeros ficheros Parquet —puede comprobarse desde la consola de MinIO—, abrir una segunda terminal y ejecutar:
+Cuando Landing haya escrito al menos los primeros ficheros Parquet (puede comprobarse desde la consola de MinIO), abrir una segunda terminal y ejecutar:
 
 ```bash
 docker compose exec spark-master \
@@ -448,6 +471,29 @@ Las filas descartadas de cada tabla están en `l2_silver.<tabla>_rejected`, con 
 Prueba local sin Docker (Spark local con tablas Bronze de ejemplo):
 
 ```bash
-pip install pyspark==4.2.0 delta-spark==4.4.0 pytest
+pip install -r requirements.txt
 python -m pytest tests/02_silver -q
 ```
+
+---
+
+## 12. Desarrollo, pruebas e integración continua
+
+Para trabajar sobre el código sin levantar el stack hace falta Python 3.10 o superior y Java 17 o superior (Spark local):
+
+```bash
+pip install -r requirements.txt   # pyspark, delta-spark, pytest, ruff, pre-commit
+make lint                         # ruff check .
+make test                         # python -m pytest tests/02_silver -q
+make config                       # valida compose.yaml con el .env actual
+```
+
+Las mismas tres comprobaciones se ejecutan en GitHub Actions en cada pull request (`.github/workflows/ci.yml`). El test de Silver monta tablas Bronze pequeñas con los problemas reales de los datos sembrados a propósito, ejecuta todos los jobs en un Spark local y comprueba el resultado; la primera ejecución descarga los jars de Delta de Maven Central.
+
+Las versiones del runtime están fijadas en `compose.yaml`, en los `Dockerfile` de `infra/` y en `infra/spark/requirements.txt`; `requirements.txt` de la raíz reproduce en local las versiones de Spark y Delta de las imágenes.
+
+---
+
+## 13. Cómo contribuir
+
+Trabajamos con GitHub Flow: una rama por cambio a partir de `main`, commits pequeños con mensaje en imperativo, pull request con la plantilla del repositorio, revisión del otro miembro (la pide `CODEOWNERS`), CI en verde, prueba contra el stack real y merge con borrado de la rama. Las reglas completas, incluido cómo versionamos datos y modelos, están en [CONTRIBUTING.md](CONTRIBUTING.md).

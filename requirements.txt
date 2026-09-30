@@ -1,0 +1,9 @@
+# Entorno local para desarrollar y probar sin Docker (tests de Silver, linter).
+# Las versiones de Spark y Delta son las mismas que las de las imágenes del stack
+# (infra/spark/Dockerfile). El runtime real corre dentro de los contenedores:
+# sus dependencias están fijadas en los Dockerfile y en infra/spark/requirements.txt.
+pyspark==4.2.0
+delta-spark==4.4.0
+pytest==8.4.2
+ruff==0.15.11
+pre-commit==4.3.0
