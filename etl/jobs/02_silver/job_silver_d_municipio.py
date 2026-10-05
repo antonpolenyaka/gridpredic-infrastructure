@@ -5,12 +5,19 @@ MUNICIPIO_ID is the INE code. The zone type (MUNICIPIO_TIPO_ZONA_ESTAT) is
 the one Calser uses to weight TIEPI/NIEPI and it is a useful feature, so it
 is kept as it comes. Names are trimmed and the placeholder names that some
 installations use for an unknown municipality are flagged.
+
+The coordinates come from the reference file of municipalities
+(l1_bronze.reference_municipios, sheet Municipios of
+data/reference_data/municipios.xlsx), joined by the INE code. Gold needs them
+to attach the weather of each CT. If the reference has not been loaded the
+columns stay null.
 """
 
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from silver_common import (
+    BRONZE,
     DQCollector,
     clean_str,
     get_spark,
@@ -31,6 +38,36 @@ TARGET_TABLE = silver_table(ENTITY)
 
 # Seen in the Calser databases of other distribuidoras ("(municipio nulo)").
 PLACEHOLDER_NAME_PATTERN = r"(?i)^\(?\s*municipio\s+nulo\s*\)?$"
+
+REFERENCE_TABLE = f"{BRONZE}.reference_municipios"
+
+
+def reference_coordinates(spark):
+    """
+    INE code, latitude and longitude of the reference file. The Bronze job
+    reads the sheet as text and normalises the headers to snake case.
+    """
+    if not spark.catalog.tableExists(REFERENCE_TABLE):
+        logger.warning("%s not found, latitud and longitud stay null", REFERENCE_TABLE)
+        return None
+
+    ref = spark.table(REFERENCE_TABLE)
+
+    needed = {"codigo_ine", "latitud", "longitud"}
+
+    if not needed.issubset(set(ref.columns)):
+        logger.warning("%s has no %s, latitud and longitud stay null", REFERENCE_TABLE, needed)
+        return None
+
+    return (
+        ref.select(
+            F.lpad(F.trim(F.col("codigo_ine")), 5, "0").alias("id"),
+            F.regexp_replace(F.trim(F.col("latitud")), ",", ".").try_cast("double").alias("latitud"),
+            F.regexp_replace(F.trim(F.col("longitud")), ",", ".").try_cast("double").alias("longitud"),
+        )
+        .where(F.col("id").isNotNull())
+        .dropDuplicates(["id"])
+    )
 
 
 def transform(df_in: DataFrame):
@@ -79,13 +116,24 @@ def main():
     total_in = df_in.count()
 
     out, rejected = transform(df_in)
-    out = out.localCheckpoint(eager=True)
+
+    coordinates = reference_coordinates(spark)
+
+    if coordinates is not None:
+        out = out.join(F.broadcast(coordinates), "id", "left")
+    else:
+        out = (
+            out.withColumn("latitud", F.lit(None).cast("double"))
+            .withColumn("longitud", F.lit(None).cast("double"))
+        )
+
+    out = out.withColumn("sin_coordenadas", F.col("latitud").isNull()).localCheckpoint(eager=True)
 
     write_table(out, TARGET_TABLE)
     write_rejected(rejected, ENTITY, args.run_id)
 
     dq.add_entity_counts(
-        ENTITY, total_in, out.count(), rejected, out, ["nombre_invalido"],
+        ENTITY, total_in, out.count(), rejected, out, ["nombre_invalido", "sin_coordenadas"],
     )
     dq.add(
         ENTITY,
