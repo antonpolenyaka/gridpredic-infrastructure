@@ -137,6 +137,9 @@ services:
       - ivy-spark-master:/root/.ivy2.5.2
       - ./infra/spark/conf:/app/conf:ro
       - ./etl/jobs:/app/jobs:ro
+      # Gold jobs read their parameters from etl/config/03_gold when they are
+      # launched by hand from this container (Airflow mounts it on its own).
+      - ./etl/config:/app/config:ro
       - ./infra/spark/master:/scripts:ro
 
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master

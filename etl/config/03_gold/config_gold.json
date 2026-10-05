@@ -1,0 +1,143 @@
+{
+  "fail_on_review": false,
+  "default_conf": {
+    "spark.cores.max": "2",
+    "spark.executor.memory": "3g",
+    "spark.sql.shuffle.partitions": "64"
+  },
+  "parametros": {
+    "ventana": {
+      "desde": "2021-01-08",
+      "hasta": "2026-08-14"
+    },
+    "tiempo": {
+      "tedisnet_en_utc": false,
+      "zona_horaria_local": "Europe/Madrid",
+      "desfase_tedisnet_min": 0,
+      "retraso_max_llegada_h": 24
+    },
+    "eras": [
+      {"era": 1, "hasta": "2018-02-07"},
+      {"era": 2, "hasta": "2025-11-01"},
+      {"era": 3, "hasta": null}
+    ],
+    "ct": {
+      "tipo_ct": 144,
+      "tipo_trafo_ct": 145,
+      "solo_observables": true
+    },
+    "target": {
+      "clasificacion": "CL_IMPRE",
+      "factor_excluido": "FA_CLIEN",
+      "duracion_min_s": 180,
+      "fusion_solapes": "envolvente",
+      "percentil_winsor": 0.99,
+      "retraso_alta_defecto_dias": 15,
+      "duracion_max_corte_h": 168
+    },
+    "horizontes": {
+      "y_0_1h": [0, 1],
+      "y_1_3h": [1, 3],
+      "y_0_3h": [0, 3],
+      "y_0_6h": [0, 6]
+    },
+    "scada": {
+      "microcorte_max_s": 180,
+      "emparejamiento_max_h": 168
+    },
+    "features": {
+      "ventanas_local_h": [1, 6, 24, 168],
+      "ventanas_red_h": [6, 24, 168],
+      "ventanas_historico_d": [30, 90, 365],
+      "familias_red": ["defecto_tierra", "defecto_fase", "paso_falta", "disparo", "falta_tension", "reenganche", "seccionalizador"],
+      "familias_desequilibrio": ["intensidad", "tension"],
+      "familias_medida": {
+        "intensidad_neutro": "^AI\\.(INT\\. NEUTRO|INTENS(IDAD)? HOMOPOLAR|INTENSIDAD MEDIA NEUTRO)$",
+        "tension_homopolar": "^AI\\.TENSI[OÓ]N HOMOPOLAR$",
+        "intensidad": "^AI\\.(INTENSIDAD( [RST]| TRANSFORMADOR)?|INT\\. FASE L[123]|INTENS L[123]|CORRIENTE FASE [123]|CORRIENTE SUMA 3 FASES|INTENSIDAD MEDIA FASE [123]|CURRENT (INSTANTANEOUS L[123]|AVERAGE OF PHASES))$",
+        "tension": "^AI\\.(TENSI[OÓ]N( [RST]| [RST]-[RST])?|TENSI[OÓ]N (MEDIA )?FASE [123]|VOLTAGE (L[123]-L[123]|L[123]-N|LINE TO (NEUTRAL|LINE)))$",
+        "potencia_activa": "^AI\\.(P\\.ACTIVA|POTENCIA ACTIVA( (IMPORTADA|EXPORTADA) FASE [123]| FLOAT KW)?|ACTIVA (IMPORTADA|EXPORTADA)|REAL POWER L[123]|TOTAL INSTANTANEOUS REAL POWER)$",
+        "potencia_reactiva": "^AI\\.(P\\.REACTIVA|POTENCIA REACTIVA( (IMPORTADA|EXPORTADA) FASE [123]| FLOAT KVAR)?|REACTIVA Q[1-4]|TOTAL INSTANTANEOUS REACTIVE POWER)$",
+        "factor_potencia": "^AI\\.(FDP|COS FI|FACTOR DE POTENCIA( FASE [123]| FLOAT)?|TOTAL POWER FACTOR|POWER FACTOR L[123])$",
+        "temperatura": "^AI\\.(TEMPERATURA( AMBIENTE| ACEITE( TOP)?)?|TEMP\\(4\\.\\.20\\))$",
+        "carga_trafo": "^AI\\.(% CARGA TRANSFORMADOR|CARGA TRANSFORMADOR)$",
+        "thd": "^AI\\.THD.*$"
+      },
+      "familias_evento": {
+        "defecto_tierra": "^DI\\.(DEFECTO DE TIERRA.*|(DISPARO|ARRANQUE) (INSTANTANEO|TEMPORIZADO) (NEUTRO|NS|N))$",
+        "defecto_fase": "^DI\\.(DEFECTO DE FASE.*|(DISPARO|ARRANQUE) (INSTANTANEO|TEMPORIZADO) FASES)$",
+        "paso_falta": "^(DI|DI/DO|ES)\\.(.*PASO (DE )?FALTA.*|FALTA (PERMANENTE|TRANSITORIA|GENERAL))$",
+        "disparo": "^DI\\.(DISPARO|DISP\\.).*$",
+        "falta_tension": "^DI\\.(FALTA TENSI[OÓ]N.*|FALTA V .*|PERDIDA VOLTAJE|ALARMA M[IÍ]NIMA TENSI[OÓ]N|FALLO RED)$",
+        "reenganche": "^(DI|ES|CDI)\\..*(REENG|RECONECTADOR).*$",
+        "seccionalizador": "^(DI|ES|CDI)\\..*SECCIONA(LIZADOR|LI).*$",
+        "maniobra": "^((ES|CDI|DI)\\.(1 )?POSICI[OÓ]N( ICCP)?|DI\\.POSICION (ABIERTO|CERRADO)|(DI|CDI)\\.POS TRAFO ADYACENTE)$",
+        "comunicaciones": "^(DI\\.(FALLO COMUNICACION.*|WATCHDOG|TIPO COMUNICACI[OÓ]N.*|RESET CAP32|ERROR GRABACION.*)|CDI\\.TIPO COMUNICACI[OÓ]N.*|SYS\\.(ESTADO|CAMBIO ESTADO) DISPOSITIVO)$",
+        "mando_local": "^(DI|CDI)\\.(.*MANDO LOCAL.*|BLOQUEO MANDO.*)$",
+        "presencia_personal": "^DI\\.PRESENCIA PERSONAL$",
+        "alarma_equipo": "^DI\\.(ANOMAL[IÍ]A.*|FALLO (CARGADOR|EQUIPO).*|.*BATER[IÍ]A.*|FALTA CC.*|.*RESORTES.*|MUELLES.*|ALARMA.*|FINAL VIDA.*|W\\.D\\. .*|VIGILANCIA .*)$"
+      },
+      "festivos_fijos": ["01-01", "01-06", "05-01", "08-15", "09-08", "10-12", "11-01", "12-06", "12-08", "12-25"],
+      "festivos_semana_santa": ["jueves", "viernes"]
+    },
+    "dataset": {
+      "train_hasta": "2025-01-01",
+      "valid_hasta": "2026-01-01",
+      "purga_horas": 6,
+      "tasa_negativos_train": 0.02,
+      "semilla": 20261005,
+      "excluir_en_corte": true,
+      "excluir_scada_inactivo": true
+    },
+    "lotes": {
+      "labels_meses": 12,
+      "medidas_meses": 1,
+      "features_meses": 1,
+      "dataset_meses": 6
+    }
+  },
+  "jobs": [
+    {
+      "name": "dim_ct",
+      "depends_on": []
+    },
+    {
+      "name": "fact_interrupciones_mt",
+      "depends_on": ["dim_ct"]
+    },
+    {
+      "name": "fact_cortes_scada",
+      "depends_on": ["dim_ct"]
+    },
+    {
+      "name": "labels_ct_hora",
+      "depends_on": ["fact_interrupciones_mt", "fact_cortes_scada"]
+    },
+    {
+      "name": "agg_medida_hora",
+      "depends_on": ["dim_ct"],
+      "conf": {
+        "spark.cores.max": "2",
+        "spark.executor.memory": "4g",
+        "spark.sql.shuffle.partitions": "64"
+      }
+    },
+    {
+      "name": "features_ct_hora",
+      "depends_on": ["labels_ct_hora", "agg_medida_hora"],
+      "conf": {
+        "spark.cores.max": "2",
+        "spark.executor.memory": "4g",
+        "spark.sql.shuffle.partitions": "64"
+      }
+    },
+    {
+      "name": "dataset_train",
+      "depends_on": ["features_ct_hora"]
+    },
+    {
+      "name": "dq_checks",
+      "depends_on": ["dataset_train"]
+    }
+  ]
+}
