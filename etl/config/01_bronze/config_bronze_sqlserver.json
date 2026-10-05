@@ -52,8 +52,17 @@
         },
         {
           "name": "HistoricTagIntervalValuesBig",
-          "extract_mode": "FULL",
-          "write_mode": "OVERWRITE"
+          "extract_mode": "INCREMENTAL",
+          "write_mode": "APPEND",
+          "watermark_column": "Id",
+          "partition_column": "Id",
+          "num_partitions": 4,
+          "chunk_size": 25000000,
+          "max_records_per_file": 5000000,
+          "conf": {
+            "spark.cores.max": "4",
+            "spark.executor.memory": "3g"
+          }
         },
         {
           "name": "HistoricTagValueChanges",
