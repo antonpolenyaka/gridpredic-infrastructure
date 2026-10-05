@@ -225,6 +225,8 @@ def run_single(spark: SparkSession, target_table: str, target_exists: bool) -> N
     Original path for every table that fits in one read: FULL or INCREMENTAL
     by watermark, written with OVERWRITE, APPEND or MERGE.
     """
+    where = ""
+
     if not target_exists or args.extract_mode == "FULL":
         dbtable = f"dbo.{args.table}"
     else:
@@ -240,16 +242,17 @@ def run_single(spark: SparkSession, target_table: str, target_exists: bool) -> N
             max_value,
         )
 
-        dbtable = (
-            f"(SELECT * FROM dbo.{args.table} "
-            f"WHERE {args.watermark_column} > {max_value}) AS query"
-        )
+        where = f"WHERE {args.watermark_column} > {max_value}"
+        dbtable = f"(SELECT * FROM dbo.{args.table} {where}) AS query"
 
     reader = jdbc_reader(spark, dbtable)
 
     if args.partition_column and args.num_partitions:
-        # Parallel read of a table that still fits in one commit.
-        bound_lo, bound_hi = source_bounds(spark, "")
+        # Parallel read of a table that still fits in one commit. The bounds
+        # are those of the rows that will actually be read: on an incremental
+        # run the bounds of the whole table would put every new row in the
+        # last partition and leave the other connections idle.
+        bound_lo, bound_hi = source_bounds(spark, where)
 
         if bound_lo is not None:
             reader = (
