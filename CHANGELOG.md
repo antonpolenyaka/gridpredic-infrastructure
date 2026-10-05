@@ -2,6 +2,32 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.5.0] - 05.10.2026
+
+Capa Gold completa hasta el dataset de entrenamiento versionado, y las correcciones de Bronze y Silver que salieron al revisarlas antes de construirla.
+
+### Añadido
+
+- Capa Gold (`etl/jobs/03_gold/`, `etl/config/03_gold/config_gold.json`, DAG `dag_gold`): `dim_ct` con la potencia imputada y los CT del estudio, `map_tag_ct` y `map_aguas_arriba` para llevar cada señal del SCADA a su CT, `fact_interrupciones_mt` (variantes principal, amplia y todas, con los solapes fusionados), `fact_cortes_scada` (episodios Off -> On, microcortes y maniobras), `labels_ct_hora`, `agg_medida_hora`, `features_ct_hora` con `feature_metadata`, `dataset_train` con split temporal, purga de 6 h en cada frontera y muestreo reproducible, `dataset_versions` y `job_gold_dq_checks.py` (alineación horaria, retraso de llegada de los cambios del SCADA, censura de la etiqueta al final de la ventana, cobertura, positivos, leakage). Cada feature usa los datos en el momento en que se pudieron conocer: la llegada al SCADA y no la hora de campo, la carga del registro en Calser y la topología aguas arriba solo desde el primer corte que la reveló.
+- `docs/gold-layer.md` con las decisiones de Gold y lo que queda pendiente.
+- Silver: hora de llegada al servidor (`ts_actualizacion`) en `f_tag_quality_event`, `f_evento`, `f_corte_evento` y `f_corte_elemento`, y flag `llegada_tardia` (más de una hora) en `f_tag_value_change` y `f_corte_evento`. En la base real, 13 de los 200 últimos cambios llegaron con meses de retraso.
+- `tests/03_gold/test_gold_smoke.py`: Silver y Gold de extremo a extremo en Spark local, etiquetas comprobadas hora a hora y prueba de leakage.
+- Bronze: lectura por trozos de `Id` con conexiones JDBC en paralelo y tamaño máximo de fichero (`partition_column`, `num_partitions`, `chunk_size`, `max_records_per_file`), aplicada a `HistoricTagIntervalValuesBig`, que pasa a ser incremental y reanudable. Configuración de Spark por tabla (`conf`).
+- Silver: datos eléctricos del trafo en `d_ct_scada` (`is_power_cut`, `potencia_nominal_kva`, tensiones, `observable`), coordenadas del municipio en `d_municipio` y severidad del evento en `f_evento` (`nivel_severidad`).
+- `make gold`, `make test-silver`, `make test-gold` y el job de CI `gold-smoke`.
+
+### Corregido
+
+- Silver `f_tag_interval_value` usaba `SourceTimestamp` como instante de la muestra. `CopyTagValue2TagIntervalValue` escribe el instante de rejilla en `UpdateTimestamp` y copia la hora original del valor retenido en `SourceTimestamp`, así que las muestras de un valor estable se deduplicaban en una sola fila y caían en el mes equivocado. Ahora `ts` es el instante de rejilla, `ts_origen` la hora del valor y `antiguedad_s` / `valor_rancio` / `ts_origen_futuro` marcan los valores congelados y los relojes adelantados. Hay que volver a ejecutar el job para toda la ventana.
+- Silver `d_tag` rechazaba como huérfanos los tags con `ElementId` NULL (unos 14.700 en EOSA, entre ellos el estado de conexión de 1.134 dispositivos). Ahora se conservan con `sin_elemento` y la distribuidora de su dispositivo; solo se rechaza un elemento o dispositivo que no existe.
+- Silver `f_corte_evento` marca `ts_incoherente` los eventos con una hora posterior a su propio procesado (relojes de RTU; en EOSA hay On fechados el 13.09.2026).
+
+### Cambiado
+
+- `compose.yaml`: `spark-master` monta `etl/config` en `/app/config` para lanzar los jobs de Gold a mano. Hay que recrearlo con `docker compose up -d`.
+- `make test` ejecuta los tests de Silver y de Gold.
+- Los jobs de Gold no aceptan `--rebuild` junto con `--desde` / `--hasta`: borraría la tabla entera y solo reconstruiría esos meses.
+
 ## [0.4.0] - 30.09.2026
 
 Entrega del seminario de MLOps (SE4ML) del máster. No cambia el pipeline; documenta y equipa el repositorio.
