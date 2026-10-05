@@ -106,12 +106,12 @@ Tablas de Gold (el detalle está en [gold-layer.md](gold-layer.md)):
 
 | Tabla | Grano | Contenido |
 | --- | --- | --- |
-| `dim_ct`, `map_tag_ct`, `map_aguas_arriba` | CT, tag, trafo y elemento | El CT con su potencia imputada y si entra en el estudio; el CT y el grupo de red de cada señal; las posiciones de cabecera que han cortado cada trafo y desde cuándo se sabe |
+| `dim_ct`, `map_tag_ct`, `map_aguas_arriba` | CT, tag, trafo y elemento | El CT con su potencia imputada, si entra en el estudio y desde y hasta cuándo existe en Calser; el CT y el grupo de red de cada señal; las posiciones de cabecera que han cortado cada trafo y desde cuándo se sabe |
 | `fact_interrupciones_mt`, `fact_cortes_scada` | evento | Interrupciones de Calser en tres variantes con los solapes fusionados; episodios Off -> On del SCADA con microcortes y maniobras |
-| `labels_ct_hora` | CT y hora | `y_1_3h` y sus variantes, `en_corte`, horas hasta el próximo evento y era |
+| `labels_ct_hora` | CT y hora | `y_1_3h` y sus variantes, `en_corte`, `ct_vigente`, horas hasta el próximo evento y era |
 | `agg_medida_hora`, `actividad_scada_hora` | clave y hora | Agregados horarios de las series de medida y muestras por distribuidora y hora |
 | `features_ct_hora`, `feature_metadata` | CT y hora | Unas 250 features y su descripción |
-| `dataset_train`, `dataset_versions` | CT y hora | Dataset de entrenamiento con split temporal (y 6 h de purga antes de cada frontera) y muestreo reproducible, y el registro de cada versión |
+| `dataset_train`, `dataset_versions` | CT y hora | Dataset de entrenamiento sin las horas en corte, sin SCADA activo o en las que el CT no existía, con split temporal (y 6 h de purga antes de cada frontera) y muestreo reproducible, y el registro de cada versión |
 
 Columnas técnicas comunes: `distribuidora_id` (el `DistributorId` de Calser, que coincide con el `Id` del elemento raíz en TedisNet: 3 EOSA, 2 Pitarch, 1366 Valle de Santa Ana), `_origen` (Historic, System o Stream), `run_id` de la ejecución del DAG y los flags booleanos de anomalías (`en_solape`, `duracion_cero`, `es_microcorte`, `es_estimado`, `es_copiado`, `es_error_comm`, `es_maniobra`, `potencia_cero`, `sin_telemetria`...).
 
