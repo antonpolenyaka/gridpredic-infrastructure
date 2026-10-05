@@ -378,8 +378,8 @@ def main():
 
     write_table(events, silver_table(EVENT_ENTITY))
     write_table(elements, silver_table(ELEMENT_ENTITY))
-    write_rejected(events_rejected, EVENT_ENTITY, args.run_id)
-    write_rejected(elements_rejected, ELEMENT_ENTITY, args.run_id)
+    events_rejected = write_rejected(events_rejected, EVENT_ENTITY, args.run_id)
+    elements_rejected = write_rejected(elements_rejected, ELEMENT_ENTITY, args.run_id)
 
     dq.add_entity_counts(
         EVENT_ENTITY, events_total, events.count(), events_rejected, events,
