@@ -8,6 +8,10 @@ Three tables:
   takes the Calser CT in its latest period (the topology Calser has today),
   its municipality, its transformer in TedisNet and the decisions of this
   layer: the imputed power and whether the CT enters the study (en_estudio).
+  It also says when the CT existed (vigente_desde, vigente_hasta_excl),
+  read from the periods of Calser that list it, so that the hours before a
+  CT was created or after it was removed can be told apart from real hours
+  without events.
 - map_tag_ct: one row per tag with the CT it belongs to (anchor_id) and the
   network group the CT hangs from (grupo_red_id).
 - map_aguas_arriba: one row per (transformer, upstream switching element),
@@ -58,6 +62,7 @@ from gold_common import (
     scale_factor,
     silver_table,
     tedisnet_time,
+    window_bounds,
     write_table,
 )
 
@@ -104,6 +109,43 @@ def latest_cts(cts: DataFrame, periods: DataFrame) -> DataFrame:
         .withColumn("_rn", F.row_number().over(ranked))
         .where(F.col("_rn") == 1)
         .drop("_rn", "fecha_inicio")
+    )
+
+
+def ct_validity(cts: DataFrame, periods: DataFrame) -> DataFrame:
+    """
+    When each CT exists in Calser. CT_FECHA_PES and CT_FECHA_BAJA are empty
+    in every real database, so the only evidence is the copy of the topology
+    that every period keeps: a CT exists from the start of the first period
+    that lists it until the start of the first period that no longer does
+    (fecha_fin_excl of its last period, null while it is still in the open
+    period). Hours outside that range are rows of a CT that did not exist
+    yet or had been removed; the labels mark them (ct_vigente) and the
+    dataset leaves them out.
+    """
+    presence = (
+        cts.select("distribuidora_id", "id", "periodo_id")
+        .distinct()
+        .join(
+            periods.select("distribuidora_id", "periodo_id", "fecha_inicio", "fecha_fin_excl"),
+            ["distribuidora_id", "periodo_id"],
+            "left",
+        )
+    )
+
+    dated = presence.where(F.col("fecha_inicio").isNotNull())
+
+    return (
+        presence.groupBy("distribuidora_id", F.col("id").alias("ct_id"))
+        .agg(F.count(F.lit(1)).alias("n_periodos"))
+        .join(
+            dated.groupBy("distribuidora_id", F.col("id").alias("ct_id")).agg(
+                F.min("fecha_inicio").alias("vigente_desde"),
+                F.max_by("fecha_fin_excl", "fecha_inicio").alias("vigente_hasta_excl"),
+            ),
+            ["distribuidora_id", "ct_id"],
+            "left",
+        )
     )
 
 
@@ -396,6 +438,7 @@ def build_dim(spark, params: dict):
             "num_abonados",
         )
         .join(municipality(municipios), ["distribuidora_id", "periodo_id", "municipio_id"], "left")
+        .join(ct_validity(cts, periods), ["distribuidora_id", "ct_id"], "left")
     )
 
     if salidas is not None:
@@ -562,6 +605,8 @@ def main():
     write_table(tag_map, MAP_TAG_TABLE)
     write_table(upstream, MAP_UPSTREAM_TABLE)
 
+    window_start, _ = window_bounds(params)
+
     for row in (
         dim.groupBy("source_database")
         .agg(
@@ -570,6 +615,9 @@ def main():
             F.sum(F.col("tiene_medidas").cast("long")).alias("con_medidas"),
             F.sum((F.col("n_posiciones_aguas_arriba") > 0).cast("long")).alias("con_aguas_arriba"),
             F.sum(F.col("potencia_imputada").cast("long")).alias("potencia_imputada"),
+            F.sum(F.col("vigente_hasta_excl").isNotNull().cast("long")).alias("dados_de_baja"),
+            F.sum((F.col("vigente_desde") > F.lit(window_start.date())).cast("long")).alias("altas_en_ventana"),
+            F.sum(F.col("vigente_desde").isNull().cast("long")).alias("sin_fecha_periodo"),
         )
         .collect()
     ):
@@ -580,6 +628,12 @@ def main():
                detalle="CT with at least one measurement series in its CT element")
         dq.add("dim_ct", "cts_con_aguas_arriba", row["con_aguas_arriba"], row["en_estudio"], ambito=ambito)
         dq.add("dim_ct", "potencia_imputada", row["potencia_imputada"], row["cts"], ambito=ambito)
+        dq.add("dim_ct", "cts_dados_de_baja", row["dados_de_baja"], row["cts"], ambito=ambito,
+               detalle="not listed in the latest period of Calser (vigente_hasta_excl)")
+        dq.add("dim_ct", "cts_alta_en_ventana", row["altas_en_ventana"], row["cts"], ambito=ambito,
+               detalle=f"first listed in a period that starts after {window_start.date()} (vigente_desde)")
+        dq.add("dim_ct", "cts_sin_fecha_periodo", row["sin_fecha_periodo"], row["cts"], umbral_pct=0.0,
+               ambito=ambito, detalle="none of its periods has a start date: validity unknown, every hour kept")
 
     for row in tag_map.groupBy("origen_mapeo").count().collect():
         dq.add("map_tag_ct", f"tags:{row['origen_mapeo']}", row["count"], tag_map.count())

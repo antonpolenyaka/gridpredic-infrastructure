@@ -87,7 +87,8 @@
       "tasa_negativos_train": 0.02,
       "semilla": 20261005,
       "excluir_en_corte": true,
-      "excluir_scada_inactivo": true
+      "excluir_scada_inactivo": true,
+      "excluir_ct_no_vigente": true
     },
     "lotes": {
       "labels_meses": 12,

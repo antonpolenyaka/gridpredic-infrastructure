@@ -18,12 +18,16 @@ Final checks of the Gold layer, run after the dataset is built.
    before the last load ventana.hasta can be.
 4. Coverage: CTs of the study with measurements and with upstream bays, and
    rows with an active SCADA history.
-5. Labels: rate of positives per split (zero or above 1 % means the label is
+5. Validity of the CTs: hours of the grid in which the CT was not listed in
+   Calser (ct_vigente = 0) and, above all, positives of the main label in
+   those hours. An interruption of a CT in an hour where the CT did not
+   exist means that the validity read from the periods is wrong for it.
+6. Labels: rate of positives per split (zero or above 1 % means the label is
    broken, not that the problem got easy).
-6. Leakage by construction: no column of a forbidden list can be a feature,
+7. Leakage by construction: no column of a forbidden list can be a feature,
    and no label can be in feature_metadata.
-7. Features that are always null in train.
-8. The decision: every metric of this run with estado REVISAR is listed and,
+8. Features that are always null in train.
+9. The decision: every metric of this run with estado REVISAR is listed and,
    with --fail-on-review, the job fails.
 """
 
@@ -54,7 +58,7 @@ ALIGNED_TOLERANCE_MINUTES = 30
 
 FORBIDDEN = {"fecha_alta", "ts", "conocido_ts", "conocido_fin_ts", "inicio_ts", "fin_ts",
              "inicio_conocido_ts", "fin_conocido_ts", "primer_conocido_ts", "en_corte",
-             "en_corte_calser", "en_corte_scada", "horas_hasta_proximo_evento",
+             "en_corte_calser", "en_corte_scada", "ct_vigente", "horas_hasta_proximo_evento",
              "n_posiciones_aguas_arriba"}
 
 # A median delay of arrival this large is a clock or time zone difference.
@@ -233,6 +237,33 @@ def check_coverage(spark, dq: DQCollector) -> None:
         dq.add("cobertura", "horas_scada_activo", row["activas"], row["filas"], minimo_pct=95.0)
 
 
+def check_validity(spark, dq: DQCollector) -> None:
+    labels = optional_table(spark, gold_table("labels_ct_hora"))
+
+    if labels is None or "ct_vigente" not in labels.columns:
+        return
+
+    main_label = "y_1_3h" if "y_1_3h" in labels.columns else None
+
+    row = labels.agg(
+        F.count(F.lit(1)).alias("filas"),
+        F.sum(F.lit(1) - F.col("ct_vigente")).alias("no_vigentes"),
+        F.countDistinct(F.when(F.col("ct_vigente") == 0, F.concat_ws("-", "distribuidora_id", "ct_id"))).alias("cts"),
+        (F.sum(main_label) if main_label else F.lit(None)).alias("positivos"),
+        (F.sum(F.when(F.col("ct_vigente") == 0, F.col(main_label))) if main_label else F.lit(None)).alias(
+            "positivos_no_vigentes"
+        ),
+    ).first()
+
+    dq.add("vigencia", "horas_ct_no_vigente", row["no_vigentes"], row["filas"],
+           detalle=f"{row['cts']} CTs with hours before they were listed in Calser or after they were removed")
+
+    if main_label:
+        dq.add("vigencia", f"positivos_en_horas_no_vigentes:{main_label}", row["positivos_no_vigentes"] or 0,
+               row["positivos"], umbral_pct=0.0,
+               detalle="an interruption of a CT in an hour where Calser did not list it: check the periods of that CT")
+
+
 def check_dataset(spark, dq: DQCollector) -> None:
     versions = optional_table(spark, gold_table("dataset_versions"))
 
@@ -321,6 +352,7 @@ def main():
     check_arrival(spark, dq, params)
     check_label_censoring(spark, dq, params)
     check_coverage(spark, dq)
+    check_validity(spark, dq)
     check_dataset(spark, dq)
     check_features(spark, dq)
 

@@ -128,12 +128,16 @@ def save(spark, name, rows, schema):
 # Calser
 # ---------------------------------------------------------------------------
 
+# DEFAULT is the open period. It starts inside the window of the test so
+# that a CT that is not listed in it stops being valid (ct_vigente) at 10.01.
 PERIODS = [
     ("202511", date(2025, 11, 1)),
     ("202512", date(2025, 12, 1)),
     ("202601", date(2026, 1, 1)),
-    ("DEFAULT", date(2026, 2, 1)),
+    ("DEFAULT", date(2026, 1, 10)),
 ]
+
+ALL_PERIODS = [p for p, _ in PERIODS]
 
 INCIDENT_SCHEMA = (
     "INCIDENCIA_ID string, INCIDENCIA_REFERENCIA string, INCIDENCIA_DESC string, INCIDENCIA_OBS string, "
@@ -193,9 +197,11 @@ def load_calser_db(spark, db, distributor, municipio, cts, incidents, interrupti
        "MUNICIPIO_NOMBRE string, MUNICIPIO_NOMBRE_MIGRACION string, MUNICIPIO_TIPO_ZONA_COMUN string, "
        "MUNICIPIO_TIPO_ZONA_ESTAT string, MUNICIPIO_PERIODO_ID string, MUNICIPIO_TS string")
 
+    # (CT_ID, installed power, administrative power, periods that list it).
+    # CT_FECHA_PES and CT_FECHA_BAJA stay empty, as in the real databases.
     save(spark, f"{db}_cts", [
         (ct, instal, admin, 0, instal, municipio, None, None, "1", p, "x", 10, None)
-        for ct, instal, admin in cts for p, _ in PERIODS
+        for ct, instal, admin, periods in cts for p in periods
     ], "CT_ID string, CT_POTENCIA_INSTAL int, CT_POTENCIA_INSTAL_ADMIN int, CT_POTENCIA_CONTRA_MT int, "
        "CT_POTENCIA_TOTAL int, CT_MUNICIPIO_ID string, CT_FECHA_PES date, CT_FECHA_BAJA date, "
        "CT_USUARIO_ALTA_ID string, CT_PERIODO_ID string, CT_TS string, CT_NUM_ABONADOS int, "
@@ -203,7 +209,7 @@ def load_calser_db(spark, db, distributor, municipio, cts, incidents, interrupti
 
     save(spark, f"{db}_salidas", [
         ("S" + ct, "A", "Salida", "1", ct, p, "2026-01-01 00:00:00")
-        for ct, _, _ in cts for p, _ in PERIODS
+        for ct, _, _, periods in cts for p in periods
     ], "SALIDA_ID string, SALIDA_ABREVIATURA string, SALIDA_NOMBRE string, SALIDA_USUARIO_ALTA_ID string, "
        "SALIDA_CT_ID string, SALIDA_PERIODO_ID string, SALIDA_TS string")
 
@@ -219,7 +225,14 @@ def load_calser_db(spark, db, distributor, municipio, cts, incidents, interrupti
 def load_calser(spark):
     load_calser_db(
         spark, "calser_eosa", 3, "10001",
-        cts=[("06011", 400, 400), ("06012", 0, 250), ("06021", 0, 0), ("09999", 100, 100)],
+        cts=[
+            ("06011", 400, 400, ALL_PERIODS),
+            # listed from December 2025 on: created then
+            ("06012", 0, 250, ["202512", "202601", "DEFAULT"]),
+            # not listed in the open period: removed from the topology on 10.01.2026
+            ("06021", 0, 0, ["202511", "202512", "202601"]),
+            ("09999", 100, 100, ALL_PERIODS),
+        ],
         incidents=[
             incident("I1", "202601", "CL_IMPRE", "FA_DISTR", "2026-01-08 10:30:00"),   # two CTs: systemic
             incident("I2", "202601", "CL_PROGR", "FA_DISTR", "2026-01-07 09:00:00"),   # planned works
@@ -251,7 +264,7 @@ def load_calser(spark):
 
     load_calser_db(
         spark, "calser_pitarch", 2, "10002",
-        cts=[("33031", 630, 630)],
+        cts=[("33031", 630, 630, ALL_PERIODS)],
         incidents=[incident("I5", "202601", "CL_IMPRE", "FA_DISTR", "2026-01-09 03:10:00")],
         interruptions=[interruption("1", "33031", "2026-01-09 03:10:00", "2026-01-09 04:00:00", "I5")],
     )
@@ -580,6 +593,15 @@ def test_dim_ct(gold):
     assert dim[(3, "06021")]["potencia_imputada"]
     assert not dim[(3, "06021")]["tiene_medidas"]
 
+    # validity read from the periods that list the CT (the dates of Calser
+    # are empty): from the first period, until the first one without it
+    assert (ct["vigente_desde"], ct["vigente_hasta_excl"], ct["n_periodos"]) == (date(2025, 11, 1), None, 4)
+    assert dim[(3, "06012")]["vigente_desde"] == date(2025, 12, 1)
+    assert dim[(3, "06012")]["vigente_hasta_excl"] is None
+    assert dim[(3, "06021")]["vigente_desde"] == date(2025, 11, 1)
+    assert dim[(3, "06021")]["vigente_hasta_excl"] == date(2026, 1, 10)
+    assert dim[(2, "33031")]["vigente_hasta_excl"] is None
+
 
 def test_rebuild_with_a_month_range_is_refused(monkeypatch):
     import gold_common
@@ -700,6 +722,21 @@ def test_labels_exact_hours(gold):
     assert label_row(gold, "06011", "2026-01-08 08:00:00")["horas_hasta_proximo_evento"] == pytest.approx(2.5)
 
 
+def test_labels_ct_vigente(gold):
+    labels = table(gold, "labels_ct_hora")
+
+    # 06021 leaves the topology on 10.01: its rows stay in the grid, flagged
+    assert label_row(gold, "06021", "2026-01-09 23:00:00")["ct_vigente"] == 1
+    assert label_row(gold, "06021", "2026-01-10 00:00:00")["ct_vigente"] == 0
+    assert label_row(gold, "06021", "2026-01-11 12:00:00")["ct_vigente"] == 0
+
+    not_valid = {r["ct_id"] for r in labels.where("ct_vigente = 0").select("ct_id").distinct().collect()}
+    assert not_valid == {"06021"}
+
+    # no interruption of a CT falls in an hour where Calser did not list it
+    assert labels.where("ct_vigente = 0 AND y_1_3h = 1").count() == 0
+
+
 def test_labels_outage_hours(gold):
     outage = {
         (r["ct_id"], r["hora"]) for r in table(gold, "labels_ct_hora").where("en_corte = 1").collect()
@@ -816,7 +853,10 @@ def test_feature_metadata(gold):
 def test_dataset(gold):
     dataset = table(gold, "dataset_train")
 
-    assert dataset.where("en_corte = 1 OR scada_activo = 0").count() == 0
+    assert dataset.where("en_corte = 1 OR scada_activo = 0 OR ct_vigente = 0").count() == 0
+    # the hours of 06021 after it was removed from Calser are out
+    assert dataset.where("ct_id = '06021' AND hora >= TIMESTAMP'2026-01-10 00:00:00'").count() == 0
+    assert dataset.where("ct_id = '06021' AND hora < TIMESTAMP'2026-01-10 00:00:00'").count() > 0
 
     splits = {r["split"]: r for r in dataset.groupBy("split").agg(
         F.min("hora").alias("desde"), F.max("hora").alias("hasta"), F.sum("y_1_3h").alias("pos"),
@@ -852,6 +892,12 @@ def test_dq_checks(gold):
 
     leaked = metrics.where("metrica = 'columnas_prohibidas_como_feature'").first()
     assert leaked["valor"] == 0
+
+    validity = metrics.where("metrica = 'positivos_en_horas_no_vigentes:y_1_3h'").first()
+    assert validity is not None and validity["valor"] == 0 and validity["estado"] == "OK"
+
+    hours = metrics.where("metrica = 'horas_ct_no_vigente'").first()
+    assert hours["valor"] == 2 * 24      # 06021 from 10.01 00:00 to the end of the window (12.01)
 
 
 # ---------------------------------------------------------------------------
