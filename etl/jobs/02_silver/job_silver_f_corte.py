@@ -24,6 +24,18 @@ learnt from the real databases shapes the rules:
   really ElementTypeId appear). Outside 1 - 4 it is set to null and flagged.
 - An element without node in SystemNodes never enters the flood fill, so it
   can never be Off: tiene_nodo tells Gold which transformers are observable.
+- Some events carry an impossible time: in EOSA there are On events stamped
+  13.09.2026 (a month after the backup) that Calser processed on 29.01.2026.
+  The time of an event comes from the field device, so a wrong RTU clock ends
+  up here. An event later than its own processing time is flagged
+  ts_incoherente; Gold leaves it out of labels and features.
+- ProcessedTimestamp is not the moment the SCADA knew the cut: it is set by
+  the consumer that read the event (Calser, through the export API). The
+  time the cut reached the SCADA is the UpdateTimestamp of the tag value
+  change that triggered it (ts_actualizacion, read from Bronze so a change
+  rejected by f_tag_value_change does not lose it). Gold places the cut at
+  the later of ts and ts_actualizacion for the features; llegada_tardia
+  flags the events that arrived more than an hour after their field time.
 """
 
 from pyspark.sql import DataFrame, Window
@@ -69,6 +81,37 @@ ELEMENT_COLUMNS = {
     "ElementId": "bigint",
     "ElectricalElementType": "int",
 }
+
+# Clock skew allowed between the field device and the server that processed
+# the event before the event time is considered impossible.
+CLOCK_TOLERANCE_MINUTES = 10
+
+# An event whose trigger change reached the server later than this arrived
+# late (same threshold as llegada_tardia in f_tag_value_change).
+LATE_ARRIVAL_MINUTES = 60
+
+
+def arrival_times(spark):
+    """
+    (tag_value_change_id, ts_actualizacion): when the server stored the tag
+    value change of each event. The same change can be in Historic and in
+    System; both copies carry the same time, max keeps the later one if not.
+    """
+    changes = read_tedisnet_union(
+        spark,
+        "TagValueChanges",
+        {"Id": "bigint", "UpdateTimestamp": "timestamp"},
+        required=False,
+    )
+
+    if changes is None:
+        return None
+
+    return (
+        changes.where(F.col("Id").isNotNull())
+        .groupBy(F.col("Id").alias("tag_value_change_id"))
+        .agg(F.max("UpdateTimestamp").alias("ts_actualizacion"))
+    )
 
 
 def clean_events(events_in: DataFrame):
@@ -192,7 +235,12 @@ def clean_elements(elements_in: DataFrame, id_map: DataFrame, elementos: DataFra
     return kept, union_rejects([rejected.drop("_elemento_ok"), duplicated])
 
 
-def add_event_flags(events: DataFrame, elements: DataFrame, commands, elementos: DataFrame):
+def add_event_flags(events: DataFrame, elements: DataFrame, commands, elementos: DataFrame, arrivals=None):
+    if arrivals is not None:
+        events = events.join(arrivals, "tag_value_change_id", "left")
+    else:
+        events = events.withColumn("ts_actualizacion", F.lit(None).cast("timestamp"))
+
     per_event = elements.groupBy("evento_id").agg(
         F.count(F.lit(1)).alias("n_elementos"),
         F.sum(F.col("es_trafo_ct").cast("long")).alias("n_trafos_ct"),
@@ -221,6 +269,22 @@ def add_event_flags(events: DataFrame, elements: DataFrame, commands, elementos:
         .withColumn("es_error_comm", F.col("estado_corte_id") == F.lit(CUT_STATE_COMM_ERROR))
         .withColumn("estado_desconocido", F.col("estado") == F.lit("OTRO"))
         .withColumn("evento_colapsado", F.col("n_eventos_origen") > F.lit(1))
+        .withColumn(
+            "ts_incoherente",
+            F.coalesce(
+                F.col("ts")
+                > F.col("ts_procesado") + F.expr(f"INTERVAL {CLOCK_TOLERANCE_MINUTES} MINUTES"),
+                F.lit(False),
+            ),
+        )
+        .withColumn(
+            "llegada_tardia",
+            F.coalesce(
+                F.col("ts_actualizacion")
+                > F.col("ts") + F.expr(f"INTERVAL {LATE_ARRIVAL_MINUTES} MINUTES"),
+                F.lit(False),
+            ),
+        )
     )
 
     if commands is not None:
@@ -250,10 +314,12 @@ def denormalize_elements(elements: DataFrame, events: DataFrame) -> DataFrame:
         events.select(
             "evento_id",
             "ts",
+            "ts_actualizacion",
             "estado",
             "estado_corte_id",
             "es_error_comm",
             "es_maniobra",
+            "ts_incoherente",
             F.col("distribuidora_id").alias("_distribuidora_evento"),
         ),
         "evento_id",
@@ -297,7 +363,12 @@ def main():
     )
     elements = elements.localCheckpoint(eager=True)
 
-    events = add_event_flags(events, elements, commands, elementos).withColumn(
+    arrivals = arrival_times(spark)
+
+    if arrivals is None:
+        logger.warning("No Bronze TagValueChanges table, ts_actualizacion of the cuts stays null")
+
+    events = add_event_flags(events, elements, commands, elementos, arrivals).withColumn(
         "audit_loaded_at", F.current_timestamp()
     ).localCheckpoint(eager=True)
 
@@ -312,7 +383,8 @@ def main():
 
     dq.add_entity_counts(
         EVENT_ENTITY, events_total, events.count(), events_rejected, events,
-        ["sin_elementos", "es_error_comm", "es_maniobra", "estado_desconocido", "evento_colapsado"],
+        ["sin_elementos", "es_error_comm", "es_maniobra", "estado_desconocido", "evento_colapsado",
+         "ts_incoherente", "llegada_tardia"],
     )
     dq.add_entity_counts(
         ELEMENT_ENTITY, elements_total, elements.count(), elements_rejected, elements,

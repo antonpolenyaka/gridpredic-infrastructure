@@ -9,15 +9,20 @@ resolved once in d_elemento, and the name of its class (AI.INTENS L1,
 DI.DEFECTO DE TIERRA.2, ES.POSICION...), which is what Gold uses to choose
 features.
 
-A tag without element, or with an element or device that does not exist, is
-rejected: it can not be attached to any CT. The SCADA view SystemTagDetails
-drops them in the same way with an inner join.
+A tag whose element or device does not exist is a broken key and is
+rejected. A tag without element is not: ElementId is nullable in TedisNet and
+about 14.700 of the 78.000 tags of EOSA have none, among them 1.134 SYS tags
+with the connection state of the devices, which is the base of the
+communication failure features. Those tags are kept with the flag
+sin_elemento, and their distribuidora is taken from the device (the
+distribuidora of the other tags of the same device that do have an element).
+Gold attaches them to a CT through the device.
 
 Only about 4.000 of the 78.000 tags have StoreInterval, and only those have
 a regular series in TagIntervalValuesBig. tiene_serie makes that visible.
 """
 
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 
 from silver_common import (
@@ -75,9 +80,10 @@ def transform(tags_in: DataFrame, elementos: DataFrame, devices, classes):
         "_sin_elemento",
     )
 
+    # Only an ElementId that points to a missing element is a broken key.
     rules = [
         ("NULL_KEY", F.col("id").isNull()),
-        ("ORPHAN_FK", F.col("_sin_elemento")),
+        ("ORPHAN_FK", F.col("elemento_id").isNotNull() & F.col("_sin_elemento")),
     ]
 
     if devices is not None:
@@ -125,6 +131,8 @@ def transform(tags_in: DataFrame, elementos: DataFrame, devices, classes):
             .withColumn("clase_tipo_evento_id", F.lit(None).cast("int"))
         )
 
+    out = add_device_distributor(out)
+
     out = (
         out
         # Prefix of the class name: AI analog input, DI digital input,
@@ -132,11 +140,52 @@ def transform(tags_in: DataFrame, elementos: DataFrame, devices, classes):
         .withColumn("clase_prefijo", F.regexp_extract(F.col("clase_nombre"), r"^([A-Z]+)\.", 1))
         .withColumn("tiene_serie", F.coalesce(F.col("store_interval_s"), F.lit(0)) > F.lit(0))
         .withColumn("clase_desconocida", F.col("clase_nombre").isNull())
+        .withColumn("sin_elemento", F.col("elemento_id").isNull())
         .withColumn("sin_distribuidora", F.col("distribuidora_id").isNull())
         .withColumn("audit_loaded_at", F.current_timestamp())
     )
 
     return out, union_rejects([rejected, duplicated])
+
+
+def add_device_distributor(tags: DataFrame) -> DataFrame:
+    """
+    A tag without element takes the distribuidora of its device: the one most
+    tags of the same device have through their elements. distribuidora_origen
+    says where the value comes from (ELEMENTO, DISPOSITIVO or null).
+    """
+    per_device = (
+        tags.where(F.col("distribuidora_id").isNotNull())
+        .groupBy("dispositivo_id", "distribuidora_id", "source_database")
+        .agg(F.count(F.lit(1)).alias("_n"))
+    )
+
+    ranked = Window.partitionBy("dispositivo_id").orderBy(
+        F.col("_n").desc(), F.col("distribuidora_id")
+    )
+
+    device_map = (
+        per_device
+        .withColumn("_rn", F.row_number().over(ranked))
+        .where(F.col("_rn") == 1)
+        .select(
+            "dispositivo_id",
+            F.col("distribuidora_id").alias("_dist_dispositivo"),
+            F.col("source_database").alias("_db_dispositivo"),
+        )
+    )
+
+    return (
+        tags.join(F.broadcast(device_map), "dispositivo_id", "left")
+        .withColumn(
+            "distribuidora_origen",
+            F.when(F.col("distribuidora_id").isNotNull(), F.lit("ELEMENTO"))
+            .when(F.col("_dist_dispositivo").isNotNull(), F.lit("DISPOSITIVO")),
+        )
+        .withColumn("distribuidora_id", F.coalesce("distribuidora_id", "_dist_dispositivo"))
+        .withColumn("source_database", F.coalesce("source_database", "_db_dispositivo"))
+        .drop("_dist_dispositivo", "_db_dispositivo")
+    )
 
 
 def main():
@@ -172,7 +221,7 @@ def main():
 
     dq.add_entity_counts(
         ENTITY, total_in, out.count(), rejected, out,
-        ["tiene_serie", "clase_desconocida", "sin_distribuidora"],
+        ["tiene_serie", "clase_desconocida", "sin_elemento", "sin_distribuidora"],
     )
     dq.flush()
 
