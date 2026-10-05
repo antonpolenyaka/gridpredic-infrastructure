@@ -28,18 +28,18 @@ gridpredic-infrastructure/
 │       ├── backups/             # Los .bak (ignorados por Git)
 │       └── scripts/             # restore_databases.sql, enable_cdc.sql
 ├── etl/                         # El pipeline, agrupado por capa de destino
-│   ├── dags/                    # Orquestación con Airflow (01_bronze, 02_silver)
-│   ├── config/                  # Parámetros de los procesos en JSON (qué tablas, qué orden, qué recursos)
-│   └── jobs/                    # Transformaciones con Spark (00_landing, 01_bronze, 02_silver)
+│   ├── dags/                    # Orquestación con Airflow (01_bronze, 02_silver, 03_gold)
+│   ├── config/                  # Parámetros de los procesos en JSON (qué tablas, qué orden, qué recursos, reglas de Gold)
+│   └── jobs/                    # Transformaciones con Spark (00_landing, 01_bronze, 02_silver, 03_gold)
 ├── data/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
-├── docs/                        # Documentación: cards, capa Silver, flujo de datos, este documento
+├── docs/                        # Documentación: cards, capas Silver y Gold, flujo de datos, este documento
 ├── notebooks/                   # Exploración (convención de nombres en su README)
 ├── tests/                       # Pruebas locales de los jobs, sin Docker
 └── _runlogs/                    # Scripts de pruebas manuales; los logs que generan se ignoran
 ```
 
-Dentro de `dags/`, `config/` y `jobs/` los ficheros se agrupan por capa (`00_landing`, `01_bronze`, `02_silver`, y `03_gold` cuando exista) y el nombre lleva el tipo, la capa y el origen o la entidad: `dag_bronze_sqlserver.py`, `config_silver.json`, `job_silver_f_interrupcion.py`. El nombre del job coincide con el de la tabla que escribe.
+Dentro de `dags/`, `config/` y `jobs/` los ficheros se agrupan por capa (`00_landing`, `01_bronze`, `02_silver` y `03_gold`) y el nombre lleva el tipo, la capa y el origen o la entidad: `dag_bronze_sqlserver.py`, `config_silver.json`, `job_silver_f_interrupcion.py`. El nombre del job coincide con el de la tabla que escribe.
 
 ## 3. Correspondencia con Cookiecutter Data Science
 
@@ -47,19 +47,19 @@ Dentro de `dags/`, `config/` y `jobs/` los ficheros se agrupan por capa (`00_lan
 | --- | --- | --- |
 | `data/raw` | `infra/sqlserver/backups/*.bak` (fuera de Git) y la zona Bronze del lakehouse (`l1_bronze`) | Los datos crudos son 61 GB de backups fechados. El dato inmutable es el backup; Bronze es su copia fiel en Delta. Ninguno cabe ni debe ir en Git |
 | `data/interim` | Zona Silver (`l2_silver`) en MinIO | Los intermedios son tablas Delta, no ficheros del repositorio |
-| `data/processed` | Zona Gold (`l3_gold`), en construcción | El dataset final de entrenamiento se congela por versiones en Gold |
+| `data/processed` | Zona Gold (`l3_gold`) | El dataset final de entrenamiento se congela por versiones en Gold (`dataset_train` y `dataset_versions`) |
 | `data/external` | `data/reference_data/` | Único dato que sí se versiona: el fichero de municipios del INE (28 KB) |
-| `<modulo>/dataset.py`, `features.py`, `modeling/` | `etl/jobs/00_landing`, `01_bronze`, `02_silver` (y `03_gold`, `04_model` más adelante) | El código se ejecuta con `spark-submit` desde Airflow, así que se organiza por capa del pipeline en lugar de como paquete importable. `silver_common.py` hace de librería compartida |
+| `<modulo>/dataset.py`, `features.py`, `modeling/` | `etl/jobs/00_landing`, `01_bronze`, `02_silver`, `03_gold` (y `04_model` más adelante) | El código se ejecuta con `spark-submit` desde Airflow, así que se organiza por capa del pipeline en lugar de como paquete importable. `silver_common.py` y `gold_common.py` hacen de librería compartida de su capa |
 | `Makefile` | `Makefile` (y `_runlogs/run_silver_test.ps1` para Windows) | Mismos atajos: levantar el stack, lanzar tests, lint |
 | `requirements.txt` | `requirements.txt` en la raíz para el entorno local; `infra/spark/requirements.txt` y los `Dockerfile` para el runtime | Las versiones de Spark, Delta, Airflow, Hive y Trino están fijadas en las imágenes. El `requirements.txt` de la raíz reproduce el entorno de pruebas sin Docker |
 | `pyproject.toml` | `pyproject.toml` | Configuración de ruff y pytest y metadatos del proyecto |
-| `docs/` | `docs/` | Dataset card y model card en formato Hugging Face, diseño de la capa Silver, diagrama de flujo, este documento |
+| `docs/` | `docs/` | Dataset card y model card en formato Hugging Face, diseño de las capas Silver y Gold, diagrama de flujo, este documento |
 | `notebooks/` | `notebooks/` | Convención de nombres de CCDS (`número-iniciales-tema`). Lo que sirva se refactoriza a `etl/jobs` |
 | `models/` | Registro de modelos en MLflow y bucket de MinIO (hito M7) | Los artefactos de modelo no van en Git; se versionan junto al dataset congelado |
 | `references/` | Documentación de SITEL sobre Calser y TedisNet, fuera del repositorio | Son manuales confidenciales del fabricante. Lo que necesita el pipeline está resumido en `docs/silver-layer.md` |
 | `reports/` | Memoria del TFM, fuera del repositorio | El informe se entrega en el campus; las figuras se generan con scripts en el mismo repositorio de la memoria |
 | `.env`, `.gitignore` | `.env.example`, `.gitignore` | Credenciales fuera de Git; backups, logs y cachés también |
-| `tests/` | `tests/02_silver/test_silver_smoke.py` | Test de extremo a extremo de Silver en un Spark local, con los problemas reales de los datos sembrados a propósito |
+| `tests/` | `tests/02_silver/test_silver_smoke.py`, `tests/03_gold/test_gold_smoke.py` | Tests de extremo a extremo de Silver y de Gold en un Spark local, con los problemas reales de los datos sembrados a propósito y una prueba de leakage de las features |
 | (no existe en CCDS) | `compose.yaml`, `infra/` | La plataforma se levanta con Docker Compose; cada servicio tiene su carpeta con su Dockerfile y sus scripts |
 | (no existe en CCDS) | `etl/dags/`, `etl/config/` | Separar orquestación (Airflow), parámetros (JSON) y transformación (Spark) permite añadir una tabla o cambiar el orden sin tocar código |
 
@@ -70,14 +70,14 @@ La regla de CCDS que más nos importa es que cualquiera pueda reproducir el resu
 1. Los datos crudos son los cuatro backups fechados (14.08.2026), que SITEL entrega fuera de Git. Se copian en `infra/sqlserver/backups/` con los nombres que espera `restore_databases.sql`.
 2. `cp .env.example .env` y rellenar las credenciales.
 3. `docker compose up -d --build --wait` construye las imágenes, restaura las bases, activa CDC, crea los buckets y los esquemas y deja el stack listo. Todas las versiones (Spark 4.2.0, Delta 4.4.0, Airflow 3.3.2, Hive 4.1.0, Trino 483, Debezium 3.6, imagen de MinIO con release fijo) están fijadas en `compose.yaml` y en los `Dockerfile`.
-4. En Airflow: `ingest_sqlserver_batch_bronze`, después los dos jobs de streaming (Landing y Bronze) y `dag_bronze_reference_municipios`, y por último `dag_silver`. Qué tablas se cargan y en qué orden está en `etl/config/`.
-5. El resultado se consulta desde Trino (`lakehouse.l2_silver`) y la calidad de cada ejecución en `dq_metrics`, con el `run_id` de Airflow.
+4. En Airflow: `ingest_sqlserver_batch_bronze`, después los dos jobs de streaming (Landing y Bronze) y `dag_bronze_reference_municipios`, luego `dag_silver` y por último `dag_gold`. Qué tablas se cargan, en qué orden y con qué reglas está en `etl/config/`.
+5. El resultado se consulta desde Trino (`lakehouse.l2_silver`, `lakehouse.l3_gold`) y la calidad de cada ejecución en `dq_metrics` de cada capa, con el `run_id` de Airflow. Cada dataset de entrenamiento queda registrado en `l3_gold.dataset_versions` con sus parámetros y las versiones Delta de sus tablas de entrada.
 
-Sin Docker, las reglas de Silver se pueden reproducir en cualquier máquina con `pip install -r requirements.txt` y `python -m pytest tests/02_silver -q`. Es el mismo test que ejecuta la integración continua en cada pull request.
+Sin Docker, las reglas de Silver y de Gold se pueden reproducir en cualquier máquina con `pip install -r requirements.txt` y `python -m pytest tests -q`. Son los mismos tests que ejecuta la integración continua en cada pull request.
 
 ## 5. Lo que queda por añadir
 
-- `etl/jobs/03_gold` y su DAG: etiquetas, features y versiones congeladas del dataset.
-- Registro de experimentos y modelos con MLflow, y un servicio más en `compose.yaml` para ello.
+- Registro de experimentos y modelos con MLflow, y un servicio más en `compose.yaml` para ello. El identificador de `dataset_versions` es el que irá con cada modelo.
+- Entrenamiento (`etl/jobs/04_model` o notebooks que lo preparen) sobre `l3_gold.dataset_train`.
 - Ingesta de meteorología (API externa) en Landing.
 - Notebooks de exploración de Gold y del modelo, siguiendo la convención de `notebooks/README.md`.

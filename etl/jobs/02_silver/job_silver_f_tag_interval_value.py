@@ -4,13 +4,27 @@ TagIntervalValues): measures sampled every StoreInterval seconds on a grid
 anchored to the hour (sample and hold). Currents, voltages, powers, THD,
 homopolar current: the physical features of the model.
 
+Which column is the time of a sample matters here. The procedure that fills
+the table (CopyTagValue2TagIntervalValue) inserts the current value of the tag
+with UpdateTimestamp = the grid instant and SourceTimestamp = the original
+field time of that value. If the value does not change, every sample keeps
+the same SourceTimestamp. So:
+
+- ts is UpdateTimestamp, the grid instant. One sample per tag and instant.
+- ts_origen is SourceTimestamp and antiguedad_s = ts - ts_origen is how old
+  the held value is. valor_rancio marks samples whose value is more than an
+  hour old (frozen or stale value, a feature for Gold, not a reason to
+  reject). ts_origen_futuro marks a field time later than the grid instant,
+  which is a clock error of the RTU.
+
 TagIntervalValuesBig has more than 2.150 million rows (220 GB), so this job
 never works on the whole table at once:
 
 - It processes one month at a time. Bronze is not partitioned, but Delta
-  keeps min/max statistics of SourceTimestamp per file and the rows were
+  keeps min/max statistics of UpdateTimestamp per file and the rows were
   written in Id order, which is time order, so the filter of the month skips
-  most files.
+  most files (the Bronze job writes this table in Id chunks with a bounded
+  file size for that reason).
 - Filters go before deduplication: they are cheap and reduce the volume
   before the window, which is the expensive step.
 - The output is partitioned by month and every run overwrites only the
@@ -21,11 +35,11 @@ never works on the whole table at once:
   reason. The number of hours without a good reading of a tag is itself a
   useful health feature.
 
-Deduplication key: (tag, timestamp). On a sample and hold grid there can only
-be one sample per tag and instant. This also removes the copies of the same
-row coming from Historic and System (different Id spaces for the Big and the
-small table, so the Id is not a valid key across them). Historic wins, then
-the latest UpdateTimestamp.
+Deduplication key: (tag, grid instant). On a sample and hold grid there can
+only be one sample per tag and instant. This also removes the copies of the
+same row coming from Historic and System (different Id spaces for the Big and
+the small table, so the Id is not a valid key across them). Historic wins,
+then the freshest value (latest SourceTimestamp), then the highest Id.
 
 Usage:
   spark-submit job_silver_f_tag_interval_value.py --desde 2021-01 --hasta 2026-08
@@ -71,7 +85,17 @@ SOURCES = [
     ("SystemTagIntervalValues", "System", 1),
 ]
 
-FLAGS = ["es_estimado", "es_calculado", "es_copiado", "fuera_rango_egu", "ts_desde_update"]
+FLAGS = [
+    "es_estimado", "es_calculado", "es_copiado", "fuera_rango_egu",
+    "ts_desde_update", "valor_rancio", "ts_origen_futuro",
+]
+
+# A held value older than this is marked valor_rancio. The grid is 300 or
+# 600 s in the real database, so one hour is several missed refreshes.
+STALE_VALUE_SECONDS = 3600
+
+# Field time later than the grid instant by more than this is a clock error.
+CLOCK_TOLERANCE_SECONDS = 60
 
 
 def add_args(parser):
@@ -103,7 +127,7 @@ def transform_month(df_month: DataFrame, tags: DataFrame):
     """
     Cleans the rows of one month. Returns (kept, rejected with _motivo).
     """
-    df = attach_tags(rename_values(df_month), tags)
+    df = attach_tags(rename_values(df_month, instant="update"), tags)
 
     kept, rejected = split_rejects(df, quality_rules("_sin_tag"))
     kept = kept.drop("_sin_tag")
@@ -113,14 +137,25 @@ def transform_month(df_month: DataFrame, tags: DataFrame):
         ["tag_id", "ts"],
         [
             F.col("_origen_rank").desc(),
-            F.col("ts_actualizacion").desc_nulls_last(),
+            F.col("ts_origen").desc_nulls_last(),
             F.col("id").desc(),
         ],
         "DUPLICATE_NATURAL_KEY",
     )
 
+    antiguedad = F.unix_timestamp("ts") - F.unix_timestamp("ts_origen")
+
     out = (
         value_flags(kept)
+        .withColumn("antiguedad_s", antiguedad)
+        .withColumn(
+            "valor_rancio",
+            F.coalesce(F.col("antiguedad_s") > F.lit(STALE_VALUE_SECONDS), F.lit(False)),
+        )
+        .withColumn(
+            "ts_origen_futuro",
+            F.coalesce(F.col("antiguedad_s") < F.lit(-CLOCK_TOLERANCE_SECONDS), F.lit(False)),
+        )
         .withColumn("fecha", F.to_date("ts"))
         .withColumn("fecha_mes", F.trunc("ts", "month"))
         .withColumn("audit_loaded_at", F.current_timestamp())
@@ -154,8 +189,8 @@ def resolve_range(df_all: DataFrame, args) -> tuple:
         return month_start(args.desde), month_start(args.hasta)
 
     bounds = df_all.agg(
-        F.min("SourceTimestamp").alias("min_ts"),
-        F.max("SourceTimestamp").alias("max_ts"),
+        F.min("UpdateTimestamp").alias("min_ts"),
+        F.max("UpdateTimestamp").alias("max_ts"),
     ).first()
 
     if bounds["min_ts"] is None:
@@ -182,13 +217,13 @@ def main():
         logger.info("No interval values in Bronze, nothing to do")
         return
 
-    # Rows without SourceTimestamp never fall in a month window. Delta keeps
-    # null counts per file, so this count is cheap.
-    no_source_ts = df_all.where(F.col("SourceTimestamp").isNull()).count()
+    # Rows without UpdateTimestamp (the grid instant) never fall in a month
+    # window. Delta keeps null counts per file, so this count is cheap.
+    no_grid_ts = df_all.where(F.col("UpdateTimestamp").isNull()).count()
     dq.add(
         ENTITY,
-        "sin_source_timestamp",
-        no_source_ts,
+        "sin_update_timestamp",
+        no_grid_ts,
         detalle="rows out of every month window, not processed",
     )
 
@@ -199,8 +234,8 @@ def main():
         logger.info("Processing month %s", month_label)
 
         df_month = df_all.where(
-            (F.col("SourceTimestamp") >= F.lit(month.isoformat()).cast("timestamp"))
-            & (F.col("SourceTimestamp") < F.lit(end.isoformat()).cast("timestamp"))
+            (F.col("UpdateTimestamp") >= F.lit(month.isoformat()).cast("timestamp"))
+            & (F.col("UpdateTimestamp") < F.lit(end.isoformat()).cast("timestamp"))
         ).persist(StorageLevel.MEMORY_AND_DISK)
 
         total_in = df_month.count()

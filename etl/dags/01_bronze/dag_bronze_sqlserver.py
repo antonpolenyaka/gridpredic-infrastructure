@@ -8,6 +8,22 @@ from airflow.sdk import DAG
 CONFIG_PATH = "/opt/airflow/config/01_bronze/config_bronze_sqlserver.json"
 APPLICATION = "/app/jobs/01_bronze/job_bronze_sqlserver_batch.py"
 
+DEFAULT_CONF = {
+    "spark.cores.max": "2",
+    "spark.executor.memory": "2g",
+}
+
+# Optional keys of a table in the config and the argument they become.
+OPTIONAL_ARGS = {
+    "watermark_column": "--watermark-column",
+    "primary_key": "--primary-key",
+    "partition_column": "--partition-column",
+    "num_partitions": "--num-partitions",
+    "chunk_size": "--chunk-size",
+    "max_records_per_file": "--max-records-per-file",
+    "fetch_size": "--fetch-size",
+}
+
 
 def to_task_id(database: str, table: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]", "_", f"{database}_{table}").lower()
@@ -40,25 +56,14 @@ with DAG(
                     "--write-mode", table["write_mode"],
                 ]
 
-                if table.get("watermark_column"):
-                    application_args += [
-                        "--watermark-column",
-                        table["watermark_column"],
-                    ]
-
-                if table.get("primary_key"):
-                    application_args += [
-                        "--primary-key",
-                        table["primary_key"],
-                    ]
+                for key, option in OPTIONAL_ARGS.items():
+                    if table.get(key) is not None:
+                        application_args += [option, str(table[key])]
 
                 SparkSubmitOperator(
                     task_id=to_task_id(database, table["name"]),
                     conn_id="spark_default",
                     application=APPLICATION,
                     application_args=application_args,
-                    conf={
-                        "spark.cores.max": "2",
-                        "spark.executor.memory": "2g",
-                    },
+                    conf=table.get("conf", DEFAULT_CONF),
                 )

@@ -20,7 +20,16 @@ Rules, in this order:
 
 Kept with a flag: estimated values (source 4), calculated values (source 2),
 copied values (detail 14, the element state tags the SCADA uses to detect
-cuts) and values out of the configured range (detail 11 and 12).
+cuts), values out of the configured range (detail 11 and 12) and changes
+that reached the server more than an hour after their field time
+(llegada_tardia).
+
+ts is the field time of the change and ts_actualizacion the time the server
+stored it. They usually differ by seconds (median 1 s, p90 21 s in a sample
+of the 200 last changes of the real database), but 13 of those 200 arrived
+months late (ICCP positions, states read again after a reconnection). Gold
+places every change at the later of the two, the first moment it could be
+known, and leaves out the ones that are too old to be a signal.
 """
 
 from pyspark.sql import DataFrame
@@ -68,14 +77,33 @@ VALUE_COLUMNS = {
     "QualitySourceId": "int",
 }
 
-FLAGS = ["es_estimado", "es_calculado", "es_copiado", "fuera_rango_egu", "ts_desde_update"]
+FLAGS = ["es_estimado", "es_calculado", "es_copiado", "fuera_rango_egu", "ts_desde_update", "llegada_tardia"]
+
+# A change stored by the server more than this after its field time arrived
+# late: buffered by the RTU during a communication loss, or read again.
+LATE_ARRIVAL_SECONDS = 3600
 
 
-def rename_values(df: DataFrame) -> DataFrame:
+def rename_values(df: DataFrame, instant: str = "source") -> DataFrame:
     """
     Common projection of the four value tables of TedisNet, which share the
     same value and quality columns.
+
+    `instant` says which column is the time of the row:
+
+    - "source" (TagValueChanges): the change happened at SourceTimestamp, the
+      field time; UpdateTimestamp is only a fallback.
+    - "update" (TagIntervalValues*): the procedure CopyTagValue2TagIntervalValue
+      writes the grid instant in UpdateTimestamp and copies the original
+      SourceTimestamp of the value it is holding. A value that does not change
+      keeps the same SourceTimestamp in every sample, so only UpdateTimestamp
+      identifies the sample.
     """
+    if instant == "update":
+        ts = F.col("UpdateTimestamp")
+    else:
+        ts = F.coalesce(F.col("SourceTimestamp"), F.col("UpdateTimestamp"))
+
     return df.select(
         F.col("Id").alias("id"),
         F.col("TagId").alias("tag_id"),
@@ -84,7 +112,7 @@ def rename_values(df: DataFrame) -> DataFrame:
         F.col("ValueFloat").alias("valor_float"),
         F.col("ValueStr").alias("valor_str"),
         F.col("ValueEnumId").alias("valor_enum_id"),
-        F.coalesce(F.col("SourceTimestamp"), F.col("UpdateTimestamp")).alias("ts"),
+        ts.alias("ts"),
         F.col("SourceTimestamp").alias("ts_origen"),
         F.col("UpdateTimestamp").alias("ts_actualizacion"),
         F.col("QualityId").alias("calidad_id"),
@@ -181,7 +209,7 @@ def transform(df_in: DataFrame, tags: DataFrame):
             & F.col("ts").isNotNull()
         )
         .select(
-            "tag_id", "elemento_id", "distribuidora_id", "ts",
+            "tag_id", "elemento_id", "distribuidora_id", "ts", "ts_actualizacion",
             "calidad_id", "calidad_detalle_id", "calidad_fuente_id", "_origen",
         )
         .dropDuplicates(["tag_id", "ts", "calidad_detalle_id"])
@@ -205,8 +233,11 @@ def transform(df_in: DataFrame, tags: DataFrame):
         "DUPLICATE_NATURAL_KEY",
     )
 
+    late = F.col("ts_actualizacion") > F.col("ts") + F.expr(f"INTERVAL {LATE_ARRIVAL_SECONDS} SECONDS")
+
     out = (
         value_flags(kept.drop("_valor_firma"))
+        .withColumn("llegada_tardia", F.coalesce(late, F.lit(False)))
         .withColumn("fecha", F.to_date("ts"))
         .withColumn("audit_loaded_at", F.current_timestamp())
     )
