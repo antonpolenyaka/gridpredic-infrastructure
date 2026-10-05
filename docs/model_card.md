@@ -29,7 +29,7 @@ metrics:
 
 Clasificador binario que, para cada centro de transformación (CT) de media tensión y cada hora, estima la probabilidad de que en las siguientes 1 a 3 horas empiece una interrupción imprevista de suministro. Se entrena sobre la telemetría histórica del SCADA TedisNet y las interrupciones registradas en Calser (ver la [dataset card](dataset_card.md)). Es una herramienta de apoyo a la decisión del operador de la distribuidora: no actúa sobre la red.
 
-Estado a 30.09.2026: el pipeline de datos hasta Silver está operativo y probado; el dataset de entrenamiento (Gold) y el entrenamiento son el trabajo del hito M7 del TFM (26.10.2026). Los apartados de resultados se irán rellenando en ese hito; los requisitos y la metodología de evaluación ya están fijados aquí para que el modelo se construya contra ellos y no al revés.
+Estado a 05.10.2026: el pipeline de datos hasta Gold está construido y probado en local, falta la primera ejecución con la ventana completa; el entrenamiento es el trabajo del hito M7 del TFM (26.10.2026). Los apartados de resultados se irán rellenando en ese hito; los requisitos y la metodología de evaluación ya están fijados aquí para que el modelo se construya contra ellos y no al revés.
 
 ## Model Details
 
@@ -87,7 +87,7 @@ Usar el modelo como ordenación de prioridades, no como veredicto. Mantener siem
 
 ## How to Get Started with the Model
 
-Todavía no hay artefacto de modelo. Cuando exista, se registrará en MLflow junto con la versión congelada del dataset de Gold, y en este apartado irá el código de carga y de inferencia sobre `l3_gold.features_ct_hora`.
+Todavía no hay artefacto de modelo. Cuando exista, se registrará en MLflow junto con la versión congelada del dataset de Gold (`l3_gold.dataset_versions`), y en este apartado irá el código de carga y de inferencia sobre `l3_gold.features_ct_hora`. Para entrenar, `l3_gold.dataset_train` trae la columna `split` y una muestra reproducible de negativos (`en_muestra_train`, `peso_muestra`).
 
 ## Training Details
 
@@ -95,8 +95,8 @@ Todavía no hay artefacto de modelo. Cuando exista, se registrará en MLflow jun
 
 Tablas de Gold construidas desde Silver (ver [dataset_card.md](dataset_card.md) y [silver-layer.md](silver-layer.md)):
 
-- `labels_ct_hora`: etiqueta `y_1_3h` por (CT, hora). Positivo si en las siguientes 1 a 3 horas empieza una interrupción imprevista (`CL_IMPRE`), no atribuible al cliente (`FA_CLIEN`), de más de 180 segundos y a nivel de CT. Son los mismos filtros con los que Calser calcula el TIEPI. Variantes: otros horizontes, etiqueta solo local, y `en_corte` para excluir las horas en las que el CT ya está sin suministro.
-- `features_ct_hora`: medidas eléctricas agregadas por hora y por clase de tag (intensidades por fase, homopolar, tensión, potencia activa y reactiva, THD), eventos precursores en las horas anteriores (disparos, defectos de tierra y de fase, paso de falta, falta de tensión, errores de comunicaciones, reenganches), salud del SCADA (equipo conectado, calidad de las muestras), histórico sin leakage (interrupciones en 30, 90 y 365 días, tiempo desde la última), topología y atributos del CT (potencia, número de salidas, municipio y tipo de zona), calendario (laborable, festivo, víspera) y, cuando esté ingerida, meteorología.
+- `labels_ct_hora`: etiqueta `y_1_3h` por (CT, hora). Positivo si en `(hora + 1 h, hora + 3 h]` empieza una interrupción imprevista (`CL_IMPRE`), no atribuible al cliente (`FA_CLIEN`), de más de 180 segundos y a nivel de CT. Son los mismos filtros con los que Calser calcula el TIEPI. Variantes: otros horizontes (`y_0_1h`, `y_0_3h`, `y_0_6h`), solo eventos locales (`y_1_3h_local`), con las interrupciones sin incidencia (`y_1_3h_amplia`) y con los cortes del SCADA (`y_1_3h_scada`), y `en_corte` para excluir las horas en las que el CT ya está sin suministro.
+- `features_ct_hora` (unas 250 columnas descritas en `feature_metadata`): medidas eléctricas agregadas por hora y por familia (intensidad, intensidad de neutro, tensión, potencias, factor de potencia, temperatura) del propio CT y de la posición de cabecera que lo alimenta, con desequilibrio entre fases, valores rancios y ventanas de 24 h; cambios de las señales precursoras en el CT, en su grupo de red y en la cabecera (defectos de tierra y de fase, paso de falta, disparos, falta de tensión, reenganches, seccionalizadores, comunicaciones, mando local, presencia de personal); alarmas y avisos del SCADA; lecturas con fallo de comunicaciones; cortes y microcortes del SCADA; histórico sin leakage (interrupciones conocidas en 30, 90 y 365 días, días desde la última, interrupciones del municipio); atributos del CT (potencia imputada, abonados, salidas, tipo de zona, coordenadas) y calendario (hora, día, mes, festivo, víspera). La meteorología entrará cuando esté ingerida. Cada fila usa solo datos que se podían conocer antes de su hora: los del SCADA por su hora de llegada al servidor, los de Calser desde su carga y la cabecera que alimenta a cada CT desde el primer corte que la reveló. El test de Gold lo comprueba recortando las fuentes y reconstruyendo.
 - Ventana: 2021 a agosto de 2026, que es donde coinciden telemetría y etiquetas. Fuente: backups del 14.08.2026.
 
 Quedan fuera, por leakage, `fecha_alta`, `ts`, las columnas `*_OPTIMIZADA`, las tablas `calculos_*` de Calser y el estado del interruptor del propio CT en la hora objetivo.

@@ -1,7 +1,7 @@
 # Atajos para el trabajo diario. En Windows funcionan desde Git Bash o WSL;
 # el equivalente en PowerShell para la prueba completa es _runlogs/run_silver_test.ps1.
 
-.PHONY: help up down restart ps logs config test lint bronze silver clean
+.PHONY: help up down restart ps logs config test test-silver test-gold lint bronze silver gold clean
 
 help:
 	@echo "make up        levanta el stack (docker compose up -d --build --wait)"
@@ -9,10 +9,12 @@ help:
 	@echo "make ps        estado de los servicios"
 	@echo "make logs      logs de todos los servicios (S=nombre para uno solo)"
 	@echo "make config    valida compose.yaml con el .env actual"
-	@echo "make test      test de Silver en un Spark local, sin Docker"
+	@echo "make test      tests de Silver y Gold en un Spark local, sin Docker"
+	@echo "make test-silver / make test-gold   solo una de las dos capas"
 	@echo "make lint      ruff check"
 	@echo "make bronze    lanza el DAG batch de Bronze en Airflow"
 	@echo "make silver    lanza el DAG de Silver en Airflow"
+	@echo "make gold      lanza el DAG de Gold en Airflow"
 	@echo "make clean     borra cachés locales de Python y de pytest"
 
 up:
@@ -33,7 +35,13 @@ config:
 	docker compose config --quiet && echo "compose.yaml OK"
 
 test:
+	python -m pytest tests -q
+
+test-silver:
 	python -m pytest tests/02_silver -q
+
+test-gold:
+	python -m pytest tests/03_gold -q
 
 lint:
 	ruff check .
@@ -43,6 +51,9 @@ bronze:
 
 silver:
 	docker compose exec airflow airflow dags trigger dag_silver
+
+gold:
+	docker compose exec airflow airflow dags trigger dag_gold
 
 clean:
 	find . -name "__pycache__" -type d -prune -exec rm -rf {} +

@@ -209,6 +209,13 @@ def load_tedisnet(spark):
     ], "Id int, Name string, ShortName string, ElementTypeId int, ParentElementId int, IsEnabled boolean")
 
     save(spark, f"{p}_system_nodes", [(1, 100), (2, 200)], "Id int, ElementId int")
+
+    save(spark, f"{p}_system_electric_electrical_transformers", [
+        (100, 250.0, 25.0, 0.4, 4.0, True, False),
+        (101, 160.0, 25.0, 0.4, 4.0, True, False),
+        (200, 400.0, 20.0, 0.4, 4.0, False, False),
+    ], "ElementId int, RatedPower double, RatedPrimaryVoltage double, RatedSecondaryVoltage double, "
+       "Ucc double, IsPowerCut boolean, IsGenerator boolean")
     save(spark, f"{p}_system_devices", [(1, "RTU1"), (2, "RTU2")], "Id int, Name string")
 
     save(spark, f"{p}_lib_tag_classes", [
@@ -239,27 +246,36 @@ def load_tedisnet(spark):
         (3, 1000, None, None, 10.5, None, None, None, ts("2026-01-10 09:00:00"), None, 2, 5, 1),     # bad quality, comm failure
         (4, 1000, None, None, 11.0, None, None, None, ts("2026-01-10 09:05:00"), None, 1, None, 3),  # manual
         (5, 1000, None, None, None, None, None, None, ts("2026-01-10 09:06:00"), None, 1, None, 1),  # no value
-        (6, 1004, None, None, 1.0, None, None, None, ts("2026-01-10 09:07:00"), None, 1, None, 1),   # tag rejected
+        (6, 1005, None, None, 1.0, None, None, None, ts("2026-01-10 09:07:00"), None, 1, None, 1),   # tag rejected
         (7, 1000, None, None, 12.0, None, None, None, ts("2026-01-10 09:08:00"), None, 1, None, 4),  # estimated
         (8, 1000, None, None, 12.0, None, None, None, ts("2026-01-10 09:08:00"), None, 1, None, 4),  # same change, other id
         (9, 1000, None, None, 13.0, None, None, None, None, None, 1, None, 1),                       # no timestamp
+        (10, 1004, None, 0, None, None, None, None, ts("2026-01-10 09:07:00"), None, 1, None, 1),    # tag without element
+        # buffered by the RTU: stored by the server two and a half hours later
+        (11, 1002, False, None, None, None, 2, None, ts("2026-01-10 07:00:00"), ts("2026-01-10 09:30:00"), 1, None, 1),
     ], value_schema)
 
     save(spark, f"{p}_system_tag_value_changes", [
         (1, 1001, True, None, None, None, None, None, ts("2026-01-10 09:59:00"), ts("2026-01-10 09:59:05"), 1, 14, 1),
     ], value_schema)
 
+    # CopyTagValue2TagIntervalValue writes the grid instant in UpdateTimestamp
+    # and copies the SourceTimestamp of the value it holds.
     save(spark, f"{p}_historic_tag_interval_values_big", [
-        (1, 1000, None, None, 50.0, None, None, None, ts("2026-01-10 10:00:00"), ts("2026-01-10 10:00:01"), 1, None, 1),
-        (2, 1000, None, None, 51.0, None, None, None, ts("2026-01-10 10:05:00"), ts("2026-01-10 10:05:01"), 1, None, 1),
-        (3, 1000, None, None, 51.5, None, None, None, ts("2026-01-10 10:05:00"), ts("2026-01-10 10:05:09"), 1, None, 1),
-        (4, 1000, None, None, 0.0, None, None, None, ts("2026-01-10 10:10:00"), None, 3, 15, 1),
-        (5, 1003, None, None, float("nan"), None, None, None, ts("2026-01-10 10:10:00"), None, 1, None, 1),
-        (6, 1003, None, None, 20.0, None, None, None, ts("2026-02-01 00:00:00"), None, 1, 11, 1),
+        (1, 1000, None, None, 50.0, None, None, None, ts("2026-01-10 09:58:30"), ts("2026-01-10 10:00:00"), 1, None, 1),
+        (2, 1000, None, None, 51.0, None, None, None, ts("2026-01-10 10:03:10"), ts("2026-01-10 10:05:00"), 1, None, 1),
+        (3, 1000, None, None, 51.5, None, None, None, ts("2026-01-10 10:04:50"), ts("2026-01-10 10:05:00"), 1, None, 1),
+        (4, 1000, None, None, 0.0, None, None, None, None, ts("2026-01-10 10:10:00"), 3, 15, 1),
+        (5, 1003, None, None, float("nan"), None, None, None, None, ts("2026-01-10 10:10:00"), 1, None, 1),
+        (6, 1003, None, None, 20.0, None, None, None, ts("2026-01-31 23:58:00"), ts("2026-02-01 00:00:00"), 1, 11, 1),
+        # same held value in the next sample: same SourceTimestamp, another instant
+        (7, 1000, None, None, 51.5, None, None, None, ts("2026-01-10 10:04:50"), ts("2026-01-10 10:15:00"), 1, None, 1),
+        # value two hours old: frozen or stale
+        (8, 1000, None, None, 49.0, None, None, None, ts("2026-01-10 08:00:00"), ts("2026-01-10 10:20:00"), 1, None, 1),
     ], value_schema)
 
     save(spark, f"{p}_system_tag_interval_values_big", [
-        (900, 1000, None, None, 50.0, None, None, None, ts("2026-01-10 10:00:00"), ts("2026-01-10 10:00:01"), 1, None, 1),
+        (900, 1000, None, None, 50.0, None, None, None, ts("2026-01-10 09:58:30"), ts("2026-01-10 10:00:00"), 1, None, 1),
     ], value_schema)
 
     cut_schema = ("Id int, TagValueChangeId int, Timestamp timestamp, ProcessedTimestamp timestamp, "
@@ -273,6 +289,7 @@ def load_tedisnet(spark):
         (5, None, ts("2026-01-10 11:30:00"), None, None, False, 3),  # empty
         (6, 2, ts("2026-01-10 12:00:00"), None, 3, False, 3),   # comm error
         (7, 50, ts("2026-01-11 08:00:00"), None, 1, False, 3),  # manoeuvre, no elements
+        (8, 60, ts("2026-03-13 13:21:19"), ts("2026-01-29 11:10:09"), 2, False, 3),  # RTU clock
     ], cut_schema)
 
     save(spark, f"{p}_historic_electric_power_cut_element_events", [
@@ -283,6 +300,7 @@ def load_tedisnet(spark):
         (5, 100, 1),    # event rejected
         (6, 100, 1),
         (4, 999, 1),    # element that does not exist
+        (8, 100, 1),
     ], "CutEventId int, ElementId int, ElectricalElementType int")
 
     save(spark, f"{p}_historic_command_executions", [
@@ -399,6 +417,11 @@ def test_ct_flags_and_scada_map(silver):
     assert ct_map[(2, "01011")]["elemento_id"] == 200
     assert ct_map[(3, "01011")]["tiene_nodo"] is True
     assert ct_map[(3, "01012")]["tiene_nodo"] is False
+    # electrical data of the trafo
+    assert ct_map[(3, "01011")]["potencia_nominal_kva"] == 250.0
+    assert ct_map[(3, "01011")]["observable"] is True
+    assert ct_map[(3, "01012")]["observable"] is False      # IsPowerCut but no node
+    assert ct_map[(2, "01011")]["observable"] is False      # node but no IsPowerCut
 
 
 def test_salida_orphan_ct(silver):
@@ -436,21 +459,33 @@ def test_interrupcion_rules(silver):
 
 def test_tag_orphans(silver):
     ids = {r["id"] for r in table(silver, "d_tag").select("id").collect()}
-    assert ids == {1000, 1001, 1002, 1003}
+    # 1004 has no element (nullable key, kept); 1005 points to a missing device
+    assert ids == {1000, 1001, 1002, 1003, 1004}
     tag = table(silver, "d_tag").where("id = 1003").first()
     assert tag["distribuidora_id"] == 2
     assert tag["clase_nombre"] == "AI.INTENS L1"
     assert tag["tiene_serie"]
 
+    no_element = table(silver, "d_tag").where("id = 1004").first()
+    assert no_element["sin_elemento"]
+    assert no_element["distribuidora_id"] == 3          # from its device
+    assert no_element["distribuidora_origen"] == "DISPOSITIVO"
+
+    rejected = {r["id"]: r["_motivo"] for r in table(silver, "d_tag_rejected").collect()}
+    assert rejected == {1005: "ORPHAN_FK_DEVICE"}
+
 
 def test_tag_value_change_rules(silver):
     df = table(silver, "f_tag_value_change")
     ids = sorted(r["id"] for r in df.select("id").collect())
-    # 1 copied state (Historic wins over System), 2 good, 7 estimated
-    assert ids == [1, 2, 7]
+    # 1 copied state (Historic wins over System), 2 good, 7 estimated,
+    # 10 value of a tag without element, 11 arrived late
+    assert ids == [1, 2, 7, 10, 11]
     assert df.where("id = 1").first()["_origen"] == "Historic"
     assert df.where("id = 1").first()["es_copiado"]
     assert df.where("id = 7").first()["es_estimado"]
+    assert df.where("id = 11").first()["llegada_tardia"] and not df.where("id = 2").first()["llegada_tardia"]
+    assert df.where("id = 11").first()["ts_actualizacion"] == ts("2026-01-10 09:30:00")
 
     reasons = {r["id"]: r["_motivo"]
                for r in table(silver, "f_tag_value_change_rejected").select("id", "_motivo").collect()
@@ -466,21 +501,28 @@ def test_tag_value_change_rules(silver):
 
     quality = table(silver, "f_tag_quality_event").collect()
     assert len(quality) == 1 and quality[0]["calidad_detalle_id"] == 5
+    assert "ts_actualizacion" in table(silver, "f_tag_quality_event").columns
 
 
 def test_evento(silver):
     df = table(silver, "f_evento")
     assert [r["id"] for r in df.collect()] == [1]
     assert df.first()["nivel_evento_id"] == 4
+    assert "ts_actualizacion" in df.columns
 
 
 def test_interval_values(silver):
     df = table(silver, "f_tag_interval_value")
     rows = {(r["tag_id"], r["ts"]): r for r in df.collect()}
 
-    # one sample per tag and instant, the latest update wins
+    # one sample per tag and grid instant, the freshest value wins
     assert rows[(1000, ts("2026-01-10 10:05:00"))]["valor_float"] == 51.5
     assert rows[(1000, ts("2026-01-10 10:00:00"))]["_origen"] == "Historic"
+    # a held value is a new sample every grid instant, not a duplicate
+    assert rows[(1000, ts("2026-01-10 10:15:00"))]["ts_origen"] == ts("2026-01-10 10:04:50")
+    stale = rows[(1000, ts("2026-01-10 10:20:00"))]
+    assert stale["antiguedad_s"] == 8400 and stale["valor_rancio"]
+    assert not rows[(1000, ts("2026-01-10 10:05:00"))]["valor_rancio"]
     assert (1000, ts("2026-01-10 10:10:00")) not in rows   # bad quality
     assert (1003, ts("2026-01-10 10:10:00")) not in rows   # NaN
     assert rows[(1003, ts("2026-02-01 00:00:00"))]["fuera_rango_egu"]
@@ -506,14 +548,20 @@ def test_command_final_state(silver):
 def test_power_cuts(silver):
     events = {r["evento_id"]: r for r in table(silver, "f_corte_evento").collect()}
 
-    assert set(events) == {1, 4, 6, 7}
+    assert set(events) == {1, 4, 6, 7, 8}
+    assert events[8]["ts_incoherente"] and not events[1]["ts_incoherente"]
     assert events[1]["n_eventos_origen"] == 3
     assert events[1]["n_elementos"] == 2       # 100 and 101 gathered from the copies
     assert events[6]["es_error_comm"]
     assert events[7]["es_maniobra"] and events[7]["sin_elementos"]
     assert events[1]["distribuidora_id"] == 3
+    # arrival of the trigger change: the later copy of Historic and System
+    assert events[1]["ts_actualizacion"] == ts("2026-01-10 09:59:05") and not events[1]["llegada_tardia"]
+    assert events[4]["ts_actualizacion"] is None
 
     elements = table(silver, "f_corte_elemento")
+    assert elements.where("evento_id = 1 AND elemento_id = 100").first()["ts_actualizacion"] == \
+        ts("2026-01-10 09:59:05")
     e101 = elements.where("elemento_id = 101").first()
     assert e101["tipo_electrico"] is None and e101["tipo_electrico_invalido"]
     assert e101["ct_id"] == "01012"

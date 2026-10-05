@@ -29,7 +29,7 @@ Otras reglas de la capa:
 | `d_municipio` | Calser `municipios` | distribuidora, período, municipio |
 | `d_tipo_generico` | Calser `tipo_generico` | distribuidora, código |
 | `d_ct` | Calser `cts` | distribuidora, período, CT |
-| `d_ct_scada` | `d_ct` + `d_elemento` + `SystemNodes` | distribuidora, CT: el puente Calser - TedisNet |
+| `d_ct_scada` | `d_ct` + `d_elemento` + `SystemNodes` + `SystemElectricElectricalTransformers` | distribuidora, CT: el puente Calser - TedisNet |
 | `d_salida` | Calser `salidas` | distribuidora, período, salida |
 | `f_incidencia` | Calser `incidencias` | distribuidora, período, incidencia |
 | `f_interrupcion` | Calser `interrupciones` | distribuidora, período, interrupción |
@@ -95,8 +95,9 @@ Se añade `nivel_afectacion` (ABONADO > ACOMETIDA > SALIDA > CT), la misma prior
 
 - `f_incidencia`: flags `es_imprevista` (CL_IMPRE), `es_programada` (CL_PROGR), `es_factor_cliente` (FA_CLIEN), `intervalo_invalido`. `fecha_alta` es leakage.
 - `d_ct`: rechaza los CT cuyo municipio no existe en el período. Flags `potencia_cero` (37 % en EOSA, 48 % en Pitarch), `potencia_admin_cero` y `sin_telemetria`. La imputación de la potencia la hace Gold, como la hace Calser.
-- `d_ct_scada`: una fila por (distribuidora, CT) con su trafo en TedisNet. La clave que verificamos es `CT_ID` = `SystemElements.ShortName` de un elemento de tipo 145 (TRAFO CT) de la misma distribuidora, comparando como texto y respetando mayúsculas. Añade `tiene_nodo`: un trafo sin nodo en `SystemNodes` nunca entra en el flood fill y no puede aparecer como cortado. Si hay dos trafos con el mismo nombre se marca `mapeo_ambiguo`.
+- `d_ct_scada`: una fila por (distribuidora, CT) con su trafo en TedisNet. La clave que verificamos es `CT_ID` = `SystemElements.ShortName` de un elemento de tipo 145 (TRAFO CT) de la misma distribuidora, comparando como texto y respetando mayúsculas. Añade `tiene_nodo`: un trafo sin nodo en `SystemNodes` nunca entra en el flood fill y no puede aparecer como cortado. Si hay dos trafos con el mismo nombre se marca `mapeo_ambiguo`. Desde octubre de 2026 trae también los datos eléctricos del trafo (`SystemElectricElectricalTransformers`): `is_power_cut`, `potencia_nominal_kva`, tensiones y `ucc_pct`, y el flag `observable` (nodo e `IsPowerCut = 1` a la vez). La potencia nominal es la segunda fuente para los CT con potencia 0 en Calser.
 - `d_salida`: el ejemplo de Josep completado con distribuidora, textos limpios, deduplicación y comprobación de que el CT existe en el período.
+- `d_municipio`: añade `latitud` y `longitud` del fichero de referencia de municipios (`l1_bronze.reference_municipios`) cruzando por código INE. Gold las necesita para la meteorología. Si la referencia no está cargada quedan nulas y se marca `sin_coordenadas`.
 - `d_periodo`: añade `periodo_norm` (YYYYMM sacado de la fecha de inicio), `fecha_fin_excl`, `es_default` y el formato del id. Para ordenar y particionar se usa siempre la fecha del evento, nunca el id de período.
 - `d_tipo_generico`: comprueba que siguen existiendo `CL_IMPRE`, `CL_PROGR`, `FA_CLIEN`, `TI_DETEC` y `TI_MANDO` en cada distribuidora. Si falta alguno la etiqueta del modelo cambiaría sin avisar, así que se marca para revisión.
 
@@ -128,18 +129,27 @@ Los valores con detalle no real no se pierden: van a `f_tag_quality_event`, porq
 
 Deduplicación por `Id` (Historic antes que System) y después por clave natural `(tag, instante, valor, calidad)`, por si el mismo cambio se reinsertó con otro `Id`. Solo colapsan filas idénticas.
 
+`ts` es la hora de campo (`SourceTimestamp`) y `ts_actualizacion` la hora en que el servidor guardó el cambio (`UpdateTimestamp`). Suelen diferir en segundos (mediana de 1 s y p90 de 21 s en una muestra de los 200 últimos cambios de la base real), pero 13 de esos 200 llegaron con meses de retraso: posiciones ICCP y estados que se vuelven a leer al reconectar. `llegada_tardia` marca los que llegan más de una hora tarde. Silver no los quita; Gold coloca cada cambio en su hora de llegada y deja fuera de las features los que llegan demasiado tarde para ser una señal. `f_tag_quality_event` y `f_evento` llevan también `ts_actualizacion`.
+
 ### `f_tag_interval_value`
 
-Es la tabla grande: más de 2.150 millones de filas y 220 GB en `HistoricTagIntervalValuesBig`. El job no la trata nunca entera:
+Es la tabla grande: más de 2.150 millones de filas y 220 GB en `HistoricTagIntervalValuesBig`.
 
-- Procesa un mes cada vez (`--desde 2021-01 --hasta 2026-08`). Bronze no está particionada, pero Delta guarda mínimos y máximos de `SourceTimestamp` por fichero y las filas se escribieron en orden de `Id`, que es orden temporal, así que el filtro del mes se salta casi todos los ficheros.
+Primero, qué columna es el instante de una muestra. El procedimiento que llena la tabla, `CopyTagValue2TagIntervalValue`, inserta el valor actual de cada tag con `UpdateTimestamp` igual al instante de la rejilla y copia en `SourceTimestamp` la hora de campo original de ese valor. Si el valor no cambia, todas sus muestras llevan el mismo `SourceTimestamp`. La primera versión de este job usaba `SourceTimestamp` como instante y deduplicaba por él, de modo que las muestras de un valor estable se quedaban en una sola fila, caían en el mes del valor original y el valor congelado desaparecía. Desde octubre de 2026:
+
+- `ts` es `UpdateTimestamp` (el instante de rejilla) y `ts_origen` es `SourceTimestamp`.
+- `antiguedad_s = ts - ts_origen` es la edad del valor retenido. `valor_rancio` marca las muestras con más de una hora y `ts_origen_futuro` las que tienen una hora de campo posterior a la rejilla (reloj de la RTU). Las dos son flags: el valor congelado es una feature, no un motivo para rechazar.
+
+Y el volumen. El job no trata nunca la tabla entera:
+
+- Procesa un mes cada vez (`--desde 2021-01 --hasta 2026-08`), filtrando por el instante de rejilla. Bronze no está particionada, pero Delta guarda mínimos y máximos por fichero y las filas se escribieron en orden de `Id`, que es orden temporal. Para que eso sirva de algo, Bronze carga esta tabla por trozos de `Id` y con un tamaño máximo de fichero (`chunk_size` y `max_records_per_file` en `config_bronze_sqlserver.json`); con una sola lectura JDBC quedaba en un único fichero enorme y el filtro del mes no se saltaba nada.
 - La salida está particionada por `fecha_mes` y cada ejecución sobrescribe solo los meses procesados (`replaceWhere`). Se puede reprocesar un mes sin tocar el resto.
-- La clave de deduplicación es `(tag, instante)`: la serie es un muestreo sample and hold anclado a la hora y solo puede haber una muestra por tag e instante. `Id` no sirve como clave porque la tabla Big y la pequeña tienen espacios de `Id` distintos.
+- La clave de deduplicación es `(tag, instante de rejilla)`: solo puede haber una muestra por tag e instante. `Id` no sirve como clave porque la tabla Big y la pequeña tienen espacios de `Id` distintos. Gana Historic, después el valor más reciente.
 - Los rechazos no se copian fila a fila (serían unos 470 millones): `f_tag_interval_value_rechazo_diario` guarda el recuento por tag, día y motivo. En la BD real alrededor del 22 % de las filas no tiene calidad Buena, y el umbral de revisión está en el 30 %.
 
 ### `d_tag`
 
-Rechaza los tags sin elemento o con un elemento o dispositivo que no existe: no se pueden asociar a ningún CT (la vista `SystemTagDetails` del SCADA los descarta igual). Añade la distribuidora, el nombre de la clase (`AI.INTENS L1`, `DI.DEFECTO DE TIERRA.2`, `ES.POSICIÓN`...) y `tiene_serie`: solo unos 4.000 de los 78.000 tags tienen `StoreInterval` y serie regular.
+Rechaza los tags cuyo elemento o dispositivo no existe: es una clave rota. Un tag sin elemento no lo es, porque `ElementId` admite NULL en TedisNet, y en EOSA hay unos 14.700, entre ellos 1.134 tags `SYS` con el estado de conexión de los dispositivos, que son la base de las features de fallo de comunicaciones. Esos tags se conservan con el flag `sin_elemento` y su distribuidora sale del dispositivo (la que tienen la mayoría de los tags del mismo dispositivo con elemento); `distribuidora_origen` dice de dónde viene. Gold los asocia al CT a través del dispositivo. Añade también el nombre de la clase (`AI.INTENSIDAD`, `DI.DEFECTO DE TIERRA`, `ES.1 POSICIÓN`...) y `tiene_serie`: solo unos 4.000 de los 78.000 tags tienen `StoreInterval` y serie regular.
 
 ### `f_corte_evento` y `f_corte_elemento`
 
@@ -151,11 +161,13 @@ TedisNet no mide el corte, lo deduce por topología, y eso deja rastros que hay 
 - `CutStateId = 3` es un error de comunicaciones, no un corte: flag `es_error_comm`.
 - `IsCommand` siempre llega a `false`. Un corte se marca como maniobra (`es_maniobra`) cuando su cambio de tag es el de una ejecución de mando (`f_command_execution`, que guarda solo el estado final de cada mando).
 - `ElectricalElementType` no está validado en origen (aparecen valores que en realidad son `ElementTypeId`). Fuera de 1 - 4 se pone a NULL y se marca `tipo_electrico_invalido`.
-- Cada fila de `f_corte_elemento` lleva el instante y el estado del evento, `ct_id` cuando el elemento es un TRAFO CT y `tiene_nodo`. Gold empareja Off y On por elemento sin tener que volver a cruzar con los eventos.
+- Hay eventos con una hora imposible. En EOSA aparecen On fechados el 13.09.2026, un mes después del backup, que Calser procesó el 29.01.2026: la hora viene del equipo de campo y un reloj mal puesto acaba aquí. Un evento posterior a su propio procesado (con 10 minutos de margen) se marca `ts_incoherente` y Gold lo deja fuera.
+- `ProcessedTimestamp` no es el momento en que el SCADA conoció el corte: lo marca el consumidor que lee el evento (Calser, por la API de exportación). La llegada del corte al SCADA es el `UpdateTimestamp` del cambio de tag que lo provocó, que se lee de Bronze (así no se pierde si `f_tag_value_change` rechazó ese cambio) y se guarda en `ts_actualizacion`. `llegada_tardia` marca los eventos que llegaron más de una hora después de su hora de campo.
+- Cada fila de `f_corte_elemento` lleva el instante, la llegada y el estado del evento, `ct_id` cuando el elemento es un TRAFO CT y `tiene_nodo`. Gold empareja Off y On por elemento sin tener que volver a cruzar con los eventos.
 
 ### `f_evento`
 
-Un evento solo es un puntero a un cambio de tag. Si el cambio no sobrevivió a `f_tag_value_change`, el evento se rechaza. Se le añade el nivel (`LibTagClass_EnumValues_EventLevels`, por clase del tag y valor).
+Un evento solo es un puntero a un cambio de tag. Si el cambio no sobrevivió a `f_tag_value_change`, el evento se rechaza. Se le añade el nivel (`LibTagClass_EnumValues_EventLevels`, por clase del tag y valor) y su severidad (`nivel_severidad`, la columna `Level` de `LibEventLevels`: 1 normal, 2 aviso, 3 alarma), porque los identificadores de nivel son propios de cada instalación (EOSA tiene también 100 - 103 con colores).
 
 ## 6. Métricas de calidad y control final
 
@@ -210,8 +222,10 @@ python -m pytest tests/02_silver -q
 
 ## 8. Lo que queda fuera de Silver a propósito
 
-- Fusión de solapes, imputación de potencia, winsorización de duraciones y filtro del target (CL_IMPRE, sin FA_CLIEN, más de 180 s, nivel CT): Gold.
-- Valores congelados de las series (sample and hold): es una feature y cuesta una ventana sobre 2.000 millones de filas, así que va en Gold y sobre los agregados.
+Todo esto lo hace Gold y está explicado en [gold-layer.md](gold-layer.md):
+
+- Fusión de solapes, imputación de potencia, winsorización de duraciones y filtro del target (CL_IMPRE, sin FA_CLIEN, más de 180 s, nivel CT).
+- Valores congelados de las series: Silver deja la antigüedad de cada muestra (`antiguedad_s`, `valor_rancio`) y Gold la convierte en feature sobre los agregados horarios.
 - Rangos físicos de las medidas: dependen de la clase y de la escala de cada tag. Por ahora nos apoyamos en los detalles de calidad 11 y 12 y en las operaciones de anomalía que ya calcula el SCADA (máximo, mínimo, valor congelado).
 - Meteorología: se tratará cuando esté la ingesta.
 - `SystemTagValues`, `SystemElectricPowerCutElementStates` y `SystemDeviceStates` son snapshots del estado actual. Sirven para el tiempo real, no para entrenar, y se tratarán con el serving.

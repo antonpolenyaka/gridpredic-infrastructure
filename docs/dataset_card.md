@@ -89,7 +89,7 @@ El dataset se organiza en las zonas del lakehouse. La ruta física es `s3a://dat
 | Landing | `00_landing/` | Eventos CDC de Kafka tal cual llegan (Parquet) y ficheros de referencia | operativa |
 | Bronze | `l1_bronze` | Copia fiel de SQL Server en Delta: 33 tablas `Historic*` y `Lib*` de TedisNet en batch, 31 tablas `System*` por CDC, 16 tablas de cada base Calser, más `reference_municipios` | operativa |
 | Silver | `l2_silver` | Una versión válida de cada registro, con tipos correctos, distribuidora resuelta, rechazos con motivo y anomalías marcadas con flags | operativa |
-| Gold | `l3_gold` | Etiquetas, features por CT y hora y versiones congeladas del dataset de entrenamiento | en desarrollo |
+| Gold | `l3_gold` | Etiquetas, features por CT y hora y versiones congeladas del dataset de entrenamiento | operativa, pendiente de la primera ejecución con la ventana completa |
 
 Tablas de Silver (el detalle de cada regla está en [silver-layer.md](silver-layer.md)):
 
@@ -98,9 +98,20 @@ Tablas de Silver (el detalle de cada regla está en [silver-layer.md](silver-lay
 | `d_elemento`, `d_tag`, `d_ct`, `d_ct_scada`, `d_salida`, `d_municipio`, `d_periodo`, `d_tipo_generico` | dimensiones | TedisNet `SystemElements`, `SystemTags`; Calser `cts`, `salidas`, `municipios`, `periodos`, `tipo_generico` |
 | `f_interrupcion`, `f_incidencia` | una interrupción o incidencia de Calser, por distribuidora y período | Calser `interrupciones`, `incidencias` |
 | `f_tag_value_change`, `f_tag_quality_event`, `f_evento` | un cambio de valor, un evento de calidad, un evento del SCADA | TedisNet `Historic*` + `System*` |
-| `f_tag_interval_value`, `f_tag_interval_value_rechazo_diario` | una muestra por tag e instante, particionada por mes | `HistoricTagIntervalValuesBig` + `HistoricTagIntervalValues` |
+| `f_tag_interval_value`, `f_tag_interval_value_rechazo_diario` | una muestra por tag e instante de rejilla (`UpdateTimestamp`), con la antigüedad del valor retenido, particionada por mes | `HistoricTagIntervalValuesBig` + `HistoricTagIntervalValues` |
 | `f_command_execution`, `f_corte_evento`, `f_corte_elemento` | mandos y cortes deducidos por topología, con los elementos afectados | TedisNet `*CommandExecutions`, `*ElectricPowerCut*` |
 | `dq_metrics` y `<tabla>_rejected` | métricas de calidad por ejecución y filas descartadas con su `_motivo` | todos los jobs |
+
+Tablas de Gold (el detalle está en [gold-layer.md](gold-layer.md)):
+
+| Tabla | Grano | Contenido |
+| --- | --- | --- |
+| `dim_ct`, `map_tag_ct`, `map_aguas_arriba` | CT, tag, trafo y elemento | El CT con su potencia imputada y si entra en el estudio; el CT y el grupo de red de cada señal; las posiciones de cabecera que han cortado cada trafo y desde cuándo se sabe |
+| `fact_interrupciones_mt`, `fact_cortes_scada` | evento | Interrupciones de Calser en tres variantes con los solapes fusionados; episodios Off -> On del SCADA con microcortes y maniobras |
+| `labels_ct_hora` | CT y hora | `y_1_3h` y sus variantes, `en_corte`, horas hasta el próximo evento y era |
+| `agg_medida_hora`, `actividad_scada_hora` | clave y hora | Agregados horarios de las series de medida y muestras por distribuidora y hora |
+| `features_ct_hora`, `feature_metadata` | CT y hora | Unas 250 features y su descripción |
+| `dataset_train`, `dataset_versions` | CT y hora | Dataset de entrenamiento con split temporal (y 6 h de purga antes de cada frontera) y muestreo reproducible, y el registro de cada versión |
 
 Columnas técnicas comunes: `distribuidora_id` (el `DistributorId` de Calser, que coincide con el `Id` del elemento raíz en TedisNet: 3 EOSA, 2 Pitarch, 1366 Valle de Santa Ana), `_origen` (Historic, System o Stream), `run_id` de la ejecución del DAG y los flags booleanos de anomalías (`en_solape`, `duracion_cero`, `es_microcorte`, `es_estimado`, `es_copiado`, `es_error_comm`, `es_maniobra`, `potencia_cero`, `sin_telemetria`...).
 
@@ -108,7 +119,7 @@ Clave de cruce entre las dos fuentes: `Calser.cts.CT_ID` (texto de cinco dígito
 
 Definición del target (se materializa en Gold con los mismos filtros que usa Calser para el TIEPI): interrupción con clasificación `CL_IMPRE` (imprevista), factor distinto de `FA_CLIEN` (causa cliente), duración mayor de 180 segundos y nivel de afectación CT (sin salida, acometida ni abonado). Grano (CT, hora); `y = 1` si una interrupción así empieza en las siguientes 1 a 3 horas. La tasa de positivos es del orden de 2 por cada 10.000 filas CT-hora, así que las métricas de referencia son precision, recall y PR-AUC.
 
-Particiones previstas para entrenar: temporal, sin mezclar fechas. Entrenamiento hasta 2024, validación 2025 y prueba 2026 (forward chaining para la selección de hiperparámetros). Cada versión del dataset de entrenamiento se congela en Gold con un identificador y las fechas exactas de la ventana.
+Particiones para entrenar: temporal, sin mezclar fechas. Entrenamiento hasta 2024, validación 2025 y prueba 2026 (forward chaining para la selección de hiperparámetros). Cada versión del dataset de entrenamiento se congela en `l3_gold.dataset_train` y queda registrada en `l3_gold.dataset_versions` con sus parámetros, las fechas exactas de la ventana y la versión Delta de cada tabla de entrada.
 
 ## Dataset Creation
 
@@ -124,7 +135,7 @@ Las distribuidoras cobran una retribución regulada que depende, entre otras cos
 2. **Bronze batch.** El DAG `ingest_sqlserver_batch_bronze` de Airflow lanza un job Spark por tabla (`etl/jobs/01_bronze/job_bronze_sqlserver_batch.py`) que lee por JDBC y escribe Delta sin transformar el contenido. Las tablas se listan en `etl/config/01_bronze/config_bronze_sqlserver.json`.
 3. **Bronze streaming.** Debezium publica los cambios de las tablas `System*` en Kafka; `job_landing_sqlserver_streaming.py` los guarda tal cual en Landing y `job_bronze_sqlserver_streaming.py` los aplica sobre las tablas Delta de Bronze. Sirve para las tablas que en origen solo guardan la última semana.
 4. **Silver.** El DAG `dag_silver` ejecuta los jobs de `etl/jobs/02_silver/` en el orden de `config_silver.json`. Cada job reconstruye su tabla desde Bronze (idempotente), separa rechazos y marcados, y escribe sus métricas en `dq_metrics`. El último job comprueba integridad referencial, cobertura de la clave Calser - TedisNet y alineación horaria entre las dos fuentes.
-5. **Gold (en curso).** Etiquetado, features por CT y hora, división temporal y versiones congeladas del dataset.
+5. **Gold.** El DAG `dag_gold` construye la dimensión de CT y los mapas de señales, los hechos de interrupciones y cortes, las etiquetas, los agregados de medidas, las features, el dataset de entrenamiento con su versión y los controles finales (alineación horaria entre fuentes, cobertura, positivos, leakage). Las reglas están en `etl/config/03_gold/config_gold.json` y se prueban sin Docker con `python -m pytest tests/03_gold -q`.
 
 Todo el proceso es reproducible con `docker compose up -d --build --wait` y los DAGs, tal como se describe en el [README](../README.md). Las reglas de Silver se prueban sin Docker con `python -m pytest tests/02_silver -q`.
 
@@ -154,7 +165,8 @@ No se ingieren las tablas de abonados, acometidas ni contratos. El grano más fi
 - **Eventos sistémicos.** En D1 y D2 el 94 % de las interrupciones afectan a varios CT a la vez (hasta 517). Un modelo puede aprender a predecir "día malo" en lugar de "CT malo"; por eso las métricas se calculan por separado para eventos locales y sistémicos.
 - **Duplicados y solapes en origen.** 984 filas duplicadas en D1 y 1.952 en D2; 1.605 y 2.388 pares de interrupciones solapadas en el mismo CT. Silver los deduplica y marca; la fusión de solapes se decide en Gold.
 - **Cortes deducidos, no medidos.** TedisNet genera hasta 69 eventos idénticos para un mismo cambio de tag y un 18,7 % de eventos sin elementos; los transformadores sin nodo nunca aparecen como cortados; si RabbitMQ cae no se copia nada al histórico. Todo esto se corrige o se marca en `f_corte_evento`.
-- **Telemetría parcial.** Solo unos 4.000 tags tienen serie regular, el 22 % de las muestras no tienen calidad Buena, los valores de estado son copiados (detalle de calidad 14) y el muestreo sample-and-hold produce valores congelados.
+- **Telemetría parcial.** Solo unos 4.000 tags tienen serie regular, el 22 % de las muestras no tienen calidad Buena, los valores de estado son copiados (detalle de calidad 14) y el muestreo sample-and-hold produce valores congelados (Silver guarda su antigüedad en `antiguedad_s`). La mayoría de las series son de cabecera (`AI.INTENSIDAD`, `AI.TENSION`); muchos CT no tienen medidas propias y solo ven las de la posición que los alimenta.
+- **Topología aprendida.** El interruptor que corta un CT suele estar en otra rama de la jerarquía funcional. Gold lo aprende de los cortes históricos (`map_aguas_arriba`), así que un CT que nunca se ha cortado no tiene posición aguas arriba.
 - **Metadatos actuales, eventos históricos.** La topología y los atributos de los elementos son los de hoy; los eventos de hace años pueden referirse a elementos que ya cambiaron.
 - **Leakage.** `fecha_alta`, `ts`, las columnas `*_OPTIMIZADA` y las tablas `calculos_*` de Calser conocen el futuro y no pueden usarse como feature. El estado del interruptor del propio CT es el corte, no una señal previa.
 - **Desbalance extremo** de clases y solo tres distribuidoras (dos de ellas grandes), todas con el mismo SCADA. No hay garantía de que el modelo generalice a otra distribuidora sin recalibrar.
@@ -169,7 +181,7 @@ Entrenar solo con `Historic*` (las tablas `System*` retienen una semana), filtra
 - La versión cruda es el backup fechado (14.08.2026). Cambiar de backup es cambiar de versión del dataset.
 - Bronze y Silver son tablas Delta: el transaction log guarda cada escritura y permite time travel dentro del período de retención (7 días en Bronze, 30 en Silver y Gold según la política de housekeeping definida en la memoria del TFM).
 - Cada ejecución del DAG de Silver queda identificada por su `run_id` en `dq_metrics`, y la tabla grande de series se sobrescribe por meses (`replaceWhere`), de modo que se puede reprocesar un mes sin tocar el resto.
-- El dataset de entrenamiento se congelará en Gold con un identificador de versión (tabla `dataset_versions`) y se registrará junto al modelo en MLflow. Evaluamos DVC y decidimos no usarlo: los datos viven en el lakehouse, los backups pesan 61 GB y Delta ya aporta el versionado; en Git solo van el código, la configuración y el fichero de referencia de municipios.
+- El dataset de entrenamiento se congela en Gold con un identificador de versión (tabla `dataset_versions`, con los parámetros y las versiones Delta de sus entradas) y se registrará junto al modelo en MLflow. Evaluamos DVC y decidimos no usarlo: los datos viven en el lakehouse, los backups pesan 61 GB y Delta ya aporta el versionado; en Git solo van el código, la configuración y el fichero de referencia de municipios.
 
 ## Citation [optional]
 

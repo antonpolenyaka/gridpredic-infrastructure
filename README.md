@@ -2,7 +2,7 @@
 
 Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic con Docker Compose.
 
-GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka en el Máster en Data Science and Engineering de la UPC School (2025-2026): un sistema que predice, con 1 a 3 horas de antelación, las interrupciones de suministro en la red de media tensión de una distribuidora eléctrica, a partir del histórico de interrupciones (aplicación Calser) y de la telemetría del SCADA TedisNet. Este repositorio contiene la plataforma de datos y el pipeline que construye el dataset de entrenamiento; el modelo llega en el siguiente hito.
+GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka en el Máster en Data Science and Engineering de la UPC School (2025-2026): un sistema que predice, con 1 a 3 horas de antelación, las interrupciones de suministro en la red de media tensión de una distribuidora eléctrica, a partir del histórico de interrupciones (aplicación Calser) y de la telemetría del SCADA TedisNet. Este repositorio contiene la plataforma de datos y el pipeline que construye el dataset de entrenamiento, de Landing a Gold; el modelo llega en el siguiente hito.
 
 ## Documentación
 
@@ -11,6 +11,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 | [docs/dataset_card.md](docs/dataset_card.md) | Ficha del dataset (formato Hugging Face): fuentes, volumen, estructura por zonas, target, sesgos, versionado |
 | [docs/model_card.md](docs/model_card.md) | Ficha del modelo (formato Hugging Face): uso previsto y excluido, features, métricas y criterios de aceptación |
 | [docs/silver-layer.md](docs/silver-layer.md) | Reglas de la capa Silver, tabla a tabla, y por qué |
+| [docs/gold-layer.md](docs/gold-layer.md) | Capa Gold: etiquetas, features, dataset de entrenamiento y sus decisiones |
 | [docs/project-structure.md](docs/project-structure.md) | Estructura del repositorio y su relación con Cookiecutter Data Science |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | GitHub Flow tal como lo aplicamos, reglas de commits y versionado de datos |
 | [CHANGELOG.md](CHANGELOG.md) | Historial de versiones |
@@ -38,7 +39,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 
 La estructura sigue la idea de Cookiecutter Data Science adaptada a un pipeline que corre en Spark y Airflow: la correspondencia carpeta a carpeta está en [docs/project-structure.md](docs/project-structure.md).
 
-Dentro de `dags/`, `config/` y `jobs/`, los archivos se agrupan por **capa de destino**: `00_landing/`, `01_bronze/` y `02_silver/`. Solo se crean las carpetas que contienen archivos.
+Dentro de `dags/`, `config/` y `jobs/`, los archivos se agrupan por **capa de destino**: `00_landing/`, `01_bronze/`, `02_silver/` y `03_gold/`. Solo se crean las carpetas que contienen archivos.
 
 Los nombres identifican el **tipo**, la **capa** y el **origen** (Landing/Bronze) o la **entidad** (Silver/Gold). Solo los jobs de Landing y Bronze añaden `batch` o `streaming`:
 
@@ -53,7 +54,7 @@ job_silver_d_salida.py
 
 ![Flujo de datos de GridPredic](docs/data-flow.jpeg)
 
-> El diagrama representa la arquitectura objetivo. Actualmente este repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, y la capa Silver completa (ver apartado 11).
+> El diagrama representa la arquitectura objetivo. Actualmente este repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, la capa Silver completa (apartado 11) y la capa Gold hasta el dataset de entrenamiento versionado (apartado 12).
 
 ## Stack tecnológico
 
@@ -415,6 +416,16 @@ ingest_sqlserver_batch_bronze
 
 El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `etl/config/01_bronze/config_bronze_sqlserver.json` y las cargan como tablas Delta en `l1_bronze`.
 
+`HistoricTagIntervalValuesBig` (2.150 millones de filas) no se lee de una vez. Con una sola lectura JDBC Spark usa una conexión y una tarea, tarda horas y deja la tabla en un único fichero enorme, y entonces Silver no puede saltarse ficheros al procesar un mes. En la configuración esa tabla es incremental por `Id` y se lee por trozos:
+
+```json
+"extract_mode": "INCREMENTAL", "write_mode": "APPEND",
+"watermark_column": "Id", "partition_column": "Id",
+"num_partitions": 4, "chunk_size": 25000000, "max_records_per_file": 5000000
+```
+
+Cada trozo de 25 millones de `Id` se lee con 4 conexiones en paralelo y se confirma en Delta por separado, con ficheros de 5 millones de filas como máximo. Si la carga se corta, se vuelve a lanzar la tarea y sigue desde el último `Id` cargado. Las mismas opciones (`partition_column`, `num_partitions`, `chunk_size`, `max_records_per_file`, `fetch_size` y `conf`) valen para cualquier otra tabla del fichero.
+
 ### 10.2 Municipios
 
 Ejecutar manualmente el DAG:
@@ -477,23 +488,63 @@ python -m pytest tests/02_silver -q
 
 ---
 
-## 12. Desarrollo, pruebas e integración continua
+## 12. Capa Gold
+
+Gold une las dos fuentes al grano `(distribuidora, CT, hora)`: decide qué interrupciones son la etiqueta, calcula las features con datos anteriores a cada hora y congela el dataset de entrenamiento por versiones. Las decisiones, el porqué de cada una y lo que queda pendiente están en [docs/gold-layer.md](docs/gold-layer.md); los parámetros (ventana, horizontes, reglas del target, familias de señales, split, muestreo) en `etl/config/03_gold/config_gold.json`.
+
+Requisito: haber ejecutado `dag_silver` completo, incluida la serie grande (`f_tag_interval_value`) para toda la ventana.
+
+Ejecutar manualmente el DAG:
+
+```text
+dag_gold
+```
+
+Orden: `dim_ct`, los hechos de interrupciones de Calser y de cortes del SCADA, las etiquetas, los agregados horarios de medidas, las features, el dataset y los controles finales (`job_gold_dq_checks.py`).
+
+Un job suelto desde el contenedor de Spark, que lee la configuración de `/app/config` (hay que recrear `spark-master` una vez con `docker compose up -d` para que monte esa carpeta):
+
+```bash
+docker compose exec spark-master \
+  spark-submit --py-files /app/jobs/03_gold/gold_common.py \
+  /app/jobs/03_gold/job_gold_features_ct_hora.py --desde 2026-01 --hasta 2026-03
+```
+
+Resultado desde Trino/DBeaver:
+
+```sql
+SELECT dataset_version, creado_ts, n_features, filas_json
+FROM lakehouse.l3_gold.dataset_versions
+ORDER BY creado_ts DESC;
+
+SELECT split, count(*) AS filas, sum(y_1_3h) AS positivos
+FROM lakehouse.l3_gold.dataset_train
+GROUP BY split;
+```
+
+Las filas con `split = 'purga'` son las 6 horas antes de cada frontera, cuya etiqueta mira al período siguiente: no se usan ni para entrenar ni para evaluar.
+
+Calidad de cada ejecución en `lakehouse.l3_gold.dq_metrics`, con el mismo esquema que la de Silver.
+
+---
+
+## 13. Desarrollo, pruebas e integración continua
 
 Para trabajar sobre el código sin levantar el stack hace falta Python 3.10 o superior y Java 17 o superior (Spark local):
 
 ```bash
 pip install -r requirements.txt   # pyspark, delta-spark, pytest, ruff, pre-commit
 make lint                         # ruff check .
-make test                         # python -m pytest tests/02_silver -q
+make test                         # python -m pytest tests -q (Silver y Gold)
 make config                       # valida compose.yaml con el .env actual
 ```
 
-Las mismas tres comprobaciones se ejecutan en GitHub Actions en cada pull request (`.github/workflows/ci.yml`). El test de Silver monta tablas Bronze pequeñas con los problemas reales de los datos sembrados a propósito, ejecuta todos los jobs en un Spark local y comprueba el resultado; la primera ejecución descarga los jars de Delta de Maven Central.
+Las mismas tres comprobaciones se ejecutan en GitHub Actions en cada pull request (`.github/workflows/ci.yml`). El test de Silver monta tablas Bronze pequeñas con los problemas reales de los datos sembrados a propósito, ejecuta todos los jobs en un Spark local y comprueba el resultado. El de Gold hace lo mismo con una semana de datos de dos distribuidoras, comprueba las etiquetas hora a hora y termina con una prueba de leakage: borra de Silver todo lo que pasó a partir de una hora, recalcula y exige que las features anteriores no cambien. La primera ejecución descarga los jars de Delta de Maven Central.
 
 Las versiones del runtime están fijadas en `compose.yaml`, en los `Dockerfile` de `infra/` y en `infra/spark/requirements.txt`; `requirements.txt` de la raíz reproduce en local las versiones de Spark y Delta de las imágenes.
 
 ---
 
-## 13. Cómo contribuir
+## 14. Cómo contribuir
 
 Trabajamos con GitHub Flow: una rama por cambio a partir de `main`, commits pequeños con mensaje en imperativo, pull request con la plantilla del repositorio, revisión del otro miembro (la pide `CODEOWNERS`), CI en verde, prueba contra el stack real y merge con borrado de la rama. Las reglas completas, incluido cómo versionamos datos y modelos, están en [CONTRIBUTING.md](CONTRIBUTING.md).
