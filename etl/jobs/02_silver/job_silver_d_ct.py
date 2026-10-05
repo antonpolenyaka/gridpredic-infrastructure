@@ -16,6 +16,12 @@ Two tables:
 Nothing is imputed here. CT_POTENCIA_INSTAL is 0 in 37 % (EOSA) and 48 %
 (Pitarch) of the CTs: the rows are flagged with potencia_cero and Gold
 decides how to impute, as Calser does with the administrative power.
+
+d_ct_scada also carries the electrical data of the transformer in TedisNet
+(SystemElectricElectricalTransformers): IsPowerCut, the rated power and the
+rated voltages. Only a transformer with IsPowerCut = 1 and a node in
+SystemNodes can ever be reported as cut, so observable = both. The rated
+power is a second source for the CTs whose power is 0 in Calser.
 """
 
 from pyspark.sql import DataFrame, Window
@@ -108,7 +114,19 @@ def transform_ct(df_in: DataFrame, municipios: DataFrame):
     return out, union_rejects([rejected, duplicated])
 
 
-def build_scada_map(cts: DataFrame, elementos: DataFrame, nodes):
+def transformer_data(transformers) -> DataFrame:
+    return transformers.select(
+        F.col("ElementId").cast("bigint").alias("elemento_id"),
+        F.col("IsPowerCut").cast("boolean").alias("is_power_cut"),
+        F.col("RatedPower").cast("double").alias("potencia_nominal_kva"),
+        F.col("RatedPrimaryVoltage").cast("double").alias("tension_primaria_kv"),
+        F.col("RatedSecondaryVoltage").cast("double").alias("tension_secundaria_kv"),
+        F.col("Ucc").cast("double").alias("ucc_pct"),
+        F.col("IsGenerator").cast("boolean").alias("es_generador"),
+    ).dropDuplicates(["elemento_id"])
+
+
+def build_scada_map(cts: DataFrame, elementos: DataFrame, nodes, transformers=None):
     """
     One row per (distribuidora, CT) seen in Calser with its TedisNet trafo.
     If several type 145 elements share the ShortName under the same
@@ -153,6 +171,19 @@ def build_scada_map(cts: DataFrame, elementos: DataFrame, nodes):
         .drop("_rn")
     )
 
+    if transformers is not None:
+        trafos = trafos.join(transformer_data(transformers), "elemento_id", "left")
+    else:
+        trafos = (
+            trafos
+            .withColumn("is_power_cut", F.lit(None).cast("boolean"))
+            .withColumn("potencia_nominal_kva", F.lit(None).cast("double"))
+            .withColumn("tension_primaria_kv", F.lit(None).cast("double"))
+            .withColumn("tension_secundaria_kv", F.lit(None).cast("double"))
+            .withColumn("ucc_pct", F.lit(None).cast("double"))
+            .withColumn("es_generador", F.lit(None).cast("boolean"))
+        )
+
     ct_keys = cts.select("distribuidora_id", "source_database", F.col("id").alias("ct_id")).distinct()
 
     return (
@@ -160,6 +191,12 @@ def build_scada_map(cts: DataFrame, elementos: DataFrame, nodes):
         .join(trafos, ["distribuidora_id", "ct_id"], "left")
         .withColumn("tiene_telemetria", F.col("elemento_id").isNotNull())
         .withColumn("mapeo_ambiguo", F.coalesce(F.col("n_candidatos"), F.lit(0)) > F.lit(1))
+        # Only a transformer in the graph and with IsPowerCut can be cut.
+        .withColumn(
+            "observable",
+            F.coalesce(F.col("tiene_nodo"), F.lit(False))
+            & F.coalesce(F.col("is_power_cut"), F.lit(False)),
+        )
         .withColumn("audit_loaded_at", F.current_timestamp())
     )
 
@@ -187,10 +224,19 @@ def main():
             "stays null"
         )
 
+    transformers_table = tedisnet_table(spark, "SystemElectricElectricalTransformers")
+
+    if transformers_table is None:
+        logger.warning(
+            "SystemElectricElectricalTransformers is not in Bronze yet "
+            "(streaming job), the electrical data of the trafo stays null"
+        )
+
     ct_map = build_scada_map(
         cts,
         elementos,
         spark.table(nodes_table) if nodes_table else None,
+        spark.table(transformers_table) if transformers_table else None,
     ).localCheckpoint(eager=True)
 
     out = (
@@ -225,6 +271,7 @@ def main():
             F.sum(F.col("tiene_telemetria").cast("long")).alias("con_trafo"),
             F.sum(F.col("mapeo_ambiguo").cast("long")).alias("ambiguos"),
             F.sum(F.col("tiene_nodo").cast("long")).alias("con_nodo"),
+            F.sum(F.col("observable").cast("long")).alias("observables"),
         )
         .collect()
     ):
@@ -237,6 +284,9 @@ def main():
                umbral_pct=1.0, ambito=row["source_database"])
         dq.add("d_ct_scada", "trafo_con_nodo", row["con_nodo"] or 0, row["con_trafo"],
                ambito=row["source_database"])
+        dq.add("d_ct_scada", "trafo_observable", row["observables"] or 0, row["con_trafo"],
+               ambito=row["source_database"],
+               detalle="IsPowerCut = 1 and node in SystemNodes")
 
     dq.flush()
 

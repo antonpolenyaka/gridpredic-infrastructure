@@ -5,9 +5,15 @@ warning, an alarm or a trip.
 An event is only a pointer to a tag value change plus the acknowledgement of
 the operator. Without its tag value change it means nothing, so an event
 whose change did not survive f_tag_value_change is rejected. The tag, the
-element, the distribuidora and the value are copied from the change, and the
+element, the distribuidora, the value and both times of the change (field ts
+and server ts_actualizacion) are copied from the change, and the
 level of the event is resolved from LibTagClass_EnumValues_EventLevels
 (class of the tag + enum value), the same way the SCADA does.
+
+The level id is an installation catalog (EOSA has 1 Normal, 2 Aviso,
+3 Alarma and 100 - 103 with colours), so nivel_severidad takes the Level
+column of LibEventLevels (1 normal, 2 aviso, 3 alarma), which is what Gold
+counts.
 """
 
 from pyspark.sql import DataFrame
@@ -41,7 +47,7 @@ COLUMNS = {
 }
 
 
-def transform(events_in: DataFrame, changes: DataFrame, tags: DataFrame, levels):
+def transform(events_in: DataFrame, changes: DataFrame, tags: DataFrame, levels, level_catalog=None):
     df = events_in.select(
         F.col("Id").alias("id"),
         F.col("TagValueChangeId").alias("tag_value_change_id"),
@@ -58,6 +64,7 @@ def transform(events_in: DataFrame, changes: DataFrame, tags: DataFrame, levels)
             "elemento_id",
             "distribuidora_id",
             "ts",
+            "ts_actualizacion",
             "valor_bool",
             "valor_int",
             "valor_enum_id",
@@ -98,6 +105,18 @@ def transform(events_in: DataFrame, changes: DataFrame, tags: DataFrame, levels)
     else:
         kept = kept.withColumn("nivel_evento_id", F.lit(None).cast("int"))
 
+    if level_catalog is not None:
+        kept = kept.join(
+            F.broadcast(level_catalog.select(
+                F.col("Id").cast("int").alias("nivel_evento_id"),
+                F.col("Level").cast("int").alias("nivel_severidad"),
+            )),
+            "nivel_evento_id",
+            "left",
+        )
+    else:
+        kept = kept.withColumn("nivel_severidad", F.col("nivel_evento_id"))
+
     out = (
         kept
         .withColumn("reconocido", F.col("ack_ts").isNotNull())
@@ -120,12 +139,14 @@ def main():
     tags = spark.table(require_table(spark, silver_table("d_tag")))
 
     levels_table = tedisnet_table(spark, "LibTagClass_EnumValues_EventLevels")
+    catalog_table = tedisnet_table(spark, "LibEventLevels")
 
     out, rejected = transform(
         events_in,
         changes,
         tags,
         spark.table(levels_table) if levels_table else None,
+        spark.table(catalog_table) if catalog_table else None,
     )
     out = out.localCheckpoint(eager=True)
 
