@@ -522,7 +522,7 @@ FROM lakehouse.l3_gold.dataset_train
 GROUP BY split;
 ```
 
-Las filas con `split = 'purga'` son las 6 horas antes de cada frontera, cuya etiqueta mira al período siguiente: no se usan ni para entrenar ni para evaluar.
+Las filas con `split = 'purga'` son las 6 horas antes de cada frontera, cuya etiqueta mira al período siguiente: no se usan ni para entrenar ni para evaluar. Tampoco entran en el dataset las horas en las que el CT ya estaba en corte, las que no tienen muestras del SCADA ni aquellas en las que el CT todavía no existía en Calser o ya había desaparecido (`ct_vigente = 0` en `labels_ct_hora`, sacado de los períodos que listan cada CT).
 
 Calidad de cada ejecución en `lakehouse.l3_gold.dq_metrics`, con el mismo esquema que la de Silver.
 
