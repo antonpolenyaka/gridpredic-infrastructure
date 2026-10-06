@@ -93,7 +93,7 @@ UPSTREAM_STATS = ["media", "max", "std", "n_muestras"]
 # n_posiciones_aguas_arriba counts the bays of the whole history, future cuts
 # included: aa_n_posiciones is its version known at hora.
 FORBIDDEN = {"fecha_alta", "ts", "conocido_ts", "conocido_fin_ts", "inicio_ts", "fin_ts",
-             "inicio_conocido_ts", "fin_conocido_ts", "primer_conocido_ts", "en_corte",
+             "inicio_conocido_ts", "fin_conocido_ts", "primer_conocido_ts", "en_corte", "ct_vigente",
              "n_posiciones_aguas_arriba"}
 
 # Delay of arrival accepted by default for a change to count as a signal.

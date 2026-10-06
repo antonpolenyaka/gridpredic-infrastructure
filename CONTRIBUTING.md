@@ -34,7 +34,7 @@ git checkout -b feat/12-gold-labels
 cambia la imagen de MinIO a pgsty/minio porque Quay ahora pide autenticacion
 ```
 
-- Probar antes de hacer commit: `make lint` y `make test` (o `ruff check .` y `python -m pytest tests/02_silver -q`).
+- Probar antes de hacer commit: `make lint` y `make test` (o `ruff check .` y `python -m pytest tests -q`).
 - `git push` al menos una vez al día, aunque el trabajo no esté acabado. La rama remota es la copia de seguridad y permite que el otro vea por dónde va el cambio.
 
 ## 4. Pull request
@@ -43,7 +43,7 @@ Cuando el cambio está listo (o antes, como borrador, si se quiere opinión sobr
 
 ## 5. Revisión
 
-El otro miembro revisa el código, prueba lo que pueda y deja comentarios en el propio PR. Las respuestas van como commits nuevos en la misma rama; el PR se actualiza solo. Mientras tanto, la integración continua (`.github/workflows/ci.yml`) ejecuta el linter, valida `compose.yaml` y corre el test de Silver en un Spark local. Un PR con la CI en rojo no se mezcla.
+El otro miembro revisa el código, prueba lo que pueda y deja comentarios en el propio PR. Las respuestas van como commits nuevos en la misma rama; el PR se actualiza solo. Mientras tanto, la integración continua (`.github/workflows/ci.yml`) ejecuta el linter, valida `compose.yaml` y corre los tests de Silver y de Gold en un Spark local. Un PR con la CI en rojo no se mezcla.
 
 ## 6. Desplegar antes de mezclar
 
@@ -80,5 +80,5 @@ Git versiona el código, la configuración y el fichero de referencia de municip
 pip install -r requirements.txt   # pyspark, delta-spark, pytest, ruff, pre-commit
 pre-commit install                # ruff antes de cada commit (opcional)
 make lint                         # ruff check .
-make test                         # python -m pytest tests/02_silver -q
+make test                         # python -m pytest tests -q (Silver y Gold)
 ```
