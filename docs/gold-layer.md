@@ -30,7 +30,7 @@ Silver deja una sola versión válida de cada registro y marca lo dudoso. Gold e
 
 | Tabla | Grano | Contenido | Job |
 | --- | --- | --- | --- |
-| `dim_ct` | distribuidora, CT | El CT con los atributos de su último período en Calser, su municipio y coordenadas, su trafo en TedisNet, la potencia imputada y si entra en el estudio | `job_gold_dim_ct.py` |
+| `dim_ct` | distribuidora, CT | El CT con los atributos de su último período en Calser, su municipio y coordenadas, su trafo en TedisNet, la potencia imputada, si entra en el estudio y desde y hasta cuándo existe (`vigente_desde`, `vigente_hasta_excl`) | `job_gold_dim_ct.py` |
 | `map_tag_ct` | tag | El CT (`anchor_id`) y el grupo de red (`grupo_red_id`) al que pertenece cada señal, y su familia de medida o de evento | `job_gold_dim_ct.py` |
 | `map_aguas_arriba` | trafo, elemento | Los interruptores que alguna vez han cortado cada trafo, la posición (celda) en la que están y desde cuándo se sabe (`primer_conocido_ts`) | `job_gold_dim_ct.py` |
 | `fact_interrupciones_mt` | evento | Las interrupciones de Calser a nivel de CT en tres variantes, con los solapes fusionados | `job_gold_fact_interrupciones_mt.py` |
@@ -57,6 +57,8 @@ Ese conocimiento sale de los cortes y por eso tiene fecha. Antes del primer cort
 **Potencia del CT.** En Calser `CT_POTENCIA_INSTAL` es 0 en el 37 % de los CT de EOSA y en el 48 % de los de Pitarch. Gold usa la potencia instalada si es mayor que 0, si no la administrativa (como hace Calser) y, si tampoco hay, la potencia nominal del trafo en TedisNet (`RatedPower`). `potencia_fuente` dice de dónde sale y `potencia_imputada` lo marca.
 
 **Qué CT entran en el estudio.** Los que tienen trafo en TedisNet y además son observables: `IsPowerCut = 1` y nodo en `SystemNodes`. Un trafo que no cumple las dos cosas nunca puede aparecer como cortado en el SCADA, así que sus horas sin corte no significarían nada. El parámetro `ct.solo_observables` permite relajarlo.
+
+**Desde y hasta cuándo existe cada CT.** `dim_ct` toma los atributos del último período, pero la rejilla de etiquetas y features cubre todas las horas desde 2021, y un CT dado de alta en 2024 tendría tres años de filas antes de existir, todas con etiqueta 0 y sin ninguna señal. `CT_FECHA_PES` y `CT_FECHA_BAJA` están vacías en todas las bases reales, así que la única evidencia es la copia de la topología que guarda cada período de Calser: el CT existe desde el inicio del primer período que lo lista (`vigente_desde`) y hasta el inicio del primer período que ya no lo lista (`vigente_hasta_excl`, nulo mientras siga en el período abierto). Con eso `labels_ct_hora` marca `ct_vigente` y el dataset deja fuera las horas en las que el CT no existía. La rejilla no se recorta, para que las ventanas de las features sigan siendo consecutivas. Un CT cuyos períodos no tienen fecha de inicio se considera vigente siempre y `job_gold_dim_ct.py` lo avisa (`cts_sin_fecha_periodo`).
 
 ## 4. Etiquetas
 
@@ -97,6 +99,7 @@ De aquí salen dos cosas: la etiqueta alternativa `y_1_3h_scada` (episodios de m
 | `y_1_3h_amplia` | Con la variante amplia |
 | `y_1_3h_scada` | Con los cortes del SCADA |
 | `en_corte`, `en_corte_calser`, `en_corte_scada` | El CT ya está sin suministro en `hora`. Esas filas no se usan para entrenar |
+| `ct_vigente` | El CT existía en Calser en `hora` (`vigente_desde` y `vigente_hasta_excl` de `dim_ct`). Las horas con 0 tampoco se usan para entrenar |
 | `horas_hasta_proximo_evento` | Horas hasta el siguiente inicio de la variante principal, nulo si no hay ninguno en un año |
 | `era` | 1 hasta el 06.02.2018 (importación de ficheros), 2 hasta octubre de 2025, 3 desde noviembre de 2025 (Calser importa del SCADA) |
 
@@ -138,7 +141,7 @@ Unas 250 columnas en la configuración actual, en estos bloques:
 
 ## 6. Dataset de entrenamiento
 
-`job_gold_dataset_train.py` une etiquetas y features, quita las filas con `en_corte = 1` y con `scada_activo = 0`, y añade:
+`job_gold_dataset_train.py` une etiquetas y features, quita las filas con `en_corte = 1`, con `scada_activo = 0` y con `ct_vigente = 0` (cada filtro tiene su parámetro `dataset.excluir_*`), y añade:
 
 - `split`: train antes de `dataset.train_hasta` (01.01.2025), valid antes de `dataset.valid_hasta` (01.01.2026) y test después. Es temporal y los CT no se separan entre conjuntos: el modelo se evalúa sobre los mismos CT en el futuro, que es el uso real. Las últimas `dataset.purga_horas` horas antes de cada frontera (6, el horizonte más largo de las etiquetas) van a `split = 'purga'`: su etiqueta mira al período siguiente, y la misma interrupción sería un positivo a los dos lados. Se guardan para poder contarlas, pero no se entrena ni se evalúa con ellas.
 - `en_muestra_train` y `peso_muestra`: todos los positivos de `y_1_3h` en train y una muestra determinista de los negativos (`dataset.tasa_negativos_train`, por hash de la clave y la semilla), con peso `1 / tasa` para corregir las probabilidades. Valid y test no se submuestrean. Usar la muestra es una decisión del entrenamiento; la columna solo la hace reproducible.
@@ -154,13 +157,14 @@ Cada job escribe sus métricas en `l3_gold.dq_metrics`, con el mismo esquema que
 2. **Llegada de los cambios del SCADA**: mediana del retraso entre la hora de campo y la del servidor por distribuidora (si sale cerca de 3.600 o 7.200 s, un equipo o el servidor están en otra zona horaria), cambios que llegan más de una hora tarde y cambios que se quedan fuera por pasar de `tiempo.retraso_max_llegada_h`.
 3. **Censura de la etiqueta al final de la ventana**: Calser carga las interrupciones días o semanas después de que pasen, así que en los últimos días antes del backup faltan positivos. Con el p95 del retraso de carga de la era 3 calcula hasta qué fecha debería llegar `ventana.hasta` y marca `REVISAR` si llega más lejos.
 4. **Cobertura**: CT del estudio con medidas y con posiciones aguas arriba, y horas con el SCADA activo.
-5. **Positivos por split**: cero o más del 1 % significa que la etiqueta está rota.
-6. **Leakage por construcción**: ninguna columna de una lista prohibida (`fecha_alta`, `inicio_ts`, `en_corte`, `n_posiciones_aguas_arriba`, las etiquetas...) puede estar en `feature_metadata`.
-7. **Features siempre nulas en train.**
+5. **Vigencia de los CT**: horas de la rejilla en las que el CT no estaba en Calser (`ct_vigente = 0`) y, sobre todo, positivos de la etiqueta principal en esas horas. Una interrupción de un CT en una hora en la que ese CT no existía quiere decir que la vigencia sacada de los períodos está mal para él, y marca `REVISAR`.
+6. **Positivos por split**: cero o más del 1 % significa que la etiqueta está rota.
+7. **Leakage por construcción**: ninguna columna de una lista prohibida (`fecha_alta`, `inicio_ts`, `en_corte`, `ct_vigente`, `n_posiciones_aguas_arriba`, las etiquetas...) puede estar en `feature_metadata`.
+8. **Features siempre nulas en train.**
 
 Con `"fail_on_review": true` en `config_gold.json` el DAG falla si queda alguna métrica en `REVISAR`.
 
-La prueba local está en `tests/03_gold/test_gold_smoke.py`. Monta un Bronze pequeño con dos distribuidoras, un CT con dos trafos, una celda de cabecera que los corta, series de medida, señales precursoras e interrupciones de todos los tipos, ejecuta Silver y Gold en un Spark local y comprueba cada decisión: qué interrupciones son target, en qué horas exactas vale 1 cada etiqueta, qué datos ve cada feature, el split y la versión. El último test es el de leakage: borra de Silver todo lo que se conocía a partir de una hora (por hora de llegada), reconstruye el mapa aguas arriba y las features y comprueba que las filas hasta esa hora no cambian ni en un decimal. El fixture incluye un defecto a tierra retenido por la RTU, un estado que llega con meses de retraso, un Off que llega 50 minutos tarde y un CT cuya cabecera solo se conoce por un corte del período de valid.
+La prueba local está en `tests/03_gold/test_gold_smoke.py`. Monta un Bronze pequeño con dos distribuidoras, un CT con dos trafos, una celda de cabecera que los corta, series de medida, señales precursoras e interrupciones de todos los tipos, ejecuta Silver y Gold en un Spark local y comprueba cada decisión: qué interrupciones son target, en qué horas exactas vale 1 cada etiqueta, qué datos ve cada feature, el split y la versión. El último test es el de leakage: borra de Silver todo lo que se conocía a partir de una hora (por hora de llegada), reconstruye el mapa aguas arriba y las features y comprueba que las filas hasta esa hora no cambian ni en un decimal. El fixture incluye un defecto a tierra retenido por la RTU, un estado que llega con meses de retraso, un Off que llega 50 minutos tarde, un CT cuya cabecera solo se conoce por un corte del período de valid, un CT que aparece en Calser a mitad del histórico y otro que desaparece del período abierto a mitad de la ventana.
 
 ## 8. Ejecución
 
@@ -188,7 +192,7 @@ Los jobs pesados son `agg_medida_hora` (lee la serie de Silver una vez, mes a me
 ## 9. Lo que queda fuera de esta versión
 
 - **Validación con los datos reales**: la alineación horaria, el retraso de llegada de los cambios, el retraso de carga de Calser al final de la ventana, la cobertura de `map_tag_ct` (cuántos CT tienen medidas propias) y la concordancia entre las etiquetas de Calser y del SCADA son resultados que todavía no tenemos.
-- **Atributos del CT en el tiempo.** `dim_ct` toma el último período de Calser y lo aplica a todas las horas desde 2021. Un CT dado de alta en 2024 tendría filas antes de existir; las que no tienen datos del SCADA ya se quedan fuera por `scada_activo`, pero falta usar las fechas de alta y baja.
+- **Atributos del CT en el tiempo.** La vigencia ya sale de los períodos que listan cada CT (apartado 3), pero el resto de atributos (`potencia_kva`, `num_abonados`, `n_salidas`, el municipio) siguen siendo los del último período para todas las horas. Un CT que cambió de trafo o de municipio a mitad del histórico se describe como es hoy. Y si un CT desaparece de unos períodos y vuelve en otros, la vigencia va del primero al último sin hueco.
 - **Cambio de hora de octubre.** En la hora que se repite, ordenar por hora local puede poner un On de las 02:10 (CET) delante de un Off de las 02:50 (CEST) y emparejar mal un episodio. Pasa una hora al año y solo si el Off y el On caen en ella: el Off se empareja con un On posterior y el episodio sale mucho más largo de lo real; si pasa de `scada.emparejamiento_max_h` horas queda marcado como `emparejamiento_dudoso`.
 - **El camino eléctrico real.** `map_aguas_arriba` aprende la topología de los cortes. Recorrer el grafo de `SystemNodes` y `SystemBranches` daría también los CT que nunca se han cortado y las cabeceras alternativas.
 - **Meteorología**, cuando esté la ingesta. `dim_ct` ya trae las coordenadas del municipio para cruzarla.

@@ -574,27 +574,37 @@ def write_rejected(
     run_id: str,
     replace_where: str = None,
     partition_by=None,
-) -> None:
+):
     """
     Writes the rejected rows of an entity to <entity>_rejected. The table is
     rebuilt with the entity, so it always describes the current Silver.
     An empty result still writes the table: an empty rejected table is a
     useful answer ("nothing was discarded").
+
+    Returns the written table as a dataframe (None if there was nothing to
+    write), so the metrics of the job count the rejections from the Delta
+    table instead of running the whole lineage from Bronze a second time.
+    The rejected rows are the branch of the plan that the checkpoint of the
+    kept rows does not cover.
     """
     if df is None:
-        return
+        return None
 
     out = (
         df.withColumn("_run_id", F.lit(run_id))
         .withColumn("_rejected_at", F.current_timestamp())
     )
 
+    table = silver_table(f"{entity}_rejected")
+
     write_table(
         out,
-        silver_table(f"{entity}_rejected"),
+        table,
         partition_by=partition_by,
         replace_where=replace_where,
     )
+
+    return df.sparkSession.table(table)
 
 
 # ---------------------------------------------------------------------------

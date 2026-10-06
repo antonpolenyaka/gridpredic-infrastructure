@@ -299,7 +299,7 @@ def main():
     out = out.localCheckpoint(eager=True)
 
     write_table(out, TARGET_TABLE)
-    write_rejected(rejected, ENTITY, args.run_id)
+    rejected = write_rejected(rejected, ENTITY, args.run_id)
 
     dq.add_entity_counts(ENTITY, total_in, out.count(), rejected, out, FLAGS)
 

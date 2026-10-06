@@ -2,6 +2,26 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.6.0] - 06.10.2026
+
+Revisión de las tres capas después de la primera construcción completa de Gold: la vigencia de cada CT en el tiempo, que estaba apuntada como pendiente, y varias cosas pequeñas de Bronze y Silver.
+
+### Añadido
+
+- Gold: `dim_ct` dice desde y hasta cuándo existe cada CT en Calser (`vigente_desde`, `vigente_hasta_excl`, `n_periodos`), sacado de los períodos que lo listan porque `CT_FECHA_PES` y `CT_FECHA_BAJA` están vacías en todas las bases reales. `labels_ct_hora` lo lleva a la rejilla como `ct_vigente` y `dataset_train` deja fuera las horas en las que el CT no existía (`dataset.excluir_ct_no_vigente`, activado por defecto). Hasta ahora un CT dado de alta en 2024 tenía tres años de filas antes de existir, todas negativas y sin señal.
+- Gold: `job_gold_dq_checks.py` comprueba la vigencia: horas de la rejilla sin CT vigente y positivos de `y_1_3h` en esas horas (cualquiera marca `REVISAR`). `job_gold_dim_ct.py` informa de los CT dados de baja, de los dados de alta dentro de la ventana y de los que no tienen ningún período con fecha. `ct_vigente` entra en la lista de columnas que nunca pueden ser feature.
+- `tests/03_gold`: un CT que aparece en Calser a mitad del histórico y otro que desaparece del período abierto a mitad de la ventana, con las comprobaciones de la dimensión, de las etiquetas, del dataset y de las métricas.
+
+### Corregido
+
+- Bronze: en una carga incremental con `partition_column`, los límites de las particiones JDBC se calculaban sobre la tabla entera, de modo que todas las filas nuevas caían en la última partición y el resto de conexiones se quedaban sin trabajo. Ahora se calculan sobre el rango que se va a leer.
+- Los tres DAG (`ingest_sqlserver_batch_bronze`, `dag_silver`, `dag_gold`): la configuración de Spark de una tabla o de un job se fusiona con la de por defecto en vez de sustituirla, así que basta con indicar lo que cambia.
+
+### Cambiado
+
+- Silver: las métricas de rechazos de cada job se cuentan leyendo la tabla `<entidad>_rejected` recién escrita en vez de volver a ejecutar todo el linaje desde Bronze, que era la parte del plan que el checkpoint de las filas válidas no cubría. Mismas métricas, una pasada menos sobre las tablas grandes (`f_tag_value_change`, `f_corte_*`).
+- Plantilla de PR con el test de Gold y `CONTRIBUTING.md` con `make test` tal como es ahora (Silver y Gold).
+
 ## [0.5.0] - 05.10.2026
 
 Capa Gold completa hasta el dataset de entrenamiento versionado, y las correcciones de Bronze y Silver que salieron al revisarlas antes de construirla.

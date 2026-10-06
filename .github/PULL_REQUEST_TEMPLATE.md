@@ -10,6 +10,7 @@
 
 - [ ] `ruff check .` sin errores
 - [ ] `python -m pytest tests/02_silver -q` en verde
+- [ ] `python -m pytest tests/03_gold -q` en verde (si cambia Silver o Gold)
 - [ ] `docker compose config` sin avisos (si cambia `compose.yaml` o `.env.example`)
 - [ ] Ejecutado contra el stack real: DAG / job / script y resultado observado
 

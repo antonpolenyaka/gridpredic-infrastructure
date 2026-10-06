@@ -65,5 +65,7 @@ with DAG(
                     conn_id="spark_default",
                     application=APPLICATION,
                     application_args=application_args,
-                    conf=table.get("conf", DEFAULT_CONF),
+                    # A table only states the settings it changes; the rest
+                    # keep the defaults.
+                    conf={**DEFAULT_CONF, **table.get("conf", {})},
                 )

@@ -22,6 +22,11 @@ hora is the prediction instant. A label looks only forward from it:
 - horas_hasta_proximo_evento: hours until the next start of the principal
   variant, null if there is none within a year (regression or survival
   variants).
+- ct_vigente: the CT existed in Calser at hora (vigente_desde and
+  vigente_hasta_excl of dim_ct, read from the periods that list it). The
+  grid keeps those hours so the windows of the features stay complete, but
+  they are hours of a CT that was not there yet or had been removed, not
+  quiet hours: the dataset leaves them out.
 
 An event becomes the set of exact hours it labels: for a horizon (a, b] the
 event at time e labels every hour h with e - b <= h < e - a. Events are few,
@@ -200,6 +205,12 @@ def build_batch(spark, cts: DataFrame, positive_rows: DataFrame, starts: DataFra
     # every hour, whatever the batch size.
     within_year = F.col("horas_hasta_proximo_evento") <= F.lit(LOOKAHEAD_DAYS * 24.0)
 
+    # A CT without a dated period on either side is taken as always valid.
+    vigente = (
+        (F.col("vigente_desde").isNull() | (F.col("hora") >= F.col("vigente_desde").cast("timestamp")))
+        & (F.col("vigente_hasta_excl").isNull() | (F.col("hora") < F.col("vigente_hasta_excl").cast("timestamp")))
+    )
+
     return (
         out
         .withColumn("horas_hasta_proximo_evento", F.when(within_year, F.col("horas_hasta_proximo_evento")))
@@ -207,6 +218,8 @@ def build_batch(spark, cts: DataFrame, positive_rows: DataFrame, starts: DataFra
             "en_corte",
             ((F.col("en_corte_calser") + F.col("en_corte_scada")) > 0).cast("int"),
         )
+        .withColumn("ct_vigente", vigente.cast("int"))
+        .drop("vigente_desde", "vigente_hasta_excl")
         .withColumn("era", era_expr("hora", params))
         .withColumn("fecha_mes", F.trunc("hora", "month").cast("date"))
         .withColumn("audit_loaded_at", F.current_timestamp())
@@ -222,10 +235,14 @@ def main():
     if args.rebuild:
         drop_table(spark, TARGET_TABLE)
 
+    dim = spark.table(require_table(spark, gold_table("dim_ct")))
+
+    if "vigente_desde" not in dim.columns or "vigente_hasta_excl" not in dim.columns:
+        raise ValueError("dim_ct has no vigente_desde / vigente_hasta_excl: run job_gold_dim_ct again")
+
     cts = (
-        spark.table(require_table(spark, gold_table("dim_ct")))
-        .where(F.col("en_estudio"))
-        .select("distribuidora_id", "ct_id")
+        dim.where(F.col("en_estudio"))
+        .select("distribuidora_id", "ct_id", "vigente_desde", "vigente_hasta_excl")
         .localCheckpoint(eager=True)
     )
 
@@ -259,6 +276,7 @@ def main():
         sums = written.agg(
             F.count(F.lit(1)).alias("filas"),
             *[F.sum(name).alias(name) for name in label_names(params) + ["en_corte"]],
+            F.sum(F.lit(1) - F.col("ct_vigente")).alias("no_vigentes"),
         ).first()
 
         ambito = f"{lo:%Y-%m}..{hi:%Y-%m-%d}"
@@ -266,6 +284,9 @@ def main():
 
         for name in label_names(params) + ["en_corte"]:
             dq.add("labels_ct_hora", f"positivos:{name}", sums[name], sums["filas"], ambito=ambito)
+
+        dq.add("labels_ct_hora", "filas_ct_no_vigente", sums["no_vigentes"], sums["filas"], ambito=ambito,
+               detalle="hours before the CT was listed in Calser or after it was removed")
 
         dq.flush()
 
