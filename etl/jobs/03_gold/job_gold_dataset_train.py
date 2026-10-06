@@ -4,9 +4,11 @@ as a version.
 
 - dataset_train: one row per (distribuidora_id, ct_id, hora) of the study,
   with every label and every feature. Rows where the CT is already without
-  supply (en_corte) or where the SCADA history has no samples (scada_activo
-  = 0) are left out, as the configuration says (dataset.excluir_*): in both
-  cases the label carries no information about the features.
+  supply (en_corte), where the SCADA history has no samples (scada_activo
+  = 0) or where the CT did not exist yet in Calser or had been removed
+  (ct_vigente = 0) are left out, as the configuration says
+  (dataset.excluir_*): in every case the label carries no information about
+  the features.
 - split: train before dataset.train_hasta, valid before
   dataset.valid_hasta, test after. Never random: the model is evaluated on
   the same CTs in the future, which is the real use. The CTs are not split.
@@ -136,7 +138,7 @@ def build_batch(labels, features, feature_names: list, params: dict, lo, hi, ver
     in_batch = (F.col("hora") >= ts_lit(lo)) & (F.col("hora") < ts_lit(hi))
 
     label_columns = [c for c in labels.columns if c.startswith("y_")] + [
-        "en_corte", "en_corte_calser", "en_corte_scada", "horas_hasta_proximo_evento", "era",
+        "en_corte", "en_corte_calser", "en_corte_scada", "ct_vigente", "horas_hasta_proximo_evento", "era",
     ]
 
     df = labels.where(in_batch).select(*KEYS, *label_columns).join(
@@ -150,6 +152,9 @@ def build_batch(labels, features, feature_names: list, params: dict, lo, hi, ver
 
     if ds.get("excluir_scada_inactivo", True):
         df = df.where(F.col("scada_activo") == 1)
+
+    if ds.get("excluir_ct_no_vigente", True):
+        df = df.where(F.col("ct_vigente") == 1)
 
     draw = (
         F.abs(F.xxhash64(F.col("distribuidora_id"), F.col("ct_id"), F.col("hora"), F.lit(int(ds["semilla"]))))
@@ -184,6 +189,9 @@ def main():
     labels = spark.table(require_table(spark, gold_table("labels_ct_hora")))
     features = spark.table(require_table(spark, gold_table("features_ct_hora")))
     metadata = spark.table(require_table(spark, METADATA_TABLE))
+
+    if "ct_vigente" not in labels.columns:
+        raise ValueError("labels_ct_hora has no ct_vigente: run job_gold_labels_ct_hora again")
 
     feature_names = [row["feature"] for row in metadata.select("feature").collect()]
     missing = [name for name in feature_names if name not in features.columns]

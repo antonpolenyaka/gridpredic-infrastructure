@@ -130,7 +130,7 @@ def main():
     out = out.withColumn("sin_coordenadas", F.col("latitud").isNull()).localCheckpoint(eager=True)
 
     write_table(out, TARGET_TABLE)
-    write_rejected(rejected, ENTITY, args.run_id)
+    rejected = write_rejected(rejected, ENTITY, args.run_id)
 
     dq.add_entity_counts(
         ENTITY, total_in, out.count(), rejected, out, ["nombre_invalido", "sin_coordenadas"],

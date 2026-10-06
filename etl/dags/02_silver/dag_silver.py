@@ -46,7 +46,9 @@ with DAG(
             application=f"{JOBS_DIR}/job_silver_{job['name']}.py",
             application_args=application_args,
             py_files=PY_FILES,
-            conf=job.get("conf", config["default_conf"]),
+            # A job only states the settings it changes; the rest keep the
+            # defaults of the configuration.
+            conf={**config["default_conf"], **job.get("conf", {})},
         )
 
     for job in config["jobs"]:
