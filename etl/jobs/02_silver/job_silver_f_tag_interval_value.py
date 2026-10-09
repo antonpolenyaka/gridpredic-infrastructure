@@ -30,6 +30,11 @@ never works on the whole table at once:
 - The output is partitioned by month and every run overwrites only the
   months it processed (replaceWhere), so a month can be reprocessed without
   touching the rest and a repeated run gives the same result.
+- A month counts as done when its last metric (tags_con_datos) is in
+  dq_metrics. A new run skips the months already done, so when the job dies
+  half way (on a laptop an executor can be lost after an hour of I/O) the
+  retry continues from the first month that was not finished instead of
+  starting again from 2021. --rehacer forces every month of the range.
 - Rejected rows are not copied one by one (around 22 % of 2.150 million):
   f_tag_interval_value_rechazo_diario keeps the count per tag, day and
   reason. The number of hours without a good reading of a tag is itself a
@@ -44,7 +49,7 @@ then the freshest value (latest SourceTimestamp), then the highest Id.
 Usage:
   spark-submit job_silver_f_tag_interval_value.py --desde 2021-01 --hasta 2026-08
   Without --desde / --hasta the range goes from the first to the last month
-  found in Bronze.
+  found in Bronze. Add --rehacer to redo the months already completed.
 """
 
 from datetime import date
@@ -54,6 +59,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from silver_common import (
+    DQ_METRICS_TABLE,
     DQCollector,
     get_spark,
     keep_first,
@@ -101,6 +107,39 @@ CLOCK_TOLERANCE_SECONDS = 60
 def add_args(parser):
     parser.add_argument("--desde", help="First month, YYYY-MM")
     parser.add_argument("--hasta", help="Last month, YYYY-MM (inclusive)")
+    parser.add_argument(
+        "--rehacer",
+        action="store_true",
+        help="Process every month of the range, also the ones already completed",
+    )
+
+
+# The last metric written for a month; its presence in dq_metrics means the
+# month was written in full (fact, daily rejects and metrics).
+COMPLETION_METRIC = "tags_con_datos"
+
+
+def completed_months(spark, job: str) -> set:
+    """
+    Months (YYYY-MM) that a previous run of this job finished, read from
+    dq_metrics. Empty when the table does not exist yet.
+    """
+    if not spark.catalog.tableExists(DQ_METRICS_TABLE):
+        return set()
+
+    rows = (
+        spark.table(DQ_METRICS_TABLE)
+        .where(
+            (F.col("job") == job)
+            & (F.col("entidad") == ENTITY)
+            & (F.col("metrica") == COMPLETION_METRIC)
+        )
+        .select("ambito")
+        .distinct()
+        .collect()
+    )
+
+    return {row["ambito"] for row in rows if row["ambito"]}
 
 
 def month_start(value: str) -> date:
@@ -209,7 +248,11 @@ def main():
 
     df_all = read_tedisnet_union(spark, "", VALUE_COLUMNS, tables=SOURCES)
 
-    tags = spark.table(require_table(spark, silver_table("d_tag"))).localCheckpoint(eager=True)
+    # Cached, not local-checkpointed: a local checkpoint lives only in the
+    # executor that made it, and when that executor is lost (heartbeat timeout
+    # under heavy I/O) every later month fails with
+    # CHECKPOINT_RDD_BLOCK_ID_NOT_FOUND. A cached table is rebuilt from Delta.
+    tags = spark.table(require_table(spark, silver_table("d_tag"))).persist(StorageLevel.MEMORY_AND_DISK)
 
     first, last = resolve_range(df_all, args)
 
@@ -227,9 +270,18 @@ def main():
         detalle="rows out of every month window, not processed",
     )
 
+    done = set() if args.rehacer else completed_months(spark, dq.job)
+
+    if done:
+        logger.info("%s months already completed in previous runs, skipped", len(done))
+
     for month in months_between(first, last):
         end = next_month(month)
         month_label = month.strftime("%Y-%m")
+
+        if month_label in done:
+            logger.info("Month %s already completed, skipped", month_label)
+            continue
 
         logger.info("Processing month %s", month_label)
 
