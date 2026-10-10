@@ -4,6 +4,11 @@
 # sus dependencias están fijadas en los Dockerfile y en infra/spark/requirements.txt.
 pyspark==4.2.0
 delta-spark==4.4.0
+# Librerías del modelo, las mismas que infra/spark/requirements.txt
+pandas==2.3.3
+pyarrow==21.0.0
+scikit-learn==1.7.2
+xgboost-cpu==3.0.5
 pytest==8.4.2
 ruff==0.15.11
 pre-commit==4.3.0

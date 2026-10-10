@@ -1,3 +1,8 @@
 pandas==2.3.3
 s3fs==2026.7.0
 openpyxl==3.1.5
+# Entrenamiento del modelo (etl/jobs/04_ml). xgboost-cpu es el mismo paquete sin
+# las librerias de GPU (NCCL), que no se usan y pesan cientos de MB.
+pyarrow==21.0.0
+scikit-learn==1.7.2
+xgboost-cpu==3.0.5

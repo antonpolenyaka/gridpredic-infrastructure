@@ -90,6 +90,10 @@
       "excluir_scada_inactivo": true,
       "excluir_ct_no_vigente": true
     },
+    "meteo": {
+      "prevision_h": 3,
+      "region": true
+    },
     "lotes": {
       "labels_meses": 12,
       "medidas_meses": 1,
@@ -141,6 +145,10 @@
     {
       "name": "dataset_train",
       "depends_on": ["features_ct_hora"]
+    },
+    {
+      "name": "meteo_celda_hora",
+      "depends_on": ["dim_ct"]
     },
     {
       "name": "dq_checks",
