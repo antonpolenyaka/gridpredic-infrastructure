@@ -466,6 +466,42 @@ def save_frame(spark, pdf: pd.DataFrame, table: str, run_id: str):
         writer.mode("overwrite").saveAsTable(table)
 
 
+def export_run(config: dict, run_id: str, metrics: pd.DataFrame, importance: pd.DataFrame, search: list,
+               label: str, labels: list, budgets: list):
+    """
+    resumen.md (also written to the log), metricas.csv, importancia.csv and
+    busqueda.json in exportar_dir/<run_id>/, a local folder of the driver
+    container. The launcher of the laptop copies it to _runlogs, so the
+    results can be read without Trino.
+    """
+    budget = 10 if 10 in budgets else budgets[0]
+    local = next((c for c in labels if c.endswith("_local")), None)
+    report = ml_metrics.report_markdown(metrics, importance, search, label, budget, local)
+    logger.info("Summary of run %s\n%s", run_id, report)
+
+    folder = config.get("exportar_dir")
+
+    if not folder:
+        return
+
+    try:
+        target = os.path.join(folder, run_id)
+        os.makedirs(target, exist_ok=True)
+
+        with open(os.path.join(target, "resumen.md"), "w", encoding="utf-8") as file:
+            file.write(f"# Ejecucion {run_id}\n\n{report}")
+
+        metrics.to_csv(os.path.join(target, "metricas.csv"), index=False)
+        importance.to_csv(os.path.join(target, "importancia.csv"), index=False)
+
+        with open(os.path.join(target, "busqueda.json"), "w", encoding="utf-8") as file:
+            json.dump(search, file, ensure_ascii=False, indent=2, default=str)
+
+        logger.info("Summary files written in %s", target)
+    except OSError as error:
+        logger.error("Summary files not written in %s: %s", folder, error)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -553,6 +589,8 @@ def main(argv=None):
     resumen = {
         f"{row.split}:{row.modelo}:{row.metrica}": row.valor for row in total.itertuples()
     }
+
+    export_run(config, args.run_id, metrics, importance, search, label, labels, budgets)
 
     run = pd.DataFrame([{
         "run_id": args.run_id,

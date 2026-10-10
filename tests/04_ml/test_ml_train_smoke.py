@@ -187,6 +187,7 @@ def config_path(workdir):
     }
     config["evaluacion"].update({"presupuestos_alertas_dia": [2, 5], "filas_shap": 500, "test_hasta": "2026-01-20"})
     config["artefactos_uri"] = os.path.join(workdir, "modelos")
+    config["exportar_dir"] = os.path.join(workdir, "resultados")
     config["spark_conf"] = {}
 
     path = os.path.join(workdir, "config_ml_test.json")
@@ -288,6 +289,22 @@ def test_saved_models(workdir, run):
 
     X = np.zeros((3, len(FEATURES)), dtype=np.float32)
     assert scorer.score(X).shape == (3,)
+
+
+def test_exported_summary(workdir, run):
+    folder = os.path.join(workdir, "resultados", run)
+
+    assert {"resumen.md", "metricas.csv", "importancia.csv", "busqueda.json"} <= set(os.listdir(folder))
+
+    with open(os.path.join(folder, "resumen.md"), encoding="utf-8") as file:
+        report = file.read()
+
+    for heading in ("## valid: y_1_3h", "## test: y_1_3h", "solo eventos locales", "PR-AUC por distribuidora",
+                    "SHAP medio absoluto", "## Búsqueda"):
+        assert heading in report, heading
+
+    assert "| xgboost |" in report
+    assert len(pd.read_csv(os.path.join(folder, "metricas.csv"))) > 100
 
 
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):

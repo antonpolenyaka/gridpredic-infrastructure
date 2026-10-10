@@ -228,3 +228,89 @@ def univariate_ap(X: np.ndarray, y, weight=None) -> np.ndarray:
         out[j] = max(average_precision(y, up, weight), average_precision(y, down, weight))
 
     return out
+
+
+# ---------------------------------------------------------------------------
+# Report
+# ---------------------------------------------------------------------------
+
+def markdown_table(df: pd.DataFrame, digits: int = 4) -> str:
+    """Plain markdown table, without extra dependencies."""
+    def cell(value):
+        if isinstance(value, (float, np.floating)):
+            return "" if np.isnan(value) else f"{value:.{digits}f}"
+        return str(value)
+
+    header = "| " + " | ".join(str(c) for c in df.columns) + " |"
+    rule = "| " + " | ".join("---" for _ in df.columns) + " |"
+    rows = ["| " + " | ".join(cell(v) for v in row) + " |" for row in df.itertuples(index=False)]
+    return "\n".join([header, rule, *rows])
+
+
+def report_markdown(metrics: pd.DataFrame, importance: pd.DataFrame, search: list, label: str,
+                    budget: int, local_label: str = None, top: int = 15) -> str:
+    """
+    Short report of a run: the comparison of the models per split, PR-AUC per
+    distribuidora, the local events, the features that weigh most in
+    XGBoost, the features flagged for leakage and the search.
+    """
+    parts = []
+    columns = ["pr_auc", "lift_pr_auc", "roc_auc", f"precision@{budget}", f"recall_episodios@{budget}",
+               f"antelacion_media_h@{budget}"]
+
+    for split in [s for s in ("valid", "test") if s in set(metrics["split"])]:
+        total = metrics[(metrics["split"] == split) & (metrics["segmento"] == "total")]
+        main = total[total["etiqueta"] == label]
+
+        if main.empty:
+            continue
+
+        n, pos = int(main["n_filas"].iloc[0]), int(main["n_positivos"].iloc[0])
+        table = main.pivot_table(index="modelo", columns="metrica", values="valor")
+        table = table[[c for c in columns if c in table.columns]].sort_values("pr_auc", ascending=False)
+        parts.append(f"## {split}: {label} ({n} filas, {pos} positivos)\n\n"
+                     + markdown_table(table.reset_index()))
+
+        if local_label:
+            local = total[total["etiqueta"] == local_label]
+            if not local.empty:
+                lt = local.pivot_table(index="modelo", columns="metrica", values="valor")
+                keep = [c for c in ["pr_auc", f"recall_episodios@{budget}"] if c in lt.columns]
+                parts.append(f"### {split}: solo eventos locales ({local_label})\n\n"
+                             + markdown_table(lt[keep].sort_values(keep[0], ascending=False).reset_index()))
+
+        by = metrics[(metrics["split"] == split) & (metrics["etiqueta"] == label)
+                     & (metrics["segmento"] == "distribuidora") & (metrics["metrica"] == "pr_auc")]
+        if not by.empty:
+            dt = by.pivot_table(index="modelo", columns="valor_segmento", values="valor")
+            dt.columns = [f"pr_auc dist {c}" for c in dt.columns]
+            parts.append(f"### {split}: PR-AUC por distribuidora\n\n" + markdown_table(dt.reset_index()))
+
+    shap = importance[(importance["modelo"] == "xgboost") & (importance["metrica"] == "shap_medio_abs")]
+    if not shap.empty:
+        top_shap = shap.sort_values("valor", ascending=False).head(top)[["feature", "valor"]]
+        parts.append(f"## Las {top} features con más peso en XGBoost (SHAP medio absoluto)\n\n"
+                     + markdown_table(top_shap, digits=5))
+
+    flagged = importance[importance["alerta_leakage"]]
+    if not flagged.empty:
+        parts.append("## Features con alerta de leakage (PR-AUC sola)\n\n"
+                     + markdown_table(flagged[["feature", "valor"]].sort_values("valor", ascending=False)))
+    else:
+        parts.append("## Features con alerta de leakage\n\nNinguna supera el umbral.")
+
+    if search:
+        rows = pd.DataFrame([{
+            "modelo": s["modelo"],
+            "config": s["config"],
+            "params": json_compact(s.get("params", {})),
+            "pr_auc_valid_muestra": s.get("pr_auc_valid_muestra", float("nan")),
+            "segundos": s.get("segundos_entrenamiento", ""),
+        } for s in search])
+        parts.append("## Búsqueda (muestra de valid)\n\n" + markdown_table(rows, digits=5))
+
+    return "\n\n".join(parts) + "\n"
+
+
+def json_compact(params: dict) -> str:
+    return ", ".join(f"{k}={v}" for k, v in params.items() if k != "verbose")
