@@ -118,18 +118,24 @@
       "name": "agg_medida_hora",
       "depends_on": ["dim_ct"],
       "conf": {
-        "spark.cores.max": "2",
-        "spark.executor.memory": "4g",
-        "spark.sql.shuffle.partitions": "64"
+        "spark.cores.max": "4",
+        "spark.executor.memory": "8g",
+        "spark.executor.memoryOverhead": "1g",
+        "spark.sql.shuffle.partitions": "256",
+        "spark.network.timeout": "600s",
+        "spark.executor.heartbeatInterval": "60s"
       }
     },
     {
       "name": "features_ct_hora",
       "depends_on": ["labels_ct_hora", "agg_medida_hora"],
       "conf": {
-        "spark.cores.max": "2",
-        "spark.executor.memory": "4g",
-        "spark.sql.shuffle.partitions": "64"
+        "spark.cores.max": "4",
+        "spark.executor.memory": "8g",
+        "spark.executor.memoryOverhead": "1g",
+        "spark.sql.shuffle.partitions": "256",
+        "spark.network.timeout": "600s",
+        "spark.executor.heartbeatInterval": "60s"
       }
     },
     {
