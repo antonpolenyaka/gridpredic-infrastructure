@@ -36,6 +36,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from gold_common import (
+    DQ_METRICS_TABLE,
     DQCollector,
     batches,
     bucket_hour,
@@ -151,8 +152,46 @@ def aggregate(values: DataFrame, members: DataFrame) -> DataFrame:
     )
 
 
+def add_args(parser):
+    parser.add_argument(
+        "--rehacer",
+        action="store_true",
+        help="Process every batch of the window, also the ones already completed",
+    )
+
+
+# The last metric written for a batch; its presence in dq_metrics means the
+# batch was written in full (aggregates, activity and metrics).
+COMPLETION_METRIC = "horas_con_muestras"
+
+
+def completed_batches(spark, job: str) -> set:
+    """
+    Batches (ambito YYYY-MM of their first month) that a previous run of this
+    job finished, read from dq_metrics. On a laptop the executor can be lost
+    after an hour of I/O and the task is retried: skipping the batches already
+    written keeps the retry from starting again at the first month.
+    """
+    if not spark.catalog.tableExists(DQ_METRICS_TABLE):
+        return set()
+
+    rows = (
+        spark.table(DQ_METRICS_TABLE)
+        .where(
+            (F.col("job") == job)
+            & (F.col("entidad") == "actividad_scada_hora")
+            & (F.col("metrica") == COMPLETION_METRIC)
+        )
+        .select("ambito")
+        .distinct()
+        .collect()
+    )
+
+    return {row["ambito"] for row in rows if row["ambito"]}
+
+
 def main():
-    args = parse_args()
+    args = parse_args(add_args)
     params = load_params(args)
     spark = get_spark("job-gold-agg_medida_hora")
     dq = DQCollector(spark, "job_gold_agg_medida_hora", args.run_id)
@@ -165,13 +204,25 @@ def main():
     tag_map = spark.table(require_table(spark, gold_table("map_tag_ct")))
     upstream = optional_table(spark, gold_table("map_aguas_arriba"))
 
-    members = scope_members(tag_map, upstream).localCheckpoint(eager=True)
+    # Cached, not local-checkpointed: a local checkpoint lives only in the
+    # executor that made it and is gone when that executor is lost (heartbeat
+    # timeout under heavy I/O); a cached table is rebuilt from Delta.
+    members = scope_members(tag_map, upstream).persist(StorageLevel.MEMORY_AND_DISK)
 
     logger.info("Measurement tags by scope: %s", {
         row["ambito"]: row["count"] for row in members.groupBy("ambito").count().collect()
     })
 
+    done = set() if (args.rehacer or args.rebuild) else completed_batches(spark, dq.job)
+
+    if done:
+        logger.info("%s batches already completed in previous runs, skipped", len(done))
+
     for lo, hi in batches(args, params, params["lotes"]["medidas_meses"]):
+        if f"{lo:%Y-%m}" in done:
+            logger.info("Batch %s - %s already completed, skipped", lo, hi)
+            continue
+
         logger.info("Measurement aggregates %s - %s", lo, hi)
 
         # Samples of [lo - 1 h, hi - 1 h) fill the hours [lo, hi).
