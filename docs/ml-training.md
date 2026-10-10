@@ -89,6 +89,8 @@ docker compose cp spark-master:/tmp/ml_resultados/. _runlogs/ml_resultados
 
 Los modelos se guardan en MinIO en `s3://datalake/ml/modelos/<run_id>/`: un `.pkl` por modelo (el objeto con su método `score`), `xgboost_booster.json` (formato propio de XGBoost, que no depende de la versión de Python) y `run.json` con las features en orden y los parámetros.
 
+Para el análisis completo de una ejecución (búsqueda, comparación, recall según el presupuesto, curvas precision-recall, calibración, segmentos, eventos locales, SHAP por feature y por bloque, leakage y test) está el notebook `notebooks/1.0-asp-resultados-modelo.ipynb`, que lee de Trino con el `run_id`.
+
 Consultas útiles desde DBeaver:
 
 ```sql
@@ -139,6 +141,5 @@ El job no va en Airflow a propósito. El driver hace el entrenamiento y usa todo
 ## 8. Pendiente
 
 - MLflow como servicio en `compose.yaml` (con Postgres y MinIO, que ya están) para registrar cada ejecución con sus métricas y artefactos. Mientras tanto `ml_runs` cumple esa función y guarda lo mismo.
-- Notebook `1.0-asp-resultados-modelo.ipynb` con las curvas precision-recall, la calibración, los gráficos SHAP y el análisis de errores por segmento, leyendo `ml_predicciones` y `ml_importancia`.
 - Reentrenar con train + valid antes de la evaluación final, si el tiempo lo permite. Ahora el modelo que se evalúa en test es el mismo que se ha elegido en valid, entrenado solo con train.
 - DAG `04_ml` de inferencia que escriba `predicciones_ct_hora` sobre `features_ct_hora` con el modelo elegido.

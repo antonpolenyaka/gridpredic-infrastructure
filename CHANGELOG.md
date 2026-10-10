@@ -13,6 +13,7 @@ Entrenamiento y evaluación de los modelos sobre el dataset de Gold, el trabajo 
 - Tablas `l3_gold.ml_runs`, `ml_metricas`, `ml_importancia` (SHAP de XGBoost, importancias de los otros modelos y PR-AUC de cada feature sola con alerta de leakage) y `ml_predicciones`. Los modelos se guardan en MinIO en `datalake/ml/modelos/<run_id>/`.
 - Resumen de cada ejecución en tablas markdown en el log y en `resumen.md`, con las métricas y la importancia en CSV (`exportar_dir`), para leer los resultados sin Trino.
 - `etl/jobs/04_ml/train.sh` para lanzarlo desde `spark-master`, `make train` y `make test-ml`.
+- Notebook `notebooks/1.0-asp-resultados-modelo.ipynb` para analizar una ejecución desde Trino.
 - `docs/ml-training.md` y la model card al día con el procedimiento de entrenamiento.
 - `tests/04_ml`: métricas y modelos sin Spark, y el job completo sobre un `dataset_train` sintético en Spark local. Job `ml-smoke` en la CI.
 
