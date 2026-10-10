@@ -192,3 +192,50 @@ def test_references(synthetic):
 
     with pytest.raises(ValueError):
         ml_models.build_reference("naif_historico", ["otra"], 0.01)
+
+
+def test_fit_clusters_finds_the_groups_and_respects_min_size():
+    rng = np.random.default_rng(4)
+    pdf = pd.DataFrame({
+        "potencia": np.r_[rng.normal(100, 5, 40), rng.normal(1000, 50, 40)],
+        "zona": np.r_[np.full(40, 4), np.full(40, 1)],
+        "abonados": np.r_[rng.normal(20, 2, 40), rng.normal(400, 20, 40)],
+    })
+    pdf.loc[5, "abonados"] = np.nan  # imputed with the median
+    X, columns = ml_models.cluster_matrix(pdf, ["potencia", "abonados"], ["potencia"], ["zona"])
+
+    assert X.shape == (80, 4)
+    assert "zona_1" in columns and "zona_4" in columns
+    assert not np.isnan(X).any()
+
+    labels, k, tried = ml_models.fit_clusters(X, [2, 3, 4], seed=0, min_size=10)
+    assert k == 2
+    assert len(set(labels[:40])) == 1 and len(set(labels[40:])) == 1
+    assert labels[0] != labels[40]
+    assert [t[0] for t in tried] == [2, 3, 4]
+
+
+def test_cluster_scorer_routes_rows_to_their_group(synthetic):
+    names = synthetic["feature_names"] + ["ct_cluster"]
+    groups = (synthetic["X"][:, 0] > 1).astype(np.float32)
+    groups_v = (synthetic["Xv"][:, 0] > 1).astype(np.float32)
+    data = {**synthetic, "X": np.column_stack([synthetic["X"], groups]),
+            "Xv": np.column_stack([synthetic["Xv"], groups_v]), "feature_names": names}
+
+    params = {"n_estimators": 30, "max_depth": 3, "early_stopping_rounds": 10, "verbose": 0}
+    base = ml_models.fit_model("xgboost", params, data, rate=0.5, seed=0, n_jobs=1)
+    sub = ml_models.fit_model("xgboost", params, {**data, "X": data["X"][groups == 1], "y": data["y"][groups == 1],
+                                                  "w": data["w"][groups == 1]}, rate=0.5, seed=0, n_jobs=1)
+
+    scorer = ml_models.ClusterScorer("xgboost_cluster", names, "ct_cluster", {1.0: sub}, base)
+    score = scorer.score(data["Xv"])
+
+    in_group = groups_v == 1
+    assert np.allclose(score[in_group], sub.score(data["Xv"][in_group]))
+    assert np.allclose(score[~in_group], base.score(data["Xv"][~in_group]))
+
+    again = pickle.loads(pickle.dumps(scorer.single_thread()))
+    assert np.allclose(again.score(data["Xv"]), score)
+
+    shap = ml_models.importances(scorer, data["Xv"][:300])
+    assert "shap_medio_abs_grupo_1.0" in shap

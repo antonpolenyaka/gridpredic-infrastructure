@@ -321,6 +321,170 @@ def with_context(dataset, context):
 
 
 # ---------------------------------------------------------------------------
+# Season and groups of CTs
+# ---------------------------------------------------------------------------
+
+CLUSTERS_TABLE = f"{GOLD}.ml_clusters_ct"
+CLUSTER_FEATURE = "ct_cluster"
+SEASON_FEATURE = "estacion"
+
+
+def add_season(dataset):
+    """
+    estacion: 1 winter (December to February), 2 spring, 3 summer, 4
+    autumn. mes already carries it for the trees; as its own column it lets
+    the season be read in the importances and in the segments, and it is
+    what the regulator and the operator talk about.
+    """
+    month = F.month("hora")
+    return dataset.withColumn(
+        SEASON_FEATURE,
+        F.when(month.isin(12, 1, 2), 1).when(month.isin(3, 4, 5), 2).when(month.isin(6, 7, 8), 3).otherwise(4)
+        .cast("double"),
+    )
+
+
+def cluster_cts(spark, dataset, label: str, cfg: dict, run_id: str, seed: int) -> tuple:
+    """
+    Groups of similar CTs by k-means, so a submodel can be trained for each
+    one. Variables (clusters.numericas / categoricas): zone type of the
+    municipality, power, customers, outputs, transformers, size of the
+    network group, telemetry, voltage, coordinates (a proxy of the weather)
+    and distribuidora, plus the interruption rate of the CT in train
+    (positives per 10.000 hours). Everything comes from train or is static,
+    so the groups do not look at valid or test.
+
+    k is chosen by silhouette among clusters.k, with at least
+    clusters.min_cts CTs in the smallest group. Writes ml_clusters_ct and
+    returns (DataFrame distribuidora_id, ct_id, ct_cluster; profile of every
+    group as pandas).
+    """
+    numeric = list(cfg.get("numericas", []))
+    categorical = list(cfg.get("categoricas", []))
+    present = set(dataset.columns)
+    numeric = [c for c in numeric if c in present]
+    categorical = [c for c in categorical if c in present]
+
+    train = dataset.where(F.col("split") == "train")
+    per_ct = train.groupBy("distribuidora_id", "ct_id").agg(
+        *[F.avg(F.col(c).cast("double")).alias(c) for c in numeric if c != "distribuidora_id"],
+        *[F.max(F.col(c)).alias(c) for c in categorical if c != "distribuidora_id"],
+        (F.sum(F.col(label)) * F.lit(10000.0) / F.count(F.lit(1))).alias("tasa_train_10k_h"),
+        F.sum(F.col(label)).alias("positivos_train"),
+        F.count(F.lit(1)).alias("horas_train"),
+    ).toPandas()
+
+    variables = [c for c in numeric if c != "distribuidora_id"]
+    if cfg.get("tasa_interrupciones_train", True):
+        variables.append("tasa_train_10k_h")
+
+    log = list(cfg.get("log", [])) + ["tasa_train_10k_h"]
+    X, columns = ml_models.cluster_matrix(per_ct, variables, log, categorical)
+    labels, k, tried = ml_models.fit_clusters(
+        X, [int(v) for v in cfg.get("k", [3, 4, 5, 6, 7, 8])], seed, int(cfg.get("min_cts", 20)),
+    )
+    per_ct[CLUSTER_FEATURE] = labels.astype(int)
+
+    logger.info("Groups of CTs: k = %s of %s (k, silhouette, smallest group): %s", k, len(per_ct), tried)
+
+    profile = per_ct.groupby(CLUSTER_FEATURE).agg(
+        cts=("ct_id", "count"),
+        positivos_train=("positivos_train", "sum"),
+        horas_train=("horas_train", "sum"),
+        **{f"{c}_media": (c, "mean") for c in variables if c != "tasa_train_10k_h"},
+    )
+    profile["tasa_train_10k_h"] = profile["positivos_train"] * 10000.0 / profile["horas_train"]
+
+    for column in categorical:
+        mix = per_ct.groupby(CLUSTER_FEATURE)[column].agg(
+            lambda v: ", ".join(f"{int(a)}:{n}" for a, n in v.value_counts().sort_index().items())
+        )
+        profile[f"{column}_reparto"] = mix
+
+    profile = profile.reset_index()
+
+    out = spark.createDataFrame(
+        per_ct[["distribuidora_id", "ct_id", CLUSTER_FEATURE, "tasa_train_10k_h", "positivos_train"]]
+        .assign(distribuidora_id=lambda d: d["distribuidora_id"].astype("int64"))
+    )
+    (
+        out.withColumn("run_id", F.lit(run_id)).withColumn("k", F.lit(int(k)))
+        .write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+        .saveAsTable(CLUSTERS_TABLE)
+    )
+
+    clusters = spark.table(CLUSTERS_TABLE).select(
+        F.col("distribuidora_id").cast(dataset.schema["distribuidora_id"].dataType).alias("distribuidora_id"),
+        "ct_id",
+        F.col(CLUSTER_FEATURE).cast("double").alias(CLUSTER_FEATURE),
+    )
+    return clusters, profile, {"k": int(k), "probados": tried, "variables": columns}
+
+
+def with_clusters(dataset, clusters):
+    if clusters is None:
+        return dataset
+
+    # A CT without rows in train has no group: -1, scored by the global model.
+    return dataset.join(F.broadcast(clusters), ["distribuidora_id", "ct_id"], "left").fillna(
+        {CLUSTER_FEATURE: -1.0}
+    )
+
+
+def train_cluster_models(scorers: dict, data: dict, cfg: dict, rate: float, seed: int, n_jobs: int) -> list:
+    """
+    One XGBoost per group with the configuration chosen for the global
+    model, early stopping on the rows of the group in the validation sample.
+    A group with fewer than submodelos.min_positivos positives in the train
+    sample (or none in the validation sample) keeps the global model. Adds
+    xgboost_cluster to scorers and returns the comparison per group, global
+    model and submodel on the same rows.
+    """
+    base = scorers["xgboost"]
+    column = data["feature_names"].index(CLUSTER_FEATURE)
+    groups_train = data["X"][:, column]
+    groups_valid = data["Xv"][:, column]
+    min_positives = int(cfg.get("min_positivos", 200))
+    params = dict(base.params)
+    models = {}
+    rows = []
+
+    for group in sorted(set(groups_train.tolist())):
+        tr = groups_train == group
+        va = groups_valid == group
+        pos_train = int(data["y"][tr].sum())
+        pos_valid = int(data["yv"][va].sum())
+        global_ap = ml_metrics.average_precision(data["yv"][va], base.score(data["Xv"][va]), data["wv"][va])
+        row = {"modelo": "xgboost_cluster", "config": int(group), "params": {"grupo": int(group), **params},
+               "positivos_train": pos_train, "positivos_valid": pos_valid,
+               "pr_auc_global_en_grupo": global_ap}
+
+        if group < 0 or pos_train < min_positives or pos_valid == 0:
+            row["pr_auc_valid_muestra"] = global_ap
+            row["submodelo"] = False
+            rows.append(row)
+            logger.info("Group %s: %s positives in train, %s in valid, keeps the global model", group, pos_train, pos_valid)
+            continue
+
+        sub = {"X": data["X"][tr], "y": data["y"][tr], "w": data["w"][tr],
+               "Xv": data["Xv"][va], "yv": data["yv"][va], "wv": data["wv"][va],
+               "feature_names": data["feature_names"]}
+        model = ml_models.fit_model("xgboost", params, sub, rate, seed, n_jobs)
+        ap = ml_metrics.average_precision(data["yv"][va], model.score(data["Xv"][va]), data["wv"][va])
+        models[group] = model
+        row.update({"pr_auc_valid_muestra": ap, "submodelo": True, **model.info})
+        rows.append(row)
+        logger.info("Group %s: submodel PR-AUC %.5f against %.5f of the global model on its rows (%s positives in train)",
+                    group, ap, global_ap, pos_train)
+
+    scorer = ml_models.ClusterScorer("xgboost_cluster", data["feature_names"], CLUSTER_FEATURE, models, base)
+    scorer.params = {"grupos_con_submodelo": sorted(int(g) for g in models), **params}
+    scorer.info = {"grupos": len(rows), "submodelos": len(models)}
+    scorers["xgboost_cluster"] = scorer
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
 
@@ -543,7 +707,7 @@ def save_frame(spark, pdf: pd.DataFrame, table: str, run_id: str):
 
 
 def export_run(config: dict, run_id: str, metrics: pd.DataFrame, importance: pd.DataFrame, search: list,
-               label: str, labels: list, budgets: list):
+               label: str, labels: list, budgets: list, profile: pd.DataFrame = None):
     """
     resumen.md (also written to the log), metricas.csv, importancia.csv and
     busqueda.json in exportar_dir/<run_id>/, a local folder of the driver
@@ -552,7 +716,7 @@ def export_run(config: dict, run_id: str, metrics: pd.DataFrame, importance: pd.
     """
     budget = 10 if 10 in budgets else budgets[0]
     local = next((c for c in labels if c.endswith("_local")), None)
-    report = ml_metrics.report_markdown(metrics, importance, search, label, budget, local)
+    report = ml_metrics.report_markdown(metrics, importance, search, label, budget, local, profile=profile)
     logger.info("Summary of run %s\n%s", run_id, report)
 
     folder = config.get("exportar_dir")
@@ -568,6 +732,8 @@ def export_run(config: dict, run_id: str, metrics: pd.DataFrame, importance: pd.
             file.write(f"# Ejecucion {run_id}\n\n{report}")
 
         metrics.to_csv(os.path.join(target, "metricas.csv"), index=False)
+        if profile is not None:
+            profile.to_csv(os.path.join(target, "grupos_ct.csv"), index=False)
         importance.to_csv(os.path.join(target, "importancia.csv"), index=False)
 
         with open(os.path.join(target, "busqueda.json"), "w", encoding="utf-8") as file:
@@ -623,6 +789,21 @@ def main(argv=None):
 
     dataset = with_context(spark.table(DATASET_TABLE), context)
 
+    if config.get("estacion", True):
+        dataset = add_season(dataset)
+        features = features + [SEASON_FEATURE]
+
+    clusters_cfg = config.get("clusters", {})
+    profile, clusters_info = None, None
+
+    if clusters_cfg.get("activo"):
+        clusters, profile, clusters_info = cluster_cts(spark, spark.table(DATASET_TABLE), label, clusters_cfg,
+                                                       args.run_id, seed)
+        dataset = with_clusters(dataset, clusters)
+        features = features + [CLUSTER_FEATURE]
+        segment_map = {**segment_map, "grupo_ct": CLUSTER_FEATURE}
+        segment_columns = list(segment_map.values())
+
     data = load_train(dataset, features, label)
     valid_cfg = config.get("muestra_valid", {})
     data.update(load_valid_sample(dataset, features, label, float(valid_cfg.get("tasa_negativos", 0.02)),
@@ -630,6 +811,9 @@ def main(argv=None):
     data["feature_names"] = features
 
     scorers, search = train_models(names, config, data, rate, base_rate, args.sin_busqueda)
+
+    if clusters_cfg.get("activo") and config.get("submodelos", {}).get("activo") and "xgboost" in scorers:
+        search += train_cluster_models(scorers, data, config["submodelos"], rate, seed, int(config.get("n_jobs", -1)))
     importance = examine(scorers, data, config)
 
     meta = {
@@ -638,6 +822,7 @@ def main(argv=None):
         "etiqueta": label,
         "features": features,
         "tasa_negativos_muestra": rate,
+        "grupos_ct": clusters_info,
         "modelos": {name: {"params": s.params, **s.info} for name, s in scorers.items()},
     }
     artifacts = save_artifacts(scorers, config.get("artefactos_uri"), args.run_id, meta, spark)
@@ -676,7 +861,7 @@ def main(argv=None):
         f"{row.split}:{row.modelo}:{row.metrica}": row.valor for row in total.itertuples()
     }
 
-    export_run(config, args.run_id, metrics, importance, search, label, labels, budgets)
+    export_run(config, args.run_id, metrics, importance, search, label, labels, budgets, profile)
 
     run = pd.DataFrame([{
         "run_id": args.run_id,
