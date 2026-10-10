@@ -27,10 +27,9 @@
   "estacion": true,
   "meteo": {
     "activo": true,
-    "tabla_horas": "l1_bronze.meteo_openmeteo_hora",
-    "tabla_celdas": "l1_bronze.meteo_openmeteo_celdas",
-    "prevision_h": 3,
-    "region": true
+    "tabla_ct_celda": "l3_gold.map_ct_celda",
+    "tabla_meteo": "l3_gold.meteo_celda_hora",
+    "prevision": true
   },
   "clusters": {
     "activo": true,

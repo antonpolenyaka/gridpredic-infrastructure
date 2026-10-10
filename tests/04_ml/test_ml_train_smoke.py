@@ -27,10 +27,14 @@ import pytest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 ML_DIR = os.path.join(ROOT, "etl", "jobs", "04_ml")
+SILVER_DIR = os.path.join(ROOT, "etl", "jobs", "02_silver")
+GOLD_DIR = os.path.join(ROOT, "etl", "jobs", "03_gold")
+GOLD_CONFIG = os.path.join(ROOT, "etl", "config", "03_gold", "config_gold.json")
 CONFIG = os.path.join(ROOT, "etl", "config", "04_ml", "config_ml.json")
 
-if ML_DIR not in sys.path:
-    sys.path.insert(0, ML_DIR)
+for folder in (ML_DIR, SILVER_DIR, GOLD_DIR):
+    if folder not in sys.path:
+        sys.path.insert(0, folder)
 
 from delta import configure_spark_with_delta_pip  # noqa: E402
 from pyspark.sql import SparkSession  # noqa: E402
@@ -77,6 +81,7 @@ def spark(workdir):
     session = configure_spark_with_delta_pip(builder).getOrCreate()
     session.sql("CREATE DATABASE IF NOT EXISTS l3_gold")
     session.sql("CREATE DATABASE IF NOT EXISTS l1_bronze")
+    session.sql("CREATE DATABASE IF NOT EXISTS l2_silver")
     yield session
     session.stop()
 
@@ -209,6 +214,8 @@ def load_weather(spark, pdf):
         }))
     weather = pd.concat(frames, ignore_index=True)
     weather["anio"] = weather["hora"].dt.year
+    weather["modelo"] = "ecmwf_ifs"
+    weather["audit_loaded_at"] = pd.Timestamp("2026-10-10 23:00")
     spark.createDataFrame(weather).write.format("delta").mode("overwrite").saveAsTable("l1_bronze.meteo_openmeteo_hora")
 
 
@@ -244,9 +251,26 @@ def config_path(workdir):
     return path
 
 
+def run_weather_layers():
+    """Silver and Gold of the weather, as the DAGs would run them."""
+    import importlib
+
+    for name, argv in (("job_silver_d_meteo_celda", []), ("job_silver_f_meteo_hora", []),
+                       ("job_gold_meteo_celda_hora", ["--config", GOLD_CONFIG])):
+        module = importlib.import_module(name)
+        old = sys.argv
+        sys.argv = [f"{name}.py", "--run-id", "test_ml", *argv]
+        try:
+            module.main()
+        finally:
+            sys.argv = old
+
+
 @pytest.fixture(scope="module")
 def run(spark, dataset, config_path):
     import job_ml_train
+
+    run_weather_layers()
 
     return job_ml_train.main(["--run-id", "ml_test", "--config", config_path, "--evaluar-test"])
 
@@ -389,7 +413,7 @@ def test_groups_of_cts(spark, dataset, run, workdir):
 
 
 def test_weather_features(spark, dataset, run):
-    weather = spark.table("l3_gold.ml_meteo_celda_hora").toPandas().sort_values(["celda_id", "hora"])
+    weather = spark.table("l3_gold.meteo_celda_hora").toPandas().sort_values(["celda_id", "hora"])
     cell = weather[weather["celda_id"] == "40.30_-6.00"].set_index("hora")
     raw = spark.table("l1_bronze.meteo_openmeteo_hora").where(F.col("celda_id") == "40.30_-6.00") \
         .toPandas().set_index("hora").sort_index()
@@ -405,6 +429,15 @@ def test_weather_features(spark, dataset, run):
 
     groups = spark.table("l3_gold.ml_clusters_ct").toPandas()
     assert len(groups) == 30
+
+    located = spark.table("l3_gold.map_ct_celda").toPandas().set_index("ct_id")
+    assert located["cruce"].value_counts().to_dict() == {"ine": 20, "nombre": 8, "sin_celda": 2}
+    assert located.loc["CT025", "celda_id"] == "39.30_-6.20"
+
+    silver = spark.table("l2_silver.f_meteo_hora")
+    assert {"racha_kmh", "precipitacion_mm", "fuera_rango", "racha_menor_viento"} <= set(silver.columns)
+    metrics = spark.table("l2_silver.dq_metrics").where(F.col("entidad") == "f_meteo_hora").toPandas()
+    assert "huecos_horas" in set(metrics["metrica"])
 
 
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
