@@ -1,0 +1,181 @@
+{
+  "dataset_version": null,
+  "etiqueta": "y_1_3h",
+  "etiquetas_evaluacion": [
+    "y_1_3h",
+    "y_1_3h_local"
+  ],
+  "semilla": 20261010,
+  "n_jobs": -1,
+  "excluir_features": [],
+  "contexto_red": {
+    "activo": false,
+    "prefijos": [
+      "ev_",
+      "evred_",
+      "evaa_",
+      "scada_",
+      "calidad_",
+      "corte_error_comm_"
+    ],
+    "ventanas": [
+      "1h",
+      "6h"
+    ],
+    "region": true
+  },
+  "estacion": true,
+  "meteo": {
+    "activo": true,
+    "tabla_ct_celda": "l3_gold.map_ct_celda",
+    "tabla_meteo": "l3_gold.meteo_celda_hora",
+    "prevision": true
+  },
+  "clusters": {
+    "activo": true,
+    "numericas": [
+      "ct_potencia_kva",
+      "ct_num_abonados",
+      "ct_n_salidas",
+      "ct_n_trafos",
+      "ct_n_ct_grupo",
+      "ct_tiene_medidas",
+      "ct_tension_primaria_kv",
+      "ct_lat_municipio",
+      "ct_lon_municipio"
+    ],
+    "log": [
+      "ct_potencia_kva",
+      "ct_num_abonados",
+      "ct_n_salidas",
+      "ct_n_ct_grupo"
+    ],
+    "categoricas": [
+      "ct_tipo_zona",
+      "distribuidora_id"
+    ],
+    "tasa_interrupciones_train": true,
+    "k": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "min_cts": 20
+  },
+  "submodelos": {
+    "activo": true,
+    "min_positivos": 200
+  },
+  "modelos": [
+    "tasa_base",
+    "naif_historico",
+    "logistica",
+    "random_forest",
+    "xgboost"
+  ],
+  "muestra_valid": {
+    "tasa_negativos": 0.02,
+    "semilla": 20261011
+  },
+  "usar_peso_muestra": false,
+  "busqueda": {
+    "logistica": [
+      {
+        "C": 0.01
+      },
+      {
+        "C": 0.1
+      },
+      {
+        "C": 1.0
+      }
+    ],
+    "random_forest": [
+      {
+        "n_estimators": 200,
+        "max_depth": 14,
+        "min_samples_leaf": 50,
+        "max_features": "sqrt",
+        "max_samples": 0.5
+      },
+      {
+        "n_estimators": 200,
+        "max_depth": 20,
+        "min_samples_leaf": 50,
+        "max_features": 0.15,
+        "max_samples": 0.5,
+        "class_weight": "balanced_subsample"
+      }
+    ],
+    "xgboost": [
+      {
+        "max_depth": 4,
+        "min_child_weight": 1,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.6,
+        "n_estimators": 1500,
+        "early_stopping_rounds": 100
+      },
+      {
+        "max_depth": 6,
+        "min_child_weight": 1,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.6,
+        "n_estimators": 1500,
+        "early_stopping_rounds": 100
+      },
+      {
+        "max_depth": 6,
+        "min_child_weight": 20,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.6,
+        "n_estimators": 1500,
+        "early_stopping_rounds": 100
+      },
+      {
+        "max_depth": 8,
+        "min_child_weight": 20,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.5,
+        "n_estimators": 1500,
+        "early_stopping_rounds": 100
+      }
+    ]
+  },
+  "evaluacion": {
+    "presupuestos_alertas_dia": [
+      5,
+      10,
+      20,
+      50
+    ],
+    "segmentos": {
+      "distribuidora": "distribuidora_id",
+      "tipo_zona": "ct_tipo_zona",
+      "telemetria": "ct_tiene_medidas"
+    },
+    "test_hasta": "2026-06-01",
+    "filas_shap": 50000,
+    "alerta_leakage_pr_auc": 0.3
+  },
+  "artefactos_uri": "s3://datalake/ml/modelos",
+  "exportar_dir": "/tmp/ml_resultados",
+  "spark_conf": {
+    "spark.cores.max": "4",
+    "spark.executor.memory": "6g",
+    "spark.executor.memoryOverhead": "2g",
+    "spark.sql.shuffle.partitions": "64",
+    "spark.driver.maxResultSize": "6g",
+    "spark.sql.execution.arrow.pyspark.enabled": "true",
+    "spark.sql.execution.arrow.maxRecordsPerBatch": "20000",
+    "spark.network.timeout": "600s",
+    "spark.executor.heartbeatInterval": "60s"
+  }
+}

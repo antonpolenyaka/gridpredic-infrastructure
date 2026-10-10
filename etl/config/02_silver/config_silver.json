@@ -71,6 +71,14 @@
       }
     },
     {
+      "name": "d_meteo_celda",
+      "depends_on": []
+    },
+    {
+      "name": "f_meteo_hora",
+      "depends_on": []
+    },
+    {
       "name": "dq_checks",
       "depends_on": [
         "d_salida",

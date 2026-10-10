@@ -13,4 +13,8 @@ Reglas:
 - Los notebooks leen del lakehouse (Trino o Spark), nunca de extractos copiados a mano. Así el resultado se puede repetir con el `run_id` de la ejecución.
 - Antes de hacer commit, limpiar las salidas pesadas y no guardar datos en la carpeta.
 
-Por ahora la exploración de las bases de datos se hizo con consultas SQL directas sobre SQL Server, documentadas en la memoria del TFM; los primeros notebooks llegarán con Gold.
+La exploración de las bases de datos se hizo con consultas SQL directas sobre SQL Server, documentadas en la memoria del TFM.
+
+| Notebook | Qué cuenta |
+| --- | --- |
+| `1.0-asp-resultados-modelo.ipynb` | Resultados de una ejecución del entrenamiento: comparación de modelos, curvas precision-recall, recall según el presupuesto de alertas, calibración, segmentos, eventos locales, SHAP y leakage. Lee de Trino (`localhost:8085`) con el `run_id`; necesita `pip install trino pandas matplotlib` |

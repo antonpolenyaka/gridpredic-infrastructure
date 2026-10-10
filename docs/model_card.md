@@ -29,7 +29,7 @@ metrics:
 
 Clasificador binario que, para cada centro de transformación (CT) de media tensión y cada hora, estima la probabilidad de que en las siguientes 1 a 3 horas empiece una interrupción imprevista de suministro. Se entrena sobre la telemetría histórica del SCADA TedisNet y las interrupciones registradas en Calser (ver la [dataset card](dataset_card.md)). Es una herramienta de apoyo a la decisión del operador de la distribuidora: no actúa sobre la red.
 
-Estado a 05.10.2026: el pipeline de datos hasta Gold está construido y probado en local, falta la primera ejecución con la ventana completa; el entrenamiento es el trabajo del hito M7 del TFM (26.10.2026). Los apartados de resultados se irán rellenando en ese hito; los requisitos y la metodología de evaluación ya están fijados aquí para que el modelo se construya contra ellos y no al revés.
+Estado a 10.10.2026: el pipeline hasta Gold está cargado con la ventana completa (dataset `ds_20261010T045104_a5a2531cacbb`, 246 features, 1.287 CT) y el entrenamiento y la evaluación están implementados en `etl/jobs/04_ml` (ver [ml-training.md](ml-training.md)). Los apartados de resultados se rellenan con la primera ejecución completa, dentro del hito M7 del TFM (26.10.2026); los requisitos y la metodología de evaluación ya estaban fijados aquí para que el modelo se construya contra ellos y no al revés.
 
 ## Model Details
 
@@ -87,7 +87,22 @@ Usar el modelo como ordenación de prioridades, no como veredicto. Mantener siem
 
 ## How to Get Started with the Model
 
-Todavía no hay artefacto de modelo. Cuando exista, se registrará en MLflow junto con la versión congelada del dataset de Gold (`l3_gold.dataset_versions`), y en este apartado irá el código de carga y de inferencia sobre `l3_gold.features_ct_hora`. Para entrenar, `l3_gold.dataset_train` trae la columna `split` y una muestra reproducible de negativos (`en_muestra_train`, `peso_muestra`).
+Cada ejecución de `etl/jobs/04_ml/job_ml_train.py` guarda los modelos en MinIO (`s3://datalake/ml/modelos/<run_id>/`) y deja su registro en `l3_gold.ml_runs` con la versión congelada del dataset de Gold (`l3_gold.dataset_versions`). Cada `.pkl` es un objeto con un método `score` que recibe la matriz de features en float32, en el orden de `run.json`, y devuelve la probabilidad ya corregida a la población real:
+
+```python
+import json, pickle, s3fs
+
+# Desde un contenedor del stack (spark-master): MinIO no publica el puerto 9000 al anfitrión
+fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": "http://minio:9000"})
+base = "datalake/ml/modelos/<run_id>"
+modelo = pickle.load(fs.open(f"{base}/xgboost.pkl", "rb"))
+features = json.load(fs.open(f"{base}/run.json"))["features"]
+
+# filas: DataFrame de pandas leído de l3_gold.features_ct_hora
+probabilidad = modelo.score(filas[features].to_numpy(dtype="float32", na_value=float("nan")))
+```
+
+Para entrenar, `l3_gold.dataset_train` trae la columna `split` y una muestra reproducible de negativos (`en_muestra_train`, `peso_muestra`). Cómo se lanza y qué tablas deja está en [ml-training.md](ml-training.md).
 
 ## Training Details
 
@@ -96,7 +111,7 @@ Todavía no hay artefacto de modelo. Cuando exista, se registrará en MLflow jun
 Tablas de Gold construidas desde Silver (ver [dataset_card.md](dataset_card.md) y [silver-layer.md](silver-layer.md)):
 
 - `labels_ct_hora`: etiqueta `y_1_3h` por (CT, hora). Positivo si en `(hora + 1 h, hora + 3 h]` empieza una interrupción imprevista (`CL_IMPRE`), no atribuible al cliente (`FA_CLIEN`), de más de 180 segundos y a nivel de CT. Son los mismos filtros con los que Calser calcula el TIEPI. Variantes: otros horizontes (`y_0_1h`, `y_0_3h`, `y_0_6h`), solo eventos locales (`y_1_3h_local`), con las interrupciones sin incidencia (`y_1_3h_amplia`) y con los cortes del SCADA (`y_1_3h_scada`), y `en_corte` para excluir las horas en las que el CT ya está sin suministro.
-- `features_ct_hora` (unas 250 columnas descritas en `feature_metadata`): medidas eléctricas agregadas por hora y por familia (intensidad, intensidad de neutro, tensión, potencias, factor de potencia, temperatura) del propio CT y de la posición de cabecera que lo alimenta, con desequilibrio entre fases, valores rancios y ventanas de 24 h; cambios de las señales precursoras en el CT, en su grupo de red y en la cabecera (defectos de tierra y de fase, paso de falta, disparos, falta de tensión, reenganches, seccionalizadores, comunicaciones, mando local, presencia de personal); alarmas y avisos del SCADA; lecturas con fallo de comunicaciones; cortes y microcortes del SCADA; histórico sin leakage (interrupciones conocidas en 30, 90 y 365 días, días desde la última, interrupciones del municipio); atributos del CT (potencia imputada, abonados, salidas, tipo de zona, coordenadas) y calendario (hora, día, mes, festivo, víspera). La meteorología entrará cuando esté ingerida. Cada fila usa solo datos que se podían conocer antes de su hora: los del SCADA por su hora de llegada al servidor, los de Calser desde su carga y la cabecera que alimenta a cada CT desde el primer corte que la reveló. El test de Gold lo comprueba recortando las fuentes y reconstruyendo.
+- `features_ct_hora` (unas 250 columnas descritas en `feature_metadata`): medidas eléctricas agregadas por hora y por familia (intensidad, intensidad de neutro, tensión, potencias, factor de potencia, temperatura) del propio CT y de la posición de cabecera que lo alimenta, con desequilibrio entre fases, valores rancios y ventanas de 24 h; cambios de las señales precursoras en el CT, en su grupo de red y en la cabecera (defectos de tierra y de fase, paso de falta, disparos, falta de tensión, reenganches, seccionalizadores, comunicaciones, mando local, presencia de personal); alarmas y avisos del SCADA; lecturas con fallo de comunicaciones; cortes y microcortes del SCADA; histórico sin leakage (interrupciones conocidas en 30, 90 y 365 días, días desde la última, interrupciones del municipio); atributos del CT (potencia imputada, abonados, salidas, tipo de zona, coordenadas) y calendario (hora, día, mes, festivo, víspera). La meteorología horaria de Open-Meteo (ECMWF IFS) entra en el paso de entrenamiento (ver [ml-training.md](ml-training.md)). Cada fila usa solo datos que se podían conocer antes de su hora: los del SCADA por su hora de llegada al servidor, los de Calser desde su carga y la cabecera que alimenta a cada CT desde el primer corte que la reveló. El test de Gold lo comprueba recortando las fuentes y reconstruyendo.
 - Ventana: 2021 a agosto de 2026, que es donde coinciden telemetría y etiquetas. Fuente: backups del 14.08.2026.
 
 Quedan fuera, por leakage, `fecha_alta`, `ts`, las columnas `*_OPTIMIZADA`, las tablas `calculos_*` de Calser y el estado del interruptor del propio CT en la hora objetivo.
@@ -109,9 +124,9 @@ La limpieza genérica (deduplicación, calidad, huérfanos, distribuidora) se ha
 
 #### Training Hyperparameters
 
-- Algoritmo principal: XGBoost, objetivo `binary:logistic`, con `scale_pos_weight` o submuestreo de negativos para el desbalance. Búsqueda de hiperparámetros con validación temporal (forward chaining), nunca con validación cruzada aleatoria.
-- Comparación: Random Forest y regresión logística regularizada sobre las mismas features y el mismo split.
-- Los valores concretos se registrarán en MLflow y se copiarán aquí cuando el entrenamiento esté hecho. [More Information Needed]
+- Algoritmo principal: XGBoost, objetivo `binary:logistic`, `tree_method = hist`, entrenado sobre la muestra de negativos de Gold (todos los positivos y el 2 % de los negativos) y con la probabilidad corregida después por el muestreo (corrección de prior, monótona). Parada temprana sobre la PR-AUC de una muestra ponderada de valid (2025). Búsqueda de hiperparámetros con una lista corta de configuraciones (profundidad 4 a 8, `min_child_weight` 1 y 20, `learning_rate` 0,05, `subsample` 0,8, `colsample_bytree` 0,5 a 0,6) elegidas sobre valid, nunca con validación cruzada aleatoria.
+- Comparación: Random Forest (200 árboles, profundidad 14 a 20) y regresión logística L2 (C entre 0,01 y 1) sobre las mismas features y el mismo split, y las referencias de tasa base y naif histórico.
+- Los valores de cada configuración probada y la elegida quedan en `l3_gold.ml_runs` (`busqueda_json`, `modelos_json`) y en `etl/config/04_ml/config_ml.json`. Se copiarán aquí con los resultados. [More Information Needed]
 
 #### Speeds, Sizes, Times [optional]
 
@@ -138,11 +153,11 @@ La limpieza genérica (deduplicación, calidad, huérfanos, distribuidora) se ha
 
 ### Results
 
-[More Information Needed]. Se completará en el hito M7 con la tabla de resultados por modelo y por segmento, sacada de MLflow.
+[More Information Needed]. Se completará en el hito M7 con la tabla de resultados por modelo y por segmento, sacada de `l3_gold.ml_metricas`. La evaluación de test se corta el 01.06.2026 porque las etiquetas de las últimas semanas de la ventana están censuradas (interrupciones todavía sin cargar en Calser).
 
 ## Model Examination [optional]
 
-Explicabilidad post hoc con SHAP: importancia global de las features y explicación local de cada alerta. Se comprobará que las variables con más peso tengan sentido físico (homopolar, THD, defectos de tierra, errores de comunicaciones) y que ninguna variable con leakage se haya colado.
+Explicabilidad post hoc con SHAP: importancia global de las features y explicación local de cada alerta. Se comprobará que las variables con más peso tengan sentido físico (homopolar, THD, defectos de tierra, errores de comunicaciones) y que ninguna variable con leakage se haya colado. Cada ejecución guarda en `l3_gold.ml_importancia` la media del SHAP absoluto de XGBoost, la importancia de los otros dos modelos y la PR-AUC de cada feature sola; las que ordenan los positivos demasiado bien por sí solas quedan marcadas con `alerta_leakage` para revisarlas antes de aceptar el modelo.
 
 ## Environmental Impact
 
@@ -152,7 +167,7 @@ Entrenamiento local en un portátil (4 cores, 16 GB) sobre datos agregados; no s
 
 - Entrada: fila de `features_ct_hora` (un CT, una hora).
 - Salida: probabilidad en [0, 1] y, aplicado el umbral acordado, alerta sí/no con su explicación SHAP.
-- Dependencias previstas: Python, xgboost, scikit-learn, shap, mlflow. Se fijarán en `requirements.txt` cuando se incorporen.
+- Dependencias: Python, xgboost (`xgboost-cpu` 3.0.5), scikit-learn 1.7.2, pandas y pyarrow, fijadas en `infra/spark/requirements.txt`. Para los gráficos SHAP de los notebooks, el paquete `shap`; MLflow queda pendiente.
 - Latencia objetivo en serving: inferencia por debajo de un minuto por ciclo horario para todos los CT de una distribuidora.
 
 ## Citation [optional]

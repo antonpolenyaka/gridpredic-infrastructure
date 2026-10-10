@@ -2,6 +2,29 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.7.0] - sin publicar
+
+Entrenamiento y evaluación de los modelos sobre el dataset de Gold, el trabajo del hito M7.
+
+### Añadido
+
+- `etl/jobs/04_ml/job_ml_train.py` con `etl/config/04_ml/config_ml.json`: entrena sobre la muestra de train de `l3_gold.dataset_train` XGBoost, Random Forest y una regresión logística, y los compara con dos referencias (tasa base y un modelo naif que ordena los CT por sus interrupciones del último año). Cada modelo prueba una lista corta de configuraciones y se queda la de mejor PR-AUC en una muestra ponderada de valid; XGBoost para por la PR-AUC de esa misma muestra. Las probabilidades se corrigen por el muestreo de negativos. Valid y test (este solo con `--evaluar-test` y hasta `evaluacion.test_hasta`, por la censura de las etiquetas al final de la ventana) se puntúan en los executors fila a fila.
+- `ml_metrics.py`: PR-AUC, ROC-AUC, lift y alertas con presupuesto de N avisos por día y distribuidora (precision, recall por filas y por episodio de interrupción, antelación media y mediana), para `y_1_3h` y `y_1_3h_local` y por distribuidora, tipo de zona y telemetría.
+- Tablas `l3_gold.ml_runs`, `ml_metricas`, `ml_importancia` (SHAP de XGBoost, importancias de los otros modelos y PR-AUC de cada feature sola con alerta de leakage) y `ml_predicciones`. Los modelos se guardan en MinIO en `datalake/ml/modelos/<run_id>/`.
+- Resumen de cada ejecución en tablas markdown en el log y en `resumen.md`, con las métricas y la importancia en CSV (`exportar_dir`), para leer los resultados sin Trino.
+- `etl/jobs/04_ml/train.sh` para lanzarlo desde `spark-master`, `make train` y `make test-ml`.
+- Meteorología horaria de Open-Meteo (ECMWF IFS, 9 km): Landing reanudable (`job_landing_meteo_openmeteo.py`) y Bronze en hora local (`l1_bronze.meteo_openmeteo_hora`, `meteo_openmeteo_celdas`), con su configuración en `etl/config/01_bronze/config_bronze_meteo.json` y tests en `tests/01_bronze`. Silver con sus reglas de calidad (`f_meteo_hora`, `d_meteo_celda`, en `dag_silver`) y Gold (`meteo_celda_hora` y `map_ct_celda`, en `dag_gold`), como tablas nuevas que no obligan a reconstruir las demás. En el entrenamiento, cada CT se cruza con su celda por el código INE o el nombre del municipio y gana ráfagas, lluvia, nieve, temperatura, humedad y presión de las últimas horas, la previsión de las 3 siguientes (reanálisis como previsión perfecta, documentado como cota superior) y el máximo de la región.
+- Grupos de CT por k-means (`clusters`, tabla `l3_gold.ml_clusters_ct`) y un submodelo XGBoost por grupo (`submodelos`, modelo `xgboost_cluster`), comparado con el global en las mismas filas, con SHAP por grupo y métricas por grupo. Variable `estacion`. Siguen la propuesta de la tutoría del 08.10.2026.
+- Bloque de estado de la red en el entrenamiento (`contexto_red`, tabla `l3_gold.ml_contexto_red`): fracción de CT de la distribuidora y de la región con cada señal precursora en la última hora y en las últimas 6 horas. La primera ejecución mostró que la señal está en la red y no en el CT, porque la mayoría de las interrupciones son sistémicas; el bloque empeoró los resultados en valid y queda desactivado.
+- `etl/jobs/04_ml/diagnostico_senal.py`: PR-AUC de cada feature sola, medias en positivos y negativos y retraso de carga de las interrupciones de Calser.
+- Notebook `notebooks/1.0-asp-resultados-modelo.ipynb` para analizar una ejecución desde Trino.
+- `docs/ml-training.md` y la model card al día con el procedimiento de entrenamiento.
+- `tests/04_ml`: métricas y modelos sin Spark, y el job completo sobre un `dataset_train` sintético en Spark local. Job `ml-smoke` en la CI.
+
+### Cambiado
+
+- La imagen de Spark instala `xgboost-cpu`, `scikit-learn` y `pyarrow` (`infra/spark/requirements.txt`). Hay que reconstruir las imágenes de Spark y de Airflow.
+
 ## [0.6.0] - 06.10.2026
 
 Revisión de las tres capas después de la primera construcción completa de Gold: la vigencia de cada CT en el tiempo, que estaba apuntada como pendiente, y varias cosas pequeñas de Bronze y Silver.

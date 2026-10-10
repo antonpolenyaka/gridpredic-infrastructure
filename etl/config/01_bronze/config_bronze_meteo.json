@@ -1,0 +1,25 @@
+{
+  "openmeteo": {
+    "referencia_municipios": "s3://datalake/00_landing/reference_data/municipios.xlsx",
+    "landing": "s3://datalake/00_landing/meteo/openmeteo",
+    "modelo": "ecmwf_ifs",
+    "variables": [
+      "temperature_2m",
+      "relative_humidity_2m",
+      "precipitation",
+      "snowfall",
+      "wind_speed_10m",
+      "wind_gusts_10m",
+      "pressure_msl"
+    ],
+    "celda_grados": 0.1,
+    "desde": "2020-12-01",
+    "hasta": "2026-08-31",
+    "pausa_s": 22,
+    "reintentos": 5,
+    "espera_reintento_s": 60,
+    "zona_horaria": "Europe/Madrid",
+    "tabla_horas": "l1_bronze.meteo_openmeteo_hora",
+    "tabla_celdas": "l1_bronze.meteo_openmeteo_celdas"
+  }
+}
