@@ -25,6 +25,13 @@
     "region": true
   },
   "estacion": true,
+  "meteo": {
+    "activo": true,
+    "tabla_horas": "l1_bronze.meteo_openmeteo_hora",
+    "tabla_celdas": "l1_bronze.meteo_openmeteo_celdas",
+    "prevision_h": 3,
+    "region": true
+  },
   "clusters": {
     "activo": true,
     "numericas": [
@@ -35,8 +42,8 @@
       "ct_n_ct_grupo",
       "ct_tiene_medidas",
       "ct_tension_primaria_kv",
-      "ct_latitud",
-      "ct_longitud"
+      "ct_lat_municipio",
+      "ct_lon_municipio"
     ],
     "log": [
       "ct_potencia_kva",
