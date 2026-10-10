@@ -56,7 +56,20 @@ En la tutoría del 08.10.2026 el profesor de análisis de datos nos recomendó n
 - **Estación del año** (`estacion`): 1 invierno, 2 primavera, 3 verano, 4 otoño, como variable propia, también a propuesta de la tutoría. El split temporal ya garantiza que train cubre todas las estaciones de varios años.
 - Las métricas salen también por grupo (segmento `grupo_ct`).
 
-## 5. Modelos
+## 5. Meteorología
+
+La meteorología era lo que la model card daba como pendiente ("entrará cuando esté ingerida") y lo que más explica las interrupciones sistémicas. Viene de la [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) (CC BY 4.0, plan gratuito para uso no comercial), con el modelo ECMWF IFS, de 9 km y horario desde 2017. Es el único de los reanálisis gratuitos que da a la vez ráfagas de viento y precipitación.
+
+- **Qué se pide:** temperatura, humedad, precipitación, nieve, viento, ráfagas y presión a nivel del mar, de hora en hora, del 01.12.2020 al 31.08.2026. El dataset de Gold va del 01.01.2021 al 14.08.2026 y las features miran hasta 7 días atrás, así que con ese margen no falta ninguna hora.
+- **Dónde:** los 73 municipios de `data/reference_data/municipios.xlsx` agrupados en celdas de 0,1 grados (unos 11 km, cerca de la rejilla de 9 km del modelo), que son 43. Así la descarga completa son unas 6.450 llamadas del plan gratuito, por debajo del límite de 10.000 al día.
+- **Landing** (`etl/jobs/00_landing/job_landing_meteo_openmeteo.py`): una petición por celda y año, guardada tal cual (JSON) en `datalake/00_landing/meteo/openmeteo/`. Es reanudable y respeta los límites por minuto, hora y día. La configuración está en `etl/config/01_bronze/config_bronze_meteo.json`.
+- **Bronze** (`etl/jobs/01_bronze/job_bronze_meteo_openmeteo.py`): `l1_bronze.meteo_openmeteo_hora` en hora local de Madrid, la misma convención que Calser y TedisNet. Las dos horas UTC que caen en la misma hora local al cambiar al horario de invierno se fusionan. `l1_bronze.meteo_openmeteo_celdas` asigna cada municipio a su celda.
+- **Cruce con los CT:** el municipio de cada CT en Calser (`dim_ct.municipio_id`, que es el código INE) se cruza con la referencia por código INE y, si falla, por nombre sin tildes. Las coordenadas del municipio entran como `ct_lat_municipio` y `ct_lon_municipio` y en la clusterización, porque las de `dim_ct` estaban vacías.
+- **Features** (`l3_gold.ml_meteo_celda_hora`): `met_*` son las últimas horas (ráfaga y viento de la hora; ráfaga máxima de 3, 6 y 24 h; lluvia de 1, 3, 6 y 24 h; nieve de 24 h; temperatura, mínima y máxima de 24 h; humedad; presión y su cambio en 3 y 24 h). `metprev_*` son las 3 horas siguientes: ráfaga máxima, lluvia y nieve. `met_region_*` y `metprev_region_*` son el máximo de todas las celdas, que da el tamaño del temporal. La fila de cada hora describe la hora que termina entonces, así que se conoce a esa hora, igual que el resto de features.
+- **Sobre la previsión:** `metprev_*` usa el reanálisis como si fuera una previsión perfecta de las 3 horas siguientes. En operación sería la previsión de AEMET o del ECMWF, que a 1-3 horas es buena pero no perfecta, así que el resultado con estas features es una cota superior. Con `meteo.prevision_h: 0` se quitan para medir cuánto aporta solo la meteorología observada.
+- **Limitación:** ninguna fuente gratuita da rayos históricos y la propia Open-Meteo avisa de que con estos datos no se pueden estimar tormentas. Las tormentas eléctricas solo se aproximan con ráfagas y precipitación intensa.
+
+## 6. Modelos
 
 | Modelo | Tipo | Por qué está |
 | --- | --- | --- |
@@ -70,7 +83,7 @@ Para cada modelo entrenado `busqueda` tiene una lista corta de configuraciones (
 
 Como la configuración se elige sobre valid, la cifra de valid es un poco optimista; la de test es la honesta. Por eso test solo se mira al final.
 
-## 6. Métricas
+## 7. Métricas
 
 Todas salen por modelo, por split, por etiqueta (`y_1_3h` y `y_1_3h_local`) y por segmento (total, distribuidora, tipo de zona del municipio y CT con o sin telemetría). Quedan en formato largo en `l3_gold.ml_metricas`.
 
@@ -86,7 +99,7 @@ Todas salen por modelo, por split, por etiqueta (`y_1_3h` y `y_1_3h_local`) y po
 
 Con `y_1_3h_local` como etiqueta, las alertas que caen en interrupciones sistémicas cuentan como falsas; lo útil ahí es `recall_episodios`, que dice si el modelo encuentra el CT concreto y no solo "el día malo".
 
-## 7. Explicabilidad y control de leakage
+## 8. Explicabilidad y control de leakage
 
 `l3_gold.ml_importancia` guarda, por feature:
 
@@ -94,7 +107,7 @@ Con `y_1_3h_local` como etiqueta, las alertas que caen en interrupciones sistém
 - `gain` de XGBoost, `importancia_impureza` del bosque y `coef_abs` de la logística (sobre la feature estandarizada).
 - `pr_auc_univariante`: la PR-AUC de cada feature usada sola como puntuación. Si una sola feature ordena los positivos casi a la perfección, lo normal es que se haya colado información del futuro. Las que superan `alerta_leakage_pr_auc` (0,3) quedan con `alerta_leakage = true` y salen en el log. Antes de dar por bueno un modelo hay que revisarlas; si alguna es leakage, se añade a `excluir_features` y se vuelve a entrenar.
 
-## 8. Resultados que deja cada ejecución
+## 9. Resultados que deja cada ejecución
 
 Cada ejecución tiene un `run_id` (`ml_<fecha>_<hash>`) y escribe en el esquema `l3_gold` (en Trino, `lakehouse.l3_gold`):
 
@@ -138,7 +151,7 @@ FROM lakehouse.l3_gold.ml_importancia
 WHERE run_id = '<run_id>' AND alerta_leakage;
 ```
 
-## 9. Cómo lanzarlo
+## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).
 
@@ -162,7 +175,7 @@ El job no va en Airflow a propósito. El driver hace el entrenamiento y usa todo
 
 **Memoria y tiempo en el portátil.** La muestra de train son unos 0,9 GB en float32 y el proceso Python del driver llega a unos 5 o 6 GB al entrenar el bosque. Conviene parar lo que no se usa (`docker compose stop sqlserver kafka kafka-connect kafka-ui trino`). Como referencia, contamos con entre una y dos horas para la ejecución completa con búsqueda, la mayor parte en XGBoost y en puntuar los 11 millones de filas de valid desde el disco externo.
 
-## 10. Pendiente
+## 11. Pendiente
 
 - MLflow como servicio en `compose.yaml` (con Postgres y MinIO, que ya están) para registrar cada ejecución con sus métricas y artefactos. Mientras tanto `ml_runs` cumple esa función y guarda lo mismo.
 - Política de reentreno: el modelo no se reentrena online. Se reentrena en batch cada 1 a 3 meses con los datos nuevos (recomendación de la tutoría), y cada reentreno es una ejecución más de este job con su `run_id` y su versión de dataset.

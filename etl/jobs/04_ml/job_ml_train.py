@@ -59,7 +59,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType, FloatType, StructField, StructType
 
@@ -419,6 +419,204 @@ def cluster_cts(spark, dataset, label: str, cfg: dict, run_id: str, seed: int) -
         F.col(CLUSTER_FEATURE).cast("double").alias(CLUSTER_FEATURE),
     )
     return clusters, profile, {"k": int(k), "probados": tried, "variables": columns}
+
+
+# ---------------------------------------------------------------------------
+# Weather
+# ---------------------------------------------------------------------------
+
+DIM_CT_TABLE = f"{GOLD}.dim_ct"
+WEATHER_TABLE = f"{GOLD}.ml_meteo_celda_hora"
+LOCATION_FEATURES = ["ct_lat_municipio", "ct_lon_municipio"]
+
+# Hourly variables of Bronze (Open-Meteo names) and their short names here.
+WEATHER_VARIABLES = {
+    "wind_gusts_10m": "racha",
+    "wind_speed_10m": "viento",
+    "precipitation": "lluvia",
+    "snowfall": "nieve",
+    "temperature_2m": "temp",
+    "relative_humidity_2m": "humedad",
+    "pressure_msl": "presion",
+}
+
+
+def normalized_name(column):
+    """Lower case, no accents, letters only: to match municipality names."""
+    plain = F.translate(F.lower(F.trim(column)), "áàäâéèëêíìïîóòöôúùüûñç", "aaaaeeeeiiiioooouuuunc")
+    return F.regexp_replace(plain, "[^a-z]", "")
+
+
+def ct_locations(spark, cfg: dict):
+    """
+    (distribuidora_id, ct_id, celda_id, ct_lat_municipio, ct_lon_municipio)
+    for every CT of dim_ct: its municipality in Calser matched with the
+    reference of the weather download by INE code (MUNICIPIO_ID) and, when
+    that fails, by name. None when the weather tables are not there.
+    """
+    cells_table = cfg.get("tabla_celdas", "l1_bronze.meteo_openmeteo_celdas")
+
+    if not (spark.catalog.tableExists(cells_table) and spark.catalog.tableExists(DIM_CT_TABLE)):
+        logger.warning("No weather: %s or %s not found", cells_table, DIM_CT_TABLE)
+        return None
+
+    ref = spark.table(cells_table).select(
+        F.lpad(F.trim(F.col("codigo_ine")), 5, "0").alias("_ine"),
+        normalized_name(F.col("municipio")).alias("_nombre"),
+        "celda_id",
+        F.col("latitud").cast("double").alias("ct_lat_municipio"),
+        F.col("longitud").cast("double").alias("ct_lon_municipio"),
+    )
+    by_ine = ref.dropDuplicates(["_ine"]).drop("_nombre")
+    by_name = ref.dropDuplicates(["_nombre"]).drop("_ine")
+
+    dim = spark.table(DIM_CT_TABLE).select(
+        "distribuidora_id", "ct_id",
+        F.lpad(F.trim(F.col("municipio_id").cast("string")), 5, "0").alias("_ine"),
+        normalized_name(F.col("municipio_nombre")).alias("_nombre"),
+    ).dropDuplicates(["distribuidora_id", "ct_id"])
+
+    first = dim.join(F.broadcast(by_ine), "_ine", "left")
+    second = dim.join(F.broadcast(by_name.select(
+        "_nombre",
+        F.col("celda_id").alias("_celda_n"),
+        F.col("ct_lat_municipio").alias("_lat_n"),
+        F.col("ct_lon_municipio").alias("_lon_n"),
+    )), "_nombre", "left").select("distribuidora_id", "ct_id", "_celda_n", "_lat_n", "_lon_n")
+
+    located = (
+        first.join(second, ["distribuidora_id", "ct_id"], "left")
+        .select(
+            "distribuidora_id", "ct_id",
+            F.coalesce("celda_id", "_celda_n").alias("celda_id"),
+            F.coalesce("ct_lat_municipio", "_lat_n").alias("ct_lat_municipio"),
+            F.coalesce("ct_lon_municipio", "_lon_n").alias("ct_lon_municipio"),
+            F.when(F.col("celda_id").isNotNull(), "ine").when(F.col("_celda_n").isNotNull(), "nombre")
+            .otherwise("sin_celda").alias("_cruce"),
+        )
+    ).toPandas()
+
+    logger.info("CTs located for the weather: %s", located["_cruce"].value_counts().to_dict())
+    located = located.drop(columns="_cruce")
+    return spark.createDataFrame(located, schema=(
+        f"distribuidora_id {spark.table(DIM_CT_TABLE).schema['distribuidora_id'].dataType.simpleString()}, "
+        "ct_id string, celda_id string, ct_lat_municipio double, ct_lon_municipio double"
+    ))
+
+
+def with_locations(dataset, locations):
+    if locations is None:
+        return dataset
+
+    return dataset.join(F.broadcast(locations), ["distribuidora_id", "ct_id"], "left")
+
+
+def weather_features(spark, cfg: dict, run_id: str) -> tuple:
+    """
+    Weather of every cell and hour as features, written to
+    ml_meteo_celda_hora. A row of Bronze at hora describes the hour that ends
+    then, so the row of hora is known at hora, like the rest of the features.
+
+    - met_*: the last hours (gust and wind of the hour, maximum gust of 3, 6
+      and 24 h; rain of 1, 3, 6 and 24 h; snow of 24 h; temperature,
+      minimum and maximum of 24 h; humidity; pressure and its change in 3
+      and 24 h, the passing fronts).
+    - metprev_*: the next prevision_h hours (maximum gust, rain and snow).
+      The reanalysis is used as a perfect forecast of the next hours: in
+      operation that would be the forecast of AEMET or ECMWF, which is good
+      at 1 - 3 h. It is an upper bound and it is said so; prevision_h = 0
+      leaves it out.
+    - met_region_* / metprev_region_*: maximum gust over all the cells, the
+      size of the storm.
+    """
+    hours_table = cfg.get("tabla_horas", "l1_bronze.meteo_openmeteo_hora")
+
+    if not spark.catalog.tableExists(hours_table):
+        logger.warning("No weather: %s not found", hours_table)
+        return None, []
+
+    raw = spark.table(hours_table)
+    present = {k: v for k, v in WEATHER_VARIABLES.items() if k in raw.columns}
+    w = raw.select("celda_id", "hora", *[F.col(k).cast("double").alias(v) for k, v in present.items()])
+    w = w.withColumn("_t", F.unix_timestamp("hora"))
+
+    def past(hours):
+        return Window.partitionBy("celda_id").orderBy("_t").rangeBetween(-(hours * 3600 - 1), 0)
+
+    def ahead(hours):
+        return Window.partitionBy("celda_id").orderBy("_t").rangeBetween(1, hours * 3600)
+
+    def at(hours):
+        return Window.partitionBy("celda_id").orderBy("_t").rangeBetween(-hours * 3600, -hours * 3600)
+
+    cols, names = [], []
+
+    def add(column, name):
+        cols.append(column.alias(name))
+        names.append(name)
+
+    if "racha" in present.values():
+        add(F.col("racha"), "met_racha_1h")
+        for h in (3, 6, 24):
+            add(F.max("racha").over(past(h)), f"met_racha_max_{h}h")
+    if "viento" in present.values():
+        add(F.col("viento"), "met_viento_1h")
+    if "lluvia" in present.values():
+        add(F.col("lluvia"), "met_lluvia_1h")
+        for h in (3, 6, 24):
+            add(F.sum("lluvia").over(past(h)), f"met_lluvia_{h}h")
+    if "nieve" in present.values():
+        add(F.sum("nieve").over(past(24)), "met_nieve_24h")
+    if "temp" in present.values():
+        add(F.col("temp"), "met_temp_1h")
+        add(F.min("temp").over(past(24)), "met_temp_min_24h")
+        add(F.max("temp").over(past(24)), "met_temp_max_24h")
+    if "humedad" in present.values():
+        add(F.col("humedad"), "met_humedad_1h")
+    if "presion" in present.values():
+        add(F.col("presion"), "met_presion_1h")
+        add(F.col("presion") - F.first("presion").over(at(3)), "met_presion_delta_3h")
+        add(F.col("presion") - F.first("presion").over(at(24)), "met_presion_delta_24h")
+
+    lead = int(cfg.get("prevision_h", 3))
+    if lead > 0:
+        if "racha" in present.values():
+            add(F.max("racha").over(ahead(lead)), f"metprev_racha_max_{lead}h")
+        if "lluvia" in present.values():
+            add(F.sum("lluvia").over(ahead(lead)), f"metprev_lluvia_{lead}h")
+        if "nieve" in present.values():
+            add(F.sum("nieve").over(ahead(lead)), f"metprev_nieve_{lead}h")
+
+    features = w.select("celda_id", "hora", *cols)
+
+    if cfg.get("region", True):
+        region_cols = [c for c in ["met_racha_max_3h", f"metprev_racha_max_{lead}h", "met_lluvia_3h"] if c in names]
+        def region_name(column):
+            if column.startswith("metprev_"):
+                return column.replace("metprev_", "metprev_region_", 1)
+            return column.replace("met_", "met_region_", 1)
+
+        region = features.groupBy("hora").agg(*[F.max(c).alias(region_name(c)) for c in region_cols])
+        region_names = [c for c in region.columns if c != "hora"]
+        features = features.join(region, "hora", "left")
+        names += region_names
+
+    start = time.time()
+    (
+        features.withColumn("run_id", F.lit(run_id))
+        .write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+        .saveAsTable(WEATHER_TABLE)
+    )
+    table = spark.table(WEATHER_TABLE).drop("run_id")
+    logger.info("Weather features: %s columns, %s rows, %.0f s", len(names), table.count(), time.time() - start)
+    return table, names
+
+
+def with_weather(dataset, weather):
+    if weather is None:
+        return dataset
+
+    return dataset.join(weather, ["celda_id", "hora"], "left")
 
 
 def with_clusters(dataset, clusters):
@@ -793,16 +991,29 @@ def main(argv=None):
         dataset = add_season(dataset)
         features = features + [SEASON_FEATURE]
 
+    meteo_cfg = config.get("meteo", {})
+    locations = ct_locations(spark, meteo_cfg) if meteo_cfg.get("activo") else None
+
+    if locations is not None:
+        dataset = with_locations(dataset, locations)
+        features = features + LOCATION_FEATURES
+
     clusters_cfg = config.get("clusters", {})
     profile, clusters_info = None, None
 
     if clusters_cfg.get("activo"):
-        clusters, profile, clusters_info = cluster_cts(spark, spark.table(DATASET_TABLE), label, clusters_cfg,
-                                                       args.run_id, seed)
+        clusters, profile, clusters_info = cluster_cts(
+            spark, with_locations(spark.table(DATASET_TABLE), locations), label, clusters_cfg, args.run_id, seed,
+        )
         dataset = with_clusters(dataset, clusters)
         features = features + [CLUSTER_FEATURE]
         segment_map = {**segment_map, "grupo_ct": CLUSTER_FEATURE}
         segment_columns = list(segment_map.values())
+
+    if locations is not None:
+        weather, weather_names = weather_features(spark, meteo_cfg, args.run_id)
+        dataset = with_weather(dataset, weather)
+        features = features + weather_names
 
     data = load_train(dataset, features, label)
     valid_cfg = config.get("muestra_valid", {})

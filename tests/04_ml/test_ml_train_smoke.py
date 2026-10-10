@@ -76,6 +76,7 @@ def spark(workdir):
 
     session = configure_spark_with_delta_pip(builder).getOrCreate()
     session.sql("CREATE DATABASE IF NOT EXISTS l3_gold")
+    session.sql("CREATE DATABASE IF NOT EXISTS l1_bronze")
     yield session
     session.stop()
 
@@ -167,7 +168,48 @@ def dataset(spark):
         "filas_json": json.dumps(sizes),
     }])
     spark.createDataFrame(version).write.format("delta").mode("overwrite").saveAsTable("l3_gold.dataset_versions")
+    load_weather(spark, pdf)
     return pdf
+
+
+def load_weather(spark, pdf):
+    """
+    dim_ct with the municipality of every CT and the weather tables of Bronze.
+    CT000 - CT019 match the reference by INE code, CT020 - CT027 only by name
+    (accents and case differ), CT028 and CT029 do not match.
+    """
+    cts = pdf[["distribuidora_id", "ct_id"]].drop_duplicates().reset_index(drop=True)
+    cts["municipio_id"] = ["10001" if i < 10 else "10002" if i < 20 else "99999" for i in range(len(cts))]
+    cts["municipio_nombre"] = ["Abadía" if i < 10 else "Ahigal" if i < 20 else "ALBALÁ" if i < 28 else "Ninguno"
+                               for i in range(len(cts))]
+    spark.createDataFrame(cts).withColumn("distribuidora_id", F.col("distribuidora_id").cast("int")) \
+        .write.format("delta").mode("overwrite").saveAsTable("l3_gold.dim_ct")
+
+    cells = pd.DataFrame([
+        {"codigo_ine": "10001", "municipio": "Abadía", "distribuidora_ref": "1", "latitud": 40.26, "longitud": -5.98,
+         "celda_id": "40.30_-6.00", "celda_latitud": 40.3, "celda_longitud": -6.0},
+        {"codigo_ine": "10002", "municipio": "Ahigal", "distribuidora_ref": "1", "latitud": 40.19, "longitud": -6.19,
+         "celda_id": "40.20_-6.20", "celda_latitud": 40.2, "celda_longitud": -6.2},
+        {"codigo_ine": "10007", "municipio": "Albalá", "distribuidora_ref": "1", "latitud": 39.26, "longitud": -6.19,
+         "celda_id": "39.30_-6.20", "celda_latitud": 39.3, "celda_longitud": -6.2},
+    ])
+    spark.createDataFrame(cells).write.format("delta").mode("overwrite").saveAsTable("l1_bronze.meteo_openmeteo_celdas")
+
+    rng = np.random.default_rng(9)
+    hours = pd.date_range(pdf["hora"].min() - pd.Timedelta(days=2), pdf["hora"].max() + pd.Timedelta(days=1), freq="h")
+    frames = []
+    for cell in cells["celda_id"]:
+        n = len(hours)
+        frames.append(pd.DataFrame({
+            "celda_id": cell, "hora": hours,
+            "temperature_2m": rng.normal(12, 6, n), "relative_humidity_2m": rng.uniform(30, 100, n),
+            "precipitation": rng.exponential(0.2, n), "snowfall": np.zeros(n),
+            "wind_speed_10m": rng.gamma(2, 6, n), "wind_gusts_10m": rng.gamma(2, 12, n),
+            "pressure_msl": rng.normal(1015, 6, n),
+        }))
+    weather = pd.concat(frames, ignore_index=True)
+    weather["anio"] = weather["hora"].dt.year
+    spark.createDataFrame(weather).write.format("delta").mode("overwrite").saveAsTable("l1_bronze.meteo_openmeteo_hora")
 
 
 @pytest.fixture(scope="module")
@@ -295,8 +337,13 @@ def test_saved_models(workdir, run):
     with open(os.path.join(folder, "xgboost.pkl"), "rb") as file:
         scorer = pickle.load(file)
 
-    # plus the network context (2), estacion and ct_cluster
-    assert len(scorer.feature_names) == len(FEATURES) + 4
+    # plus the network context (2), estacion, the coordinates of the
+    # municipality (2), ct_cluster and the weather
+    names = scorer.feature_names
+    assert names[:len(FEATURES)] == FEATURES
+    assert {"estacion", "ct_cluster", "ct_lat_municipio", "met_racha_max_6h", "metprev_racha_max_3h",
+            "met_region_racha_max_3h"} <= set(names)
+    assert len([n for n in names if n.startswith("met")]) >= 18
     X = np.zeros((3, len(scorer.feature_names)), dtype=np.float32)
     assert scorer.score(X).shape == (3,)
 
@@ -339,6 +386,25 @@ def test_groups_of_cts(spark, dataset, run, workdir):
         report = file.read()
     assert "## Grupos de CT" in report
     assert "por grupo de CT" in report
+
+
+def test_weather_features(spark, dataset, run):
+    weather = spark.table("l3_gold.ml_meteo_celda_hora").toPandas().sort_values(["celda_id", "hora"])
+    cell = weather[weather["celda_id"] == "40.30_-6.00"].set_index("hora")
+    raw = spark.table("l1_bronze.meteo_openmeteo_hora").where(F.col("celda_id") == "40.30_-6.00") \
+        .toPandas().set_index("hora").sort_index()
+
+    when = raw.index[100]
+    assert cell.loc[when, "met_racha_1h"] == pytest.approx(raw.loc[when, "wind_gusts_10m"])
+    # The last 6 hours end at hora (included) and the forecast starts after it.
+    assert cell.loc[when, "met_racha_max_6h"] == pytest.approx(raw["wind_gusts_10m"].iloc[95:101].max())
+    assert cell.loc[when, "metprev_racha_max_3h"] == pytest.approx(raw["wind_gusts_10m"].iloc[101:104].max())
+    assert cell.loc[when, "met_lluvia_24h"] == pytest.approx(raw["precipitation"].iloc[77:101].sum())
+    assert cell.loc[when, "met_presion_delta_3h"] == pytest.approx(
+        raw["pressure_msl"].iloc[100] - raw["pressure_msl"].iloc[97])
+
+    groups = spark.table("l3_gold.ml_clusters_ct").toPandas()
+    assert len(groups) == 30
 
 
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
