@@ -188,6 +188,9 @@ def config_path(workdir):
     config["evaluacion"].update({"presupuestos_alertas_dia": [2, 5], "filas_shap": 500, "test_hasta": "2026-01-20"})
     config["artefactos_uri"] = os.path.join(workdir, "modelos")
     config["exportar_dir"] = os.path.join(workdir, "resultados")
+    # The synthetic dataset only has 24 h event features and no features_ct_hora:
+    # the context is built from dataset_train with that window.
+    config["contexto_red"] = {"activo": True, "prefijos": ["ev_"], "ventanas": ["24h"], "region": True}
     config["spark_conf"] = {}
 
     path = os.path.join(workdir, "config_ml_test.json")
@@ -273,6 +276,9 @@ def test_importance(spark, run):
     assert ("logistica", "coef_abs") in metrics
     assert ("feature_sola", "pr_auc_univariante") in metrics
 
+    features = set(importance["feature"])
+    assert {"red_frac_ev_defecto_tierra_24h", "region_frac_ev_defecto_tierra_24h"} <= features
+
     shap = importance[(importance["modelo"] == "xgboost") & (importance["metrica"] == "shap_medio_abs")]
     top = shap.sort_values("valor", ascending=False)["feature"].head(2).tolist()
     assert "ev_defecto_tierra_24h" in top or "hist_interr_365d" in top
@@ -287,7 +293,8 @@ def test_saved_models(workdir, run):
     with open(os.path.join(folder, "xgboost.pkl"), "rb") as file:
         scorer = pickle.load(file)
 
-    X = np.zeros((3, len(FEATURES)), dtype=np.float32)
+    assert len(scorer.feature_names) == len(FEATURES) + 2  # plus the network context
+    X = np.zeros((3, len(scorer.feature_names)), dtype=np.float32)
     assert scorer.score(X).shape == (3,)
 
 
