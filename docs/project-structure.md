@@ -30,7 +30,7 @@ gridpredic-infrastructure/
 ├── etl/                         # El pipeline, agrupado por capa de destino
 │   ├── dags/                    # Orquestación con Airflow (01_bronze, 02_silver, 03_gold)
 │   ├── config/                  # Parámetros de los procesos en JSON (qué tablas, qué orden, qué recursos, reglas de Gold)
-│   └── jobs/                    # Transformaciones con Spark (00_landing, 01_bronze, 02_silver, 03_gold)
+│   └── jobs/                    # Transformaciones con Spark (00_landing ... 03_gold) y entrenamiento (04_ml)
 ├── data/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
 ├── docs/                        # Documentación: cards, capas Silver y Gold, flujo de datos, este documento
@@ -49,7 +49,7 @@ Dentro de `dags/`, `config/` y `jobs/` los ficheros se agrupan por capa (`00_lan
 | `data/interim` | Zona Silver (`l2_silver`) en MinIO | Los intermedios son tablas Delta, no ficheros del repositorio |
 | `data/processed` | Zona Gold (`l3_gold`) | El dataset final de entrenamiento se congela por versiones en Gold (`dataset_train` y `dataset_versions`) |
 | `data/external` | `data/reference_data/` | Único dato que sí se versiona: el fichero de municipios del INE (28 KB) |
-| `<modulo>/dataset.py`, `features.py`, `modeling/` | `etl/jobs/00_landing`, `01_bronze`, `02_silver`, `03_gold` (y `04_model` más adelante) | El código se ejecuta con `spark-submit` desde Airflow, así que se organiza por capa del pipeline en lugar de como paquete importable. `silver_common.py` y `gold_common.py` hacen de librería compartida de su capa |
+| `<modulo>/dataset.py`, `features.py`, `modeling/` | `etl/jobs/00_landing`, `01_bronze`, `02_silver`, `03_gold` y `04_ml` | El código se ejecuta con `spark-submit` desde Airflow, así que se organiza por capa del pipeline en lugar de como paquete importable. `silver_common.py` y `gold_common.py` hacen de librería compartida de su capa; en `04_ml`, `ml_models.py` y `ml_metrics.py` no dependen de Spark y se prueban solos |
 | `Makefile` | `Makefile` (y `_runlogs/run_silver_test.ps1` para Windows) | Mismos atajos: levantar el stack, lanzar tests, lint |
 | `requirements.txt` | `requirements.txt` en la raíz para el entorno local; `infra/spark/requirements.txt` y los `Dockerfile` para el runtime | Las versiones de Spark, Delta, Airflow, Hive y Trino están fijadas en las imágenes. El `requirements.txt` de la raíz reproduce el entorno de pruebas sin Docker |
 | `pyproject.toml` | `pyproject.toml` | Configuración de ruff y pytest y metadatos del proyecto |
@@ -59,7 +59,7 @@ Dentro de `dags/`, `config/` y `jobs/` los ficheros se agrupan por capa (`00_lan
 | `references/` | Documentación de SITEL sobre Calser y TedisNet, fuera del repositorio | Son manuales confidenciales del fabricante. Lo que necesita el pipeline está resumido en `docs/silver-layer.md` |
 | `reports/` | Memoria del TFM, fuera del repositorio | El informe se entrega en el campus; las figuras se generan con scripts en el mismo repositorio de la memoria |
 | `.env`, `.gitignore` | `.env.example`, `.gitignore` | Credenciales fuera de Git; backups, logs y cachés también |
-| `tests/` | `tests/02_silver/test_silver_smoke.py`, `tests/03_gold/test_gold_smoke.py` | Tests de extremo a extremo de Silver y de Gold en un Spark local, con los problemas reales de los datos sembrados a propósito y una prueba de leakage de las features |
+| `tests/` | `tests/02_silver/test_silver_smoke.py`, `tests/03_gold/test_gold_smoke.py`, `tests/04_ml/` | Tests de extremo a extremo de Silver y de Gold en un Spark local, con los problemas reales de los datos sembrados a propósito y una prueba de leakage de las features; tests de las métricas y los modelos y del job de entrenamiento sobre un dataset sintético |
 | (no existe en CCDS) | `compose.yaml`, `infra/` | La plataforma se levanta con Docker Compose; cada servicio tiene su carpeta con su Dockerfile y sus scripts |
 | (no existe en CCDS) | `etl/dags/`, `etl/config/` | Separar orquestación (Airflow), parámetros (JSON) y transformación (Spark) permite añadir una tabla o cambiar el orden sin tocar código |
 
@@ -77,7 +77,6 @@ Sin Docker, las reglas de Silver y de Gold se pueden reproducir en cualquier má
 
 ## 5. Lo que queda por añadir
 
-- Registro de experimentos y modelos con MLflow, y un servicio más en `compose.yaml` para ello. El identificador de `dataset_versions` es el que irá con cada modelo.
-- Entrenamiento (`etl/jobs/04_model` o notebooks que lo preparen) sobre `l3_gold.dataset_train`.
+- Registro de experimentos y modelos con MLflow, y un servicio más en `compose.yaml` para ello. Mientras tanto, `l3_gold.ml_runs` guarda cada ejecución con su versión de dataset.
 - Ingesta de meteorología (API externa) en Landing.
 - Notebooks de exploración de Gold y del modelo, siguiendo la convención de `notebooks/README.md`.
