@@ -105,6 +105,7 @@
     "alerta_leakage_pr_auc": 0.3
   },
   "artefactos_uri": "s3://datalake/ml/modelos",
+  "exportar_dir": "/tmp/ml_resultados",
   "spark_conf": {
     "spark.cores.max": "4",
     "spark.executor.memory": "6g",

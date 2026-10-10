@@ -81,6 +81,12 @@ Cada ejecución tiene un `run_id` (`ml_<fecha>_<hash>`) y escribe en el esquema 
 | `ml_importancia` | Importancias y PR-AUC univariante, con la alerta de leakage |
 | `ml_predicciones` | Puntuación de cada modelo para cada fila de valid y de test, con las etiquetas, la antelación y los segmentos. Particionada por `run_id` y `split` |
 
+Además, cada ejecución escribe en el log un resumen en tablas (comparación de modelos, PR-AUC por distribuidora, eventos locales, las features con más peso, las alertas de leakage y la búsqueda) y deja `resumen.md`, `metricas.csv`, `importancia.csv` y `busqueda.json` en `exportar_dir/<run_id>/` dentro del contenedor (`/tmp/ml_resultados`). Así se pueden leer los resultados sin levantar Trino:
+
+```bash
+docker compose cp spark-master:/tmp/ml_resultados/. _runlogs/ml_resultados
+```
+
 Los modelos se guardan en MinIO en `s3://datalake/ml/modelos/<run_id>/`: un `.pkl` por modelo (el objeto con su método `score`), `xgboost_booster.json` (formato propio de XGBoost, que no depende de la versión de Python) y `run.json` con las features en orden y los parámetros.
 
 Consultas útiles desde DBeaver:
