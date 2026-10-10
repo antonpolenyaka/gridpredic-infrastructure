@@ -28,6 +28,10 @@ Models (name in config_ml.json):
 - random_forest: scikit-learn random forest (it accepts missing values).
 - xgboost: gradient boosting on trees, the main candidate. Early stopping on
   the PR-AUC of the validation sample.
+- xgboost_cluster: one XGBoost per group of similar CTs (fit_clusters), with
+  the configuration chosen for the global model; a group with too few
+  positives uses the global model. Divide and conquer: a single model over
+  very different CTs dilutes what each kind of CT has to say.
 """
 
 import time
@@ -301,4 +305,110 @@ def importances(scorer: Scorer, X_sample=None) -> dict:
         # the missing indicators added by the imputer.
         out["coef_abs"] = np.abs(coef[:len(names)])
 
+    elif isinstance(scorer, ClusterScorer):
+        # What weighs in every group: mean absolute SHAP of its submodel on
+        # the rows of that group.
+        groups = X_sample[:, scorer.column] if X_sample is not None and len(X_sample) else None
+
+        for group, model in scorer.models.items():
+            rows = X_sample[groups == group] if groups is not None else None
+            sub = importances(model, rows)
+            if "shap_medio_abs" in sub:
+                out[f"shap_medio_abs_grupo_{group}"] = sub["shap_medio_abs"]
+
     return out
+
+
+# ---------------------------------------------------------------------------
+# Groups of CTs
+# ---------------------------------------------------------------------------
+
+class ClusterScorer(Scorer):
+    """
+    Scores every row with the submodel of its group (the value of the
+    cluster column of the row) and the fallback model when its group has no
+    submodel.
+    """
+
+    def __init__(self, name: str, feature_names: list, cluster_feature: str, models: dict, fallback: Scorer):
+        super().__init__(name, feature_names)
+        self.cluster_feature = cluster_feature
+        self.column = feature_names.index(cluster_feature)
+        self.models = dict(models)
+        self.fallback = fallback
+
+    def score(self, X):
+        out = self.fallback.score(X)
+        groups = X[:, self.column]
+
+        for group, model in self.models.items():
+            mask = groups == group
+            if mask.any():
+                out[mask] = model.score(X[mask])
+
+        return out
+
+    def single_thread(self):
+        self.fallback.single_thread()
+        for model in self.models.values():
+            model.single_thread()
+        return self
+
+
+def cluster_matrix(pdf, numeric: list, log: list, categorical: list):
+    """
+    Matrix for k-means from one row per CT: numeric variables (log scale for
+    the skewed ones, median for the missing), one hot of the categorical
+    ones, every column standardised so no variable weighs more for its unit.
+    """
+    import pandas as pd
+    from sklearn.preprocessing import StandardScaler
+
+    parts = []
+
+    for column in numeric:
+        values = pd.to_numeric(pdf[column], errors="coerce").astype(float)
+        if column in log:
+            values = np.log1p(values.clip(lower=0))
+        parts.append(values.fillna(values.median() if values.notna().any() else 0.0).rename(column))
+
+    for column in categorical:
+        dummies = pd.get_dummies(pdf[column].astype("Int64").astype(str), prefix=column, dtype=float)
+        parts.append(dummies)
+
+    frame = pd.concat(parts, axis=1)
+    return StandardScaler().fit_transform(frame.to_numpy(dtype=float)), list(frame.columns)
+
+
+def fit_clusters(X: np.ndarray, k_values: list, seed: int, min_size: int = 1) -> tuple:
+    """
+    k-means for every k of k_values; keeps the k with the best silhouette
+    among those whose smallest group has at least min_size CTs (the best
+    silhouette of all if none does). Returns (labels, k, [(k, silhouette,
+    smallest group)]).
+    """
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score
+
+    tried = []
+    best = None
+
+    for k in k_values:
+        if k < 2 or k >= len(X):
+            continue
+
+        labels = KMeans(n_clusters=k, n_init=10, random_state=seed).fit_predict(X)
+        silhouette = float(silhouette_score(X, labels))
+        smallest = int(np.bincount(labels).min())
+        tried.append((k, silhouette, smallest))
+
+        valid = smallest >= min_size
+        key = (valid, silhouette)
+
+        if best is None or key > best[0]:
+            best = (key, labels, k)
+
+    if best is None:
+        return np.zeros(len(X), dtype=int), 1, tried
+
+    return best[1], best[2], tried

@@ -9,7 +9,7 @@
   "n_jobs": -1,
   "excluir_features": [],
   "contexto_red": {
-    "activo": true,
+    "activo": false,
     "prefijos": [
       "ev_",
       "evred_",
@@ -23,6 +23,45 @@
       "6h"
     ],
     "region": true
+  },
+  "estacion": true,
+  "clusters": {
+    "activo": true,
+    "numericas": [
+      "ct_potencia_kva",
+      "ct_num_abonados",
+      "ct_n_salidas",
+      "ct_n_trafos",
+      "ct_n_ct_grupo",
+      "ct_tiene_medidas",
+      "ct_tension_primaria_kv",
+      "ct_latitud",
+      "ct_longitud"
+    ],
+    "log": [
+      "ct_potencia_kva",
+      "ct_num_abonados",
+      "ct_n_salidas",
+      "ct_n_ct_grupo"
+    ],
+    "categoricas": [
+      "ct_tipo_zona",
+      "distribuidora_id"
+    ],
+    "tasa_interrupciones_train": true,
+    "k": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "min_cts": 20
+  },
+  "submodelos": {
+    "activo": true,
+    "min_positivos": 200
   },
   "modelos": [
     "tasa_base",

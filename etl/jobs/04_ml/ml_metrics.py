@@ -248,7 +248,7 @@ def markdown_table(df: pd.DataFrame, digits: int = 4) -> str:
 
 
 def report_markdown(metrics: pd.DataFrame, importance: pd.DataFrame, search: list, label: str,
-                    budget: int, local_label: str = None, top: int = 15) -> str:
+                    budget: int, local_label: str = None, top: int = 15, profile: pd.DataFrame = None) -> str:
     """
     Short report of a run: the comparison of the models per split, PR-AUC per
     distribuidora, the local events, the features that weigh most in
@@ -285,6 +285,28 @@ def report_markdown(metrics: pd.DataFrame, importance: pd.DataFrame, search: lis
             dt = by.pivot_table(index="modelo", columns="valor_segmento", values="valor")
             dt.columns = [f"pr_auc dist {c}" for c in dt.columns]
             parts.append(f"### {split}: PR-AUC por distribuidora\n\n" + markdown_table(dt.reset_index()))
+
+    if profile is not None and not profile.empty:
+        parts.append("## Grupos de CT (k-means)\n\n" + markdown_table(profile, digits=3))
+
+    by_group = metrics[(metrics["split"] == "valid") & (metrics["etiqueta"] == label)
+                       & (metrics["segmento"] == "grupo_ct")
+                       & metrics["metrica"].isin(["pr_auc", "lift_pr_auc", f"recall_episodios@{budget}"])]
+    if not by_group.empty:
+        gt = by_group.pivot_table(index=["valor_segmento", "modelo"], columns="metrica", values="valor")
+        counts = by_group.groupby("valor_segmento")[["n_filas", "n_positivos"]].first()
+        gt = gt.reset_index().merge(counts.reset_index(), on="valor_segmento")
+        gt = gt[gt["modelo"].isin(["tasa_base", "naif_historico", "xgboost", "xgboost_cluster"])]
+        parts.append("### valid: por grupo de CT\n\n" + markdown_table(gt.rename(columns={"valor_segmento": "grupo"})))
+
+    group_shap = importance[importance["metrica"].str.startswith("shap_medio_abs_grupo_")]
+    if not group_shap.empty:
+        lines = []
+        for metric, g in group_shap.groupby("metrica"):
+            names = g.sort_values("valor", ascending=False).head(5)["feature"].tolist()
+            lines.append(f"| {metric.rsplit('_', 1)[-1]} | {', '.join(names)} |")
+        parts.append("## Lo que más pesa en el submodelo de cada grupo (SHAP)\n\n| grupo | 5 features con más peso |\n"
+                     "| --- | --- |\n" + "\n".join(lines))
 
     shap = importance[(importance["modelo"] == "xgboost") & (importance["metrica"] == "shap_medio_abs")]
     if not shap.empty:

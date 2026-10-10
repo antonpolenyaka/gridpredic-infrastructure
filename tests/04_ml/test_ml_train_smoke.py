@@ -191,6 +191,8 @@ def config_path(workdir):
     # The synthetic dataset only has 24 h event features and no features_ct_hora:
     # the context is built from dataset_train with that window.
     config["contexto_red"] = {"activo": True, "prefijos": ["ev_"], "ventanas": ["24h"], "region": True}
+    config["clusters"].update({"k": [2, 3], "min_cts": 5})
+    config["submodelos"] = {"activo": True, "min_positivos": 20}
     config["spark_conf"] = {}
 
     path = os.path.join(workdir, "config_ml_test.json")
@@ -216,7 +218,7 @@ def test_run_row(spark, run):
     assert row["splits_evaluados"] == "valid,test"
 
     models = json.loads(row["modelos_json"])
-    assert set(models) == {"tasa_base", "naif_historico", "logistica", "random_forest", "xgboost"}
+    assert set(models) == {"tasa_base", "naif_historico", "logistica", "random_forest", "xgboost", "xgboost_cluster"}
     assert "mejor_iteracion" in models["xgboost"]
 
     search = json.loads(row["busqueda_json"])
@@ -293,7 +295,8 @@ def test_saved_models(workdir, run):
     with open(os.path.join(folder, "xgboost.pkl"), "rb") as file:
         scorer = pickle.load(file)
 
-    assert len(scorer.feature_names) == len(FEATURES) + 2  # plus the network context
+    # plus the network context (2), estacion and ct_cluster
+    assert len(scorer.feature_names) == len(FEATURES) + 4
     X = np.zeros((3, len(scorer.feature_names)), dtype=np.float32)
     assert scorer.score(X).shape == (3,)
 
@@ -312,6 +315,30 @@ def test_exported_summary(workdir, run):
 
     assert "| xgboost |" in report
     assert len(pd.read_csv(os.path.join(folder, "metricas.csv"))) > 100
+
+
+def test_groups_of_cts(spark, dataset, run, workdir):
+    groups = spark.table("l3_gold.ml_clusters_ct").where(F.col("run_id") == run).toPandas()
+    assert len(groups) == 30
+    assert groups["ct_cluster"].nunique() in (2, 3)
+
+    predictions = spark.table("l3_gold.ml_predicciones").where(F.col("run_id") == run)
+    assert "p_xgboost_cluster" in predictions.columns
+    assert "ct_cluster" in predictions.columns
+
+    metrics = spark.table("l3_gold.ml_metricas").where(F.col("run_id") == run).toPandas()
+    by_group = metrics[(metrics["segmento"] == "grupo_ct") & (metrics["metrica"] == "pr_auc")]
+    assert set(by_group["modelo"]) >= {"xgboost", "xgboost_cluster"}
+
+    search = json.loads(spark.table("l3_gold.ml_runs").where(F.col("run_id") == run).first()["busqueda_json"])
+    rows = [s for s in search if s["modelo"] == "xgboost_cluster"]
+    assert len(rows) == groups["ct_cluster"].nunique()
+    assert all("pr_auc_global_en_grupo" in r for r in rows)
+
+    with open(os.path.join(workdir, "resultados", run, "resumen.md"), encoding="utf-8") as file:
+        report = file.read()
+    assert "## Grupos de CT" in report
+    assert "por grupo de CT" in report
 
 
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
