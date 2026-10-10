@@ -201,9 +201,9 @@ def to_matrix(pdf: pd.DataFrame, n_features: int) -> np.ndarray:
     return pdf[[f"__f{i}" for i in range(n_features)]].to_numpy(dtype=np.float32, na_value=np.nan)
 
 
-def load_train(spark, features: list, label: str) -> dict:
+def load_train(dataset, features: list, label: str) -> dict:
     df = (
-        spark.table(DATASET_TABLE)
+        dataset
         .where((F.col("split") == "train") & F.col("en_muestra_train"))
         .select(F.col(label).cast("int").alias("_y"), F.col("peso_muestra").cast("double").alias("_w"),
                 *feature_columns(features))
@@ -218,14 +218,14 @@ def load_train(spark, features: list, label: str) -> dict:
     return {"X": X, "y": y, "w": w}
 
 
-def load_valid_sample(spark, features: list, label: str, rate: float, seed: int) -> dict:
+def load_valid_sample(dataset, features: list, label: str, rate: float, seed: int) -> dict:
     draw = (
         F.abs(F.xxhash64(F.col("distribuidora_id"), F.col("ct_id"), F.col("hora"), F.lit(int(seed))))
         % F.lit(1_000_000)
     ) / F.lit(1_000_000.0)
 
     df = (
-        spark.table(DATASET_TABLE)
+        dataset
         .where((F.col("split") == "valid") & ((F.col(label) == 1) | (draw < F.lit(rate))))
         .select(
             F.col(label).cast("int").alias("_y"),
@@ -241,6 +241,83 @@ def load_valid_sample(spark, features: list, label: str, rate: float, seed: int)
     w = pdf["_w"].to_numpy(dtype=np.float64)
     logger.info("Validation sample: %s rows, %s positives, %.0f s", len(y), int(y.sum()), time.time() - start)
     return {"Xv": X, "yv": y, "wv": w}
+
+
+# ---------------------------------------------------------------------------
+# State of the network
+# ---------------------------------------------------------------------------
+
+CONTEXT_TABLE = f"{GOLD}.ml_contexto_red"
+FEATURES_TABLE = f"{GOLD}.features_ct_hora"
+
+
+def context_sources(features: list, cfg: dict) -> list:
+    prefixes = tuple(cfg.get("prefijos", []))
+    windows = tuple(f"_{w}" for w in cfg.get("ventanas", []))
+    return [f for f in features if f.startswith(prefixes) and f.endswith(windows)]
+
+
+def network_context(spark, features: list, cfg: dict, run_id: str) -> tuple:
+    """
+    State of the whole network at every hour, added to every row of the CT:
+    for each precursor feature of a short window (value changes of earth
+    and phase faults, loss of voltage, trips, reclosures, cuts of the SCADA
+    in the last hours), the share of CTs of the distribuidora where it is
+    not zero (red_frac_*) and the same share over the three distribuidoras
+    (region_frac_*).
+
+    94 % of the interruptions are systemic (a storm, a fault upstream): the
+    CT that fails is often one that never failed before, and what announces
+    it is that the network around it is already moving. The CT features only
+    see its own group and feeder; these see the whole network.
+
+    Computed from features_ct_hora (every CT and hour, also the ones the
+    dataset leaves out), so the share does not depend on which CTs were
+    already in a cut, which is derived from the labels. Every feature of a
+    row uses only data before its hour, and so does a mean of them over the
+    CTs of the same hour. Written to ml_contexto_red so the three reads of
+    the run (train sample, valid sample, scoring) share one computation.
+    """
+    sources = context_sources(features, cfg)
+
+    if not sources:
+        logger.warning("No feature matches contexto_red, the block is skipped")
+        return None, []
+
+    table = FEATURES_TABLE if spark.catalog.tableExists(FEATURES_TABLE) else DATASET_TABLE
+    base = spark.table(table)
+    sources = [f for f in sources if f in base.columns]
+
+    flags = [(F.coalesce(F.col(f), F.lit(0)) > 0).cast("double").alias(f) for f in sources]
+    hourly = base.select("distribuidora_id", "hora", *flags)
+
+    by_distributor = hourly.groupBy("distribuidora_id", "hora").agg(
+        *[F.avg(f).alias(f"red_frac_{f}") for f in sources]
+    )
+    names = [f"red_frac_{f}" for f in sources]
+
+    if cfg.get("region", True):
+        region = hourly.groupBy("hora").agg(*[F.avg(f).alias(f"region_frac_{f}") for f in sources])
+        by_distributor = by_distributor.join(region, "hora", "left")
+        names += [f"region_frac_{f}" for f in sources]
+
+    start = time.time()
+    (
+        by_distributor.withColumn("run_id", F.lit(run_id))
+        .write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+        .saveAsTable(CONTEXT_TABLE)
+    )
+    context = spark.table(CONTEXT_TABLE).drop("run_id")
+    logger.info("Network context from %s: %s features from %s sources, %s hours, %.0f s",
+                table, len(names), len(sources), context.count(), time.time() - start)
+    return context, names
+
+
+def with_context(dataset, context):
+    if context is None:
+        return dataset
+
+    return dataset.join(F.broadcast(context), ["distribuidora_id", "hora"], "left")
 
 
 # ---------------------------------------------------------------------------
@@ -363,13 +440,12 @@ def save_artifacts(scorers: dict, uri: str, run_id: str, meta: dict, spark) -> s
 # Scoring and evaluation
 # ---------------------------------------------------------------------------
 
-def score_split(spark, split: str, features: list, scorers: dict, labels: list, segment_columns: list,
+def score_split(spark, dataset, split: str, features: list, scorers: dict, labels: list, segment_columns: list,
                 run_id: str, version: str):
     """
     Scores every row of a split on the executors and writes the scores to
     ml_predicciones. Returns the DataFrame of the written rows.
     """
-    dataset = spark.table(DATASET_TABLE)
     passthrough = [
         c for c in dict.fromkeys(labels + [LEAD] + segment_columns) if c in dataset.columns and c not in KEYS
     ]
@@ -538,9 +614,18 @@ def main(argv=None):
     logger.info("Run %s on %s: %s features, label %s, negative rate of the sample %s, base rate %.6f",
                 args.run_id, dataset_version, len(features), label, rate, base_rate)
 
-    data = load_train(spark, features, label)
+    context_cfg = config.get("contexto_red", {})
+    context = None
+
+    if context_cfg.get("activo"):
+        context, context_names = network_context(spark, features, context_cfg, args.run_id)
+        features = features + context_names
+
+    dataset = with_context(spark.table(DATASET_TABLE), context)
+
+    data = load_train(dataset, features, label)
     valid_cfg = config.get("muestra_valid", {})
-    data.update(load_valid_sample(spark, features, label, float(valid_cfg.get("tasa_negativos", 0.02)),
+    data.update(load_valid_sample(dataset, features, label, float(valid_cfg.get("tasa_negativos", 0.02)),
                                   int(valid_cfg.get("semilla", seed + 1))))
     data["feature_names"] = features
 
@@ -564,7 +649,8 @@ def main(argv=None):
     all_metrics = []
 
     for split in splits:
-        written = score_split(spark, split, features, scorers, labels, segment_columns, args.run_id, dataset_version)
+        written = score_split(spark, dataset, split, features, scorers, labels, segment_columns, args.run_id,
+                              dataset_version)
         until = evaluation.get("test_hasta") if split == "test" else None
         pdf = collect_scores(written, labels, segment_columns, list(scorers), until)
         logger.info("Evaluating %s: %s rows, %s positives", split, len(pdf), int(pdf[label].sum()))
