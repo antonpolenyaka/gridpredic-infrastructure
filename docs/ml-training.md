@@ -32,7 +32,19 @@ Nunca usamos validación cruzada aleatoria: el modelo se usa sobre los mismos CT
 
 **Final de test.** Las etiquetas de los últimos 41 a 62 días de la ventana están censuradas (las interrupciones tardan en cargarse en Calser, lo mide `job_gold_dq_checks`). Contar esas horas como negativas penalizaría al modelo por acertar, así que la evaluación de test se corta en `evaluacion.test_hasta` (01.06.2026 por defecto). Las predicciones de esas horas sí se guardan.
 
-## 3. Modelos
+## 3. Estado de la red
+
+El 94 % de las interrupciones de las dos distribuidoras grandes son sistémicas: un temporal o un fallo aguas arriba deja sin suministro a varios CT a la vez. La primera ejecución lo confirmó en los datos. Ninguna feature sola separa bien los positivos (la mejor tiene una PR-AUC de 0,00098, 2,6 veces la tasa base), y el histórico del CT funciona al revés: el 27 % de los positivos de valid son de CT sin ninguna interrupción en el último año, frente al 10 % de los negativos. Lo que sí anticipa los positivos son las señales de su grupo de red y de la cabecera (defectos de fase, faltas de tensión, disparos), de 3 a 5 veces más frecuentes antes de un positivo.
+
+Por eso el job añade un bloque de contexto (`contexto_red`) calculado en el momento de entrenar: para cada feature precursora de ventana corta (`ev_`, `evred_`, `evaa_`, `scada_`, `calidad_`, `corte_error_comm_` de 1 y 6 horas), la fracción de CT de la distribuidora en los que no es cero en esa hora (`red_frac_*`) y la misma fracción en las tres distribuidoras (`region_frac_*`). Es lo que ve un operador cuando la red "se mueve" en toda la zona.
+
+- Se calcula sobre `features_ct_hora` (todos los CT y todas las horas), no sobre `dataset_train`, para que no dependa de qué CT estaban ya en corte, que sale de las etiquetas.
+- Cada feature de una fila solo usa datos anteriores a su hora; una media de esas features entre los CT de la misma hora tampoco ve el futuro.
+- Se escribe en `l3_gold.ml_contexto_red` y se une por `(distribuidora_id, hora)` a la muestra de train, a la de valid y a la puntuación. Para usar el modelo en producción hay que calcular el mismo bloque con las features de la hora.
+
+`etl/jobs/04_ml/diagnostico_senal.py` repite el diagnóstico en unos minutos: positivos por split y por año, PR-AUC de cada feature sola con sus medias en positivos y negativos, y cuándo se conocen las interrupciones de Calser.
+
+## 4. Modelos
 
 | Modelo | Tipo | Por qué está |
 | --- | --- | --- |
@@ -46,7 +58,7 @@ Para cada modelo entrenado `busqueda` tiene una lista corta de configuraciones (
 
 Como la configuración se elige sobre valid, la cifra de valid es un poco optimista; la de test es la honesta. Por eso test solo se mira al final.
 
-## 4. Métricas
+## 5. Métricas
 
 Todas salen por modelo, por split, por etiqueta (`y_1_3h` y `y_1_3h_local`) y por segmento (total, distribuidora, tipo de zona del municipio y CT con o sin telemetría). Quedan en formato largo en `l3_gold.ml_metricas`.
 
@@ -62,7 +74,7 @@ Todas salen por modelo, por split, por etiqueta (`y_1_3h` y `y_1_3h_local`) y po
 
 Con `y_1_3h_local` como etiqueta, las alertas que caen en interrupciones sistémicas cuentan como falsas; lo útil ahí es `recall_episodios`, que dice si el modelo encuentra el CT concreto y no solo "el día malo".
 
-## 5. Explicabilidad y control de leakage
+## 6. Explicabilidad y control de leakage
 
 `l3_gold.ml_importancia` guarda, por feature:
 
@@ -70,7 +82,7 @@ Con `y_1_3h_local` como etiqueta, las alertas que caen en interrupciones sistém
 - `gain` de XGBoost, `importancia_impureza` del bosque y `coef_abs` de la logística (sobre la feature estandarizada).
 - `pr_auc_univariante`: la PR-AUC de cada feature usada sola como puntuación. Si una sola feature ordena los positivos casi a la perfección, lo normal es que se haya colado información del futuro. Las que superan `alerta_leakage_pr_auc` (0,3) quedan con `alerta_leakage = true` y salen en el log. Antes de dar por bueno un modelo hay que revisarlas; si alguna es leakage, se añade a `excluir_features` y se vuelve a entrenar.
 
-## 6. Resultados que deja cada ejecución
+## 7. Resultados que deja cada ejecución
 
 Cada ejecución tiene un `run_id` (`ml_<fecha>_<hash>`) y escribe en el esquema `l3_gold` (en Trino, `lakehouse.l3_gold`):
 
@@ -114,7 +126,7 @@ FROM lakehouse.l3_gold.ml_importancia
 WHERE run_id = '<run_id>' AND alerta_leakage;
 ```
 
-## 7. Cómo lanzarlo
+## 8. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).
 
@@ -138,7 +150,7 @@ El job no va en Airflow a propósito. El driver hace el entrenamiento y usa todo
 
 **Memoria y tiempo en el portátil.** La muestra de train son unos 0,9 GB en float32 y el proceso Python del driver llega a unos 5 o 6 GB al entrenar el bosque. Conviene parar lo que no se usa (`docker compose stop sqlserver kafka kafka-connect kafka-ui trino`). Como referencia, contamos con entre una y dos horas para la ejecución completa con búsqueda, la mayor parte en XGBoost y en puntuar los 11 millones de filas de valid desde el disco externo.
 
-## 8. Pendiente
+## 9. Pendiente
 
 - MLflow como servicio en `compose.yaml` (con Postgres y MinIO, que ya están) para registrar cada ejecución con sus métricas y artefactos. Mientras tanto `ml_runs` cumple esa función y guarda lo mismo.
 - Reentrenar con train + valid antes de la evaluación final, si el tiempo lo permite. Ahora el modelo que se evalúa en test es el mismo que se ha elegido en valid, entrenado solo con train.
