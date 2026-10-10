@@ -2,7 +2,7 @@
 
 Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic con Docker Compose.
 
-GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka en el Máster en Data Science and Engineering de la UPC School (2025-2026): un sistema que predice, con 1 a 3 horas de antelación, las interrupciones de suministro en la red de media tensión de una distribuidora eléctrica, a partir del histórico de interrupciones (aplicación Calser) y de la telemetría del SCADA TedisNet. Este repositorio contiene la plataforma de datos y el pipeline que construye el dataset de entrenamiento, de Landing a Gold; el modelo llega en el siguiente hito.
+GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka en el Máster en Data Science and Engineering de la UPC School (2025-2026): un sistema que predice, con 1 a 3 horas de antelación, las interrupciones de suministro en la red de media tensión de una distribuidora eléctrica, a partir del histórico de interrupciones (aplicación Calser) y de la telemetría del SCADA TedisNet. Este repositorio contiene la plataforma de datos y el pipeline que construye el dataset de entrenamiento, de Landing a Gold, y el entrenamiento y la evaluación de los modelos sobre ese dataset.
 
 ## Documentación
 
@@ -12,6 +12,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 | [docs/model_card.md](docs/model_card.md) | Ficha del modelo (formato Hugging Face): uso previsto y excluido, features, métricas y criterios de aceptación |
 | [docs/silver-layer.md](docs/silver-layer.md) | Reglas de la capa Silver, tabla a tabla, y por qué |
 | [docs/gold-layer.md](docs/gold-layer.md) | Capa Gold: etiquetas, features, dataset de entrenamiento y sus decisiones |
+| [docs/ml-training.md](docs/ml-training.md) | Entrenamiento y evaluación de los modelos (XGBoost, Random Forest, logística y referencias) |
 | [docs/project-structure.md](docs/project-structure.md) | Estructura del repositorio y su relación con Cookiecutter Data Science |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | GitHub Flow tal como lo aplicamos, reglas de commits y versionado de datos |
 | [CHANGELOG.md](CHANGELOG.md) | Historial de versiones |
@@ -39,7 +40,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 
 La estructura sigue la idea de Cookiecutter Data Science adaptada a un pipeline que corre en Spark y Airflow: la correspondencia carpeta a carpeta está en [docs/project-structure.md](docs/project-structure.md).
 
-Dentro de `dags/`, `config/` y `jobs/`, los archivos se agrupan por **capa de destino**: `00_landing/`, `01_bronze/`, `02_silver/` y `03_gold/`. Solo se crean las carpetas que contienen archivos.
+Dentro de `dags/`, `config/` y `jobs/`, los archivos se agrupan por **capa de destino**: `00_landing/`, `01_bronze/`, `02_silver/`, `03_gold/` y `04_ml/` (entrenamiento del modelo). Solo se crean las carpetas que contienen archivos.
 
 Los nombres identifican el **tipo**, la **capa** y el **origen** (Landing/Bronze) o la **entidad** (Silver/Gold). Solo los jobs de Landing y Bronze añaden `batch` o `streaming`:
 
@@ -54,7 +55,7 @@ job_silver_d_salida.py
 
 ![Flujo de datos de GridPredic](docs/data-flow.jpeg)
 
-> El diagrama representa la arquitectura objetivo. Actualmente este repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, la capa Silver completa (apartado 11) y la capa Gold hasta el dataset de entrenamiento versionado (apartado 12).
+> El diagrama representa la arquitectura objetivo. Actualmente este repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, la capa Silver completa (apartado 11) y la capa Gold hasta el dataset de entrenamiento versionado (apartado 12) y el entrenamiento de los modelos (apartado 13).
 
 ## Stack tecnológico
 
@@ -528,23 +529,55 @@ Calidad de cada ejecución en `lakehouse.l3_gold.dq_metrics`, con el mismo esque
 
 ---
 
-## 13. Desarrollo, pruebas e integración continua
+## 13. Entrenamiento del modelo
+
+Sobre `l3_gold.dataset_train` se entrenan y comparan cinco modelos con la misma división temporal (train hasta 2024, valid 2025, test 2026): XGBoost como candidato principal, Random Forest y una regresión logística, y dos referencias, la tasa base y un modelo naif que ordena los CT por sus interrupciones del último año. Las métricas son las de la [model card](docs/model_card.md): PR-AUC y alertas con un presupuesto de N avisos por día y distribuidora (precision, recall por interrupción y antelación), por distribuidora, tipo de zona, telemetría y eventos locales. Todo el detalle está en [docs/ml-training.md](docs/ml-training.md) y los parámetros en `etl/config/04_ml/config_ml.json`.
+
+Requisito: `dag_gold` completo y las imágenes de Spark reconstruidas con las librerías del modelo (`xgboost-cpu`, `scikit-learn`, `pyarrow`).
+
+```bash
+docker compose build spark-master spark-worker spark-history
+docker compose up -d spark-master spark-worker spark-history
+
+docker compose exec spark-master bash /app/jobs/04_ml/train.sh                 # train + valid
+docker compose exec spark-master bash /app/jobs/04_ml/train.sh --evaluar-test  # evaluación final
+```
+
+Resultado desde Trino/DBeaver:
+
+```sql
+SELECT run_id, creado_ts, dataset_version, resumen_json
+FROM lakehouse.l3_gold.ml_runs
+ORDER BY creado_ts DESC;
+
+SELECT modelo, metrica, ROUND(valor, 5) AS valor
+FROM lakehouse.l3_gold.ml_metricas
+WHERE run_id = '<run_id>' AND split = 'valid' AND etiqueta = 'y_1_3h' AND segmento = 'total'
+  AND metrica IN ('pr_auc', 'roc_auc', 'precision@10', 'recall_episodios@10')
+ORDER BY metrica, valor DESC;
+```
+
+Los modelos quedan en MinIO (`datalake/ml/modelos/<run_id>/`) y las puntuaciones de cada fila de valid y test en `l3_gold.ml_predicciones`, para analizarlas en los notebooks sin volver a entrenar.
+
+---
+
+## 14. Desarrollo, pruebas e integración continua
 
 Para trabajar sobre el código sin levantar el stack hace falta Python 3.10 o superior y Java 17 o superior (Spark local):
 
 ```bash
-pip install -r requirements.txt   # pyspark, delta-spark, pytest, ruff, pre-commit
+pip install -r requirements.txt   # pyspark, delta-spark, librerías del modelo, pytest, ruff
 make lint                         # ruff check .
-make test                         # python -m pytest tests -q (Silver y Gold)
+make test                         # python -m pytest tests -q (Silver, Gold y modelo)
 make config                       # valida compose.yaml con el .env actual
 ```
 
-Las mismas tres comprobaciones se ejecutan en GitHub Actions en cada pull request (`.github/workflows/ci.yml`). El test de Silver monta tablas Bronze pequeñas con los problemas reales de los datos sembrados a propósito, ejecuta todos los jobs en un Spark local y comprueba el resultado. El de Gold hace lo mismo con una semana de datos de dos distribuidoras, comprueba las etiquetas hora a hora y termina con una prueba de leakage: borra de Silver todo lo que pasó a partir de una hora, recalcula y exige que las features anteriores no cambien. La primera ejecución descarga los jars de Delta de Maven Central.
+Las mismas tres comprobaciones se ejecutan en GitHub Actions en cada pull request (`.github/workflows/ci.yml`). El test de Silver monta tablas Bronze pequeñas con los problemas reales de los datos sembrados a propósito, ejecuta todos los jobs en un Spark local y comprueba el resultado. El de Gold hace lo mismo con una semana de datos de dos distribuidoras, comprueba las etiquetas hora a hora y termina con una prueba de leakage: borra de Silver todo lo que pasó a partir de una hora, recalcula y exige que las features anteriores no cambien. El del modelo monta un `dataset_train` sintético, entrena los cinco modelos con búsquedas pequeñas, evalúa valid y test y comprueba todas las tablas de resultados y los modelos guardados. La primera ejecución descarga los jars de Delta de Maven Central.
 
 Las versiones del runtime están fijadas en `compose.yaml`, en los `Dockerfile` de `infra/` y en `infra/spark/requirements.txt`; `requirements.txt` de la raíz reproduce en local las versiones de Spark y Delta de las imágenes.
 
 ---
 
-## 14. Cómo contribuir
+## 15. Cómo contribuir
 
 Trabajamos con GitHub Flow: una rama por cambio a partir de `main`, commits pequeños con mensaje en imperativo, pull request con la plantilla del repositorio, revisión del otro miembro (la pide `CODEOWNERS`), CI en verde, prueba contra el stack real y merge con borrado de la rama. Las reglas completas, incluido cómo versionamos datos y modelos, están en [CONTRIBUTING.md](CONTRIBUTING.md).

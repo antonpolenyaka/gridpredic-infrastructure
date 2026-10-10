@@ -1,6 +1,6 @@
 [project]
 name = "gridpredic-infrastructure"
-version = "0.6.0"
+version = "0.7.0"
 description = "Plataforma de datos de GridPredic: ingesta de Calser y TedisNet a un lakehouse Delta (Bronze, Silver, Gold) con Airflow y Spark en Docker Compose"
 readme = "README.md"
 requires-python = ">=3.10"
