@@ -162,24 +162,33 @@ DEFAULTS = {
     "tokens_min": 8,
     "tokens_top": 300,
     "causas": [
+        ["apagon", "apagon|cero general|cero en toda|cero nacional|incidente del sistema|28 de abril|28 04 2025"],
         ["meteorologia", "tormenta|rayo|descarga atmosf|viento|vendaval|temporal|lluvia|nieve|nevada|hielo|"
-                         "helada|granizo|borrasca|tempestad|inundac|riada|dana|meteorolog"],
+                         "helada|granizo|borrasca|tempestad|inundac|riada|dana|meteorolog|metereolog|climatolog"],
         ["incendio", "incendio|fuego|quema"],
         ["fauna", "pajar|\\bave\\b|\\baves\\b|cigu|nido|animal|roedor|\\brata|raton|serpiente|culebra|"
-                  "\\bgato|gardun|\\bmarta|fauna|cuervo|paloma|buitre|aguila|lagart|cabra|vaca"],
+                  "\\bgato|gardun|fauna|cuervo|paloma|buitre|aguila|lagart|cabra|vaca"],
         ["vegetacion", "arbol|\\brama|poda|vegetac|arbust|eucalipt|\\bpino|chopo|encina|alcornoque|olivo|maleza"],
         ["terceros", "excavad|retroexcav|maquina|\\bobra|camion|vehicul|tractor|\\bcoche|accidente|choque|chocad|"
-                     "golpe|\\bgrua|tercero|vandal|\\brobo|hurto|sustrac|cosechad|ajena|particular"],
-        ["sobrecarga", "sobrecarga|sobreintensidad|exceso de carga|sobrecalent|calentamiento"],
+                     "golpe|\\bgrua|tercero|vandal|\\brobo|hurto|sustrac|cosechad|ajena|particular|abonado"],
         ["red_superior", "subestacion|\\bstr\\b|\\bset\\b|transporte|red electrica|\\bree\\b|iberdrola|endesa|"
-                         "naturgy|aguas arriba|alta tension|falta de alimentacion|cero de tension|alimentador"],
-        ["equipo", "transformador|\\btrafo|celda|fusible|autovalvula|pararrayo|interruptor|seccionador|aislador|"
-                   "aislamiento|empalme|terminal|botella|\\bcable|conductor|puente|grapa|cuadro|\\bposte|apoyo|"
-                   "cruceta|bornas|protecc"],
-        ["averia_generica", "averia|rotura|defecto|cortocircuito|derivacion|disparo|\\bfalta\\b|\\bsalta"],
-        ["trabajos", "maniobra|descargo|trabajo|mantenimiento|revision|programad|reforma|sustitucion|mejora"],
+                         "naturgy|aguas arriba|alta tension|alimentacion|cero de tension|alimentador|interconexion"],
+        ["sobrecarga", "sobrecarga|sobreintensidad|exceso de carga|sobrecalent|calentamiento"],
         ["desconocida", "desconoc|sin causa|no se encuentra|no localiz|causa no|investigando|sin determinar"],
+        ["equipo", "transformador|\\btrafo|celda|fusible|autovalvula|pararrayo|seccionador|aislador|aislamiento|"
+                   "empalme|terminal|botella|\\bcable|conductor|puente|grapa|cuadro|\\bposte|apoyo|cruceta|bornas"],
+        ["averia_generica", "averia|rotura|defecto|cortocircuito|derivacion|\\bfalta\\b"],
+        ["actuacion_proteccion", "bloqueo|disparo|reenganche|reconectador|interruptor|proteccion|\\bsalta"],
+        ["trabajos", "maniobra|descargo|trabajo|mantenimiento|revision|programad|reforma|sustitucion|mejora"],
     ],
+    # Days of an external event that would hide everything else (the blackout of
+    # the Iberian peninsula of 28.04.2025): out of every section except the
+    # first one, where they are shown apart.
+    "dias_excluidos": {"2025-04-28": "apagon peninsular"},
+    # 3 year mean of the incentive TIEPI the CNMC used for Q2019 (Orden
+    # TED/749/2022), to check ours.
+    "tiepi_oficial_media3": {"2015-2017": {"Calser_EOSA": 0.67, "Calser_Pitarch": 1.04,
+                                           "Calser_ValleSantaAna": 3.28}},
 }
 
 STOPWORDS = set(
@@ -358,7 +367,8 @@ class Data:
         self.spark = spark
         self.cfg = cfg
         self.dim = self._dim()
-        self.events = self._events()
+        self.events_all = self._events()
+        self.events = self.events_all[~self.events_all["excluido"]]
         self.databases = self._databases()
 
     def _dim(self) -> pd.DataFrame:
@@ -465,6 +475,12 @@ class Data:
             ev["distribuidora_id"].astype(str) + "|" + ev["periodo_id"].astype(str) + "|"
             + ev["incidencia_id"].astype(str)
         ).where(has_incident, None)
+
+        # An event belongs to an excluded day when its incident (or the event
+        # itself, without incident) starts that day.
+        first = ev.groupby("incidente")["inicio_ts"].transform("min")
+        day = first.fillna(ev["inicio_ts"]).dt.strftime("%Y-%m-%d")
+        ev["excluido"] = day.isin(set(self.cfg.get("dias_excluidos", {})))
         return ev
 
     def _incidents(self):
@@ -489,7 +505,7 @@ class Data:
         return pdf[["distribuidora_id", "periodo_id", "incidencia_id", "tipo_equipo_id", "texto"]]
 
     def _databases(self) -> dict:
-        pairs = self.events[["distribuidora_id", "source_database"]].dropna().drop_duplicates()
+        pairs = self.events_all[["distribuidora_id", "source_database"]].dropna().drop_duplicates()
         return dict(zip(pairs["distribuidora_id"], pairs["source_database"]))
 
     def installed(self, year: int, by: list) -> pd.DataFrame:
@@ -519,6 +535,35 @@ def niepi_numerator(events: pd.DataFrame, by: list) -> pd.DataFrame:
     key = events["incidente"].fillna(fallback)
     unique = events.assign(_k=key).drop_duplicates(["_k", "distribuidora_id", "ct_id"])
     return unique.groupby(by, dropna=False)["kva"].sum().rename("kva_niepi").reset_index()
+
+
+def excluded_days_table(data: Data) -> pd.DataFrame:
+    ev = data.events_all[(data.events_all["variante"] == "todas") & data.events_all["excluido"]]
+    if ev.empty:
+        return pd.DataFrame()
+    rows = []
+    for (dist, year), g in ev.groupby(["distribuidora_id", "anio"]):
+        p_total = data.installed(int(year), ["distribuidora_id"])
+        p_total = p_total.loc[p_total["distribuidora_id"] == dist, "p_total_kva"].sum()
+        rows.append({
+            "distribuidora": data.databases.get(dist, dist), "anio": int(year),
+            "dias": ", ".join(sorted(g["inicio_ts"].dt.strftime("%d.%m.%Y").unique())),
+            "cts": g["ct_id"].nunique(), "tiepi_h": share(g.loc[g["computa_tiepi"], "kva_h"].sum(), p_total),
+            "tiepi_sin_incidencia_h": share(g.loc[g["grupo"] == "sin_incidencia", "kva_h"].sum(), p_total),
+            "factores": ", ".join(sorted(g.loc[g["computa_tiepi"], "factor"].unique())),
+        })
+    return pd.DataFrame(rows)
+
+
+def no_incident_bands(data: Data) -> pd.DataFrame:
+    ev = data.events[(data.events["variante"] == "todas") & (data.events["grupo"] == "sin_incidencia")]
+    if ev.empty:
+        return pd.DataFrame()
+    bands = pd.cut(ev["dur_h"], [0, 1, 4, 24, 72, 1e9], right=True, labels=["<=1h", "1-4h", "4-24h", "24-72h", ">72h"])
+    g = ev.groupby(bands, observed=False).agg(registros=("ct_id", "size"), kva_h=("kva_h", "sum")).reset_index()
+    g = g.rename(columns={"dur_h": "duracion"})
+    g["parte_kva_h"] = g["kva_h"] / g["kva_h"].sum()
+    return g
 
 
 def section_tiepi(data: Data, report: Report, state: dict):
@@ -608,6 +653,23 @@ def section_tiepi(data: Data, report: Report, state: dict):
     for column in ("propias", "terceros", "fuerza_mayor", "transporte"):
         shown[column] = shown[column].map(pct)
 
+    bands = no_incident_bands(data)
+    excluded = excluded_days_table(data)
+    report.csv("tiepi_dias_excluidos.csv", excluded)
+    report.csv("sin_incidencia_duracion.csv", bands)
+    check = []
+    for window, values in data.cfg.get("tiepi_oficial_media3", {}).items():
+        lo, hi = [int(x) for x in window.split("-")]
+        for db, official in values.items():
+            ours = summary[(summary["distribuidora"] == db) & summary["anio"].between(lo, hi)]
+            if len(ours) == hi - lo + 1:
+                check.append({"distribuidora": db, "anios": window, "nuestro_h": ours["tiepi_incentivo_h"].mean(),
+                              "cnmc_h": float(official)})
+    check = pd.DataFrame(check)
+    if not check.empty:
+        check["diferencia"] = (check["nuestro_h"] / check["cnmc_h"] - 1.0).map(pct)
+    report.csv("tiepi_validacion_cnmc.csv", check)
+
     totals = table[table["computa_tiepi"]].groupby(["grupo", "factor"])["kva_h"].sum()
     all_kvah = totals.sum()
     lines = [f"- {g} / {f}: {pct(share(v, all_kvah))} de los kVA·h que cuentan para el TIEPI"
@@ -624,7 +686,12 @@ def section_tiepi(data: Data, report: Report, state: dict):
                            "niepi", "incidencias"], max_rows=60)
         + "\nReparto de todos los años:\n\n" + "\n".join(lines)
         + f"\n\nInterrupciones de CT sin incidencia (no cuentan en Calser): {fmt(no_incident, 0)} kVA·h, "
-        f"{pct(share(no_incident, all_kvah + no_incident))} del total.\n"
+        f"{pct(share(no_incident, all_kvah + no_incident))} del total. Por duración:\n\n"
+        + md_table(bands.assign(parte_kva_h=bands["parte_kva_h"].map(pct)) if not bands.empty else bands)
+        + "\nDías excluidos del resto del análisis (analisis_red.dias_excluidos), con su TIEPI aparte:\n\n"
+        + md_table(excluded)
+        + "\nComprobación con el TIEPI medio de tres años que usó la CNMC para el incentivo de 2019 (Orden "
+        "TED/749/2022):\n\n" + md_table(check)
     )
 
 
@@ -1207,7 +1274,7 @@ def hourly_load(spark, ratings: pd.DataFrame):
     else:
         agg = agg.withColumn("tiene_total", F.lit(None).cast("int")).withColumn("clases", F.lit(None).cast("string"))
 
-    mean = F.col("suma") / F.col("n_muestras")
+    mean = F.try_divide(F.col("suma"), F.col("n_muestras"))
     n_tags = F.coalesce(F.col("n_tags"), F.lit(1))
     top_tag = F.coalesce(F.col("media_tag_max"), mean) if "media_tag_max" in agg.columns else mean
     low_tag = F.coalesce(F.col("media_tag_min"), mean) if "media_tag_min" in agg.columns else mean
@@ -1220,7 +1287,7 @@ def hourly_load(spark, ratings: pd.DataFrame):
         F.max(F.when(F.col("familia") == "tension", mean)).alias("v_media"),
         F.max(F.when(F.col("familia") == "tension", F.col("min"))).alias("v_min"),
         F.max(F.when(F.col("familia") == "tension", F.col("max"))).alias("v_max"),
-        F.max(F.when(F.col("familia") == "tension", top_tag / low_tag)).alias("v_ratio_tags"),
+        F.max(F.when(F.col("familia") == "tension", F.try_divide(top_tag, low_tag))).alias("v_ratio_tags"),
     )
 
     rated = spark.createDataFrame(ratings[["anchor_id", "kva_nominal"]].dropna())
@@ -1231,7 +1298,7 @@ def hourly_load(spark, ratings: pd.DataFrame):
     apparent = F.when(F.col("q_kvar").isNotNull(), F.sqrt(F.col("p_kw") ** 2 + F.col("q_kvar") ** 2)).otherwise(
         F.col("p_kw") / F.lit(0.95))
     load = F.when(F.col("carga").isNotNull(), carga_pu).otherwise(
-        F.when(F.col("kva_nominal") > 0, apparent / F.col("kva_nominal")))
+        F.when(F.col("kva_nominal") > 0, F.try_divide(apparent, F.col("kva_nominal"))))
 
     return hourly.withColumn("carga_pu", load).withColumn(
         "fuente", F.when(F.col("carga").isNotNull(), F.lit("carga_trafo")).when(
@@ -1406,6 +1473,24 @@ def section_age(data: Data, report: Report, state: dict):
 # 10. Money
 # ---------------------------------------------------------------------------
 
+def incentive_q(means: dict, weights: dict, refs: dict, cfg: dict) -> tuple:
+    """(CTIEPI, Q as a share of the remuneration, marginal share per unit of CTIEPI, region) of Circular 8/2025."""
+    rate = float(cfg["incentivo_pct"])
+    bonus_cap, penalty_cap = float(cfg["incentivo_tope_bonificacion"]), float(cfg["incentivo_tope_penalizacion"])
+    c = sum(w * (means.get(z, 0.0) - refs.get(z, np.nan)) / refs.get(z, np.nan) for z, w in weights.items())
+
+    if c >= 0:
+        q_pct = -rate * min(c / penalty_cap, 1.0)
+        slope = rate / penalty_cap if c < penalty_cap else 0.0
+        region = "penalizacion" if c < penalty_cap else "penalizacion_tope"
+    else:
+        q_pct = rate * min(c / bonus_cap, 1.0)
+        slope = rate / abs(bonus_cap) if c > bonus_cap else 0.0
+        region = "bonificacion" if c > bonus_cap else "bonificacion_tope"
+
+    return c, q_pct, slope, region
+
+
 def incentive_by_distributor(data: Data, state: dict) -> pd.DataFrame:
     cfg = data.cfg
     zones = state.get("tiepi_zona")
@@ -1415,11 +1500,12 @@ def incentive_by_distributor(data: Data, state: dict) -> pd.DataFrame:
 
     years = [int(y) for y in cfg["anios_incentivo"]]
     refs = {int(k): float(v) for k, v in cfg["tiepi_sector_h"].items()}
-    rate = float(cfg["incentivo_pct"])
-    bonus_cap, penalty_cap = float(cfg["incentivo_tope_bonificacion"]), float(cfg["incentivo_tope_penalizacion"])
     rows = []
 
-    for dist, g in zones[zones["anio"].isin(years)].groupby("distribuidora_id"):
+    for dist, history in zones.groupby("distribuidora_id"):
+        g = history[history["anio"].isin(years)]
+        if g.empty:
+            continue
         db = data.databases.get(dist, str(dist))
         remuneration = float(cfg["retribucion_eur"].get(db, float("nan")))
         last = g[g["anio"] == g["anio"].max()]
@@ -1429,16 +1515,17 @@ def incentive_by_distributor(data: Data, state: dict) -> pd.DataFrame:
 
         weights = (last.set_index("zona")["p_total_kva"] / p_total).to_dict()
         means = g.groupby("zona")["tiepi_incentivo_h"].mean().to_dict()
-        c = sum(w * (means.get(z, 0.0) - refs.get(z, np.nan)) / refs.get(z, np.nan) for z, w in weights.items())
+        c, q_pct, slope, region = incentive_q(means, weights, refs, cfg)
 
-        if c >= 0:
-            q_pct = -rate * min(c / penalty_cap, 1.0)
-            slope = rate / penalty_cap if c < penalty_cap else 0.0
-            region = "penalizacion" if c < penalty_cap else "penalizacion_tope"
-        else:
-            q_pct = rate * min(c / bonus_cap, 1.0)
-            slope = rate / abs(bonus_cap) if c > bonus_cap else 0.0
-            region = "bonificacion" if c > bonus_cap else "bonificacion_tope"
+        # Risk: the worst year of the history takes the place of the last year of the window.
+        yearly = history.assign(_w=history["zona"].map(weights).fillna(0.0) * history["tiepi_incentivo_h"])
+        per_year = yearly.groupby("anio")["_w"].sum()
+        worst_year = int(per_year.idxmax()) if not per_year.empty else None
+        bad = g[g["anio"] != g["anio"].max()]
+        if worst_year is not None:
+            bad = pd.concat([bad, history[history["anio"] == worst_year]])
+        bad_means = bad.groupby("zona")["tiepi_incentivo_h"].sum().div(len(years)).to_dict()
+        _, q_bad, _, _ = incentive_q(bad_means, weights, refs, cfg)
 
         per_hour = sum(w / refs.get(z, np.nan) for z, w in weights.items())
         tiepi_mean = sum(w * means.get(z, 0.0) for z, w in weights.items())
@@ -1448,6 +1535,9 @@ def incentive_by_distributor(data: Data, state: dict) -> pd.DataFrame:
             "q_eur": q_pct * remuneration, "region": region, "p_total_kva": p_total,
             "eur_por_hora_tiepi": slope * remuneration * per_hour,
             "eur_por_minuto_tiepi": slope * remuneration * per_hour / 60.0,
+            "margen_hasta_tope_eur": max(float(cfg["incentivo_pct"]) - q_pct, 0.0) * remuneration,
+            "peor_anio": worst_year, "q_peor_anio_eur": q_bad * remuneration,
+            "perdida_peor_anio_eur": (q_pct - q_bad) * remuneration,
             "eur_por_kvah_por_zona": {z: slope * remuneration / (p_total * refs.get(z, np.nan)) for z in weights},
         })
 
@@ -1468,7 +1558,10 @@ def section_money(data: Data, report: Report, state: dict):
             "retribución de 2023 (sin el término AT de tendencia ni el reparto ω). eur_por_minuto_tiepi es lo que "
             "vale un minuto menos de TIEPI medio al año mientras la empresa no llegue al tope.\n\n"
             + md_table(shown, ["distribuidora", "tiepi_incentivo_medio_h", "ctiepi", "q_pct", "q_eur", "region",
-                               "eur_por_hora_tiepi", "eur_por_minuto_tiepi"])
+                               "eur_por_minuto_tiepi", "margen_hasta_tope_eur", "peor_anio",
+                               "perdida_peor_anio_eur"])
+            + "\nmargen_hasta_tope_eur es lo que aún se puede ganar hasta el +4 %; perdida_peor_anio_eur, lo que se "
+            "perdería al año si el último año de la ventana fuera como el peor año de la serie.\n"
         )
         report.csv("economia_incentivo.csv", incentive.drop(columns=["eur_por_kvah_por_zona"]))
 
@@ -1505,6 +1598,9 @@ def section_money(data: Data, report: Report, state: dict):
         ).reset_index()
         annual_cost = float(cfg["coste_interruptor_telemando_eur"]) * annuity_factor(
             float(cfg["tasa_descuento"]), int(cfg["vida_util_anios"])) + float(cfg["om_interruptor_telemando_eur"])
+        low, high = [float(v) for v in cfg["voll_eur_kwh"]]
+        energy = per_feeder["kva_h_maniobra_anual"] * float(cfg["factor_utilizacion"]) * float(cfg["factor_potencia"])
+        per_feeder["valor_social_anual_eur"] = energy * low
         per_feeder["coste_anual_interruptor_eur"] = annual_cost
         per_feeder["parte_necesaria"] = annual_cost / per_feeder["valor_anual_max_eur"].where(
             per_feeder["valor_anual_max_eur"] > 0)
@@ -1521,7 +1617,9 @@ def section_money(data: Data, report: Report, state: dict):
             "parte_necesaria es la fracción de ese máximo que el interruptor tiene que evitar para pagarse; "
             f"{len(worth)} cabeceras lo hacen con un 25 % o menos.\n\n"
             + md_table(per_feeder.head(15), ["distribuidora", "cabecera", "incidencias", "kva_h_maniobra_anual",
-                                             "valor_anual_max_eur", "parte_necesaria"])
+                                             "valor_anual_max_eur", "valor_social_anual_eur", "parte_necesaria"])
+            + "\nvalor_social_anual_eur valora la misma energía no suministrada al VoLL bajo. El valor para la "
+            "empresa nunca supera, sumado, el margen hasta el tope del incentivo.\n"
         )
 
     alert = state.get("alerta")

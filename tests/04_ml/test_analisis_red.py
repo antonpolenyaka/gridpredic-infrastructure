@@ -107,6 +107,9 @@ def incidents():
         ("I6", 2, "202501", "CL_IMPRE", "FA_CLIEN", "OTROS", "Cliente", [("B02", "2025-01-10 12:00", 60)]),
         ("I7", 1, "202505", "CL_IMPRE", "FA_TRANS", "OTROS", "Falta de alimentacion en subestacion",
          [(f"A0{i}", "2025-05-20 07:00", 60) for i in range(1, 5)]),
+        # The blackout of 28.04.2025: shown apart and left out of the rest.
+        ("AP", 1, "202504", "CL_IMPRE", "FA_TERCE", "LAERE", "Cero general en la red de transporte",
+         [(f"A0{i}", "2025-04-28 12:33", 600) for i in range(1, 9)]),
     ]
     for k in range(18):
         start = pd.Timestamp("2024-01-05 03:00") + pd.Timedelta(days=15 * k)
@@ -348,3 +351,16 @@ def test_money_and_tables(result, spark):
     assert incentive["eur_por_minuto_tiepi"].notna().all()
     assert spark.catalog.tableExists("l3_gold.analisis_red_tiepi")
     assert spark.table("l3_gold.analisis_red_tiepi").where(f"run_id = '{RUN_ID}'").count() > 0
+
+
+def test_excluded_day_is_shown_apart(result):
+    _, folder = result
+    excluded = read(folder, "tiepi_dias_excluidos.csv")
+    row = excluded[excluded["distribuidora"] == "Calser_EOSA"].iloc[0]
+    # Every CT of EOSA (2.600 kVA) for 10 h.
+    assert row["tiepi_h"] == pytest.approx(10.0)
+    summary = read(folder, "tiepi_resumen.csv")
+    eosa = summary[(summary["distribuidora"] == "Calser_EOSA") & (summary["anio"] == 2025)].iloc[0]
+    assert eosa["tiepi_h"] == pytest.approx(1000.0 / 2600.0)
+    causes = read(folder, "causas_texto.csv")
+    assert "apagon" not in set(causes["causa"])
