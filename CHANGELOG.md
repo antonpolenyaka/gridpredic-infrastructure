@@ -2,6 +2,19 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.8.0] - sin publicar
+
+Análisis de la red con la historia de Calser, TedisNet y la meteorología, riesgo anual por CT y cabecera, curva de aprendizaje y datos públicos. Responde a dónde fallará la red, qué hacer y cuánto vale.
+
+### Añadido
+
+- `etl/jobs/04_ml/job_analisis_red.py` (`analisis_red` en `config_ml.json`): TIEPI y NIEPI por año, clasificación y factor con las reglas de Calser, separando lo que cuenta para el incentivo de la CNMC; límites de calidad zonal e individual del RD 1955/2000 y descuentos del art. 105; causas por tipo de equipo y por el texto libre de la incidencia; cuándo empiezan las incidencias por factor; concentración y persistencia del TIEPI por CT, grupo de red, cabecera y municipio; reposición por maniobra como máximo de lo que evitaría el telemando, con el coste del valor unitario de referencia; probabilidad de incidencia por racha y lluvia; carga de los trafos, intensidad de las cabeceras y kVA por cliente; incentivo de la Circular 8/2025 estimado, valor del minuto de TIEPI, margen y riesgo de un año malo y energía no suministrada al VoLL. El apagón del 28.04.2025 se muestra aparte. Tablas `l3_gold.analisis_red_tiepi`, `analisis_red_carga_trafo` y `analisis_red_prioridades`.
+- `etl/jobs/04_ml/job_ml_riesgo_ct.py` (`riesgo_ct`): riesgo de cada CT para el año siguiente (kVA·h imprevistos, XGBoost Tweedie) con historia del CT y de su cabecera, grupo y municipio, estructura, cortes y microcortes del SCADA, datos públicos y clima de la celda; evaluación por origen móvil con la captura del top k % frente al ranking naif y al oráculo, por CT y por cabecera, y ablación por bloques. Ranking del próximo año en `prioridades_ct.csv`, `prioridades_cabecera.csv` y `l3_gold.ml_riesgo_ct_ranking`.
+- `job_ml_horas_riesgo.py --curva-aprendizaje` (`horas_riesgo.curva`): curva de aprendizaje con fracciones de los días por distribuidora, proyección sobre el logaritmo de los positivos, datos necesarios para que la diferencia con la regla de la racha sea significativa y transferencia entre distribuidoras.
+- Datos públicos por las cuatro capas: `job_landing_datos_publicos.py` (Padrón continuo del INE, superficie y altitud de Wikidata, relieve de Open-Meteo Elevation y exposición de OpenStreetMap por celda con Overpass, reanudable), `job_bronze_datos_publicos.py` (longitudes y superficies cortadas a la celda), `job_silver_contexto_publico.py` (`f_poblacion_municipio`, `d_municipio_publico`, `d_celda_entorno`, en `dag_silver`) y `job_gold_contexto_ct.py` (`l3_gold.contexto_ct_anio`, en `dag_gold`), con su configuración en `config_bronze_publicos.json`.
+- `docs/network-analysis.md` con los resultados sobre los datos reales.
+- Tests: `tests/01_bronze/test_datos_publicos.py` (parsers y geometría sin Spark), `tests/03_gold/test_contexto_ct.py`, `tests/04_ml/test_analisis_red.py`, `tests/04_ml/test_riesgo_ct.py` y la curva de aprendizaje en `test_ml_train_smoke.py`.
+
 ## [0.7.0] - sin publicar
 
 Entrenamiento y evaluación de los modelos sobre el dataset de Gold, el trabajo del hito M7.
