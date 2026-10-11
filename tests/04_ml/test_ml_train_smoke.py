@@ -242,6 +242,7 @@ def config_path(workdir):
     config["contexto_red"] = {"activo": True, "prefijos": ["ev_"], "ventanas": ["24h"], "region": True}
     config["clusters"].update({"k": [2, 3], "min_cts": 5})
     config["submodelos"] = {"activo": True, "min_positivos": 20}
+    config["horas_riesgo"]["bootstrap_reps"] = 30
     config["spark_conf"] = {}
 
     path = os.path.join(workdir, "config_ml_test.json")
@@ -456,6 +457,61 @@ def test_comparison_with_bootstrap(workdir, run, config_path):
     assert (total["p2_5"] <= total["p97_5"]).all()
     assert {"distribuidora 1", "distribuidora 2"} <= set(intervals["segmento"])
     assert ("1_red+grupos+meteo:xgboost", "1_red+grupos+meteo:tasa_base") in set(zip(diffs["a"], diffs["b"]))
+
+
+def test_risk_hours_per_distributor(spark, dataset, run, workdir, config_path):
+    import job_ml_horas_riesgo
+
+    hr = job_ml_horas_riesgo.main(["--run-id", "hr_test", "--config", config_path, "--evaluar-test"])
+
+    table = spark.table("l3_gold.ml_dataset_distribuidora_hora").toPandas()
+    hours = dataset.groupby(["distribuidora_id", "hora"]).agg(y=("y_1_3h", "max"), n=("y_1_3h", "sum"))
+    assert len(table) == len(hours)
+
+    merged = table.merge(hours.reset_index(), on=["distribuidora_id", "hora"])
+    assert (merged["y_1_3h"] == merged["y"]).all()
+    assert (merged["n_cts_positivos"] == merged["n"]).all()
+    assert {"media_ev_defecto_tierra_24h", "frac_ev_defecto_tierra_24h", "frac_hist_interr_30d",
+            "metd_media_met_racha_max_3h", "metd_max_metprev_racha_max_3h"} <= set(table.columns)
+
+    # The share of CTs with an earth fault in the last 24 h, checked by hand.
+    when = dataset[dataset["split"] == "valid"]["hora"].iloc[40]
+    rows = dataset[(dataset["distribuidora_id"] == 1) & (dataset["hora"] == when)]
+    row = table[(table["distribuidora_id"] == 1) & (table["hora"] == when)].iloc[0]
+    assert row["frac_ev_defecto_tierra_24h"] == pytest.approx((rows["ev_defecto_tierra_24h"] > 0).mean())
+    assert row["media_hist_interr_365d"] == pytest.approx(rows["hist_interr_365d"].mean())
+
+    run_row = spark.table("l3_gold.ml_runs").where(F.col("run_id") == hr).first()
+    assert run_row["etiqueta"] == "distribuidora_hora:y_1_3h"
+    models = set(json.loads(run_row["modelos_json"]))
+    assert {"tasa_base", "naif_historico", "naif_racha", "logistica", "random_forest", "xgboost"} <= models
+
+    predictions = spark.table("l3_gold.ml_predicciones_distribuidora_hora").where(F.col("run_id") == hr)
+    counts = {r["split"]: r["count"] for r in predictions.groupBy("split").count().collect()}
+    assert counts["valid"] == len(table[table["split"] == "valid"])
+
+    metrics = spark.table("l3_gold.ml_metricas").where(F.col("run_id") == hr).toPandas()
+    total = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == "y_1_3h") & (metrics["split"] == "valid")]
+    pr_auc = total[total["metrica"] == "pr_auc"].set_index("modelo")["valor"]
+    assert pr_auc["xgboost"] > pr_auc["tasa_base"]
+    assert {"precision@2", "recall_episodios@2"} <= set(metrics["metrica"])
+    assert {"distribuidora", "estacion"} <= set(metrics["segmento"])
+
+    folder = os.path.join(workdir, "resultados", hr)
+    intervals = pd.read_csv(os.path.join(folder, "intervalos.csv"))
+    diffs = pd.read_csv(os.path.join(folder, "diferencias.csv"))
+    assert {"total", "distribuidora 1", "distribuidora 2"} <= set(intervals["segmento"])
+    assert ("xgboost", "tasa_base") in set(zip(diffs["a"], diffs["b"]))
+    assert ("xgboost", "naif_racha") in set(zip(diffs["a"], diffs["b"]))
+
+    with open(os.path.join(folder, "resumen.md"), encoding="utf-8") as file:
+        report = file.read()
+    assert "## Filas y prevalencia" in report and "Diferencias emparejadas" in report
+
+    # A second run with the same settings reuses the dataset.
+    loaded = spark.table("l3_gold.ml_dataset_distribuidora_hora").agg(F.max("audit_loaded_at")).first()[0]
+    job_ml_horas_riesgo.main(["--run-id", "hr_test2", "--config", config_path, "--sin-busqueda"])
+    assert spark.table("l3_gold.ml_dataset_distribuidora_hora").agg(F.max("audit_loaded_at")).first()[0] == loaded
 
 
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
