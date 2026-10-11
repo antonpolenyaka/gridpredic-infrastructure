@@ -148,17 +148,22 @@ def cells(spark, elevation, osm, osm_cells):
         for name, *_ in OSM_MEASURES + [("n_edificios",)]:
             exposure = exposure.withColumn(name, F.coalesce(F.col(name), F.lit(0.0)))
         area = F.col("area_celda_km2")
+
+        def per(column, base=area):
+            # try_divide: a cell without any line gives null, not an error (ANSI mode).
+            return F.try_divide(F.col(column), base)
+
         exposure = (
             exposure
-            .withColumn("dens_linea_aerea_km_km2", F.col("km_linea_aerea") / area)
-            .withColumn("dens_apoyos_km2", F.col("n_apoyos") / area)
-            .withColumn("dens_carreteras_km_km2", F.col("km_carreteras") / area)
-            .withColumn("dens_pistas_km_km2", F.col("km_pistas") / area)
-            .withColumn("pct_bosque", F.least(F.col("km2_bosque") / area, F.lit(1.0)))
-            .withColumn("pct_matorral", F.least(F.col("km2_matorral") / area, F.lit(1.0)))
-            .withColumn("dens_edificios_km2", F.col("n_edificios") / area)
-            .withColumn("pct_cable", F.col("km_cable_subterraneo")
-                        / (F.col("km_cable_subterraneo") + F.col("km_linea_aerea")))
+            .withColumn("dens_linea_aerea_km_km2", per("km_linea_aerea"))
+            .withColumn("dens_apoyos_km2", per("n_apoyos"))
+            .withColumn("dens_carreteras_km_km2", per("km_carreteras"))
+            .withColumn("dens_pistas_km_km2", per("km_pistas"))
+            .withColumn("pct_bosque", F.least(per("km2_bosque"), F.lit(1.0)))
+            .withColumn("pct_matorral", F.least(per("km2_matorral"), F.lit(1.0)))
+            .withColumn("dens_edificios_km2", per("n_edificios"))
+            .withColumn("pct_cable", per("km_cable_subterraneo",
+                                         F.col("km_cable_subterraneo") + F.col("km_linea_aerea")))
         )
 
     if relief is None and exposure is None:

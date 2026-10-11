@@ -82,7 +82,23 @@ Las dos distribuidoras grandes ya están cerca del tope de bonificación: lo que
 
 ## 8. Cuántas distribuidoras harían falta
 
-[RESULTADOS DE LA CURVA DE APRENDIZAJE]
+Con unas 30 incidencias al año entre las tres distribuidoras, la pregunta para el MVP es cuántos datos más harían falta para que el modelo por horas aporte algo claro sobre la regla de la racha. `job_ml_horas_riesgo.py --curva-aprendizaje` lo mide de tres formas, con la misma evaluación por años 2023-2025 del modelo por horas (ejecución `hr_20261011T180132_a6b4e6`, sin previsión).
+
+**Curva de aprendizaje.** Para cada año, los modelos aprenden con una parte al azar de los días por distribuidora anteriores (25 %, 50 % y 100 %, tres repeticiones), que es lo que daría una empresa más pequeña o menos años de historia:
+
+| Variante | 25 % de los datos | 50 % | 100 % (233 horas positivas por año de entrenamiento) |
+| --- | --- | --- | --- |
+| Meteorología, regresión logística | 0,0097 (3,3 veces la tasa base) | 0,0101 (3,4) | 0,0115 (3,9) |
+| Las tres fuentes, XGBoost | 0,0066 (2,2) | 0,0083 (2,8) | 0,0095 (3,2) |
+| Regla de la racha | 0,0094 (3,2) | | |
+
+Las dos curvas siguen subiendo con todos los datos y la de XGBoost sube más deprisa: el modelo complejo es el que más necesita datos, y con pocos pierde frente al sencillo. Una recta sobre el logaritmo de las horas positivas da, con el doble de datos, una PR-AUC de 0,0122 para la logística y 0,0110 para XGBoost; con diez veces, 0,0143 y 0,0144, en torno a 4,8 veces la tasa base y un 50 % por encima de la regla de la racha. Es una extrapolación con tres puntos, y la leemos como tendencia.
+
+**Potencia.** La regresión logística con la meteorología supera hoy a la regla de la racha en el 84 % de las réplicas del bootstrap por días, sin llegar al 95 %. Si la diferencia se mantuviera, haría falta 3,7 veces más datos para que fuera significativa: unos 33 años-distribuidora del tamaño medio de estas, frente a los 9 actuales (3 distribuidoras por 3 años). Dicho de otra forma, unas 11 distribuidoras parecidas durante tres años, o estas tres durante once. XGBoost con las tres fuentes empata hoy con la regla, y con estos datos no hay cantidad razonable que lo haga significativo.
+
+**Transferencia.** Un modelo entrenado solo con EOSA ordena las horas de Pitarch mejor que el propio modelo de Pitarch (PR-AUC 0,0145 frente a 0,0082) y uno entrenado con Pitarch funciona en EOSA casi igual que el de EOSA (0,0158 frente a 0,0168). En Valle de Santa Ana, con solo 24 horas positivas de entrenamiento al año, el modelo de EOSA da lo mismo que el suyo. El riesgo meteorológico es común a la zona, así que los datos de una distribuidora sirven a las demás: el MVP puede arrancar en una distribuidora nueva con el modelo de las otras y mejorar todos a la vez con cada una que se suma.
+
+Para la propuesta del MVP sacamos de aquí una cifra de trabajo: entre 10 y 12 distribuidoras del mismo SCADA y de la misma zona climática, con tres años de historia cada una, para que el modelo por horas aporte algo demostrable sobre una regla meteorológica. Con previsión meteorológica real la cifra bajaría: con la previsión perfecta del reanálisis el bosque aleatorio ya casi duplicaba la PR-AUC de la regla observada (0,0177 frente a 0,0094, ver [ml-training.md](ml-training.md)).
 
 ## 9. Datos públicos
 
@@ -122,4 +138,4 @@ docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g 
     /app/jobs/04_ml/job_analisis_red.py --config /app/config/04_ml/config_ml.json
 ```
 
-`job_ml_riesgo_ct.py` y `job_ml_horas_riesgo.py --curva-aprendizaje` se lanzan igual. El análisis de red tarda menos de dos minutos, el riesgo anual unos minutos y la curva de aprendizaje [TIEMPO DE LA CURVA]. La descarga de OpenStreetMap depende de los servidores de Overpass: una celda que falla se vuelve a pedir en la siguiente ejecución.
+`job_ml_riesgo_ct.py` y `job_ml_horas_riesgo.py --curva-aprendizaje` se lanzan igual. El análisis de red tarda menos de dos minutos, el riesgo anual unos minutos y la curva de aprendizaje unos 15 minutos. La descarga de OpenStreetMap depende de los servidores de Overpass: una celda que falla se vuelve a pedir en la siguiente ejecución.
