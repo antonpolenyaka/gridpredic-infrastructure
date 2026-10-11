@@ -265,6 +265,23 @@ Con la configuración cerrada (sin previsión, mismo procedimiento que en los a�
 
 Test confirma lo que dijo la evaluación por años: los modelos son claramente mejores que la tasa base y que el histórico (entre 3,7 y 7 veces la prevalencia, en todas las réplicas), pero ninguno se distingue de la regla de la racha máxima, y con un presupuesto fijo de horas por día no avisan de más incidencias que el azar. Lo que más pesa en XGBoost es la hora del día, los cambios de comunicaciones, la lluvia y las rachas, los microcortes del SCADA y las faltas de tensión en el CT y en su grupo de red.
 
+#### Fuentes, mezclas, grupos y zonas (`--ablacion`)
+
+¿Predice mejor la mezcla de TedisNet, Calser y la meteorología que cada fuente por separado? ¿Conviene separar por grupos o bajar a una unidad más pequeña que la distribuidora? `--ablacion` responde con la misma evaluación por años y compara todas las variantes sobre las mismas horas de distribuidora con un bootstrap emparejado:
+
+- **Por fuente** (`source_of`): `calser` (interrupciones conocidas en Calser, `hist_*` salvo los del SCADA), `tedisnet` (medidas, eventos, cortes, calidad y `hist_scada_*`), `meteo` (`metd_*`) y sus mezclas `calser+tedisnet`, `tedisnet+meteo` y `todo`. Las features de los CT, del calendario y la distribuidora entran siempre.
+- **Interacciones** (`todo+interacciones`): productos de una variable del tiempo y otra del estado de la red (`ablacion.interacciones`), por ejemplo la racha de la última hora por la fracción de CT con reenganches aguas arriba en 6 h, o la lluvia de 6 h por la fracción con defectos a tierra en su grupo de red. Los árboles pueden encontrarlas solos, pero con un centenar de incidencias al año en train un producto explícito es más fácil de aprender.
+- **Un modelo por distribuidora** (`por_distribuidora`): la misma evaluación con un modelo para cada una.
+- **Zona** (`zona`): `l3_gold.ml_dataset_zona_hora`, una fila por zona y hora, donde la zona es la celda meteorológica de 9 km del municipio de los CT (43 en las tres distribuidoras). Cada fila junta la fracción de CT de la zona con cada señal de eventos, SCADA e histórico en 6 y 24 h, la media de las features estáticas y de calendario, el tiempo de la celda (`metz_*`) y el estado de toda la distribuidora (`dist_*`: las mismas fracciones y el peor tiempo): lo local y el conjunto en la misma fila. El modelo de zona se mide por zona y hora y, llevado a la distribuidora con la zona de más riesgo de cada hora, se compara con los demás.
+
+```bash
+docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \
+    --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py \
+    /app/jobs/04_ml/job_ml_horas_riesgo.py --config /app/config/04_ml/config_ml.json --ablacion --sin-prevision
+```
+
+Deja `resumen.md`, `resumen.csv` (una fila por variante y modelo con la PR-AUC, su intervalo, el lift, el recall por episodios y la probabilidad de superar a la racha y a `todo`), `por_anio.csv`, `intervalos.csv`, `diferencias.csv` y `metricas.csv` en `exportar_dir/<run_id>/`.
+
 ## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).

@@ -25,11 +25,11 @@ metrics:
   - roc-auc
 ---
 
-# Model Card for GridPredic - Predicción de interrupciones por CT (horizonte 1-3 h)
+# Model Card for GridPredic - Predicción de interrupciones (horizonte 1-3 h)
 
-Clasificador binario que, para cada centro de transformación (CT) de media tensión y cada hora, estima la probabilidad de que en las siguientes 1 a 3 horas empiece una interrupción imprevista de suministro. Se entrena sobre la telemetría histórica del SCADA TedisNet y las interrupciones registradas en Calser (ver la [dataset card](dataset_card.md)). Es una herramienta de apoyo a la decisión del operador de la distribuidora: no actúa sobre la red.
+Clasificadores binarios que estiman la probabilidad de que en las siguientes 1 a 3 horas empiece una interrupción imprevista de suministro. Hay dos unidades: cada centro de transformación (CT) de media tensión y hora, que es la unidad con la que empezamos, y cada distribuidora y hora (horas de riesgo), que es donde los resultados muestran que vive la señal. Se entrena sobre la telemetría histórica del SCADA TedisNet y las interrupciones registradas en Calser (ver la [dataset card](dataset_card.md)). Es una herramienta de apoyo a la decisión del operador de la distribuidora: no actúa sobre la red.
 
-Estado a 10.10.2026: el pipeline hasta Gold está cargado con la ventana completa (dataset `ds_20261010T045104_a5a2531cacbb`, 246 features, 1.287 CT) y el entrenamiento y la evaluación están implementados en `etl/jobs/04_ml` (ver [ml-training.md](ml-training.md)). Los apartados de resultados se rellenan con la primera ejecución completa, dentro del hito M7 del TFM (26.10.2026); los requisitos y la metodología de evaluación ya estaban fijados aquí para que el modelo se construya contra ellos y no al revés.
+Estado a 11.10.2026: pipeline hasta Gold cargado con la ventana completa (dataset `ds_20261010T045104_a5a2531cacbb`, 246 features, 1.287 CT), meteorología integrada, modelos entrenados y evaluados en `etl/jobs/04_ml` (ver [ml-training.md](ml-training.md)) y test usado una sola vez, con la configuración cerrada. Los requisitos y la metodología de evaluación se fijaron en esta ficha antes de entrenar; los resultados están en Results.
 
 ## Model Details
 
@@ -38,7 +38,7 @@ Estado a 10.10.2026: el pipeline hasta Gold está cargado con la ventana complet
 - **Developed by:** Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka (TFM, UPC School, Máster en Data Science and Engineering 2025-2026)
 - **Funded by [optional]:** proyecto académico; SITEL Sistemas Electrónicos SA aporta los datos y el conocimiento del dominio
 - **Shared by [optional]:** no se publica
-- **Model type:** clasificación binaria supervisada sobre datos tabulares derivados de series temporales. Candidato principal XGBoost (gradient boosting sobre árboles); se compara con Random Forest y con una regresión logística como referencia interpretable. Explicabilidad post hoc con SHAP
+- **Model type:** clasificación binaria supervisada sobre datos tabulares derivados de series temporales. XGBoost (gradient boosting sobre árboles), Random Forest y regresión logística, comparados con referencias sin modelo: tasa base, histórico de interrupciones y la racha máxima de viento en la zona. Explicabilidad post hoc con SHAP
 - **Language(s) (NLP):** no aplica (datos numéricos y categóricos; documentación en castellano)
 - **License:** propietaria
 - **Finetuned from model [optional]:** no aplica; se entrena desde cero
@@ -72,7 +72,7 @@ Estado a 10.10.2026: el pipeline hasta Gold está cargado con la ventana complet
 
 ## Bias, Risks, and Limitations
 
-- **Desbalance extremo.** Alrededor de 2 filas positivas por cada 10.000 CT-hora. Un modelo que nunca avisa tiene una accuracy del 99,98 %, y por eso la accuracy no se usa como criterio.
+- **Desbalance extremo y pocas incidencias.** Unas 3 filas positivas por cada 10.000 CT-hora (0,030 % en train). Además, la muestra efectiva es el número de incidencias, no de filas: las 4.258 horas positivas de valid por CT son 68 horas de distribuidora y 31 incidencias en todo 2025. Cualquier comparación entre modelos con un solo año tiene intervalos muy anchos. Un modelo que nunca avisa tiene una accuracy del 99,97 %, y por eso la accuracy no se usa como criterio.
 - **Eventos sistémicos frente a locales.** En las dos distribuidoras grandes el 94 % de las interrupciones afectan a varios CT a la vez (temporales, fallos aguas arriba). El modelo puede acertar prediciendo "día malo" y fallar en el CT concreto. Las métricas se reportan por separado para eventos locales y sistémicos.
 - **Etiquetas con retraso y huecos.** Entre un 26 y un 28 % de las interrupciones no tienen incidencia asociada, y la fecha de alta puede ser semanas posterior al evento. En producción habría una latencia de etiquetado similar, que afecta a la monitorización.
 - **Telemetría parcial y cambiante.** Solo unos 4.000 tags tienen serie regular; hay huecos por caídas de RabbitMQ y valores congelados por el muestreo sample-and-hold. Un CT sin telemetría no puede tener alerta, y el modelo no debe interpretarse como "ese CT es seguro".
@@ -126,17 +126,17 @@ La limpieza genérica (deduplicación, calidad, huérfanos, distribuidora) se ha
 
 - Algoritmo principal: XGBoost, objetivo `binary:logistic`, `tree_method = hist`, entrenado sobre la muestra de negativos de Gold (todos los positivos y el 2 % de los negativos) y con la probabilidad corregida después por el muestreo (corrección de prior, monótona). Parada temprana sobre la PR-AUC de una muestra ponderada de valid (2025). Búsqueda de hiperparámetros con una lista corta de configuraciones (profundidad 4 a 8, `min_child_weight` 1 y 20, `learning_rate` 0,05, `subsample` 0,8, `colsample_bytree` 0,5 a 0,6) elegidas sobre valid, nunca con validación cruzada aleatoria.
 - Comparación: Random Forest (200 árboles, profundidad 14 a 20) y regresión logística L2 (C entre 0,01 y 1) sobre las mismas features y el mismo split, y las referencias de tasa base y naif histórico.
-- Los valores de cada configuración probada y la elegida quedan en `l3_gold.ml_runs` (`busqueda_json`, `modelos_json`) y en `etl/config/04_ml/config_ml.json`. Se copiarán aquí con los resultados. [More Information Needed]
+- Los valores de cada configuración probada y la elegida quedan en `l3_gold.ml_runs` (`busqueda_json`, `modelos_json`) y en `etl/config/04_ml/config_ml.json`. En las horas de riesgo la configuración se elige en cada año de la evaluación con el último 25 % de las horas anteriores y el modelo se reentrena con todas; XGBoost conserva el número de árboles del early stopping.
 
 #### Speeds, Sizes, Times [optional]
 
-[More Information Needed]. El entrenamiento previsto es local, sobre el dataset agregado de Gold (del orden de 65 millones de filas CT-hora antes de submuestrear), en el mismo portátil que ejecuta el stack.
+En el portátil del stack (12 CPU lógicas, 32 GB): el modelo por CT entrena sobre una muestra de 884.971 filas (todos los positivos de train y el 2 % de los negativos) y la ejecución completa con búsqueda tarda unos 40 minutos, 7,5 de ellos en puntuar los 11,2 millones de filas de valid. El dataset de horas de riesgo (144.962 filas) se construye en 18 minutos una vez por versión del dataset y la evaluación por años de cuatro modelos con búsqueda tarda 9 minutos. Un modelo XGBoost guardado ocupa unos pocos MB.
 
 ## Evaluation
 
 ### Testing Data, Factors & Metrics
 
-**Datos de prueba.** División temporal: entrenamiento hasta 2024, validación 2025, prueba 2026. Ningún dato posterior a la fecha de corte entra en el entrenamiento ni en la selección de hiperparámetros.
+**Datos de prueba.** División temporal: entrenamiento hasta 2024, validación 2025, prueba 2026 hasta el 01.06.2026 (censura de las etiquetas al final de la ventana). Ningún dato posterior a la fecha de corte entra en el entrenamiento ni en la selección de hiperparámetros. Para las horas de riesgo se evalúan además 2023, 2024 y 2025 por separado, cada año con un modelo que solo ha visto los anteriores, y los intervalos de confianza salen de un bootstrap por días con réplicas emparejadas entre modelos.
 
 **Factores.** Los resultados se desglosan por distribuidora, por tipo de evento (local o sistémico), por tipo de zona del municipio (urbana, semiurbana, rural concentrada, rural dispersa) y por disponibilidad de telemetría del CT.
 
@@ -153,15 +153,40 @@ La limpieza genérica (deduplicación, calidad, huérfanos, distribuidora) se ha
 
 ### Results
 
-[More Information Needed]. Se completará en el hito M7 con la tabla de resultados por modelo y por segmento, sacada de `l3_gold.ml_metricas`. La evaluación de test se corta el 01.06.2026 porque las etiquetas de las últimas semanas de la ventana están censuradas (interrupciones todavía sin cargar en Calser).
+**Por CT y hora (valid 2025, 500 réplicas por días).** Tasa base 0,00038. XGBoost llega a 0,00077 [0,00016 - 0,00183] en la configuración básica y su ventaja sobre la tasa base es significativa (99,8 % de las réplicas); ni el estado agregado de la red, ni los grupos de CT por k-means, ni la meteorología lo mejoran de forma demostrable, y los submodelos por grupo nunca superan al modelo global. El modelo encuentra "días malos" pero no el CT concreto.
+
+**Horas de riesgo por distribuidora, sin previsión meteorológica.** Evaluación por años 2023 - 2025 (104 incidencias), PR-AUC con intervalo del 95 %:
+
+| Modelo | PR-AUC | Lift | P(mejor que la racha) |
+| --- | --- | --- | --- |
+| Racha máxima observada en la zona (referencia) | 0,0094 [0,0057 - 0,0173] | 3,2 | - |
+| Regresión logística | 0,0084 [0,0056 - 0,0127] | 2,8 | 28 % |
+| XGBoost | 0,0078 [0,0052 - 0,0128] | 2,6 | 22 % |
+| Random Forest | 0,0049 [0,0033 - 0,0082] | 1,6 | 0,6 % |
+| Tasa base | 0,0028 | 1,0 | - |
+| Histórico de interrupciones | 0,0023 | 0,8 | - |
+
+**Test (01.01 - 01.06.2026, 21 incidencias, usado una sola vez, `hr_20261011T100606_7391f5`):**
+
+| Modelo | PR-AUC | Lift | P(mejor que la tasa base) | P(mejor que la racha) | recall_episodios con 2 h de alerta al día |
+| --- | --- | --- | --- | --- | --- |
+| Random Forest | 0,0319 [0,0050 - 0,1386] | 7,2 | 100 % | 89 % | 0,143 |
+| XGBoost | 0,0172 [0,0037 - 0,0916] | 3,9 | 100 % | 65 % | 0,238 |
+| Regresión logística | 0,0164 [0,0036 - 0,0488] | 3,7 | 100 % | 61 % | 0,333 |
+| Racha máxima observada | 0,0140 [0,0044 - 0,0398] | 3,2 | - | - | 0,190 |
+| Tasa base | 0,0044 | 1,0 | - | - | 0,286 |
+
+Contra los criterios de aceptación de esta ficha: la PR-AUC supera con claridad a la tasa base y al naif histórico (se cumple), pero no a la regla de la racha máxima, que es una referencia sin modelo; con un presupuesto fijo de horas de alerta al día ningún modelo avisa de más incidencias que el azar (no se cumple para una alerta horaria). Con la previsión perfecta de las 3 horas siguientes (reanálisis, cota superior) Random Forest llega a 6 veces la prevalencia en 2023 - 2025 y supera a la racha observada, lo que indica que el valor está en una previsión meteorológica real.
+
+**Lectura.** El modelo sirve para señalar días y zonas de riesgo con unas horas de antelación, apoyado en la meteorología y en el estado de la red aguas arriba; no sirve para anunciar la hora exacta ni el CT concreto de la interrupción. No recomendamos pasarlo a serving como alerta horaria por CT.
 
 ## Model Examination [optional]
 
-Explicabilidad post hoc con SHAP: importancia global de las features y explicación local de cada alerta. Se comprobará que las variables con más peso tengan sentido físico (homopolar, THD, defectos de tierra, errores de comunicaciones) y que ninguna variable con leakage se haya colado. Cada ejecución guarda en `l3_gold.ml_importancia` la media del SHAP absoluto de XGBoost, la importancia de los otros dos modelos y la PR-AUC de cada feature sola; las que ordenan los positivos demasiado bien por sí solas quedan marcadas con `alerta_leakage` para revisarlas antes de aceptar el modelo.
+Explicabilidad post hoc con SHAP: importancia global de las features y explicación local de cada alerta. En las horas de riesgo pesan sobre todo la lluvia y las rachas (de la última hora a 24 h), los reenganches aguas arriba en 6 y 24 h, las faltas de tensión y los defectos a tierra en el grupo de red, los microcortes y cortes del SCADA, los cambios de comunicaciones y la hora del día. Ninguna feature supera el umbral de alerta de leakage (PR-AUC sola de 0,3). Cada ejecución guarda en `l3_gold.ml_importancia` la media del SHAP absoluto de XGBoost, la importancia de los otros dos modelos y la PR-AUC de cada feature sola; las que ordenan los positivos demasiado bien por sí solas quedan marcadas con `alerta_leakage` para revisarlas antes de aceptar el modelo.
 
 ## Environmental Impact
 
-Entrenamiento local en un portátil (4 cores, 16 GB) sobre datos agregados; no se usa GPU ni nube. No se ha medido el consumo todavía. [More Information Needed]
+Entrenamiento local en un portátil (12 CPU lógicas, 32 GB) sobre datos agregados; no se usa GPU ni nube. No hemos medido el consumo eléctrico; cada entrenamiento completo dura de 9 a 40 minutos.
 
 ## Technical Specifications [optional]
 
