@@ -510,8 +510,14 @@ def test_risk_hours_per_distributor(spark, dataset, run, workdir, config_path):
 
     # A second run with the same settings reuses the dataset.
     loaded = spark.table("l3_gold.ml_dataset_distribuidora_hora").agg(F.max("audit_loaded_at")).first()[0]
-    job_ml_horas_riesgo.main(["--run-id", "hr_test2", "--config", config_path, "--sin-busqueda"])
+    job_ml_horas_riesgo.main(["--run-id", "hr_test2", "--config", config_path, "--sin-busqueda", "--sin-prevision"])
     assert spark.table("l3_gold.ml_dataset_distribuidora_hora").agg(F.max("audit_loaded_at")).first()[0] == loaded
+
+    # Without the forecast the models do not see the next hours.
+    second = json.loads(spark.table("l3_gold.ml_runs").where(F.col("run_id") == "hr_test2").first()["modelos_json"])
+    assert "naif_racha_prevision" not in second
+    with open(os.path.join(workdir, "modelos", "hr_test2", "run.json"), encoding="utf-8") as file:
+        assert not [f for f in json.load(file)["features"] if "metprev_" in f]
 
 
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
