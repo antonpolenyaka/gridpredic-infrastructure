@@ -461,13 +461,14 @@ def download(url: str, target: str, retries: int = 3, wait_s: float = 30, chunk:
     raise RuntimeError(f"No answer for {url}")
 
 
-def placsp_archive(path: str, territory, works, marks: list = None) -> dict:
-    """The entries of the territory of a PLACSP zip already on disk."""
-    kept, deleted, namespaces, read, files = [], [], {}, 0, 0
+def placsp_members(task: tuple) -> tuple:
+    """(kept, deleted, namespaces, entries read, files) of some ATOM files of a PLACSP zip; runs in a worker."""
+    path, names, cfg = task
+    territory, works = placsp_patterns(cfg)
+    marks = placsp_marks(cfg)
+    kept, deleted, namespaces, read = [], [], {}, 0
     with zipfile.ZipFile(path) as archive:
-        for name in sorted(archive.namelist()):
-            if not name.endswith(".atom"):
-                continue
+        for name in names:
             with archive.open(name) as member:
                 text = member.read().decode("utf-8", "replace")
             namespaces.update(NAMESPACE.findall(text[:5000]))
@@ -475,18 +476,59 @@ def placsp_archive(path: str, territory, works, marks: list = None) -> dict:
             kept += entries
             deleted += gone
             read += n
-            files += 1
+    return kept, deleted, namespaces, read, len(names)
+
+
+def placsp_archive(path: str, cfg: dict, processes: int = 1) -> dict:
+    """
+    The entries of the territory of a PLACSP zip already on disk. With more
+    than one process every worker reads a contiguous block of the ATOM files,
+    so the entries keep the order of the files.
+    """
+    with zipfile.ZipFile(path) as archive:
+        names = sorted(n for n in archive.namelist() if n.endswith(".atom"))
+    processes = max(1, min(int(processes or 1), len(names) or 1))
+    size = -(-len(names) // processes) if names else 0
+    tasks = [(path, names[i:i + size], cfg) for i in range(0, len(names), size)] if names else []
+    if processes > 1 and len(tasks) > 1:
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(max_workers=processes) as pool:
+            parts = list(pool.map(placsp_members, tasks))
+    else:
+        parts = [placsp_members(task) for task in tasks]
+
+    kept, deleted, namespaces, read, files = [], [], {}, 0, 0
+    for entries, gone, found, n, count in parts:
+        kept += entries
+        deleted += gone
+        namespaces.update(found)
+        read += n
+        files += count
     return {"_namespaces": namespaces, "entradas": kept, "borradas": deleted,
             "_resumen": {"ficheros": files, "entradas_leidas": read, "entradas_guardadas": len(kept)}}
 
 
-def land_obras(fs, cfg: dict, landing: str, force: bool) -> tuple:
+def placsp_years(cfg: dict, wanted: str = None) -> list:
+    """Years to land: the ones of the configuration, or the list of --anios ("2025,2024" or "2021-2023") in its order."""
+    if not wanted:
+        return list(range(int(cfg["anio_desde"]), int(cfg["anio_hasta"]) + 1))
+    years = []
+    for part in wanted.split(","):
+        part = part.strip()
+        if "-" in part:
+            a, b = (int(x) for x in part.split("-", 1))
+            years += list(range(a, b + 1) if a <= b else range(a, b - 1, -1))
+        elif part:
+            years.append(int(part))
+    return years
+
+
+def land_obras(fs, cfg: dict, landing: str, force: bool, years: str = None, processes: int = 1) -> tuple:
     ob = cfg["obras"]
-    territory, works = placsp_patterns(ob)
-    marks = placsp_marks(ob)
     done = failed = 0
 
-    for year in range(int(ob["anio_desde"]), int(ob["anio_hasta"]) + 1):
+    for year in placsp_years(ob, years):
         target = f"{landing}/obras/placsp_{year}.json.gz"
         if fs.exists(target) and not force:
             logger.info("PLACSP %s already in Landing", year)
@@ -498,7 +540,7 @@ def land_obras(fs, cfg: dict, landing: str, force: bool) -> tuple:
             with tempfile.TemporaryDirectory(prefix="placsp_") as folder:
                 path = os.path.join(folder, f"placsp_{year}.zip")
                 size = download(url, path, int(ob.get("reintentos_descarga", 3)), float(cfg["espera_reintento_s"]))
-                payload = placsp_archive(path, territory, works, marks)
+                payload = placsp_archive(path, ob, processes)
         except Exception as error:  # noqa: BLE001
             failed += 1
             logger.error("PLACSP %s not landed: %s", year, str(error)[:300])
@@ -610,6 +652,8 @@ def main(argv=None):
     parser.add_argument("--fuentes", default=",".join(SOURCES), help="Comma separated subset of " + ",".join(SOURCES))
     parser.add_argument("--forzar", action="store_true", help="Download again what is already in Landing")
     parser.add_argument("--max-celdas", type=int, default=None, help="Stop OSM after this many cells")
+    parser.add_argument("--anios", default=None, help='Years of PLACSP, in this order ("2025,2024" or "2021-2023")')
+    parser.add_argument("--procesos", type=int, default=1, help="Processes to read every PLACSP zip")
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)["publicos"]
@@ -634,7 +678,7 @@ def main(argv=None):
         "wikidata": lambda: land_wikidata(fs, cfg, landing, provinces, args.forzar),
         "elevacion": lambda: land_elevation(fs, cfg, landing, places, cells, args.forzar),
         "osm": lambda: land_osm(fs, cfg, landing, cells, args.forzar, args.max_celdas),
-        "obras": lambda: land_obras(fs, cfg, landing, args.forzar),
+        "obras": lambda: land_obras(fs, cfg, landing, args.forzar, args.anios, args.procesos),
         "catastro": lambda: land_catastro(fs, cfg, landing, places, provinces, args.forzar),
     }
     for source in SOURCES:
