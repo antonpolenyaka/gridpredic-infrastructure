@@ -111,6 +111,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--evaluar-test", action="store_true", help="Score and evaluate the test split too")
     parser.add_argument("--sin-prevision", action="store_true",
                         help="Leave out the forecast of the next hours (meteo.prevision false)")
+    parser.add_argument("--por-anios", nargs="?", const="config", default=None,
+                        help="Rolling evaluation by years (comma separated, horas_riesgo.anios_evaluacion by default)")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -311,10 +313,13 @@ def bootstrap(pdf: pd.DataFrame, label: str, models: list, references: list, rep
         pairs += [("xgboost", m) for m in trained if m != "xgboost"]
 
     tables, diffs = [], []
-    segments = [("total", None)] + [(f"distribuidora {d}", d) for d in sorted(pdf["distribuidora_id"].unique())]
+    segments = [("total", None, None)]
+    segments += [(f"distribuidora {d}", "distribuidora_id", d) for d in sorted(pdf["distribuidora_id"].unique())]
+    if "anio" in pdf.columns:
+        segments += [(f"año {a}", "anio", a) for a in sorted(pdf["anio"].unique())]
 
-    for name, value in segments:
-        sub = pdf if value is None else pdf[pdf["distribuidora_id"] == value]
+    for name, column, value in segments:
+        sub = pdf if column is None else pdf[pdf[column] == value]
         scores = {m: sub[f"p_{m}"].to_numpy() for m in models}
         table, replicas = ml_metrics.bootstrap_pr_auc(sub[label].to_numpy(), np.ones(len(sub)),
                                                       sub["hora"].dt.floor("D").to_numpy(), scores, reps, seed)
@@ -379,6 +384,186 @@ def save_predictions(spark, pdf: pd.DataFrame, run_id: str, split: str, models: 
 
 
 # ---------------------------------------------------------------------------
+# Rolling evaluation by years
+# ---------------------------------------------------------------------------
+
+def refit(name: str, scorer, data: dict, seed: int, n_jobs: int):
+    """
+    The chosen configuration fitted again on the whole training period of
+    the fold. XGBoost keeps the number of trees found by early stopping.
+    """
+    params = dict(scorer.params)
+
+    if name == "xgboost":
+        trees = int(scorer.info.get("n_arboles", params.get("n_estimators", 1500)))
+        params.update(n_estimators=trees, early_stopping_rounds=trees + 1)
+
+    return ml_models.fit_model(name, params, data, 1.0, seed, n_jobs)
+
+
+def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: dict, cfg: dict, years: list,
+                       only_first: bool) -> tuple:
+    """
+    One fold per year Y of years, never touching test: the models are chosen
+    on the last share (fraccion_validacion_interna) of the hours before Y,
+    fitted again on all the hours before Y and score the year Y. With about
+    30 incidents a year, pooling three years gives about three times the
+    events to compare the models with, and every year is scored by a model
+    that only saw its past.
+
+    Returns (scored rows of every year with the column anio, search rows,
+    scorers and inner data of the last fold).
+    """
+    seed = int(config.get("semilla", 0))
+    n_jobs = int(config.get("n_jobs", -1))
+    share = float(cfg.get("fraccion_validacion_interna", 0.25))
+    names = cfg.get("modelos", config["modelos"])
+    pool = pdf[pdf["split"].isin(["train", "valid"])]
+    parts, search_all = [], []
+    scorers, inner = {}, {}
+
+    for year in years:
+        start = pd.Timestamp(f"{year}-01-01")
+        before = pool[pool["hora"] < start]
+        target = pool[(pool["hora"] >= start) & (pool["hora"] < pd.Timestamp(f"{year + 1}-01-01"))].copy()
+
+        if before.empty or target.empty:
+            logger.warning("Year %s skipped: no hours before it or in it", year)
+            continue
+
+        hours = np.sort(before["hora"].unique())
+        cut = hours[int(len(hours) * (1 - share))]
+        fit_part, check_part = before[before["hora"] < cut], before[before["hora"] >= cut]
+
+        X, y = to_arrays(fit_part, features, label)
+        Xv, yv = to_arrays(check_part, features, label)
+        inner = {"X": X, "y": y, "w": np.ones(len(y)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)),
+                 "feature_names": features}
+        logger.info("Year %s: choosing on %s hours (%s positive) and %s hours from %s (%s positive)", year,
+                    len(y), int(y.sum()), len(yv), pd.Timestamp(cut), int(yv.sum()))
+
+        scorers, search = train(names, config, cfg, inner, float(y.mean()), only_first)
+        search_all += [{**row, "anio": year} for row in search]
+
+        Xa, ya = to_arrays(before, features, label)
+        full = {"X": Xa, "y": ya, "w": np.ones(len(ya)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)),
+                "feature_names": features}
+
+        for name in [n for n in scorers if n in ml_models.TRAINED]:
+            scorers[name] = refit(name, scorers[name], full, seed, n_jobs)
+        if "tasa_base" in scorers:
+            scorers["tasa_base"] = ml_models.build_reference("tasa_base", features, float(ya.mean()))
+
+        Xs, _ = to_arrays(target, features, label)
+        for name, scorer in scorers.items():
+            target[f"p_{name}"] = scorer.score(Xs)
+
+        target["anio"] = year
+        parts.append(target)
+        logger.info("Year %s scored: %s hours, %s positive", year, len(target), int(target[label].sum()))
+
+    return pd.concat(parts, ignore_index=True), search_all, scorers, inner
+
+
+def by_year_table(metrics: pd.DataFrame, label: str, budget: int) -> pd.DataFrame:
+    rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == label)]
+    out = []
+
+    for metric in ["pr_auc", f"recall_episodios@{budget}"]:
+        table = rows[rows["metrica"] == metric].pivot_table(index="modelo", columns="split", values="valor")
+        table.columns = [f"{metric} {c.replace('cv_', '')}" for c in table.columns]
+        out.append(table)
+
+    return pd.concat(out, axis=1).reset_index()
+
+
+def run_by_years(spark, args, config: dict, cfg: dict, pdf: pd.DataFrame, features: list, labels: list,
+                 dataset_version: str, created) -> str:
+    label = labels[0]
+    seed = int(config.get("semilla", 0))
+    raw = args.por_anios if args.por_anios != "config" else None
+    years = [int(y) for y in raw.split(",")] if raw else [int(y) for y in cfg.get("anios_evaluacion", [2023, 2024, 2025])]
+    budgets = [int(n) for n in cfg.get("presupuestos_horas_dia", [1, 2, 4, 6])]
+    budget = 2 if 2 in budgets else budgets[0]
+    segment_map = {"distribuidora": "distribuidora_id", "estacion": SEASON_FEATURE}
+
+    scored, search, scorers, inner = rolling_evaluation(pdf, features, label, config, cfg, years, args.sin_busqueda)
+    scored["ct_key"] = scored["distribuidora_id"]
+    models = [c[2:] for c in scored.columns if c.startswith("p_")]
+    present_years = sorted(scored["anio"].unique().tolist())
+
+    all_metrics = []
+    for year in present_years:
+        part = scored[scored["anio"] == year]
+        save_predictions(spark, part, args.run_id, f"cv_{year}", models, labels)
+        metrics = ml_metrics.evaluate(part, [f"p_{m}" for m in models], labels, budgets, segment_map, seed=seed)
+        all_metrics.append(add_context(metrics, args.run_id, dataset_version, f"cv_{year}"))
+
+    metrics = ml_metrics.evaluate(scored, [f"p_{m}" for m in models], labels, budgets, segment_map, seed=seed)
+    all_metrics.append(add_context(metrics, args.run_id, dataset_version, "cv_total"))
+    metrics = pd.concat(all_metrics, ignore_index=True)
+
+    references = [m for m in models if m not in ml_models.TRAINED]
+    reps = int(cfg.get("bootstrap_reps", 500))
+    intervals, differences = bootstrap(scored, label, models, references, reps, seed)
+    importance = examine(scorers, inner, config)
+
+    save_frame(spark, metrics, METRICS_TABLE, args.run_id)
+    save_frame(spark, add_context(importance, args.run_id, dataset_version, f"cv_{present_years[-1]}"),
+               IMPORTANCE_TABLE, args.run_id)
+
+    counts = scored.groupby("anio").agg(horas=(label, "size"), horas_positivas=(label, "sum")).reset_index()
+    counts["incidencias"] = [
+        int(len(np.unique(e[e >= 0]))) for e in
+        (ml_metrics.episode_ids(scored[scored["anio"] == a], label).to_numpy() for a in counts["anio"])
+    ]
+    pooled = metrics[(metrics["split"] == "cv_total") & (metrics["segmento"] == "total") & (metrics["etiqueta"] == label)]
+    pooled = pooled.pivot_table(index="modelo", columns="metrica", values="valor")
+    keep = ["pr_auc", "lift_pr_auc", "roc_auc", f"precision@{budget}", f"recall_episodios@{budget}",
+            f"recall_episodios@{budgets[-1]}", f"antelacion_media_h@{budget}"]
+    pooled = pooled[[c for c in keep if c in pooled.columns]].sort_values("pr_auc", ascending=False).reset_index()
+    shap = importance[(importance["modelo"] == "xgboost") & (importance["metrica"] == "shap_medio_abs")]
+
+    report = "\n\n".join([
+        f"# Horas de riesgo por distribuidora, evaluación por años: {args.run_id}",
+        f"Cada año lo puntúa un modelo que solo ha visto los años anteriores (elegido en el último "
+        f"{float(cfg.get('fraccion_validacion_interna', 0.25)):.0%} de esas horas y reentrenado con todas). "
+        f"Test no se toca. Dataset {dataset_version}, {len(features)} features, presupuesto de {budget} horas "
+        f"por distribuidora y día.",
+        "## Años evaluados\n\n" + ml_metrics.markdown_table(counts),
+        "## Por año\n\n" + ml_metrics.markdown_table(by_year_table(metrics, label, budget), digits=4),
+        "## Los años juntos\n\n" + ml_metrics.markdown_table(pooled, digits=4),
+        f"## PR-AUC con intervalo del 95 % (bootstrap por días, {reps} réplicas)\n\n"
+        + ml_metrics.markdown_table(intervals, digits=4),
+        "## Diferencias emparejadas (a - b)\n\nSi el intervalo cruza el cero, los datos no distinguen a de b.\n\n"
+        + ml_metrics.markdown_table(differences, digits=4),
+        f"## Las 15 features con más peso en XGBoost del año {present_years[-1]} (SHAP medio absoluto)\n\n"
+        + ml_metrics.markdown_table(shap.sort_values("valor", ascending=False).head(15)[["feature", "valor"]],
+                                    digits=5),
+    ]) + "\n"
+    export(config, args.run_id, report, {"metricas": metrics, "importancia": importance, "intervalos": intervals,
+                                         "diferencias": differences, "anios": counts})
+
+    total = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == label) & (metrics["metrica"] == "pr_auc")]
+    run = pd.DataFrame([{
+        "run_id": args.run_id,
+        "creado_ts": created,
+        "dataset_version": dataset_version,
+        "etiqueta": f"distribuidora_hora_por_anios:{label}",
+        "n_features": len(features),
+        "modelos_json": json.dumps({m: {"params": s.params, **s.info} for m, s in scorers.items()}, default=str),
+        "busqueda_json": json.dumps(search, ensure_ascii=False, default=str),
+        "config_json": json.dumps(config, ensure_ascii=False),
+        "resumen_json": json.dumps({f"{r.split}:{r.modelo}:{r.metrica}": r.valor for r in total.itertuples()}),
+        "splits_evaluados": ",".join(f"cv_{y}" for y in present_years),
+        "artefactos_uri": "",
+    }])
+    save_frame(spark, run, RUNS_TABLE, args.run_id)
+    logger.info("Rolling evaluation %s completed: years %s", args.run_id, present_years)
+    return args.run_id
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -429,6 +614,9 @@ def main(argv=None):
     sizes = describe(pdf, labels)
     logger.info("Risk hours dataset: %s rows, %s features\n%s", len(pdf), len(features),
                 ml_metrics.markdown_table(sizes, digits=4))
+
+    if args.por_anios:
+        return run_by_years(spark, args, config, cfg, pdf, features, labels, dataset_version, created)
 
     tr = pdf[pdf["split"] == "train"]
     va = pdf[pdf["split"] == "valid"]
