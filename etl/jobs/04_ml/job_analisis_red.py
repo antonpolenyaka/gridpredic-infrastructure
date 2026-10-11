@@ -103,6 +103,8 @@ INCIDENTS_TABLE = "l2_silver.f_incidencia"
 SILVER_CT_TABLE = "l2_silver.d_ct"
 WORKS_TABLE = f"{GOLD}.obras_municipio_anio"
 CONTEXT_TABLE = f"{GOLD}.contexto_ct_anio"
+PROJECTION_TABLE = "l2_silver.f_proyeccion_ame"
+AME_TABLE = "l2_silver.d_ame_municipio"
 
 RANKING_TABLE = f"{GOLD}.analisis_red_prioridades"
 LOAD_TABLE = f"{GOLD}.analisis_red_carga_trafo"
@@ -1959,7 +1961,24 @@ def growth_table(data: Data, works: pd.DataFrame, towns: pd.DataFrame) -> pd.Dat
     out["kva_nuevos_5a_pct"] = out["kva_nuevos_5a"] / out["kva"].where(out["kva"] > 0)
     out["distribuidora"] = out["distribuidora_id"].map(data.databases)
     out["anio_catastro"] = last
-    return out.sort_values("kva_nuevos_5a_pct", ascending=False)
+    return add_projection(data, out).sort_values("kva_nuevos_5a_pct", ascending=False)
+
+
+def add_projection(data: Data, out: pd.DataFrame) -> pd.DataFrame:
+    """Population projected by the IEEX for the group of municipalities (AME) of every municipality."""
+    members = read_table(data.spark, AME_TABLE, ["codigo_ine", "ame_codigo", "ame_nombre"])
+    projection = read_table(data.spark, PROJECTION_TABLE, ["ame_codigo", "anio", "poblacion"])
+    if members is None or projection is None:
+        return out
+    members, projection = members.toPandas(), projection.toPandas()
+    if projection.empty:
+        return out
+    first, last = int(projection["anio"].min()), int(projection["anio"].max())
+    wide = projection.pivot_table(index="ame_codigo", columns="anio", values="poblacion", aggfunc="first")
+    ame = pd.DataFrame({"pob_ame_inicio": wide.get(first), "pob_ame_fin": wide.get(last)}).reset_index()
+    ame["crec_pob_ame"] = ame["pob_ame_fin"] / ame["pob_ame_inicio"] - 1
+    ame["proyeccion"] = f"{first}-{last}"
+    return out.merge(members.merge(ame, on="ame_codigo", how="left"), on="codigo_ine", how="left")
 
 
 def section_works(data: Data, report: Report, state: dict):
@@ -2035,6 +2054,19 @@ def section_works(data: Data, report: Report, state: dict):
                                                    "viviendas_parque", "crec_viviendas_10a", "viviendas_nuevas_5a",
                                                    "kva_nuevos_5a", "kva_nuevos_5a_pct"])
         )
+        if "crec_pob_ame" in growth:
+            ames = growth.dropna(subset=["ame_codigo"]).groupby(["ame_codigo", "ame_nombre"]).agg(
+                municipios=("codigo_ine", "nunique"), cts=("cts", "sum"), kva=("kva", "sum"),
+                crec_pob_ame=("crec_pob_ame", "first")).reset_index().sort_values("crec_pob_ame")
+            report.csv("crecimiento_ame.csv", ames)
+            lines.append(
+                f"\nProyección de población del IEEX ({growth['proyeccion'].dropna().iloc[0]}) para las agrupaciones de "
+                "municipios (AME) donde están los CT. Es la única proyección oficial por debajo de la provincia; la "
+                "demanda que no venga de la población vendrá de la electrificación (bomba de calor, coche eléctrico), "
+                "que solo mide la curva de carga.\n\n"
+                + md_table(ames.assign(crec_pob_ame=ames["crec_pob_ame"].map(pct)),
+                           ["ame_nombre", "municipios", "cts", "kva", "crec_pob_ame"])
+            )
         state["crecimiento"] = growth
 
     report.section("11. Obras públicas, edificación y daños de terceros",

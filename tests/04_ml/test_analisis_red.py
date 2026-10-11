@@ -230,6 +230,10 @@ def tables(spark):
                         "fecha_pes": pd.to_datetime(["1980-05-01"] * 4 + ["2015-05-01"] * 4 + ["2000-01-01"] * 6)})
     save(spark, pes, "l2_silver.d_ct")
     save(spark, works(), "l3_gold.obras_municipio_anio")
+    save(spark, pd.DataFrame({"codigo_ine": ["10001", "10002", "10003"], "ame_codigo": ["1012", "1012", "1009"],
+                              "ame_nombre": ["JERTE", "JERTE", "AMBROZ"]}), "l2_silver.d_ame_municipio")
+    save(spark, pd.DataFrame({"ame_codigo": ["1012", "1012", "1009", "1009"], "anio": [2024, 2039, 2024, 2039],
+                              "poblacion": [1000.0, 1010.0, 2000.0, 1740.0]}), "l2_silver.f_proyeccion_ame")
     return dim
 
 
@@ -429,3 +433,6 @@ def test_works_and_third_party_damage(result):
     # 25 dwellings in 2020 - 2024 at 1000 kVA / 200 customers: 125 kVA, 12,5 % of the installed.
     assert uno["viviendas_nuevas_5a"] == 25 and uno["kva_nuevos_5a"] == pytest.approx(125.0)
     assert uno["kva_nuevos_5a_pct"] == pytest.approx(0.125) and uno["crec_viviendas_10a"] == pytest.approx(150 / 100 - 1)
+    assert uno["crec_pob_ame"] == pytest.approx(0.01) and uno["proyeccion"] == "2024-2039"
+    ames = read(folder, "crecimiento_ame.csv").set_index("ame_codigo")
+    assert ames.loc[1009, "crec_pob_ame"] == pytest.approx(-0.13) and ames.loc[1012, "municipios"] == 2

@@ -33,6 +33,9 @@ cleaning and the aggregates are in Silver.
   the version, use, dwellings, units, floors, built surface and the centre
   of its box in latitude and longitude (from UTM ETRS89).
 - catastro_municipio: the match of the INE and Catastro codes.
+- ieex_proyeccion_ame: population projected by the IEEX for every group of
+  municipalities (AME) and year, 2024-2039, and ieex_ame_municipio: the AME
+  of every municipality, from the CSV files of Landing.
 
 The tables are rebuilt whole in every run (a few thousand rows, the
 buildings about a hundred thousand).
@@ -666,6 +669,17 @@ def main():
                 row["descargado_utc"] = stamp
     write(buildings, tables["catastro"], "Catastro buildings")
     write(towns, tables["catastro_municipios"], "Catastro municipalities")
+
+    stamp_path = f"{landing}/proyecciones/peticion.json"
+    stamp_utc = read_json(fs, stamp_path).get("descargado_utc") if fs.exists(stamp_path) else None
+    for name, table, label in (("ieex_proyecciones_ame.csv", tables["proyecciones"], "IEEX projections"),
+                               ("ieex_ame_municipios.csv", tables["ame_municipios"], "IEEX AME")):
+        path = f"{landing}/proyecciones/{name}"
+        rows = []
+        if fs.exists(path):
+            with fs.open(path, "rb") as file:
+                rows = pd.read_csv(file, dtype=str).assign(descargado_utc=stamp_utc).to_dict("records")
+        write(rows, table, label)
 
     logger.info("Bronze of the public data completed")
 

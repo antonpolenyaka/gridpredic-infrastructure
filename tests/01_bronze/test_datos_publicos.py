@@ -293,3 +293,24 @@ def test_parse_catastro_buildings():
     assert first["superficie_m2"] == 320.0 and first["codigo_ine"] == "10096"
     assert first["latitud"] == pytest.approx(40.2688845, abs=1e-6)
     assert rows[1]["anio_construccion"] == 1970 and rows[1]["n_viviendas"] == 0
+
+
+def test_ieex_projections_are_copied_to_landing():
+    import fsspec
+
+    fs = fsspec.filesystem("memory")
+    cfg = landing.load_config()["publicos"]
+    assert landing.land_projections(fs, cfg, "memory://landing/publicos") == 2
+    import pandas as pd
+
+    with fs.open("memory://landing/publicos/proyecciones/ieex_proyecciones_ame.csv", "rb") as file:
+        projection = pd.read_csv(file, dtype={"ame_codigo": str})
+    with fs.open("memory://landing/publicos/proyecciones/ieex_ame_municipios.csv", "rb") as file:
+        towns = pd.read_csv(file, dtype={"codigo_ine": str, "ame_codigo": str})
+    # 31 groups of municipalities, 2024-2039; every municipality of Badajoz and Caceres in one of them.
+    assert projection["ame_codigo"].nunique() == 31 and set(projection["anio"]) == set(range(2024, 2040))
+    assert len(towns) == 388 and towns["codigo_ine"].is_unique
+    assert towns.loc[towns["codigo_ine"] == "10096", "ame_codigo"].item() == "1009"  # Hervas
+    jerte = projection[projection["ame_codigo"] == "1012"].set_index("anio")["poblacion"]
+    assert jerte[2039] / jerte[2024] - 1 == pytest.approx(0.010, abs=0.001)
+    assert fs.exists("memory://landing/publicos/proyecciones/peticion.json")

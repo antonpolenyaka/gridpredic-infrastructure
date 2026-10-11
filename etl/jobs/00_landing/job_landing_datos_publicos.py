@@ -34,6 +34,12 @@ the APIs return them:
   zip of the Catastro as it comes (.../catastro/<codigo_ine>.zip). The
   Catastro numbers the municipalities with its own codes, so the match with
   the INE code is by name inside the province (.../catastro/municipios.json).
+- Population projections 2024-2039 of the Instituto de Estadistica de
+  Extremadura by groups of municipalities (AME), and the AME of every
+  municipality: the IEEX publishes them in formats the Spark image does not
+  read (Excel 97 inside 7z, a PDF map), so extract_ieex_proyecciones.py turns
+  them once into two CSV files of the configuration, which this source copies
+  to Landing (.../proyecciones/).
 
 The places are the municipalities of data/reference_data/municipios.xlsx and
 their cells, the same as the weather (job_landing_meteo_openmeteo).
@@ -80,7 +86,7 @@ CONFIG_CANDIDATES = [
     os.path.join(HERE, "..", "..", "config", "01_bronze", "config_bronze_publicos.json"),
 ]
 
-SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro"]
+SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones"]
 PARTIAL_EXIT = 4
 
 
@@ -646,6 +652,28 @@ def land_catastro(fs, cfg: dict, landing: str, places: list, provinces: list, fo
     return done, failed
 
 
+# IEEX projections -----------------------------------------------------------
+
+def land_projections(fs, cfg: dict, landing: str) -> int:
+    """Copies the CSV files of the IEEX projections from the configuration folder to Landing."""
+    pr = cfg["proyecciones"]
+    folders = [os.path.dirname(c) for c in CONFIG_CANDIDATES]
+    done = 0
+    for name in pr["ficheros"]:
+        source = next((os.path.join(f, name) for f in folders if os.path.exists(os.path.join(f, name))), None)
+        if source is None:
+            raise FileNotFoundError(f"{name} not found next to config_bronze_publicos.json")
+        with open(source, "rb") as file:
+            raw = file.read()
+        with fs.open(f"{landing}/proyecciones/{name}", "wb") as file:
+            file.write(raw)
+        done += 1
+    save_json(fs, f"{landing}/proyecciones/peticion.json",
+              stamp("ieex-proyecciones", origen=pr.get("origen"), ficheros=pr["ficheros"]))
+    logger.info("IEEX projections: %s files in Landing", done)
+    return done
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
@@ -680,6 +708,7 @@ def main(argv=None):
         "osm": lambda: land_osm(fs, cfg, landing, cells, args.forzar, args.max_celdas),
         "obras": lambda: land_obras(fs, cfg, landing, args.forzar, args.anios, args.procesos),
         "catastro": lambda: land_catastro(fs, cfg, landing, places, provinces, args.forzar),
+        "proyecciones": lambda: land_projections(fs, cfg, landing),
     }
     for source in SOURCES:
         if source not in sources:
