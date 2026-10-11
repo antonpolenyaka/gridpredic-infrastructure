@@ -113,6 +113,9 @@ def parse_args(argv=None) -> argparse.Namespace:
                         help="Leave out the forecast of the next hours (meteo.prevision false)")
     parser.add_argument("--por-anios", nargs="?", const="config", default=None,
                         help="Rolling evaluation by years (comma separated, horas_riesgo.anios_evaluacion by default)")
+    parser.add_argument("--ablacion", action="store_true",
+                        help="Compare the sources (Calser, TedisNet, weather), their mixes, the interactions, one "
+                             "model per distribuidora and the zone model, with the rolling evaluation by years")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -246,7 +249,8 @@ def to_arrays(pdf: pd.DataFrame, features: list, label: str):
     return X, y
 
 
-def train(names: list, config: dict, cfg: dict, data: dict, base_rate: float, only_first: bool) -> tuple:
+def train(names: list, config: dict, cfg: dict, data: dict, base_rate: float, only_first: bool,
+          references: bool = True) -> tuple:
     seed = int(config.get("semilla", 0))
     n_jobs = int(config.get("n_jobs", -1))
     grids = {**config.get("busqueda", {}), **cfg.get("busqueda", {})}
@@ -270,7 +274,7 @@ def train(names: list, config: dict, cfg: dict, data: dict, base_rate: float, on
         scorer.info["pr_auc_valid_muestra"] = keep(name, scorer, scorer.params)
         scorers[name] = scorer
 
-    for name, feature in cfg.get("referencias", {}).items():
+    for name, feature in (cfg.get("referencias", {}) if references else {}).items():
         if feature not in features:
             logger.warning("Reference %s skipped: no feature %s", name, feature)
             continue
@@ -288,7 +292,9 @@ def train(names: list, config: dict, cfg: dict, data: dict, base_rate: float, on
             scorer = ml_models.fit_model(name, params, data, 1.0, seed, n_jobs)
             ap = keep(name, scorer, params, index)
 
-            if ap > best_ap:
+            # A fold without positives in the inner validation gives nan:
+            # the first configuration is kept.
+            if best is None or ap > best_ap:
                 best, best_ap = scorer, ap
 
         best.info["pr_auc_valid_muestra"] = best_ap
@@ -402,7 +408,8 @@ def refit(name: str, scorer, data: dict, seed: int, n_jobs: int):
 
 
 def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: dict, cfg: dict, years: list,
-                       only_first: bool, test_until: str = None) -> tuple:
+                       only_first: bool, test_until: str = None, names: list = None,
+                       references: bool = True) -> tuple:
     """
     One fold per year Y of years, never touching test: the models are chosen
     on the last share (fraccion_validacion_interna) of the hours before Y,
@@ -421,12 +428,12 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
     seed = int(config.get("semilla", 0))
     n_jobs = int(config.get("n_jobs", -1))
     share = float(cfg.get("fraccion_validacion_interna", 0.25))
-    names = cfg.get("modelos", config["modelos"])
+    names = names or cfg.get("modelos", config["modelos"])
     pool = pdf[pdf["split"].isin(["train", "valid"])]
 
     if test_until:
         test = pdf[(pdf["split"] == "test") & (pdf["hora"] < pd.Timestamp(test_until))]
-        pool = pd.concat([pool, test]).sort_values(KEYS)
+        pool = pd.concat([pool, test]).sort_values("hora", kind="stable")
 
     parts, search_all = [], []
     scorers, inner = {}, {}
@@ -451,7 +458,7 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
         logger.info("Year %s: choosing on %s hours (%s positive) and %s hours from %s (%s positive)", year,
                     len(y), int(y.sum()), len(yv), pd.Timestamp(cut), int(yv.sum()))
 
-        scorers, search = train(names, config, cfg, inner, float(y.mean()), only_first)
+        scorers, search = train(names, config, cfg, inner, float(y.mean()), only_first, references)
         search_all += [{**row, "anio": year} for row in search]
 
         Xa, ya = to_arrays(before, features, label)
@@ -505,7 +512,6 @@ def run_by_years(spark, args, config: dict, cfg: dict, pdf: pd.DataFrame, featur
 
     scored, search, scorers, inner = rolling_evaluation(pdf, features, label, config, cfg, years, args.sin_busqueda,
                                                         test_until)
-    scored["ct_key"] = scored["distribuidora_id"]
     models = [c[2:] for c in scored.columns if c.startswith("p_")]
     present_years = sorted(scored["anio"].unique().tolist())
 
@@ -581,6 +587,328 @@ def run_by_years(spark, args, config: dict, cfg: dict, pdf: pd.DataFrame, featur
 
 
 # ---------------------------------------------------------------------------
+# Sources, interactions, groups and zones
+# ---------------------------------------------------------------------------
+
+ZONE_TABLE = f"{GOLD}.ml_dataset_zona_hora"
+TEDISNET_PREFIXES = ("med_", "medaa_", "aa_", "ev_", "evred_", "evaa_", "calidad_", "corte_error_comm_", "scada_",
+                     "hist_scada_", "ct_con_datos")
+DEFAULT_SETS = {
+    "calser": ["calser"],
+    "tedisnet": ["tedisnet"],
+    "meteo": ["meteo"],
+    "calser+tedisnet": ["calser", "tedisnet"],
+    "tedisnet+meteo": ["tedisnet", "meteo"],
+    "todo": ["calser", "tedisnet", "meteo"],
+    "todo+interacciones": ["calser", "tedisnet", "meteo", "interacciones"],
+}
+
+
+def source_of(name: str) -> str:
+    """
+    Where a feature comes from: calser (interruptions known in Calser),
+    tedisnet (measures, events, cuts and quality of the SCADA), meteo
+    (Open-Meteo), interacciones (products of two of them) or base (the CTs,
+    the calendar, the distribuidora and the zone, always kept).
+    """
+    if name.startswith("int_"):
+        return "interacciones"
+    if name.startswith(("metd_", "metz_", "dist_metd_")):
+        return "meteo"
+
+    for prefix in ("dist_frac_", "media_", "frac_"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+
+    if name.startswith("hist_scada_") or name.startswith(TEDISNET_PREFIXES):
+        return "tedisnet"
+    if name.startswith("hist_"):
+        return "calser"
+    return "base"
+
+
+def add_interactions(pdf: pd.DataFrame, pairs: list) -> list:
+    """
+    Products of a weather and a network feature (a storm over a network that
+    is already reclosing or showing earth faults). The trees can find these
+    alone, but with about 100 incidents a year in train an explicit product
+    is easier to learn. Returns the names added.
+    """
+    names = []
+
+    for a, b in pairs:
+        if a not in pdf.columns or b not in pdf.columns:
+            logger.warning("Interaction %s x %s skipped: missing feature", a, b)
+            continue
+
+        name = f"int_{a}__x__{b}"
+        pdf[name] = (pdf[a].astype("float64") * pdf[b].astype("float64")).astype("float32")
+        names.append(name)
+
+    return names
+
+
+def zone_key(key: str, windows: list) -> str:
+    return hashlib.sha1(json.dumps({"distribuidora": key, "zona": sorted(windows)}).encode("utf-8")).hexdigest()[:12]
+
+
+def build_zone_dataset(spark, ct_features: list, labels: list, cfg: dict, meteo_cfg: dict, version: str, key: str,
+                       source: str, windows: list) -> list:
+    """
+    l3_gold.ml_dataset_zona_hora: one row per zone (the 9 km weather cell of
+    the municipality of the CTs) and hour. Labels from the CTs of the zone,
+    the share of CTs of the zone with every event, SCADA and history signal
+    of the short windows, the mean of the static and calendar features, the
+    weather of the cell (metz_*), and the same shares and the worst weather
+    of the whole distribuidora (dist_*): the local and the global state in
+    the same row. Returns the feature names.
+    """
+    cells_table = meteo_cfg.get("tabla_ct_celda", f"{GOLD}.map_ct_celda")
+    weather_table = meteo_cfg.get("tabla_meteo", f"{GOLD}.meteo_celda_hora")
+    label = labels[0]
+
+    cells = (
+        spark.table(cells_table).where(F.col("celda_id").isNotNull())
+        .select(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "ct_id",
+                F.col("celda_id").alias("zona_id"), "ct_lat_municipio", "ct_lon_municipio")
+    )
+    zkeys = ["distribuidora_id", "zona_id", "hora"]
+    static = cells.groupBy("distribuidora_id", "zona_id").agg(
+        F.count(F.lit(1)).cast("float").alias("zona_n_cts"),
+        F.avg("ct_lat_municipio").cast("float").alias("zona_lat"),
+        F.avg("ct_lon_municipio").cast("float").alias("zona_lon"),
+    )
+
+    dataset = spark.table(DATASET_TABLE).withColumn("distribuidora_id", F.col("distribuidora_id").cast("long"))
+    targets = dataset.join(F.broadcast(cells.select("distribuidora_id", "ct_id", "zona_id")),
+                           ["distribuidora_id", "ct_id"]).groupBy(*zkeys).agg(
+        F.first("split").alias("split"),
+        *[F.max(F.col(c).cast("int")).alias(c) for c in labels],
+        F.sum(F.col(label).cast("int")).alias("n_cts_positivos"),
+        F.min(F.col(LEAD).cast("double")).alias(LEAD),
+    )
+
+    bounds = dataset.agg(F.min("hora").alias("desde"), F.max("hora").alias("hasta")).first()
+    src = (
+        spark.table(source).where(F.col("hora").between(bounds["desde"], bounds["hasta"]))
+        .withColumn("distribuidora_id", F.col("distribuidora_id").cast("long"))
+        .join(F.broadcast(cells.select("distribuidora_id", "ct_id", "zona_id")), ["distribuidora_id", "ct_id"])
+    )
+    present = [f for f in ct_features if f in src.columns and f not in ("distribuidora_id", "ct_id", "hora")]
+    prefixes = tuple(cfg.get("prefijos_frac", DEFAULT_FRAC))
+    suffixes = tuple(f"_{w}" for w in windows)
+    dynamic = [f for f in present if f.startswith(prefixes) and (f.endswith(suffixes) or f.startswith("hist_"))]
+    base = [f for f in present if source_of(f) == "base"]
+
+    network = src.groupBy(*zkeys).agg(
+        *[F.avg((F.coalesce(F.col(f).cast("double"), F.lit(0.0)) > 0).cast("float")).alias(f"frac_{f}") for f in dynamic],
+        *[F.avg(F.col(f).cast("double")).cast("float").alias(f"media_{f}") for f in base],
+    )
+    names = [f"frac_{f}" for f in dynamic] + [f"media_{f}" for f in base] + ["zona_n_cts", "zona_lat", "zona_lon"]
+
+    weather = spark.table(weather_table)
+    met = [c for c in weather.columns if c.startswith(("met_", "metprev_"))]
+    weather = weather.select(F.col("celda_id").alias("zona_id"), "hora",
+                             *[F.col(c).cast("float").alias(f"metz_{c}") for c in met])
+    names += [f"metz_{c}" for c in met]
+
+    dist = spark.table(DATASET_HR)
+    dist_cols = [f"frac_{f}" for f in dynamic if f"frac_{f}" in dist.columns]
+    dist_cols += [c for c in dist.columns if c.startswith("metd_max_")]
+    dist = dist.select(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "hora",
+                       *[F.col(c).cast("float").alias(f"dist_{c}") for c in dist_cols])
+    names += [f"dist_{c}" for c in dist_cols]
+
+    out = (
+        targets.join(network, zkeys, "left")
+        .join(F.broadcast(static), ["distribuidora_id", "zona_id"], "left")
+        .join(weather, ["zona_id", "hora"], "left")
+        .join(dist, ["distribuidora_id", "hora"], "left")
+    )
+
+    start = time.time()
+    (
+        out.withColumn("dataset_version", F.lit(version)).withColumn("clave", F.lit(zone_key(key, windows)))
+        .withColumn("audit_loaded_at", F.current_timestamp())
+        .write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(ZONE_TABLE)
+    )
+    logger.info("%s built in %.0f s: %s rows, %s features", ZONE_TABLE, time.time() - start,
+                spark.table(ZONE_TABLE).count(), len(names))
+    return names
+
+
+def load_zones(spark, ct_features, labels, cfg, meteo_cfg, version, key, source, windows, rebuild) -> tuple:
+    """(zone rows as pandas, feature names), building the table when needed."""
+    names = None
+
+    if not rebuild and spark.catalog.tableExists(ZONE_TABLE):
+        table = spark.table(ZONE_TABLE)
+        if [r["clave"] for r in table.select("clave").distinct().collect()] == [zone_key(key, windows)]:
+            names = [c for c in table.columns if c.startswith(("frac_", "media_", "zona_", "metz_", "dist_"))
+                     and c != "zona_id"]
+            logger.info("Reusing %s", ZONE_TABLE)
+
+    if names is None:
+        names = build_zone_dataset(spark, ct_features, labels, cfg, meteo_cfg, version, key, source, windows)
+
+    if not meteo_cfg.get("prevision", True):
+        names = [n for n in names if "metprev_" not in n]
+
+    table = add_season(spark.table(ZONE_TABLE))
+    pdf = table.select(
+        F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "zona_id", "hora", "split",
+        *labels, LEAD, *[F.col(n).cast("float").alias(n) for n in names],
+        F.col(SEASON_FEATURE).cast("float").alias(SEASON_FEATURE),
+    ).toPandas()
+    pdf = pdf.sort_values(["distribuidora_id", "zona_id", "hora"]).reset_index(drop=True)
+    pdf["ct_key"] = pdf.groupby(["distribuidora_id", "zona_id"]).ngroup()
+    return pdf, ["distribuidora_id"] + names + [SEASON_FEATURE]
+
+
+def renamed(scored: pd.DataFrame, prefix: str) -> pd.DataFrame:
+    columns = {c: f"p_{prefix}:{c[2:]}" for c in scored.columns if c.startswith("p_")}
+    return scored[KEYS + list(columns)].rename(columns=columns)
+
+
+def run_ablation(spark, args, config, cfg, meteo_cfg, pdf, features, labels, ct_features, dataset_version, key,
+                 source, created) -> str:
+    """
+    Does the mix of the three sources predict better than each one alone,
+    and is it worth separating by groups or going down to the zone? Every
+    variant is scored by the rolling evaluation by years (test never used)
+    and compared on the same distribuidora-hours with a paired bootstrap.
+    """
+    label = labels[0]
+    seed = int(config.get("semilla", 0))
+    ab = cfg.get("ablacion", {})
+    years = [int(y) for y in (args.por_anios.split(",") if args.por_anios not in (None, "config")
+                              else cfg.get("anios_evaluacion", [2023, 2024, 2025]))]
+    models = ab.get("modelos", ["logistica", "xgboost"])
+    budgets = [int(n) for n in cfg.get("presupuestos_horas_dia", [1, 2, 4, 6])]
+    budget = 2 if 2 in budgets else budgets[0]
+
+    interactions = add_interactions(pdf, ab.get("interacciones", []))
+    all_features = features + interactions
+    sources = {f: source_of(f) for f in all_features}
+
+    refs, _, _, _ = rolling_evaluation(pdf, features, label, config, cfg, years, args.sin_busqueda,
+                                       names=["tasa_base", "naif_historico"])
+    combined = refs[KEYS + labels + [LEAD, SEASON_FEATURE, "anio", "ct_key"]].copy()
+    combined = combined.merge(renamed(refs, "ref"), on=KEYS)
+    sizes = []
+
+    for name, blocks in ab.get("conjuntos", DEFAULT_SETS).items():
+        chosen = [f for f in all_features if sources[f] == "base" or sources[f] in blocks]
+        sizes.append({"variante": name, "features": len(chosen)})
+        logger.info("Ablation %s: %s features", name, len(chosen))
+        scored, _, _, _ = rolling_evaluation(pdf, chosen, label, config, cfg, years, args.sin_busqueda,
+                                             names=models, references=False)
+        combined = combined.merge(renamed(scored, name), on=KEYS, how="left")
+
+    full = [f for f in features]
+    if ab.get("por_distribuidora", True):
+        parts = []
+        for dist in sorted(pdf["distribuidora_id"].unique()):
+            logger.info("One model per distribuidora: %s", dist)
+            scored, _, _, _ = rolling_evaluation(pdf[pdf["distribuidora_id"] == dist], full, label, config, cfg,
+                                                 years, args.sin_busqueda, names=models, references=False)
+            parts.append(scored)
+        combined = combined.merge(renamed(pd.concat(parts, ignore_index=True), "por_distribuidora"), on=KEYS,
+                                  how="left")
+        sizes.append({"variante": "por_distribuidora", "features": len(full)})
+
+    zone_rows = None
+    if ab.get("zona", True) and meteo_cfg.get("activo"):
+        windows = ab.get("zona_ventanas", ["6h", "24h"])
+        zpdf, zfeatures = load_zones(spark, ct_features, labels, cfg, meteo_cfg, dataset_version, key, source,
+                                     windows, args.reconstruir)
+        sizes.append({"variante": "zona", "features": len(zfeatures)})
+        logger.info("Zone model: %s rows, %s features", len(zpdf), len(zfeatures))
+        zscored, _, _, _ = rolling_evaluation(zpdf, zfeatures, label, config, cfg, years, args.sin_busqueda,
+                                              names=ab.get("zona_modelos", models), references=False)
+        zone_rows = ml_metrics.evaluate(zscored, [c for c in zscored.columns if c.startswith("p_")], [label],
+                                        budgets, {}, seed=seed)
+        zone_rows = zone_rows[zone_rows["metrica"].isin(["prevalencia", "pr_auc", "lift_pr_auc", "roc_auc"])]
+        best = zscored.groupby(KEYS)[[c for c in zscored.columns if c.startswith("p_")]].max().reset_index()
+        combined = combined.merge(renamed(best, "zona"), on=KEYS, how="left")
+        del zpdf
+
+    scores = [c for c in combined.columns if c.startswith("p_")]
+    for column in scores:
+        combined[column] = combined[column].fillna(combined[column].min())
+
+    metrics = ml_metrics.evaluate(combined, scores, labels, budgets, {"distribuidora": "distribuidora_id"}, seed=seed)
+    metrics = add_context(metrics, args.run_id, dataset_version, "ablacion")
+
+    names = [c[2:] for c in scores]
+    pairs = []
+    for name in names:
+        if name.startswith("ref:"):
+            continue
+        pairs += [(name, "ref:naif_racha"), (name, "ref:tasa_base")]
+        variant, model = name.split(":")
+        if variant != "todo" and f"todo:{model}" in names:
+            pairs.append((name, f"todo:{model}"))
+
+    reps = int(cfg.get("bootstrap_reps", 500))
+    table, replicas = ml_metrics.bootstrap_pr_auc(combined[label].to_numpy(), np.ones(len(combined)),
+                                                  combined["hora"].dt.floor("D").to_numpy(),
+                                                  {n: combined[f"p_{n}"].to_numpy() for n in names}, reps, seed)
+    pairs = [(a, b) for a, b in pairs if a in replicas and b in replicas]
+    differences = ml_metrics.paired_differences(replicas, pairs)
+
+    total = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == label)]
+    summary = total.pivot_table(index="modelo", columns="metrica", values="valor")
+    summary = summary[["pr_auc", "lift_pr_auc", "roc_auc", f"recall_episodios@{budget}"]].reset_index()
+    summary = summary.merge(table.rename(columns={"nombre": "modelo"})[["modelo", "p2_5", "p97_5"]], on="modelo")
+    vs = differences.pivot_table(index="a", columns="b", values="prob_a_mejor")
+    summary["p_mejor_racha"] = summary["modelo"].map(vs.get("ref:naif_racha", pd.Series(dtype=float)))
+    summary["p_mejor_todo"] = summary["modelo"].map(
+        {a: vs.loc[a, b] for a in vs.index for b in vs.columns if b.startswith("todo:") and pd.notna(vs.loc[a, b])})
+    summary = summary.sort_values("pr_auc", ascending=False)
+
+    by_year = (
+        combined.groupby("anio")
+        .apply(lambda g: pd.Series({n: ml_metrics.average_precision(g[label], g[f"p_{n}"]) for n in names}))
+        .T.reset_index().rename(columns={"index": "modelo"})
+    )
+    by_year.columns = [str(c) for c in by_year.columns]
+
+    parts = [
+        f"# Ablación por fuentes, grupos y zonas: {args.run_id}",
+        f"Evaluación por años {years} (cada año lo puntúa un modelo que solo ha visto los anteriores; test no se "
+        f"toca), {len(combined)} horas de distribuidora, {int(combined[label].sum())} positivas. Todas las "
+        f"variantes se comparan sobre las mismas horas de distribuidora; la zona se lleva a la distribuidora con la "
+        f"zona de más riesgo de cada hora. Sin previsión: {not meteo_cfg.get('prevision', True)}.",
+        "## Variantes\n\n" + ml_metrics.markdown_table(pd.DataFrame(sizes)),
+        "## Resultado (los años juntos)\n\n" + ml_metrics.markdown_table(summary, digits=4),
+        "## PR-AUC por año\n\n" + ml_metrics.markdown_table(by_year, digits=4),
+    ]
+    if zone_rows is not None:
+        zt = zone_rows.pivot_table(index="modelo", columns="metrica", values="valor").reset_index()
+        parts.append("## Modelo de zona medido por zona y hora\n\n" + ml_metrics.markdown_table(zt, digits=5))
+    parts.append("## Diferencias emparejadas (a - b)\n\n" + ml_metrics.markdown_table(differences, digits=4))
+    report = "\n\n".join(parts) + "\n"
+
+    save_frame(spark, metrics, METRICS_TABLE, args.run_id)
+    export(config, args.run_id, report, {"metricas": metrics, "intervalos": table, "diferencias": differences,
+                                         "resumen": summary, "por_anio": by_year})
+
+    run = pd.DataFrame([{
+        "run_id": args.run_id, "creado_ts": created, "dataset_version": dataset_version,
+        "etiqueta": f"distribuidora_hora_ablacion:{label}", "n_features": len(all_features),
+        "modelos_json": json.dumps({"variantes": sizes, "modelos": models}), "busqueda_json": "[]",
+        "config_json": json.dumps(config, ensure_ascii=False),
+        "resumen_json": json.dumps(dict(zip(summary["modelo"], summary["pr_auc"]))),
+        "splits_evaluados": ",".join(f"cv_{y}" for y in years), "artefactos_uri": "",
+    }])
+    save_frame(spark, run, RUNS_TABLE, args.run_id)
+    logger.info("Ablation %s completed", args.run_id)
+    return args.run_id
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -628,9 +956,14 @@ def main(argv=None):
     pdf = table.select(*KEYS, "split", *labels, LEAD, "n_cts_positivos", *names, SEASON_FEATURE).toPandas()
     pdf["distribuidora_id"] = pdf["distribuidora_id"].astype("int64")
     pdf = pdf.sort_values(KEYS).reset_index(drop=True)
+    pdf["ct_key"] = pdf["distribuidora_id"]
     sizes = describe(pdf, labels)
     logger.info("Risk hours dataset: %s rows, %s features\n%s", len(pdf), len(features),
                 ml_metrics.markdown_table(sizes, digits=4))
+
+    if args.ablacion:
+        return run_ablation(spark, args, config, cfg, meteo_cfg, pdf, features, labels, ct_features, dataset_version,
+                            key, source, created)
 
     if args.por_anios:
         return run_by_years(spark, args, config, cfg, pdf, features, labels, dataset_version, created)

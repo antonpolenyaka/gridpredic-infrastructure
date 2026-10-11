@@ -243,6 +243,8 @@ def config_path(workdir):
     config["clusters"].update({"k": [2, 3], "min_cts": 5})
     config["submodelos"] = {"activo": True, "min_positivos": 20}
     config["horas_riesgo"]["bootstrap_reps"] = 30
+    config["horas_riesgo"]["ablacion"]["interacciones"] = [["metd_max_met_racha_1h", "frac_ev_defecto_tierra_24h"],
+                                                           ["no_existe", "frac_ev_defecto_tierra_24h"]]
     config["spark_conf"] = {}
 
     path = os.path.join(workdir, "config_ml_test.json")
@@ -567,6 +569,47 @@ def test_risk_hours_test_year_only_with_flag(spark, dataset, run, config_path):
     last = predictions.agg(F.max("hora")).first()[0]
     assert last < datetime(2026, 1, 20)
     assert {r[0] for r in predictions.select("split").distinct().collect()} == {"cv_2026"}
+
+
+def test_source_of_feature():
+    import job_ml_horas_riesgo as hr
+
+    assert hr.source_of("media_hist_interr_365d") == "calser"
+    assert hr.source_of("frac_hist_scada_microcortes_90d") == "tedisnet"
+    assert hr.source_of("frac_evaa_reenganche_6h") == "tedisnet"
+    assert hr.source_of("dist_frac_ev_defecto_tierra_24h") == "tedisnet"
+    assert hr.source_of("metd_max_met_racha_1h") == "meteo"
+    assert hr.source_of("metz_met_lluvia_3h") == "meteo"
+    assert hr.source_of("media_ct_potencia_kva") == "base"
+    assert hr.source_of("zona_n_cts") == "base"
+    assert hr.source_of("int_a__x__b") == "interacciones"
+
+
+def test_ablation_sources_groups_zones(spark, dataset, run, workdir, config_path):
+    import job_ml_horas_riesgo
+
+    job_ml_horas_riesgo.main(["--run-id", "hr_ab_test", "--config", config_path, "--ablacion", "--por-anios", "2025",
+                              "--sin-busqueda", "--sin-prevision"])
+
+    zones = spark.table("l3_gold.ml_dataset_zona_hora").toPandas()
+    # Two zones by INE, one by name (CT020 - CT027); CT028 and CT029 have no cell.
+    assert zones["zona_id"].nunique() == 3
+    assert {"frac_ev_defecto_tierra_24h", "metz_met_racha_1h", "dist_frac_ev_defecto_tierra_24h", "zona_n_cts"} \
+        <= set(zones.columns)
+    assert zones["zona_n_cts"].sum() / zones.groupby(["distribuidora_id", "zona_id"]).ngroups >= 1
+
+    folder = os.path.join(workdir, "resultados", "hr_ab_test")
+    summary = pd.read_csv(os.path.join(folder, "resumen.csv"))
+    expected = {"ref:tasa_base", "ref:naif_racha", "calser:xgboost", "tedisnet:xgboost", "meteo:xgboost",
+                "todo:xgboost", "todo+interacciones:xgboost", "por_distribuidora:xgboost", "zona:xgboost"}
+    assert expected <= set(summary["modelo"])
+    assert summary["pr_auc"].between(0, 1).all()
+
+    diffs = pd.read_csv(os.path.join(folder, "diferencias.csv"))
+    assert ("meteo:xgboost", "todo:xgboost") in set(zip(diffs["a"], diffs["b"]))
+    with open(os.path.join(folder, "resumen.md"), encoding="utf-8") as file:
+        report = file.read()
+    assert "## Modelo de zona medido por zona y hora" in report
 
 
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):

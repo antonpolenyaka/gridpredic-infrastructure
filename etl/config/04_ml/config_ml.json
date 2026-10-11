@@ -102,7 +102,33 @@
       2024,
       2025
     ],
-    "fraccion_validacion_interna": 0.25
+    "fraccion_validacion_interna": 0.25,
+    "ablacion": {
+      "modelos": [
+        "logistica",
+        "xgboost"
+      ],
+      "interacciones": [
+        ["metd_max_met_racha_1h", "frac_evaa_reenganche_6h"],
+        ["metd_max_met_racha_max_3h", "frac_evred_defecto_tierra_24h"],
+        ["metd_max_met_lluvia_6h", "frac_evred_defecto_tierra_24h"],
+        ["metd_max_met_lluvia_3h", "frac_evaa_reenganche_24h"],
+        ["metd_max_met_lluvia_24h", "media_ev_comunicaciones_24h"],
+        ["metd_max_met_racha_1h", "media_hist_scada_microcortes_90d"],
+        ["metd_max_met_racha_max_6h", "frac_evred_falta_tension_24h"],
+        ["metd_max_met_temp_min_24h", "media_ev_comunicaciones_24h"]
+      ],
+      "por_distribuidora": true,
+      "zona": true,
+      "zona_ventanas": [
+        "6h",
+        "24h"
+      ],
+      "zona_modelos": [
+        "logistica",
+        "xgboost"
+      ]
+    }
   },
   "muestra_valid": {
     "tasa_negativos": 0.02,
