@@ -553,6 +553,22 @@ def test_risk_hours_by_years(spark, dataset, run, workdir, config_path):
     assert all(row["anio"] == 2025 for row in json.loads(run_row["busqueda_json"]))
 
 
+def test_risk_hours_test_year_only_with_flag(spark, dataset, run, config_path):
+    import job_ml_horas_riesgo
+
+    # Without --evaluar-test the year of test has no hours in the pool.
+    with pytest.raises(ValueError):
+        job_ml_horas_riesgo.main(["--run-id", "hr_cv_no", "--config", config_path, "--por-anios", "2026",
+                                  "--sin-busqueda", "--sin-prevision"])
+
+    job_ml_horas_riesgo.main(["--run-id", "hr_cv_test2026", "--config", config_path, "--por-anios", "2026",
+                              "--sin-busqueda", "--sin-prevision", "--evaluar-test"])
+    predictions = spark.table("l3_gold.ml_predicciones_distribuidora_hora").where(F.col("run_id") == "hr_cv_test2026")
+    last = predictions.agg(F.max("hora")).first()[0]
+    assert last < datetime(2026, 1, 20)
+    assert {r[0] for r in predictions.select("split").distinct().collect()} == {"cv_2026"}
+
+
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
     import job_ml_train
 
