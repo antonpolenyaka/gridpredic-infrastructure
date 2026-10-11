@@ -103,9 +103,12 @@ def built(spark):
         {**base, "celda_id": "c1", "osm_id": 6, "clase": "natural", "valor": "wood", "area_km2": 5.0},
         {**base, "celda_id": "c1", "osm_id": 0, "clase": "building", "valor": "count", "osm_tipo": "count", "n": 40},
     ]), "l1_bronze.osm_elemento_celda")
+    # c3 was downloaded and has no power line at all: its shares are null, not an error.
     save(spark, pd.DataFrame([
         {"celda_id": "c1", "sur": 39.95, "oeste": -6.05, "norte": 40.05, "este": -5.95, "area_celda_km2": 100.0,
          "endpoint": "test", "osm_base": "2026-10-10", "n_elementos": 7},
+        {"celda_id": "c3", "sur": 38.95, "oeste": -6.05, "norte": 39.05, "este": -5.95, "area_celda_km2": 100.0,
+         "endpoint": "test", "osm_base": "2026-10-10", "n_elementos": 0},
     ]), "l1_bronze.osm_consulta_celda")
 
     save(spark, pd.DataFrame([
@@ -144,6 +147,8 @@ def test_municipalities_and_cells(built):
     assert cell["km_linea_aerea"] == pytest.approx(8.0) and cell["n_apoyos"] == 2
     assert cell["pct_bosque"] == pytest.approx(0.30) and cell["pct_cable"] == pytest.approx(0.2)
     assert cell["desnivel_m"] == pytest.approx(40.0) and cell["n_edificios"] == 40
+    empty = built.table("l2_silver.d_celda_entorno").toPandas().set_index("celda_id").loc["c3"]
+    assert empty["km_linea_aerea"] == 0 and pd.isna(empty["pct_cable"])
 
 
 def test_context_uses_last_published_year(built):
