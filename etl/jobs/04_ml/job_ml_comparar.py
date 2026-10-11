@@ -72,6 +72,9 @@ def main(argv=None):
     runs = spark.table(RUNS_TABLE).select("run_id", "creado_ts", "config_json").orderBy("creado_ts").toPandas()
     if args.runs:
         runs = runs[runs["run_id"].isin(args.runs.split(","))]
+    else:
+        # The risk hours (hr_*) are another unit, distribuidora and hour.
+        runs = runs[~runs["run_id"].str.startswith("hr_")]
     runs["etiqueta"] = [f"{i + 1}_{run_label(c)}" for i, c in enumerate(runs["config_json"])]
     logger.info("Runs to compare: %s", dict(zip(runs["run_id"], runs["etiqueta"])))
 
