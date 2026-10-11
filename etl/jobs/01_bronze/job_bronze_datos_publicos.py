@@ -21,17 +21,35 @@ cleaning and the aggregates are in Silver.
   multipolygon are assembled from its member ways before cutting.
 - osm_consulta_celda: one row per cell downloaded, with its box, the
   endpoint that answered and the date of the OpenStreetMap data.
+- placsp_licitacion_obra: one row per version of a works tender of PLACSP
+  (the same tender comes again with every change of state): identifier,
+  state, contracting body (type, DIR3, NIF, town, postal code and its
+  hierarchy), object, contract type, CPV codes, budget, place (NUTS, town),
+  planned period, award and publication dates.
+- placsp_entrada_borrada: the entries deleted from the syndication (ref,
+  date and reason).
+- catastro_edificio: one row per building of the Catastro of every
+  municipality: cadastral reference, state, year of construction, date of
+  the version, use, dwellings, units, floors, built surface and the centre
+  of its box in latitude and longitude (from UTM ETRS89).
+- catastro_municipio: the match of the INE and Catastro codes.
 
-The tables are rebuilt whole in every run (a few thousand rows).
+The tables are rebuilt whole in every run (a few thousand rows, the
+buildings about a hundred thousand).
 
     docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/01_bronze/job_bronze_datos_publicos.py
 """
 
+import gzip
+import io
 import json
 import logging
 import math
 import os
+import re
 import sys
+import xml.etree.ElementTree as ET
+import zipfile
 
 import pandas as pd
 
@@ -323,6 +341,241 @@ def parse_osm(payload: dict) -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# PLACSP (CODICE)
+# ---------------------------------------------------------------------------
+
+ATOM_URI = "http://www.w3.org/2005/Atom"
+CODICE = {
+    "cbc": "urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2",
+    "cac": "urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2",
+    "cbc-place-ext": "urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2",
+    "cac-place-ext": "urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2",
+    "at": "http://purl.org/atompub/tombstones/1.0",
+    "ns7": "urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2",
+}
+NS = {"a": ATOM_URI, "cbc": CODICE["cbc"], "cac": CODICE["cac"], "cbcx": CODICE["cbc-place-ext"],
+      "cacx": CODICE["cac-place-ext"]}
+
+
+def text_at(element, path: str):
+    if element is None:
+        return None
+    found = element.find(path, NS)
+    if found is None or found.text is None:
+        return None
+    value = found.text.strip()
+    return value or None
+
+
+def number(value):
+    try:
+        return float(value) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def parse_placsp_entry(entry) -> dict:
+    status = entry.find("cacx:ContractFolderStatus", NS)
+    party = status.find("cacx:LocatedContractingParty", NS) if status is not None else None
+    project = status.find("cac:ProcurementProject", NS) if status is not None else None
+    place = project.find("cac:RealizedLocation", NS) if project is not None else None
+    period = project.find("cac:PlannedPeriod", NS) if project is not None else None
+
+    ids = {}
+    if party is not None:
+        for item in party.findall("cac:Party/cac:PartyIdentification/cbc:ID", NS):
+            ids.setdefault(item.get("schemeName") or "otro", (item.text or "").strip())
+    chain, parent = [], party.find("cacx:ParentLocatedParty", NS) if party is not None else None
+    while parent is not None:
+        name = text_at(parent, "cac:PartyName/cbc:Name")
+        if name:
+            chain.append(name)
+        parent = parent.find("cacx:ParentLocatedParty", NS)
+
+    duration = project.find("cac:PlannedPeriod/cbc:DurationMeasure", NS) if project is not None else None
+    results = status.findall("cac:TenderResult", NS) if status is not None else []
+    awards = [text_at(r, "cbc:AwardDate") for r in results]
+    awarded = [number(text_at(r, "cac:AwardedTenderedProject/cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount"))
+               for r in results]
+    signed = [text_at(r, "cac:Contract/cbc:IssueDate") for r in results]
+    notices = [d.text.strip() for d in status.iterfind(
+        "cacx:ValidNoticeInfo/cacx:AdditionalPublicationStatus/cacx:AdditionalPublicationDocumentReference/cbc:IssueDate",
+        NS) if d.text and d.text.strip()] if status is not None else []
+    cpv = []
+    if status is not None:
+        for code in status.iter(f"{{{CODICE['cbc']}}}ItemClassificationCode"):
+            value = (code.text or "").strip()
+            if value and value not in cpv:
+                cpv.append(value)
+
+    entry_id = text_at(entry, "a:id") or ""
+    link = entry.find("a:link", NS)
+    return {
+        "licitacion_id": entry_id.rstrip("/").rsplit("/", 1)[-1] or None,
+        "actualizado": text_at(entry, "a:updated"),
+        "titulo": text_at(entry, "a:title"),
+        "enlace": link.get("href") if link is not None else None,
+        "expediente": text_at(status, "cbc:ContractFolderID"),
+        "estado": text_at(status, "cbcx:ContractFolderStatusCode"),
+        "organo": text_at(party, "cac:Party/cac:PartyName/cbc:Name"),
+        "organo_tipo": text_at(party, "cbc:ContractingPartyTypeCode"),
+        "dir3": ids.get("DIR3"),
+        "nif": ids.get("NIF"),
+        "organo_ciudad": text_at(party, "cac:Party/cac:PostalAddress/cbc:CityName"),
+        "organo_cp": text_at(party, "cac:Party/cac:PostalAddress/cbc:PostalZone"),
+        "organo_jerarquia": " > ".join(chain) or None,
+        "objeto": text_at(project, "cbc:Name"),
+        "tipo_contrato": text_at(project, "cbc:TypeCode"),
+        "subtipo_contrato": text_at(project, "cbc:SubTypeCode"),
+        "cpv": ",".join(cpv) or None,
+        "importe_sin_iva": number(text_at(project, "cac:BudgetAmount/cbc:TaxExclusiveAmount")),
+        "importe_estimado": number(text_at(project, "cac:BudgetAmount/cbc:EstimatedOverallContractAmount")),
+        "nuts": text_at(place, "cbc:CountrySubentityCode"),
+        "nuts_nombre": text_at(place, "cbc:CountrySubentity"),
+        "lugar_ciudad": text_at(place, "cac:Address/cbc:CityName"),
+        "lugar_cp": text_at(place, "cac:Address/cbc:PostalZone"),
+        "inicio_previsto": text_at(period, "cbc:StartDate"),
+        "fin_previsto": text_at(period, "cbc:EndDate"),
+        "duracion": number(duration.text.strip()) if duration is not None and duration.text else None,
+        "duracion_unidad": duration.get("unitCode") if duration is not None else None,
+        "n_lotes": len(status.findall("cac:ProcurementProjectLot", NS)) if status is not None else 0,
+        "procedimiento": text_at(status, "cac:TenderingProcess/cbc:ProcedureCode"),
+        "fecha_limite_ofertas": text_at(status, "cac:TenderingProcess/cac:TenderSubmissionDeadlinePeriod/cbc:EndDate"),
+        "resultado": text_at(results[0], "cbc:ResultCode") if results else None,
+        "fecha_adjudicacion": min([a for a in awards if a], default=None),
+        "importe_adjudicado": sum(a for a in awarded if a is not None) if any(a is not None for a in awarded) else None,
+        "adjudicatario": text_at(results[0], "cac:WinningParty/cac:PartyName/cbc:Name") if results else None,
+        "fecha_contrato": min([s for s in signed if s], default=None),
+        "fecha_primera_publicacion": min(notices, default=None),
+    }
+
+
+def parse_placsp(payload: dict) -> tuple:
+    """(rows, deleted rows, entries that could not be read) of one landed year of PLACSP."""
+    meta = payload.get("_peticion", {})
+    namespaces = {**CODICE, **(payload.get("_namespaces") or {})}
+    head = f'<feed xmlns="{ATOM_URI}" ' + " ".join(f'xmlns:{p}="{u}"' for p, u in namespaces.items()) + ">"
+    rows, errors = [], 0
+
+    for raw in payload.get("entradas", []):
+        try:
+            root = ET.fromstring(head + raw + "</feed>")
+        except ET.ParseError:
+            errors += 1
+            continue
+        entry = root.find("a:entry", NS)
+        if entry is None:
+            errors += 1
+            continue
+        row = parse_placsp_entry(entry)
+        row["fichero_anio"] = meta.get("anio")
+        row["descargado_utc"] = meta.get("descargado_utc")
+        rows.append(row)
+
+    deleted = [{"licitacion_id": (d.get("ref") or "").rstrip("/").rsplit("/", 1)[-1] or None, "ref": d.get("ref"),
+                "borrado": d.get("when"), "motivo": d.get("tipo"), "fichero_anio": meta.get("anio")}
+               for d in payload.get("borradas", [])]
+    return rows, deleted, errors
+
+
+# ---------------------------------------------------------------------------
+# Catastro (INSPIRE Buildings)
+# ---------------------------------------------------------------------------
+
+BU_CORE = "{http://inspire.jrc.ec.europa.eu/schemas/bu-core2d/2.0}"
+BU_EXT = "{http://inspire.jrc.ec.europa.eu/schemas/bu-ext2d/2.0}"
+GML = "{http://www.opengis.net/gml/3.2}"
+BASE = "{urn:x-inspire:specification:gmlas:BaseTypes:3.2}"
+EPSG = re.compile(r"EPSG::?(\d+)")
+
+
+def utm_to_latlon(x: float, y: float, zone: int) -> tuple:
+    """Inverse transverse Mercator (UTM north, GRS80, the ellipsoid of ETRS89), to about 1 m."""
+    a, f, k0 = 6378137.0, 1 / 298.257222101, 0.9996
+    e2 = f * (2 - f)
+    ep2 = e2 / (1 - e2)
+    m = y / k0
+    mu = m / (a * (1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256))
+    e1 = (1 - math.sqrt(1 - e2)) / (1 + math.sqrt(1 - e2))
+    phi = (mu + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * math.sin(2 * mu)
+           + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * math.sin(4 * mu)
+           + (151 * e1 ** 3 / 96) * math.sin(6 * mu) + (1097 * e1 ** 4 / 512) * math.sin(8 * mu))
+    sin, cos, tan = math.sin(phi), math.cos(phi), math.tan(phi)
+    n = a / math.sqrt(1 - e2 * sin ** 2)
+    t = tan ** 2
+    c = ep2 * cos ** 2
+    r = a * (1 - e2) / (1 - e2 * sin ** 2) ** 1.5
+    d = (x - 500000.0) / (n * k0)
+    lat = phi - (n * tan / r) * (d ** 2 / 2 - (5 + 3 * t + 10 * c - 4 * c ** 2 - 9 * ep2) * d ** 4 / 24
+                                 + (61 + 90 * t + 298 * c + 45 * t ** 2 - 252 * ep2 - 3 * c ** 2) * d ** 6 / 720)
+    lon = math.radians(6 * zone - 183) + (d - (1 + 2 * t + c) * d ** 3 / 6
+                                         + (5 - 2 * c + 28 * t - 3 * c ** 2 + 8 * ep2 + 24 * t ** 2) * d ** 5 / 120) / cos
+    return math.degrees(lat), math.degrees(lon)
+
+
+def integer(value):
+    try:
+        return int(float(value)) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def child_text(element, path: str):
+    found = element.find(path)
+    if found is None or found.text is None:
+        return None
+    value = found.text.strip()
+    return value or None
+
+
+def parse_catastro(raw: bytes, record: dict) -> list:
+    """One row per building of the zip of a municipality (building.gml)."""
+    rows = []
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        name = next((n for n in archive.namelist() if n.lower().endswith(".building.gml")), None)
+        if name is None:
+            return rows
+        with archive.open(name) as gml:
+            for _, element in ET.iterparse(gml, events=("end",)):
+                if element.tag != f"{BU_EXT}Building":
+                    continue
+                begin = child_text(element, f"{BU_CORE}dateOfConstruction/{BU_CORE}DateOfEvent/{BU_CORE}beginning")
+                end = child_text(element, f"{BU_CORE}dateOfConstruction/{BU_CORE}DateOfEvent/{BU_CORE}end")
+                envelope = element.find(f"{GML}boundedBy/{GML}Envelope")
+                lat = lon = x = y = None
+                if envelope is not None:
+                    low = (child_text(envelope, f"{GML}lowerCorner") or "").split()
+                    high = (child_text(envelope, f"{GML}upperCorner") or "").split()
+                    code = EPSG.search(envelope.get("srsName") or "")
+                    if len(low) == 2 and len(high) == 2:
+                        x = (float(low[0]) + float(high[0])) / 2
+                        y = (float(low[1]) + float(high[1])) / 2
+                        if code and 25828 <= int(code.group(1)) <= 25831:
+                            lat, lon = utm_to_latlon(x, y, int(code.group(1)) - 25800)
+                year = begin[:4] if begin and re.match(r"^\d{4}", begin) else None
+                rows.append({
+                    "codigo_ine": record.get("codigo_ine"),
+                    "codigo_catastro": record.get("codigo_catastro"),
+                    "referencia": child_text(element, f"{BU_CORE}inspireId/{BASE}Identifier/{BASE}localId")
+                    or (element.get(f"{GML}id") or "").replace("ES.SDGC.BU.", "") or None,
+                    "estado": child_text(element, f"{BU_CORE}conditionOfConstruction"),
+                    "inicio_construccion": begin,
+                    "fin_construccion": end,
+                    "anio_construccion": int(year) if year else None,
+                    "alta_version": child_text(element, f"{BU_CORE}beginLifespanVersion"),
+                    "uso": child_text(element, f"{BU_EXT}currentUse"),
+                    "n_unidades": integer(child_text(element, f"{BU_EXT}numberOfBuildingUnits")),
+                    "n_viviendas": integer(child_text(element, f"{BU_EXT}numberOfDwellings")),
+                    "n_plantas": integer(child_text(element, f"{BU_EXT}numberOfFloorsAboveGround")),
+                    "superficie_m2": number(child_text(element, f"{BU_EXT}officialArea/{BU_EXT}OfficialArea/"
+                                                                f"{BU_EXT}value")),
+                    "x_utm": x, "y_utm": y, "latitud": lat, "longitud": lon,
+                })
+                element.clear()
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -381,6 +634,38 @@ def main():
         queries.append(query)
     write(elements, tables["osm"], "OSM elements")
     write(queries, tables["osm_resumen"], "OSM cells")
+
+    tenders, deleted = [], []
+    for path in sorted(fs.glob(f"{landing}/obras/placsp_*.json.gz")):
+        with fs.open(path, "rb") as file:
+            payload = json.loads(gzip.decompress(file.read()).decode("utf-8"))
+        rows, gone, errors = parse_placsp(payload)
+        tenders += rows
+        deleted += gone
+        logger.info("PLACSP %s: %s versions of works tenders, %s unreadable", path.rsplit("/", 1)[-1], len(rows),
+                    errors)
+    write(tenders, tables["obras"], "PLACSP works tenders")
+    write(deleted, tables["obras_borradas"], "PLACSP deleted entries")
+
+    manifest_path = f"{landing}/catastro/municipios.json"
+    buildings, towns = [], []
+    if fs.exists(manifest_path):
+        manifest = read_json(fs, manifest_path)
+        for record in manifest.get("municipios", []):
+            path = record.get("fichero") or f"{landing}/catastro/{record['codigo_ine']}.zip"
+            if not fs.exists(path):
+                continue
+            with fs.open(path, "rb") as file:
+                rows = parse_catastro(file.read(), record)
+            buildings += rows
+            stamp = manifest.get("_peticion", {}).get("descargado_utc")
+            towns.append({**{k: record.get(k) for k in ("codigo_ine", "municipio", "codigo_catastro",
+                                                         "nombre_catastro", "url")},
+                          "edificios": len(rows), "descargado_utc": stamp})
+            for row in rows:
+                row["descargado_utc"] = stamp
+    write(buildings, tables["catastro"], "Catastro buildings")
+    write(towns, tables["catastro_municipios"], "Catastro municipalities")
 
     logger.info("Bronze of the public data completed")
 

@@ -30,12 +30,30 @@
       "timeout_s": 240,
       "pausa_s": 10
     },
+    "obras": {
+      "url_anual": "https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3_{anio}.zip",
+      "anio_desde": 2018,
+      "anio_hasta": 2025,
+      "nuts": ["ES43"],
+      "codigos_postales": ["06", "10"],
+      "tipos_contrato": ["3"],
+      "cpv_prefijos": ["45"],
+      "reintentos_descarga": 3
+    },
+    "catastro": {
+      "url_provincia": "https://www.catastro.hacienda.gob.es/INSPIRE/buildings/{provincia}/ES.SDGC.bu.atom_{provincia}.xml",
+      "pausa_s": 2
+    },
     "tablas": {
       "padron": "l1_bronze.ine_padron_municipio",
       "wikidata": "l1_bronze.wikidata_municipio",
       "elevacion": "l1_bronze.openmeteo_elevacion_punto",
       "osm": "l1_bronze.osm_elemento_celda",
-      "osm_resumen": "l1_bronze.osm_consulta_celda"
+      "osm_resumen": "l1_bronze.osm_consulta_celda",
+      "obras": "l1_bronze.placsp_licitacion_obra",
+      "obras_borradas": "l1_bronze.placsp_entrada_borrada",
+      "catastro": "l1_bronze.catastro_edificio",
+      "catastro_municipios": "l1_bronze.catastro_municipio"
     }
   }
 }
