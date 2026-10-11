@@ -185,6 +185,11 @@ def measures():
     rows.append(pd.DataFrame({"ambito": "LOCAL", "clave_id": 1003, "familia": "tension", "hora": hours,
                               "n_muestras": 12, "n_tags": 3, "suma": 12 * v, "suma2": 12 * v ** 2, "max": v + 0.001,
                               "min": v - 0.001, "n_rancio": 0, "media_tag_max": v, "media_tag_min": v}))
+    # 7001: feeder bay of CAB-1, peak current growing 10 % a year.
+    amps = 100 * (1.1 ** years) * (0.5 + 0.5 * daily)
+    rows.append(pd.DataFrame({"ambito": "AGUAS_ARRIBA", "clave_id": 7001, "familia": "intensidad", "hora": hours,
+                              "n_muestras": 12, "n_tags": 3, "suma": 12 * amps, "suma2": 12 * amps ** 2, "max": amps,
+                              "min": amps, "n_rancio": 0, "media_tag_max": amps, "media_tag_min": amps}))
     tags = pd.DataFrame([
         {"anchor_id": 1001, "familia_medida": "carga_trafo", "clase_nombre": "AI.% CARGA TRANSFORMADOR",
          "tiene_serie": True},
@@ -207,10 +212,12 @@ def tables(spark):
     save(spark, incs, "l2_silver.f_incidencia")
     upstream = pd.DataFrame(
         [{"trafo_elemento_id": 100 + i, "elemento_corte_id": 9001 if i <= 4 else 9002,
-          "elemento_corte_nombre": "CAB-1" if i <= 4 else "CAB-2", "n_cortes": 5} for i in range(1, 9)]
-        + [{"trafo_elemento_id": 101, "elemento_corte_id": 9003, "elemento_corte_nombre": "CAB-X", "n_cortes": 1}]
-        + [{"trafo_elemento_id": 200 + i, "elemento_corte_id": 9004, "elemento_corte_nombre": "CAB-3", "n_cortes": 3}
-           for i in range(1, 7)]
+          "elemento_corte_nombre": "CAB-1" if i <= 4 else "CAB-2", "n_cortes": 5,
+          "posicion_id": 7001 if i <= 4 else 7002} for i in range(1, 9)]
+        + [{"trafo_elemento_id": 101, "elemento_corte_id": 9003, "elemento_corte_nombre": "CAB-X", "n_cortes": 1,
+            "posicion_id": 7003}]
+        + [{"trafo_elemento_id": 200 + i, "elemento_corte_id": 9004, "elemento_corte_nombre": "CAB-3", "n_cortes": 3,
+            "posicion_id": 7004} for i in range(1, 7)]
     )
     save(spark, upstream, "l3_gold.map_aguas_arriba")
     save(spark, weather(), "l3_gold.meteo_celda_hora")
@@ -364,3 +371,12 @@ def test_excluded_day_is_shown_apart(result):
     assert eosa["tiepi_h"] == pytest.approx(1000.0 / 2600.0)
     causes = read(folder, "causas_texto.csv")
     assert "apagon" not in set(causes["causa"])
+
+
+def test_feeder_currents_and_customers(result):
+    _, folder = result
+    feeders = read(folder, "carga_cabeceras_tendencia.csv").set_index("cabecera")
+    assert feeders.loc["CAB-1", "crecimiento_anual"] == pytest.approx(0.10, abs=0.01)
+    assert feeders.loc["CAB-1", "cts_alimentados"] == 4
+    customers = read(folder, "cts_kva_por_abonado.csv")
+    assert customers.iloc[0]["kva_por_abonado"] == pytest.approx(250.0 / 50.0)
