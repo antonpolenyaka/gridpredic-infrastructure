@@ -136,3 +136,158 @@ def test_parse_osm_cuts_to_the_cell():
     assert by_id[0]["clase"] == "building" and by_id[0]["n"] == 321
     assert query["area_celda_km2"] == pytest.approx(0.1 * km_lon * 0.1 * bronze.KM_PER_DEG_LAT, rel=1e-6)
     assert query["osm_base"] == "2026-10-10T00:00:00Z" and query["n_elementos"] == 4
+
+
+# ---------------------------------------------------------------------------
+# PLACSP and Catastro
+# ---------------------------------------------------------------------------
+
+FEED_HEAD = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom" '
+    'xmlns:cbc-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2" '
+    'xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2" '
+    'xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2" '
+    'xmlns:cac-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2" '
+    'xmlns:at="http://purl.org/atompub/tombstones/1.0">\n'
+)
+
+
+def entry(number, title, type_code, cpv, nuts, postal, dir3=None, state="ADJ", body="Ayuntamiento",
+          duration=("3", "MON"), award="2024-03-01", published="2024-01-15", start=None):
+    ident = f'<cac:PartyIdentification><cbc:ID schemeName="DIR3">{dir3}</cbc:ID></cac:PartyIdentification>' if dir3 \
+        else ""
+    period = (f'<cac:PlannedPeriod>{f"<cbc:StartDate>{start}</cbc:StartDate>" if start else ""}'
+              f'<cbc:DurationMeasure unitCode="{duration[1]}">{duration[0]}</cbc:DurationMeasure></cac:PlannedPeriod>')
+    return (
+        f"<entry><id>https://contrataciondelestado.es/sindicacion/licitacionesPerfilContratante/{number}</id>"
+        f'<link href="https://contrataciondelestado.es/x/{number}"/><title>{title}</title>'
+        f"<updated>2024-03-02T10:00:00.000+01:00</updated><cac-place-ext:ContractFolderStatus>"
+        f"<cbc:ContractFolderID>E{number}</cbc:ContractFolderID>"
+        f"<cbc-place-ext:ContractFolderStatusCode>{state}</cbc-place-ext:ContractFolderStatusCode>"
+        f"<cac-place-ext:LocatedContractingParty><cbc:ContractingPartyTypeCode>3</cbc:ContractingPartyTypeCode>"
+        f"<cac:Party>{ident}<cac:PartyName><cbc:Name>{body}</cbc:Name></cac:PartyName><cac:PostalAddress>"
+        f"<cbc:CityName>Pueblo</cbc:CityName><cbc:PostalZone>{postal}</cbc:PostalZone></cac:PostalAddress></cac:Party>"
+        f"<cac-place-ext:ParentLocatedParty><cac:PartyName><cbc:Name>Ayuntamientos</cbc:Name></cac:PartyName>"
+        f"<cac-place-ext:ParentLocatedParty><cac:PartyName><cbc:Name>Extremadura</cbc:Name></cac:PartyName>"
+        f"</cac-place-ext:ParentLocatedParty></cac-place-ext:ParentLocatedParty></cac-place-ext:LocatedContractingParty>"
+        f"<cac:ProcurementProject><cbc:Name>{title}</cbc:Name>"
+        f'<cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractCode-2.08.gc">{type_code}'
+        f"</cbc:TypeCode><cac:BudgetAmount><cbc:TaxExclusiveAmount currencyID=\"EUR\">100000</cbc:TaxExclusiveAmount>"
+        f"</cac:BudgetAmount><cac:RequiredCommodityClassification><cbc:ItemClassificationCode>{cpv}"
+        f"</cbc:ItemClassificationCode></cac:RequiredCommodityClassification><cac:RealizedLocation>"
+        f"<cbc:CountrySubentityCode>{nuts}</cbc:CountrySubentityCode></cac:RealizedLocation>{period}"
+        f"</cac:ProcurementProject><cac:TenderResult><cbc:ResultCode>9</cbc:ResultCode>"
+        f"<cbc:AwardDate>{award}</cbc:AwardDate><cac:AwardedTenderedProject><cac:LegalMonetaryTotal>"
+        f"<cbc:TaxExclusiveAmount>80000</cbc:TaxExclusiveAmount></cac:LegalMonetaryTotal></cac:AwardedTenderedProject>"
+        f"</cac:TenderResult><cac-place-ext:ValidNoticeInfo><cac-place-ext:AdditionalPublicationStatus>"
+        f"<cac-place-ext:AdditionalPublicationDocumentReference><cbc:IssueDate>{published}</cbc:IssueDate>"
+        f"</cac-place-ext:AdditionalPublicationDocumentReference></cac-place-ext:AdditionalPublicationStatus>"
+        f"</cac-place-ext:ValidNoticeInfo></cac-place-ext:ContractFolderStatus></entry>"
+    )
+
+
+def test_placsp_filter_keeps_the_works_of_the_territory():
+    territory, works = landing.placsp_patterns({"nuts": ["ES43"], "codigos_postales": ["06", "10"],
+                                                "tipos_contrato": ["3"], "cpv_prefijos": ["45"]})
+    text = FEED_HEAD + "".join([
+        entry(1, "Pavimentacion de la calle Mayor", "3", "45233000", "ES432", "10001", dir3="L01100019"),
+        entry(2, "Suministro de papel", "1", "30197000", "ES432", "10001"),             # not works
+        entry(3, "Obras en Sevilla", "3", "45000000", "ES618", "41001"),                 # other region
+        entry(4, "Servicio con obra", "2", "45100000", "ES43", "06800"),                 # CPV 45 in a service
+    ]) + ('<at:deleted-entry ref="https://contrataciondelestado.es/sindicacion/licitacionesPerfilContratante/9" '
+          'when="2024-03-03T10:00:00.000+01:00"><at:comment type="ANULADA"/></at:deleted-entry></feed>')
+    kept, deleted, read = landing.filter_feed(text, territory, works)
+
+    assert read == 4
+    assert [int(e.split("licitacionesPerfilContratante/")[1].split("<")[0]) for e in kept] == [1, 4]
+    assert deleted == [{"ref": "https://contrataciondelestado.es/sindicacion/licitacionesPerfilContratante/9",
+                        "when": "2024-03-03T10:00:00.000+01:00", "tipo": "ANULADA"}]
+
+
+def test_parse_placsp_entry():
+    payload = {"_peticion": {"anio": 2024, "descargado_utc": "2026-10-11T00:00:00+00:00"},
+               "_namespaces": dict(landing.NAMESPACE.findall(FEED_HEAD)),
+               "entradas": [entry(1, "Pavimentacion de la calle Mayor", "3", "45233000", "ES432", "10001",
+                                  dir3="L01100019", duration=("45", "DAY"), start="2024-04-01"), "<entry><broken>"],
+               "borradas": [{"ref": "https://x/licitacionesPerfilContratante/9", "when": "2024-03-03", "tipo": "ANULADA"}]}
+    rows, deleted, errors = bronze.parse_placsp(payload)
+
+    assert errors == 1 and len(rows) == 1
+    row = rows[0]
+    assert row["licitacion_id"] == "1" and row["dir3"] == "L01100019" and row["estado"] == "ADJ"
+    assert row["tipo_contrato"] == "3" and row["cpv"] == "45233000" and row["nuts"] == "ES432"
+    assert row["importe_sin_iva"] == 100000.0 and row["importe_adjudicado"] == 80000.0
+    assert row["duracion"] == 45.0 and row["duracion_unidad"] == "DAY" and row["inicio_previsto"] == "2024-04-01"
+    assert row["fecha_adjudicacion"] == "2024-03-01" and row["fecha_primera_publicacion"] == "2024-01-15"
+    assert row["organo_jerarquia"] == "Ayuntamientos > Extremadura" and row["fichero_anio"] == 2024
+    assert deleted == [{"licitacion_id": "9", "ref": "https://x/licitacionesPerfilContratante/9",
+                        "borrado": "2024-03-03", "motivo": "ANULADA", "fichero_anio": 2024}]
+
+
+def test_catastro_names_and_index():
+    assert landing.plain_name("Torno (El)") == landing.plain_name("El Torno") == "eltorno"
+    assert landing.plain_name("Granja, La") == "lagranja"
+    assert landing.plain_name("BAÑOS DE MONTEMAYOR") == landing.plain_name("Baños de Montemayor")
+    feed = ('<feed><entry><title> 10099-HERVAS buildings</title>'
+            '<link rel="enclosure" href="https://www.catastro.hacienda.gob.es/INSPIRE/Buildings/10/10099-HERVAS/'
+            'A.ES.SDGC.BU.10099.zip" type="application/atom+xml"/></entry></feed>').encode("latin-1")
+    index = landing.catastro_index(landing.decode_feed(feed))
+    assert index == [{"codigo_catastro": "10099", "nombre_catastro": "HERVAS",
+                      "url": "https://www.catastro.hacienda.gob.es/INSPIRE/Buildings/10/10099-HERVAS/"
+                             "A.ES.SDGC.BU.10099.zip"}]
+    assert landing.decode_feed("BAÑOS".encode("latin-1")) == "BAÑOS"
+
+
+def test_utm_to_latlon():
+    lat, lon = bronze.utm_to_latlon(255396.15675, 4461572.3355, 30)
+    assert lat == pytest.approx(40.26888448288353, abs=1e-7) and lon == pytest.approx(-5.876680643358629, abs=1e-7)
+    lat, lon = bronze.utm_to_latlon(700000.0, 4400000.0, 29)
+    assert lat == pytest.approx(39.72644584411712, abs=1e-7) and lon == pytest.approx(-6.666379316151641, abs=1e-7)
+
+
+def test_parse_catastro_buildings():
+    import io
+    import zipfile
+
+    def building(ref, year, use, dwellings, area):
+        return (
+            f'<gml:featureMember><bu-ext2d:Building gml:id="ES.SDGC.BU.{ref}"><gml:boundedBy>'
+            '<gml:Envelope srsName="urn:ogc:def:crs:EPSG::25830"><gml:lowerCorner>255390.882 4461569.2205'
+            '</gml:lowerCorner><gml:upperCorner>255401.4315 4461575.4505</gml:upperCorner></gml:Envelope>'
+            '</gml:boundedBy><bu-core2d:beginLifespanVersion>2019-05-29T00:00:00</bu-core2d:beginLifespanVersion>'
+            '<bu-core2d:conditionOfConstruction>functional</bu-core2d:conditionOfConstruction>'
+            f'<bu-core2d:dateOfConstruction><bu-core2d:DateOfEvent><bu-core2d:beginning>{year}-01-01T00:00:00'
+            '</bu-core2d:beginning></bu-core2d:DateOfEvent></bu-core2d:dateOfConstruction>'
+            f'<bu-core2d:inspireId><base:Identifier><base:localId>{ref}</base:localId></base:Identifier>'
+            f'</bu-core2d:inspireId><bu-ext2d:currentUse>{use}</bu-ext2d:currentUse>'
+            '<bu-ext2d:numberOfBuildingUnits>2</bu-ext2d:numberOfBuildingUnits>'
+            f'<bu-ext2d:numberOfDwellings>{dwellings}</bu-ext2d:numberOfDwellings>'
+            '<bu-ext2d:numberOfFloorsAboveGround xsi:nil="true"></bu-ext2d:numberOfFloorsAboveGround>'
+            '<bu-ext2d:officialArea><bu-ext2d:OfficialArea><bu-ext2d:value uom="m2">'
+            f'{area}</bu-ext2d:value></bu-ext2d:OfficialArea></bu-ext2d:officialArea></bu-ext2d:Building>'
+            '</gml:featureMember>'
+        )
+
+    gml = (
+        '<?xml version="1.0" encoding="ISO-8859-1"?><gml:FeatureCollection gml:id="ES.SDGC.BU" '
+        'xmlns:base="urn:x-inspire:specification:gmlas:BaseTypes:3.2" '
+        'xmlns:bu-core2d="http://inspire.jrc.ec.europa.eu/schemas/bu-core2d/2.0" '
+        'xmlns:bu-ext2d="http://inspire.jrc.ec.europa.eu/schemas/bu-ext2d/2.0" '
+        'xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+        + building("000100200TK56B", 2019, "1_residential", 4, 320) + building("000100300TK56B", 1970, "3_industrial",
+                                                                                 0, 50)
+        + "</gml:FeatureCollection>"
+    ).encode("latin-1")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("A.ES.SDGC.BU.10099.building.gml", gml)
+        archive.writestr("A.ES.SDGC.BU.MD.10099.xml", "<x/>")
+    rows = bronze.parse_catastro(buffer.getvalue(), {"codigo_ine": "10096", "codigo_catastro": "10099"})
+
+    assert len(rows) == 2
+    first = rows[0]
+    assert first["referencia"] == "000100200TK56B" and first["anio_construccion"] == 2019
+    assert first["uso"] == "1_residential" and first["n_viviendas"] == 4 and first["n_plantas"] is None
+    assert first["superficie_m2"] == 320.0 and first["codigo_ine"] == "10096"
+    assert first["latitud"] == pytest.approx(40.2688845, abs=1e-6)
+    assert rows[1]["anio_construccion"] == 1970 and rows[1]["n_viviendas"] == 0
