@@ -402,7 +402,7 @@ def refit(name: str, scorer, data: dict, seed: int, n_jobs: int):
 
 
 def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: dict, cfg: dict, years: list,
-                       only_first: bool) -> tuple:
+                       only_first: bool, test_until: str = None) -> tuple:
     """
     One fold per year Y of years, never touching test: the models are chosen
     on the last share (fraccion_validacion_interna) of the hours before Y,
@@ -410,6 +410,10 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
     30 incidents a year, pooling three years gives about three times the
     events to compare the models with, and every year is scored by a model
     that only saw its past.
+
+    With test_until (only with --evaluar-test) the hours of test before it
+    join the pool, so the year of test can be scored once with the same
+    procedure.
 
     Returns (scored rows of every year with the column anio, search rows,
     scorers and inner data of the last fold).
@@ -419,6 +423,11 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
     share = float(cfg.get("fraccion_validacion_interna", 0.25))
     names = cfg.get("modelos", config["modelos"])
     pool = pdf[pdf["split"].isin(["train", "valid"])]
+
+    if test_until:
+        test = pdf[(pdf["split"] == "test") & (pdf["hora"] < pd.Timestamp(test_until))]
+        pool = pd.concat([pool, test]).sort_values(KEYS)
+
     parts, search_all = [], []
     scorers, inner = {}, {}
 
@@ -462,6 +471,9 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
         parts.append(target)
         logger.info("Year %s scored: %s hours, %s positive", year, len(target), int(target[label].sum()))
 
+    if not parts:
+        raise ValueError(f"No year of {years} could be scored (the year of test needs --evaluar-test)")
+
     return pd.concat(parts, ignore_index=True), search_all, scorers, inner
 
 
@@ -487,7 +499,12 @@ def run_by_years(spark, args, config: dict, cfg: dict, pdf: pd.DataFrame, featur
     budget = 2 if 2 in budgets else budgets[0]
     segment_map = {"distribuidora": "distribuidora_id", "estacion": SEASON_FEATURE}
 
-    scored, search, scorers, inner = rolling_evaluation(pdf, features, label, config, cfg, years, args.sin_busqueda)
+    test_until = config.get("evaluacion", {}).get("test_hasta") if args.evaluar_test else None
+    if test_until is None and args.evaluar_test:
+        test_until = str(pdf["hora"].max() + pd.Timedelta(hours=1))
+
+    scored, search, scorers, inner = rolling_evaluation(pdf, features, label, config, cfg, years, args.sin_busqueda,
+                                                        test_until)
     scored["ct_key"] = scored["distribuidora_id"]
     models = [c[2:] for c in scored.columns if c.startswith("p_")]
     present_years = sorted(scored["anio"].unique().tolist())
@@ -528,7 +545,7 @@ def run_by_years(spark, args, config: dict, cfg: dict, pdf: pd.DataFrame, featur
         f"# Horas de riesgo por distribuidora, evaluación por años: {args.run_id}",
         f"Cada año lo puntúa un modelo que solo ha visto los años anteriores (elegido en el último "
         f"{float(cfg.get('fraccion_validacion_interna', 0.25)):.0%} de esas horas y reentrenado con todas). "
-        f"Test no se toca. Dataset {dataset_version}, {len(features)} features, presupuesto de {budget} horas "
+        f"{'Incluye test hasta ' + test_until + '. ' if test_until else 'Test no se toca. '}Dataset {dataset_version}, {len(features)} features, presupuesto de {budget} horas "
         f"por distribuidora y día.",
         "## Años evaluados\n\n" + ml_metrics.markdown_table(counts),
         "## Por año\n\n" + ml_metrics.markdown_table(by_year_table(metrics, label, budget), digits=4),
