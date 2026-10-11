@@ -1,6 +1,7 @@
 """
 Gold context of every CT from the public data, one row per CT and year:
-l3_gold.contexto_ct_anio.
+l3_gold.contexto_ct_anio. And the works and building activity of every
+municipality and year: l3_gold.obras_municipio_anio.
 
 The year of a row is the year a model predicts or describes, and the row only
 uses what was published before that year started:
@@ -16,6 +17,22 @@ uses what was published before that year started:
   and the surroundings of the weather cell of the CT (l2_silver.d_celda_entorno):
   relief and the OpenStreetMap exposure (overhead lines, poles, roads and
   tracks, forest and scrub, buildings, construction sites), prefixed celda_.
+
+- Public works of the municipality (PLACSP, l2_silver.f_licitacion_obra):
+  works tendered in the year before (number, budget and the ones that dig
+  the street, mov_tierras) and the months of execution planned for the year
+  by the tenders published before it started (obras_previstas_meses).
+- Building (Catastro, l2_silver.f_edificacion_municipio): dwellings and m2
+  built in the three years that end two years before (the Catastro takes
+  about a year to register a new building), the dwellings at that date and
+  their yearly change in five years.
+
+obras_municipio_anio is descriptive, not a feature table: for every
+municipality of the CTs and year, the works published, the works in
+execution (number and months inside the year), the buildings, dwellings and
+m2 built that year and the dwellings standing at its end. The columns of the
+works are null outside the years of PLACSP loaded (the execution needs the
+year before too); the ones of the Catastro, after the current year.
 
 The municipality of a CT is matched by INE code and, when the code fails, by
 the normalised name (cruce says which one). Columns of a source that has not
@@ -43,6 +60,15 @@ from gold_common import (
 
 
 TARGET_TABLE = gold_table("contexto_ct_anio")
+WORKS_TABLE = gold_table("obras_municipio_anio")
+
+WORKS_COLUMNS = ["obras_publicadas", "obras_publicadas_importe", "obras_publicadas_mov_tierras", "obras_en_ejecucion",
+                 "obras_meses_ejecucion", "obras_mov_tierras_meses", "obras_previstas_meses",
+                 "obras_previstas_mov_tierras_meses"]
+BUILDING_COLUMNS = ["edificios_nuevos", "viviendas_nuevas", "m2_nuevos", "edificios_parque", "viviendas_parque"]
+CONTEXT_WORKS = ["obras_publicadas_1a", "obras_importe_1a", "obras_mov_tierras_1a", "obras_previstas_meses",
+                 "obras_previstas_mov_tierras_meses"]
+CONTEXT_BUILDINGS = ["viviendas_nuevas_3a", "m2_nuevos_3a", "viviendas_parque_2a", "crec_viviendas_5a"]
 
 CELL_COLUMNS = [
     "elev_media_m", "elev_std_m", "desnivel_m", "osm_disponible", "dens_linea_aerea_km_km2", "dens_apoyos_km2",
@@ -100,6 +126,136 @@ def population_by_code(cts, population):
     )
 
 
+def year_bounds():
+    return F.make_date(F.col("anio"), F.lit(1), F.lit(1)), F.make_date(F.col("anio") + F.lit(1), F.lit(1), F.lit(1))
+
+
+def works_by_year(tenders, towns_years):
+    """Works of every municipality and year: published, in execution and planned before the year started."""
+    live = tenders.where(~F.coalesce(F.col("anulada"), F.lit(False)) & F.col("codigo_ine").isNotNull())
+    weight = F.col("peso").cast("double")
+    digs = F.coalesce(F.col("mov_tierras"), F.lit(False))
+    published = live.groupBy("codigo_ine", F.col("anio_publicacion").alias("anio")).agg(
+        F.sum(weight).alias("obras_publicadas"),
+        F.sum(weight * F.coalesce(F.col("importe_licitacion"), F.lit(0.0))).alias("obras_publicadas_importe"),
+        F.sum(F.when(digs, weight).otherwise(F.lit(0.0))).alias("obras_publicadas_mov_tierras"),
+    )
+
+    running = live.where(F.col("inicio_ejecucion").isNotNull() & (F.col("fin_ejecucion") >= F.col("inicio_ejecucion")))
+    running = running.withColumn("anio", F.explode(F.sequence(F.year("inicio_ejecucion"), F.year("fin_ejecucion"))))
+    first, after = year_bounds()
+    inside = F.greatest(F.lit(0), F.datediff(F.least(F.col("fin_ejecucion"), after),
+                                             F.greatest(F.col("inicio_ejecucion"), first))) / F.lit(30.4)
+    running = running.withColumn("_meses", inside * weight).withColumn("_antes", F.col("fecha_publicacion") < first)
+    executing = running.groupBy("codigo_ine", "anio").agg(
+        F.sum(F.when(F.col("_meses") > 0, weight).otherwise(F.lit(0.0))).alias("obras_en_ejecucion"),
+        F.sum("_meses").alias("obras_meses_ejecucion"),
+        F.sum(F.when(digs, F.col("_meses")).otherwise(F.lit(0.0))).alias("obras_mov_tierras_meses"),
+        F.sum(F.when(F.col("_antes"), F.col("_meses")).otherwise(F.lit(0.0))).alias("obras_previstas_meses"),
+        F.sum(F.when(F.col("_antes") & digs, F.col("_meses")).otherwise(F.lit(0.0)))
+        .alias("obras_previstas_mov_tierras_meses"),
+    )
+
+    # The years of PLACSP loaded (a tender published before the first one may come in its updates).
+    span = tenders.agg(F.min("anio_fichero"), F.max("anio_fichero")).first()
+    out = towns_years.join(published, ["codigo_ine", "anio"], "left").join(executing, ["codigo_ine", "anio"], "left")
+    if span[0] is None:
+        for name in WORKS_COLUMNS:
+            out = out.withColumn(name, F.lit(None).cast("double"))
+        return out
+    lo, hi = int(span[0]), int(span[1])
+    # Published: the years loaded. In execution: the year before must be loaded too. Planned: known up to hi + 1.
+    windows = {"obras_publicadas": (lo, hi), "obras_publicadas_importe": (lo, hi),
+               "obras_publicadas_mov_tierras": (lo, hi), "obras_en_ejecucion": (lo + 1, hi),
+               "obras_meses_ejecucion": (lo + 1, hi), "obras_mov_tierras_meses": (lo + 1, hi),
+               "obras_previstas_meses": (lo + 1, hi + 1), "obras_previstas_mov_tierras_meses": (lo + 1, hi + 1)}
+    for name, (a, b) in windows.items():
+        valid = (F.col("anio") >= a) & (F.col("anio") <= b)
+        out = out.withColumn(name, F.when(valid, F.coalesce(F.col(name), F.lit(0.0))))
+    return out
+
+
+def buildings_by_year(buildings, towns_years, this_year: int):
+    """Buildings, dwellings and m2 built in the year and standing at its end, by municipality."""
+    built = buildings.select("codigo_ine", "anio", F.col("edificios").cast("double").alias("edificios_nuevos"),
+                             F.col("viviendas").cast("double").alias("viviendas_nuevas"),
+                             F.col("superficie_m2").cast("double").alias("m2_nuevos"))
+    stock = towns_years.alias("g").join(
+        buildings.alias("b"), (F.col("g.codigo_ine") == F.col("b.codigo_ine")) & (F.col("b.anio") <= F.col("g.anio"))
+    ).groupBy(F.col("g.codigo_ine").alias("codigo_ine"), F.col("g.anio").alias("anio")).agg(
+        F.sum(F.col("b.edificios").cast("double")).alias("edificios_parque"),
+        F.sum(F.col("b.viviendas").cast("double")).alias("viviendas_parque"),
+    )
+    known = buildings.select("codigo_ine").distinct().withColumn("_con_catastro", F.lit(True))
+    out = towns_years.join(built, ["codigo_ine", "anio"], "left").join(stock, ["codigo_ine", "anio"], "left") \
+        .join(known, "codigo_ine", "left")
+    for name in BUILDING_COLUMNS:
+        out = out.withColumn(name, F.when(F.col("_con_catastro") & (F.col("anio") <= this_year),
+                                          F.coalesce(F.col(name), F.lit(0.0))))
+    return out.drop("_con_catastro")
+
+
+def activity(spark, cts, years: list):
+    """obras_municipio_anio for the municipalities of the CTs, or None without works nor buildings."""
+    tenders = optional_table(spark, silver_table("f_licitacion_obra"))
+    buildings = optional_table(spark, silver_table("f_edificacion_municipio"))
+    if tenders is None and buildings is None:
+        return None
+    towns = cts.where(F.col("codigo_ine_padron").isNotNull()).select(
+        F.col("codigo_ine_padron").alias("codigo_ine")).distinct()
+    towns_years = towns.crossJoin(spark.createDataFrame([(y,) for y in years], "anio int"))
+
+    out = towns_years
+    if tenders is not None:
+        out = out.join(works_by_year(tenders, towns_years), ["codigo_ine", "anio"], "left")
+    else:
+        for name in WORKS_COLUMNS:
+            out = out.withColumn(name, F.lit(None).cast("double"))
+    if buildings is not None:
+        this_year = spark.range(1).select(F.year(F.current_date())).first()[0]
+        out = out.join(buildings_by_year(buildings, towns_years, int(this_year)), ["codigo_ine", "anio"], "left")
+    else:
+        for name in BUILDING_COLUMNS:
+            out = out.withColumn(name, F.lit(None).cast("double"))
+    return out.withColumn("audit_loaded_at", F.current_timestamp())
+
+
+def add_activity(grid, works):
+    """Columns of contexto_ct_anio from obras_municipio_anio, all known before the year starts."""
+    if works is None:
+        for name in CONTEXT_WORKS + CONTEXT_BUILDINGS:
+            grid = grid.withColumn(name, F.lit(None).cast("double"))
+        return grid
+
+    w = works.withColumnRenamed("codigo_ine", "codigo_ine_padron")
+
+    def shifted(columns: dict, lag: int):
+        return w.select("codigo_ine_padron", (F.col("anio") + F.lit(lag)).alias("anio"),
+                        *[F.col(source).alias(target) for source, target in columns.items()])
+
+    grid = grid.join(shifted({"obras_publicadas": "obras_publicadas_1a", "obras_publicadas_importe": "obras_importe_1a",
+                              "obras_publicadas_mov_tierras": "obras_mov_tierras_1a"}, 1),
+                     ["codigo_ine_padron", "anio"], "left")
+    grid = grid.join(w.select("codigo_ine_padron", "anio", "obras_previstas_meses",
+                              "obras_previstas_mov_tierras_meses"), ["codigo_ine_padron", "anio"], "left")
+
+    new = None
+    for lag in (2, 3, 4):
+        part = shifted({"viviendas_nuevas": "viviendas_nuevas_3a", "m2_nuevos": "m2_nuevos_3a"}, lag)
+        new = part if new is None else new.unionByName(part)
+    new = new.groupBy("codigo_ine_padron", "anio").agg(
+        # Null when any of the three years is unknown.
+        F.when(F.count("viviendas_nuevas_3a") == 3, F.sum("viviendas_nuevas_3a")).alias("viviendas_nuevas_3a"),
+        F.when(F.count("m2_nuevos_3a") == 3, F.sum("m2_nuevos_3a")).alias("m2_nuevos_3a"),
+    )
+    grid = grid.join(new, ["codigo_ine_padron", "anio"], "left")
+    grid = grid.join(shifted({"viviendas_parque": "viviendas_parque_2a"}, 2), ["codigo_ine_padron", "anio"], "left")
+    grid = grid.join(shifted({"viviendas_parque": "_parque_7a"}, 7), ["codigo_ine_padron", "anio"], "left")
+    return grid.withColumn(
+        "crec_viviendas_5a", F.pow(F.try_divide(F.col("viviendas_parque_2a"), F.col("_parque_7a")), F.lit(0.2))
+        - F.lit(1.0)).drop("_parque_7a")
+
+
 def build(spark, params: dict):
     cfg = params.get("contexto", {})
     years = list(range(int(cfg.get("anio_desde", 2016)), int(cfg.get("anio_hasta", 2027)) + 1))
@@ -116,6 +272,11 @@ def build(spark, params: dict):
         cts = population_by_code(cts, population)
     else:
         cts = cts.withColumn("codigo_ine_padron", F.col("codigo_ine")).withColumn("cruce", F.lit("sin_padron"))
+
+    # The activity of the municipalities needs the years before the first one of the context.
+    works = activity(spark, cts, list(range(years[0] - 8, years[-1] + 1)))
+    if works is not None:
+        works = works.cache()
 
     grid = cts.crossJoin(spark.createDataFrame([(y,) for y in years], "anio int"))
 
@@ -168,7 +329,9 @@ def build(spark, params: dict):
         kind = "boolean" if name == "osm_disponible" else "double"
         grid = grid.withColumn(f"celda_{name}", F.lit(None).cast(kind))
 
-    return grid.drop("nombre_normalizado", "kva", "abonados").withColumn("audit_loaded_at", F.current_timestamp())
+    grid = add_activity(grid, works)
+    context = grid.drop("nombre_normalizado", "kva", "abonados").withColumn("audit_loaded_at", F.current_timestamp())
+    return context, works
 
 
 def main():
@@ -177,7 +340,15 @@ def main():
     spark = get_spark("job-gold-contexto_ct")
     dq = DQCollector(spark, "job_gold_contexto_ct", args.run_id)
 
-    write_table(build(spark, params), TARGET_TABLE)
+    context, works = build(spark, params)
+    if works is not None:
+        write_table(works.drop("audit_loaded_at").withColumn("audit_loaded_at", F.current_timestamp()), WORKS_TABLE)
+        done = spark.table(WORKS_TABLE)
+        dq.add("obras_municipio_anio", "filas", done.count())
+        dq.add("obras_municipio_anio", "municipios", done.select("codigo_ine").distinct().count())
+        dq.add("obras_municipio_anio", "con_obras", done.where(F.col("obras_publicadas") > 0).count())
+        dq.add("obras_municipio_anio", "con_catastro", done.where(F.col("viviendas_parque").isNotNull()).count())
+    write_table(context, TARGET_TABLE)
 
     written = spark.table(TARGET_TABLE)
     rows = written.count()
@@ -190,7 +361,7 @@ def main():
            .count(), rows)
     dq.flush()
 
-    logger.info("Gold completed: %s", TARGET_TABLE)
+    logger.info("Gold completed: %s%s", TARGET_TABLE, f" and {WORKS_TABLE}" if works is not None else "")
 
 
 if __name__ == "__main__":

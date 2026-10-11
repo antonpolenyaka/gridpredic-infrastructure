@@ -20,6 +20,20 @@ the APIs return them:
   One file per cell (.../osm/<celda_id>.json); a cell already there is not
   asked again, so a run that stops is continued by launching it again. The
   endpoints of the configuration are tried in order.
+- Plataforma de Contratacion del Sector Publico (PLACSP), open data of the
+  tenders of the contracting profiles: the works contracts (contract type 3
+  or CPV 45) of the provinces of the study, the public works that dig and
+  drive machines near the network. The yearly file of the whole country
+  (about 1,5 GB zipped, ATOM in CODICE) is downloaded to a temporary file
+  and only the entries of the territory (NUTS ES43 or a postal code of the
+  provinces) are kept, as they come. One file per year
+  (.../obras/placsp_<anio>.json.gz) with the entries, the namespaces of the
+  feed and the entries deleted from the syndication.
+- Catastro, INSPIRE Buildings: the buildings of every municipality of the
+  study with their year of construction, use, dwellings and surface, the
+  zip of the Catastro as it comes (.../catastro/<codigo_ine>.zip). The
+  Catastro numbers the municipalities with its own codes, so the match with
+  the INE code is by name inside the province (.../catastro/municipios.json).
 
 The places are the municipalities of data/reference_data/municipios.xlsx and
 their cells, the same as the weather (job_landing_meteo_openmeteo).
@@ -30,17 +44,24 @@ asks only what is missing.
 
     docker compose exec spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py
     docker compose exec spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py --fuentes osm
+    docker compose exec spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py --fuentes obras,catastro
 """
 
 import argparse
+import gzip
+import http.client
 import json
 import logging
 import os
+import re
 import sys
+import tempfile
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -59,7 +80,7 @@ CONFIG_CANDIDATES = [
     os.path.join(HERE, "..", "..", "config", "01_bronze", "config_bronze_publicos.json"),
 ]
 
-SOURCES = ["ine", "wikidata", "elevacion", "osm"]
+SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro"]
 PARTIAL_EXIT = 4
 
 
@@ -336,6 +357,228 @@ def land_osm(fs, cfg: dict, landing: str, cells: dict, force: bool, limit: int =
     return done, failed
 
 
+# PLACSP --------------------------------------------------------------------
+
+ENTRY_OPEN, ENTRY_CLOSE = "<entry>", "</entry>"
+NAMESPACE = re.compile(r'xmlns:([\w.-]+)="([^"]+)"')
+DELETED = re.compile(r"<(?:[\w-]+:)?deleted-entry\b([^>]*)>(.*?)</(?:[\w-]+:)?deleted-entry>", re.S)
+ATTRIBUTE = re.compile(r'([\w:-]+)="([^"]*)"')
+
+
+def placsp_patterns(cfg: dict) -> tuple:
+    """(territory, works) regular expressions over the raw text of an entry, whatever the namespace prefixes."""
+    nuts = "|".join(re.escape(n) for n in cfg["nuts"])
+    postal = "|".join(re.escape(p) for p in cfg["codigos_postales"])
+    territory = re.compile(
+        rf"<(?:[\w-]+:)?CountrySubentityCode\b[^>]*>\s*(?:{nuts})\d*\s*<|<(?:[\w-]+:)?PostalZone>\s*(?:{postal})\d{{3}}\s*<")
+    types = "|".join(re.escape(t) for t in cfg["tipos_contrato"])
+    cpv = "|".join(re.escape(c) for c in cfg["cpv_prefijos"])
+    works = re.compile(
+        rf"<(?:[\w-]+:)?TypeCode\b[^>]*ContractCode[^>]*>\s*(?:{types})\s*<"
+        rf"|<(?:[\w-]+:)?ItemClassificationCode\b[^>]*>\s*(?:{cpv})\d*\s*<")
+    return territory, works
+
+
+def filter_feed(text: str, territory, works) -> tuple:
+    """
+    (kept entries, deleted entries, entries read) of one ATOM file of PLACSP.
+    Only the entries with a mark of the territory are cut out and tested, so
+    the 97 % of the country is skipped by a search over the text, not parsed.
+    """
+    kept, seen = [], set()
+    for match in territory.finditer(text):
+        start = text.rfind(ENTRY_OPEN, 0, match.start())
+        if start < 0 or start in seen:
+            continue
+        end = text.find(ENTRY_CLOSE, match.end())
+        if end < 0:
+            continue
+        seen.add(start)
+        entry = text[start:end + len(ENTRY_CLOSE)]
+        if works.search(entry):
+            kept.append(entry)
+
+    deleted = []
+    for match in DELETED.finditer(text):
+        attrs = dict(ATTRIBUTE.findall(match.group(1)))
+        kind = re.search(r'type="([^"]*)"', match.group(2))
+        deleted.append({"ref": attrs.get("ref"), "when": attrs.get("when"), "tipo": kind.group(1) if kind else None})
+
+    return kept, deleted, text.count(ENTRY_OPEN)
+
+
+def download(url: str, target: str, retries: int = 3, wait_s: float = 30, chunk: int = 1 << 20) -> int:
+    """Streams a big file to disk, with retries from the start (the server ignores Range)."""
+    for attempt in range(1, retries + 1):
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "GridPredict-TFM/1.0"})
+            total, next_log = 0, 250 << 20
+            with urllib.request.urlopen(request, timeout=300) as response, open(target, "wb") as out:
+                while True:
+                    block = response.read(chunk)
+                    if not block:
+                        break
+                    out.write(block)
+                    total += len(block)
+                    if total >= next_log:
+                        logger.info("  %s: %.0f MB", url.rsplit("/", 1)[-1], total / 1e6)
+                        next_log += 250 << 20
+            if not zipfile.is_zipfile(target):
+                raise RuntimeError(f"{url} is not a zip ({total} bytes)")
+            return total
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, RuntimeError,
+                OSError) as error:
+            if attempt >= retries:
+                raise
+            logger.warning("Download of %s failed (%s), waiting %.0f s, attempt %s of %s", url[-60:], str(error)[:120],
+                           wait_s * attempt, attempt, retries)
+            time.sleep(wait_s * attempt)
+
+    raise RuntimeError(f"No answer for {url}")
+
+
+def placsp_archive(path: str, territory, works) -> dict:
+    """The entries of the territory of a PLACSP zip already on disk."""
+    kept, deleted, namespaces, read, files = [], [], {}, 0, 0
+    with zipfile.ZipFile(path) as archive:
+        for name in sorted(archive.namelist()):
+            if not name.endswith(".atom"):
+                continue
+            with archive.open(name) as member:
+                text = member.read().decode("utf-8", "replace")
+            namespaces.update(NAMESPACE.findall(text[:5000]))
+            entries, gone, n = filter_feed(text, territory, works)
+            kept += entries
+            deleted += gone
+            read += n
+            files += 1
+    return {"_namespaces": namespaces, "entradas": kept, "borradas": deleted,
+            "_resumen": {"ficheros": files, "entradas_leidas": read, "entradas_guardadas": len(kept)}}
+
+
+def land_obras(fs, cfg: dict, landing: str, force: bool) -> tuple:
+    ob = cfg["obras"]
+    territory, works = placsp_patterns(ob)
+    done = failed = 0
+
+    for year in range(int(ob["anio_desde"]), int(ob["anio_hasta"]) + 1):
+        target = f"{landing}/obras/placsp_{year}.json.gz"
+        if fs.exists(target) and not force:
+            logger.info("PLACSP %s already in Landing", year)
+            continue
+
+        url = ob["url_anual"].format(anio=year)
+        started = time.time()
+        try:
+            with tempfile.TemporaryDirectory(prefix="placsp_") as folder:
+                path = os.path.join(folder, f"placsp_{year}.zip")
+                size = download(url, path, int(ob.get("reintentos_descarga", 3)), float(cfg["espera_reintento_s"]))
+                payload = placsp_archive(path, territory, works)
+        except Exception as error:  # noqa: BLE001
+            failed += 1
+            logger.error("PLACSP %s not landed: %s", year, str(error)[:300])
+            continue
+
+        summary = payload.pop("_resumen")
+        payload["_peticion"] = stamp("placsp", anio=year, url=url, bytes=size, **summary)
+        with fs.open(target, "wb") as file:
+            file.write(gzip.compress(json.dumps(payload, ensure_ascii=False).encode("utf-8")))
+        done += 1
+        logger.info("PLACSP %s: %s works entries of the territory out of %s (%s files, %.0f MB, %.0f s)", year,
+                    summary["entradas_guardadas"], summary["entradas_leidas"], summary["ficheros"], size / 1e6,
+                    time.time() - started)
+
+    return done, failed
+
+
+# Catastro ------------------------------------------------------------------
+
+CATASTRO_ENTRY = re.compile(r"<entry>(.*?)</entry>", re.S)
+CATASTRO_TITLE = re.compile(r"<title[^>]*>\s*(\d{5})-(.*?)\s+buildings\s*</title>", re.S)
+CATASTRO_LINK = re.compile(r'<link\b[^>]*rel="enclosure"[^>]*href="([^"]+)"')
+ARTICLE = re.compile(r"^(.*?)\s*(?:,|\()\s*(el|la|los|las|l')\s*\)?\s*$", re.I)
+
+
+def decode_feed(raw: bytes) -> str:
+    """The feeds of the Catastro say UTF-8 but some come in Latin-1 (the Ñ)."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1")
+
+
+def plain_name(name: str) -> str:
+    """Name to match municipalities: no accents, case, spaces or punctuation; "Torno (El)" as "El Torno"."""
+    text = str(name or "").strip()
+    moved = ARTICLE.match(text)
+    if moved:
+        text = f"{moved.group(2)} {moved.group(1)}"
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii").lower()
+    return re.sub(r"[^a-z]", "", text)
+
+
+def catastro_index(text: str) -> list:
+    """Municipalities of a province feed: Catastro code, name and the url of the zip."""
+    out = []
+    for entry in CATASTRO_ENTRY.findall(text):
+        title, link = CATASTRO_TITLE.search(entry), CATASTRO_LINK.search(entry)
+        if title and link:
+            out.append({"codigo_catastro": title.group(1), "nombre_catastro": title.group(2).strip(),
+                        "url": link.group(1)})
+    return out
+
+
+def land_catastro(fs, cfg: dict, landing: str, places: list, provinces: list, force: bool) -> tuple:
+    cat = cfg["catastro"]
+    index = {}
+    for province in provinces:
+        url = cat["url_provincia"].format(provincia=province)
+        text = decode_feed(fetch(url, retries=int(cfg["reintentos"]), wait_s=float(cfg["espera_reintento_s"])))
+        for item in catastro_index(text):
+            index.setdefault((item["codigo_catastro"][:2], plain_name(item["nombre_catastro"])), item)
+        time.sleep(float(cat.get("pausa_s", 2)))
+    if not index:
+        raise RuntimeError("Empty feeds of the Catastro")
+
+    done = failed = unmatched = 0
+    manifest, seen = [], set()
+    for place in sorted(places, key=lambda p: p["codigo_ine"]):
+        code = place["codigo_ine"]
+        if code in seen:
+            continue
+        seen.add(code)
+        item = index.get((code[:2], plain_name(place["municipio"])))
+        if item is None:
+            unmatched += 1
+            logger.warning("Municipality %s %s not found by name in the feed of the Catastro", code, place["municipio"])
+            continue
+
+        target = f"{landing}/catastro/{code}.zip"
+        if not fs.exists(target) or force:
+            try:
+                raw = fetch(urllib.parse.quote(item["url"], safe=":/"), retries=int(cfg["reintentos"]),
+                            wait_s=float(cfg["espera_reintento_s"]), timeout=600)
+                if not raw.startswith(b"PK"):
+                    raise RuntimeError(f"not a zip ({len(raw)} bytes)")
+            except Exception as error:  # noqa: BLE001
+                failed += 1
+                logger.error("Catastro %s %s not downloaded: %s", code, place["municipio"], str(error)[:200])
+                continue
+            with fs.open(target, "wb") as file:
+                file.write(raw)
+            done += 1
+            logger.info("Catastro %s %s (%s): %.1f MB", code, place["municipio"], item["codigo_catastro"],
+                        len(raw) / 1e6)
+            time.sleep(float(cat.get("pausa_s", 2)))
+        manifest.append({"codigo_ine": code, "municipio": place["municipio"], **item, "fichero": target})
+
+    save_json(fs, f"{landing}/catastro/municipios.json",
+              {"_peticion": stamp("catastro-inspire-buildings", provincias=provinces), "municipios": manifest})
+    logger.info("Catastro: %s municipalities in Landing (%s now), %s failed, %s without a match by name",
+                len(manifest), done, failed, unmatched)
+    return done, failed
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
@@ -366,14 +609,16 @@ def main(argv=None):
         "wikidata": lambda: land_wikidata(fs, cfg, landing, provinces, args.forzar),
         "elevacion": lambda: land_elevation(fs, cfg, landing, places, cells, args.forzar),
         "osm": lambda: land_osm(fs, cfg, landing, cells, args.forzar, args.max_celdas),
+        "obras": lambda: land_obras(fs, cfg, landing, args.forzar),
+        "catastro": lambda: land_catastro(fs, cfg, landing, places, provinces, args.forzar),
     }
     for source in SOURCES:
         if source not in sources:
             continue
         try:
             result = steps[source]()
-            if source == "osm" and result[1]:
-                logger.error("%s OSM cells are missing: launch again to ask only those", result[1])
+            if source in ("osm", "obras", "catastro") and result[1]:
+                logger.error("%s pieces of %s are missing: launch again to ask only those", result[1], source)
                 missing.append(source)
         except Exception as error:  # noqa: BLE001
             logger.error("Source %s not landed: %s", source, str(error)[:300])
