@@ -282,6 +282,31 @@ docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g 
 
 Deja `resumen.md`, `resumen.csv` (una fila por variante y modelo con la PR-AUC, su intervalo, el lift, el recall por episodios y la probabilidad de superar a la racha y a `todo`), `por_anio.csv`, `intervalos.csv`, `diferencias.csv` y `metricas.csv` en `exportar_dir/<run_id>/`.
 
+Resultados (11.10.2026, `hr_20261011T131024_10b6e9`, evaluación por años 2023 - 2025, sin previsión, XGBoost salvo que se diga otra cosa):
+
+| Variante | Features | PR-AUC [IC 95 %] | Lift | P(mejor que la racha) | P(mejor que las tres fuentes) |
+| --- | --- | --- | --- | --- | --- |
+| Solo meteorología | 58 | 0,0102 [0,0056 - 0,0208] | 3,4 | 61 % | 83 % |
+| Solo meteorología, regresión logística | 58 | 0,0111 [0,0064 - 0,0219] | 3,8 | 77 % | 88 % |
+| TedisNet + meteorología | 398 | 0,0101 [0,0061 - 0,0174] | 3,4 | 61 % | 94 % |
+| Las tres fuentes + interacciones tiempo x red | 420 | 0,0101 [0,0061 - 0,0180] | 3,4 | 63 % | 94 % |
+| Racha máxima (referencia) | 1 | 0,0094 [0,0057 - 0,0173] | 3,2 | - | - |
+| Un modelo por distribuidora | 412 | 0,0081 [0,0052 - 0,0131] | 2,7 | 18 % | 55 % |
+| Las tres fuentes | 412 | 0,0078 [0,0052 - 0,0128] | 2,6 | 22 % | - |
+| Solo TedisNet | 360 | 0,0061 [0,0041 - 0,0101] | 2,1 | 9 % | 16 % |
+| Calser + TedisNet (solo datos eléctricos) | 374 | 0,0059 [0,0042 - 0,0084] | 2,0 | 4 % | 11 % |
+| Modelo por zona, llevado a la distribuidora | 215 | 0,0047 [0,0029 - 0,0078] | 1,6 | 0 % | 0,6 % |
+| Solo Calser | 34 | 0,0044 [0,0031 - 0,0066] | 1,5 | 0,6 % | 2 % |
+| Tasa base | - | 0,0028 | 1,0 | - | - |
+
+Lectura:
+
+- La fuente que más aporta es la meteorología. Los datos eléctricos solos tienen señal (TedisNet duplica la tasa base con un intervalo que no la toca), pero bastante menos.
+- Mezclar las fuentes tal cual no suma: TedisNet más meteorología queda igual que la meteorología sola, y al añadir el histórico de Calser baja. Con un centenar de incidencias en train, cada bloque que no aporta es ruido. Las interacciones explícitas devuelven la mezcla completa al nivel de la meteorología y es la variante más estable año a año (0,0093, 0,0122 y 0,0174, por encima de la racha en los tres años), aunque en el conjunto solo supera a la racha en el 63 % de las réplicas.
+- Separar no ayuda: un modelo por distribuidora queda igual que el global, y el modelo por zona sale peor (lift de 1,6 medido por zona y hora): cada celda de 9 km tiene muy pocas incidencias propias.
+- Esta comparación se hizo después de usar test, así que test no se ha vuelto a usar para elegir entre variantes.
+
+
 ## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).
