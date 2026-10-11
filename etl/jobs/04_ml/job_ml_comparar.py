@@ -91,6 +91,11 @@ def main(argv=None):
             joined = joined.join(part.select(*KEYS, *cols), KEYS, "inner")
 
     pdf = joined.withColumn("_dia", F.to_date("hora")).toPandas()
+    # The predictions table keeps the union of the columns of every run: a
+    # model a run did not train (xgboost_cluster before the groups) is a column
+    # of nulls there, and is left out.
+    empty = [c for c in pdf.columns if ":" in c and pdf[c].isna().all()]
+    pdf = pdf.drop(columns=empty)
     scores_all = [c for c in pdf.columns if ":" in c]
     pdf = pdf.dropna(subset=scores_all, how="all")
     weight = (pdf["_y"] == 1).map({True: 1.0, False: 1.0 / args.tasa_negativos}).to_numpy()
@@ -114,12 +119,12 @@ def main(argv=None):
     for name, value in segments:
         mask = slice(None) if value is None else (pdf["distribuidora_id"] == value).to_numpy()
         sub = pdf[mask]
-        scores = {c: sub[c].fillna(sub[c].min()).to_numpy() for c in scores_all}
+        scores = {c: sub[c].fillna(sub[c].min()).to_numpy() for c in scores_all if sub[c].notna().any()}
         table, replicas = ml_metrics.bootstrap_pr_auc(sub["_y"].to_numpy(), weight[mask], sub["_dia"].to_numpy(),
                                                       scores, reps=args.reps, seed=args.semilla)
         table.insert(0, "segmento", name)
         tables.append(table)
-        diff = ml_metrics.paired_differences(replicas, pairs)
+        diff = ml_metrics.paired_differences(replicas, [(a, b) for a, b in pairs if a in scores and b in scores])
         diff.insert(0, "segmento", name)
         diffs.append(diff)
         logger.info("Bootstrap done for %s", name)
