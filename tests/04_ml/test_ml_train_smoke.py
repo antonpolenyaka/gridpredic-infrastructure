@@ -611,6 +611,14 @@ def test_ablation_sources_groups_zones(spark, dataset, run, workdir, config_path
         report = file.read()
     assert "## Modelo de zona medido por zona y hora" in report
 
+    # Every variant is kept apart, and launching again with the same run_id reuses them.
+    parts = set(os.listdir(os.path.join(folder, "parciales")))
+    assert {"referencias.parquet", "todo.parquet", "zona_filas.parquet"} <= parts
+    stamp = os.path.getmtime(os.path.join(folder, "parciales", "todo.parquet"))
+    job_ml_horas_riesgo.main(["--run-id", "hr_ab_test", "--config", config_path, "--ablacion", "--por-anios", "2025",
+                              "--sin-busqueda", "--sin-prevision"])
+    assert os.path.getmtime(os.path.join(folder, "parciales", "todo.parquet")) == stamp
+
 
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
     import job_ml_train
