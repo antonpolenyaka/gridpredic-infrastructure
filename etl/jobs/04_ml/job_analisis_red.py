@@ -301,11 +301,12 @@ def md_table(pdf: pd.DataFrame, columns: list = None, max_rows: int = 30) -> str
     for _, row in data.iterrows():
         cells = []
         for column, value in zip(data.columns, row.tolist()):
+            year_like = "anio" in str(column) and not str(column).startswith("anios")
             if isinstance(value, float) and column in whole and not math.isnan(value):
-                cells.append(str(int(value)) if column == "anio" else fmt(int(value)))
+                cells.append(str(int(value)) if year_like else fmt(int(value)))
             elif isinstance(value, float):
                 cells.append(fmt(value, 3 if abs(value) < 10 else 1))
-            elif isinstance(value, (int, np.integer)) and column != "anio":
+            elif isinstance(value, (int, np.integer)) and not year_like:
                 cells.append(fmt(int(value)))
             else:
                 cells.append(str(value))
@@ -1251,7 +1252,7 @@ def anchor_ratings(dim: pd.DataFrame) -> pd.DataFrame:
 
 def hourly_load(spark, ratings: pd.DataFrame):
     agg = read_table(spark, AGG_TABLE)
-    tags = read_table(spark, TAG_MAP_TABLE, ["anchor_id", "familia_medida", "clase_nombre", "tiene_serie"])
+    tags = read_table(spark, TAG_MAP_TABLE, ["anchor_id", "familia_medida", "clase_nombre", "tiene_serie", "unidades"])
 
     if agg is None or ratings.empty:
         return None
@@ -1268,17 +1269,31 @@ def hourly_load(spark, ratings: pd.DataFrame):
                 F.max((F.col("clase_nombre").rlike(TOTAL_PATTERN) & ~F.col("clase_nombre").rlike(PHASE_PATTERN))
                       .cast("int")).alias("tiene_total"),
                 F.concat_ws(" | ", F.array_sort(F.collect_set("clase_nombre"))).alias("clases"),
+                F.concat_ws(" | ", F.array_sort(F.collect_set(
+                    F.col("unidades") if "unidades" in tags.columns else F.lit(None).cast("string")))).alias("unidades"),
             )
         )
         agg = agg.join(kinds, ["anchor_id", "familia"], "left")
     else:
-        agg = agg.withColumn("tiene_total", F.lit(None).cast("int")).withColumn("clases", F.lit(None).cast("string"))
+        agg = (agg.withColumn("tiene_total", F.lit(None).cast("int")).withColumn("clases", F.lit(None).cast("string"))
+               .withColumn("unidades", F.lit(None).cast("string")))
 
     mean = F.try_divide(F.col("suma"), F.col("n_muestras"))
     n_tags = F.coalesce(F.col("n_tags"), F.lit(1))
     top_tag = F.coalesce(F.col("media_tag_max"), mean) if "media_tag_max" in agg.columns else mean
     low_tag = F.coalesce(F.col("media_tag_min"), mean) if "media_tag_min" in agg.columns else mean
     power = F.when(F.col("tiene_total") == 1, top_tag).otherwise(mean * n_tags)
+
+    diagnostics = agg.groupBy("anchor_id", "familia").agg(
+        F.count(F.lit(1)).alias("n_horas"),
+        F.max("tiene_total").alias("tiene_total"),
+        F.first("clases", ignorenulls=True).alias("clases"),
+        F.first("unidades", ignorenulls=True).alias("unidades"),
+        F.avg(n_tags).alias("n_tags_medio"),
+        F.percentile_approx(mean, 0.5).alias("p50_media_hora"),
+        F.percentile_approx(mean, 0.99).alias("p99_media_hora"),
+        F.percentile_approx(top_tag, 0.99).alias("p99_tag_max"),
+    )
 
     hourly = agg.groupBy("anchor_id", "hora").agg(
         F.max(F.when(F.col("familia") == "carga_trafo", top_tag)).alias("carga"),
@@ -1290,7 +1305,10 @@ def hourly_load(spark, ratings: pd.DataFrame):
         F.max(F.when(F.col("familia") == "tension", F.try_divide(top_tag, low_tag))).alias("v_ratio_tags"),
     )
 
-    rated = spark.createDataFrame(ratings[["anchor_id", "kva_nominal"]].dropna())
+    rated_pdf = ratings[["anchor_id", "kva_nominal"]].dropna()
+    rated_pdf = rated_pdf.assign(anchor_id=rated_pdf["anchor_id"].astype("int64"),
+                                 kva_nominal=rated_pdf["kva_nominal"].astype(float))
+    rated = spark.createDataFrame(rated_pdf, "anchor_id long, kva_nominal double")
     scale = hourly.groupBy("anchor_id").agg(F.max("carga").alias("_carga_max"))
     hourly = hourly.join(F.broadcast(rated), "anchor_id", "left").join(scale, "anchor_id", "left")
 
@@ -1300,20 +1318,24 @@ def hourly_load(spark, ratings: pd.DataFrame):
     load = F.when(F.col("carga").isNotNull(), carga_pu).otherwise(
         F.when(F.col("kva_nominal") > 0, F.try_divide(apparent, F.col("kva_nominal"))))
 
-    return hourly.withColumn("carga_pu", load).withColumn(
+    hourly = hourly.withColumn("carga_pu", load).withColumn(
         "fuente", F.when(F.col("carga").isNotNull(), F.lit("carga_trafo")).when(
             F.col("p_kw").isNotNull(), F.lit("potencia")))
+    return hourly, diagnostics
 
 
 def section_load(data: Data, report: Report, state: dict):
     cfg = data.cfg
     ratings = anchor_ratings(data.dim)
-    hourly = hourly_load(data.spark, ratings)
+    built = hourly_load(data.spark, ratings)
 
-    if hourly is None:
+    if built is None:
         report.section("8. Carga de los transformadores", "_Sin agg_medida_hora._")
         return
 
+    hourly, diagnostics = built
+    diagnostics = diagnostics.toPandas().merge(ratings, on="anchor_id", how="left")
+    report.csv("carga_diagnostico.csv", diagnostics)
     hourly = hourly.withColumn("anio", F.year("hora")).localCheckpoint(eager=True)
     lo, hi = [float(x) for x in cfg["umbral_carga"]]
     yearly = hourly.where(F.col("carga_pu").isNotNull()).groupBy("anchor_id", "anio").agg(
@@ -1336,7 +1358,11 @@ def section_load(data: Data, report: Report, state: dict):
         nominal["v_nominal"] = nominal["v_mediana"].map(
             lambda v: min(NOMINAL_KV, key=lambda n: abs(math.log(max(v, 1e-6) / n))) if v and v > 0 else np.nan)
         nominal = nominal[(nominal["v_mediana"] / nominal["v_nominal"]).between(0.85, 1.15)]
-        vn = data.spark.createDataFrame(nominal[["anchor_id", "v_nominal"]])
+
+    if not nominal.empty:
+        vn = data.spark.createDataFrame(
+            nominal[["anchor_id", "v_nominal"]].astype({"anchor_id": "int64", "v_nominal": float}),
+            "anchor_id long, v_nominal double")
         voltage = volt.join(F.broadcast(vn), "anchor_id").groupBy("anchor_id", "anio").agg(
             F.count(F.lit(1)).alias("n_horas_tension"),
             F.sum((F.col("v_min") < 0.93 * F.col("v_nominal")).cast("int")).alias("horas_bajo_93"),
