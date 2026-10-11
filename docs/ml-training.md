@@ -250,6 +250,21 @@ Conclusiones:
 - Con la previsión perfecta de las 3 horas siguientes el bosque llega a 6 veces la prevalencia y supera a la racha observada (99 % de las réplicas), pero no a la racha prevista. El valor está en la previsión del tiempo; un modelo en producción necesitaría una previsión real (AEMET, ECMWF) en lugar del reanálisis, y esta cifra es la cota superior de lo que podría aportar.
 - Con un presupuesto fijo de horas por día ningún modelo avisa de más incidencias que elegir las horas al azar. Los modelos saben qué días son peligrosos (temporal, red alterada), no a qué hora empezará la interrupción dentro del día; la alerta útil es por día o por umbral de riesgo, no por un número fijo de horas diarias.
 
+#### Evaluación final en test
+
+Con la configuración cerrada (sin previsión, mismo procedimiento que en los años anteriores), test se ha mirado una sola vez con `--por-anios 2026 --sin-prevision --evaluar-test`: el modelo se elige en el último 25 % de las horas hasta 2025 y se reentrena con todas, y puntúa enero a mayo de 2026 (`test_hasta` 01.06.2026, por la censura de las etiquetas). Ejecución `hr_20261011T100606_7391f5`, 10.855 horas, 48 positivas, 21 incidencias:
+
+| Modelo | PR-AUC [IC 95 %] | Lift | P(mejor que la tasa base) | P(mejor que la racha) | recall_episodios@2 |
+| --- | --- | --- | --- | --- | --- |
+| Random Forest | 0,0319 [0,0050 - 0,1386] | 7,2 | 100 % | 89 % | 0,143 |
+| XGBoost | 0,0172 [0,0037 - 0,0916] | 3,9 | 100 % | 65 % | 0,238 |
+| Logística | 0,0164 [0,0036 - 0,0488] | 3,7 | 100 % | 61 % | 0,333 |
+| Racha máxima observada | 0,0140 [0,0044 - 0,0398] | 3,2 | - | - | 0,190 |
+| Tasa base | 0,0044 | 1,0 | - | - | 0,286 |
+| Naif histórico | 0,0032 | 0,7 | - | - | 0,286 |
+
+Test confirma lo que dijo la evaluación por años: los modelos son claramente mejores que la tasa base y que el histórico (entre 3,7 y 7 veces la prevalencia, en todas las réplicas), pero ninguno se distingue de la regla de la racha máxima, y con un presupuesto fijo de horas por día no avisan de más incidencias que el azar. Lo que más pesa en XGBoost es la hora del día, los cambios de comunicaciones, la lluvia y las rachas, los microcortes del SCADA y las faltas de tensión en el CT y en su grupo de red.
+
 ## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).
