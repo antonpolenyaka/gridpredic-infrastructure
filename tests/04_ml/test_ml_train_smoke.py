@@ -620,6 +620,41 @@ def test_ablation_sources_groups_zones(spark, dataset, run, workdir, config_path
     assert os.path.getmtime(os.path.join(folder, "parciales", "todo.parquet")) == stamp
 
 
+def test_learning_curve_power_and_transfer(spark, dataset, run, workdir, config_path):
+    import job_ml_horas_riesgo
+
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    config["horas_riesgo"]["curva"] = {
+        "fracciones": [0.5, 1.0], "repeticiones": 2, "transferencia": "meteo:logistica",
+        "variantes": {"meteo:logistica": [["meteo"], "logistica"], "todo:xgboost": [["calser", "tedisnet", "meteo"],
+                                                                                    "xgboost"]},
+    }
+    path = os.path.join(workdir, "config_curva.json")
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(config, file)
+
+    job_ml_horas_riesgo.main(["--run-id", "hr_curva_test", "--config", path, "--curva-aprendizaje",
+                              "--por-anios", "2025", "--sin-prevision"])
+
+    folder = os.path.join(workdir, "resultados", "hr_curva_test")
+    curve = pd.read_csv(os.path.join(folder, "curva.csv"))
+    # Two repetitions with half of the distribuidora-days and one with all of them, per variant.
+    assert len(curve) == 6
+    assert curve["pr_auc"].between(0, 1).all()
+    half = curve[curve["fraccion"] == 0.5]["positivos_train_medio"].mean()
+    full = curve[curve["fraccion"] == 1.0]["positivos_train_medio"].mean()
+    assert 0.3 * full < half < 0.7 * full
+    projection = pd.read_csv(os.path.join(folder, "proyeccion.csv"))
+    assert set(projection["multiplo_datos"]) == {1, 2, 5, 10}
+    power = pd.read_csv(os.path.join(folder, "potencia.csv"))
+    assert set(power["variante"]) == {"meteo:logistica", "todo:xgboost"}
+    assert (power["multiplo_datos_necesario"] > 0).all()
+    assert os.path.exists(os.path.join(folder, "transferencia.csv"))
+    run_row = spark.table("l3_gold.ml_runs").where(F.col("run_id") == "hr_curva_test").first()
+    assert run_row["etiqueta"] == "distribuidora_hora_curva:y_1_3h"
+
+
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
     import job_ml_train
 

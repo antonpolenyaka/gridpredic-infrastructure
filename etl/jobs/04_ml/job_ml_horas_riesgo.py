@@ -57,6 +57,7 @@ Steps:
 import argparse
 import hashlib
 import json
+import math
 import os
 import sys
 import time
@@ -116,6 +117,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--ablacion", action="store_true",
                         help="Compare the sources (Calser, TedisNet, weather), their mixes, the interactions, one "
                              "model per distribuidora and the zone model, with the rolling evaluation by years")
+    parser.add_argument("--curva-aprendizaje", action="store_true",
+                        help="Learning curve with shares of the distribuidora-days, transfer between distribuidoras "
+                             "and the data needed for the difference with the gust rule to be significant")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -967,6 +971,190 @@ def run_ablation(spark, args, config, cfg, meteo_cfg, pdf, features, labels, ct_
 # Main
 # ---------------------------------------------------------------------------
 
+CURVE_DEFAULTS = {
+    "fracciones": [0.25, 0.5, 1.0],
+    "repeticiones": 3,
+    "variantes": {"meteo:logistica": [["meteo"], "logistica"], "todo:xgboost": [["calser", "tedisnet", "meteo"],
+                                                                                "xgboost"]},
+    "transferencia": "meteo:logistica",
+    "referencia": "metd_max_met_racha_max_3h",
+    "confianza_z": 1.645,
+    "multiplos": [2, 5, 10],
+}
+
+
+def run_learning_curve(spark, args, config: dict, cfg: dict, pdf: pd.DataFrame, features: list, labels: list,
+                       dataset_version: str, created) -> str:
+    """
+    How much better would the risk hours be with more data, and does the data
+    of another distribuidora help? The question behind "how many distribuidoras
+    does the MVP need".
+
+    1. Learning curve: for every year Y of the evaluation the models learn from
+       a random share (curva.fracciones) of the distribuidora-days before Y,
+       several times (curva.repeticiones), and score the whole year Y. Fewer
+       distribuidora-days is what a smaller company, or fewer years of history,
+       gives. PR-AUC of the years together against the positive hours of
+       training, with a straight line on their logarithm to extrapolate.
+    2. Transfer: a model trained with one distribuidora alone scores the others
+       (without the distribuidora_id feature), against the model of the same
+       distribuidora and the model of all of them.
+    3. Power: the block bootstrap of the full model against the gust rule gives
+       the spread of the difference; the data needed for it to be significant
+       is (z * spread / difference)^2 times the current data.
+    """
+    label = labels[0]
+    seed = int(config.get("semilla", 0))
+    cc = {**CURVE_DEFAULTS, **cfg.get("curva", {})}
+    years = [int(y) for y in (args.por_anios.split(",") if args.por_anios not in (None, "config")
+                              else cfg.get("anios_evaluacion", [2023, 2024, 2025]))]
+    sources = {f: source_of(f) for f in features}
+    pool = pdf[pdf["split"].isin(["train", "valid"])].copy()
+    pool["_unidad"] = pool["distribuidora_id"].astype(str) + "|" + pool["hora"].dt.floor("D").astype(str)
+    reference = cc["referencia"]
+
+    def chosen_features(blocks, with_distributor=True):
+        out = [f for f in features if sources[f] == "base" or sources[f] in blocks]
+        return out if with_distributor else [f for f in out if f != "distribuidora_id"]
+
+    def score_years(train_filter, chosen, model, fraction=1.0, rep=0, target_filter=None):
+        parts, positives = [], 0
+        for year in years:
+            start, end = pd.Timestamp(f"{year}-01-01"), pd.Timestamp(f"{year + 1}-01-01")
+            before = pool[(pool["hora"] < start) & train_filter(pool)]
+            target = pool[(pool["hora"] >= start) & (pool["hora"] < end)]
+            if target_filter is not None:
+                target = target[target_filter(target)]
+            if fraction < 1.0:
+                units = np.sort(before["_unidad"].unique())
+                rng = np.random.default_rng(seed + 7919 * rep + year + int(1000 * fraction))
+                keep = set(rng.choice(units, max(1, int(round(fraction * len(units)))), replace=False))
+                before = before[before["_unidad"].isin(keep)]
+            positives += int(before[label].sum())
+            scored, _, _, _ = rolling_evaluation(pd.concat([before, target]), chosen, label, config, cfg, [year], True,
+                                                 names=[model], references=False)
+            parts.append(scored)
+        scored = pd.concat(parts, ignore_index=True)
+        return scored, positives / len(years)
+
+    everyone = lambda df: np.ones(len(df), dtype=bool)  # noqa: E731
+    curve, full_scores = [], {}
+
+    for variant, (blocks, model) in cc["variantes"].items():
+        chosen = chosen_features(blocks)
+        for fraction in cc["fracciones"]:
+            reps = 1 if fraction >= 1.0 else int(cc["repeticiones"])
+            for rep in range(reps):
+                logger.info("Learning curve %s: share %s, repetition %s", variant, fraction, rep + 1)
+                scored, positives = score_years(everyone, chosen, model, fraction, rep)
+                curve.append({"variante": variant, "fraccion": fraction, "repeticion": rep,
+                              "positivos_train_medio": positives,
+                              "pr_auc": ml_metrics.average_precision(scored[label], scored[f"p_{model}"])})
+                if fraction >= 1.0:
+                    full_scores[variant] = scored
+
+    curve = pd.DataFrame(curve)
+    any_scored = next(iter(full_scores.values()))
+    prevalence = float(any_scored[label].mean())
+    gust = any_scored[reference].fillna(any_scored[reference].min() - 1) if reference in any_scored else None
+    gust_ap = ml_metrics.average_precision(any_scored[label], gust) if gust is not None else float("nan")
+
+    summary = curve.groupby(["variante", "fraccion"]).agg(
+        positivos_train=("positivos_train_medio", "mean"), pr_auc=("pr_auc", "mean"), pr_auc_sd=("pr_auc", "std"),
+        repeticiones=("pr_auc", "size")).reset_index()
+    summary["lift"] = summary["pr_auc"] / prevalence
+    projection = []
+    for variant, g in summary.groupby("variante"):
+        if len(g) >= 2 and (g["positivos_train"] > 0).all():
+            slope, intercept = np.polyfit(np.log(g["positivos_train"]), g["pr_auc"], 1)
+            current = float(g.loc[g["fraccion"] == g["fraccion"].max(), "positivos_train"].iloc[0])
+            for multiple in [1] + list(cc["multiplos"]):
+                value = intercept + slope * math.log(current * multiple)
+                projection.append({"variante": variant, "multiplo_datos": multiple,
+                                   "positivos_train": current * multiple, "pr_auc_proyectado": value,
+                                   "lift_proyectado": value / prevalence, "pendiente_por_ln": slope})
+    projection = pd.DataFrame(projection)
+
+    # Power against the gust rule, with the full data of every variant.
+    power = []
+    days = any_scored["hora"].dt.floor("D").to_numpy()
+    reps = int(cfg.get("bootstrap_reps", 500))
+    for variant, scored in full_scores.items():
+        model = cc["variantes"][variant][1]
+        scores = {"modelo": scored[f"p_{model}"].to_numpy()}
+        if gust is not None:
+            scores["racha"] = scored[reference].fillna(scored[reference].min() - 1).to_numpy()
+        _, replicas = ml_metrics.bootstrap_pr_auc(scored[label].to_numpy(), np.ones(len(scored)), days, scores,
+                                                  reps, seed)
+        if "racha" not in replicas:
+            continue
+        diff = replicas["modelo"] - replicas["racha"]
+        mean, spread = float(np.nanmean(diff)), float(np.nanstd(diff))
+        multiple = (float(cc["confianza_z"]) * spread / mean) ** 2 if mean > 0 else float("inf")
+        units = len(years) * pool["distribuidora_id"].nunique()
+        power.append({"variante": variant, "dif_media": mean, "dif_sd": spread, "prob_mejor": float(np.nanmean(diff > 0)),
+                      "multiplo_datos_necesario": multiple, "distribuidora_anios_actuales": units,
+                      "distribuidora_anios_necesarios": multiple * units if math.isfinite(multiple) else float("inf")})
+    power = pd.DataFrame(power)
+
+    # Transfer between the distribuidoras with enough events.
+    transfer = []
+    variant = cc["transferencia"]
+    blocks, model = cc["variantes"][variant]
+    chosen = chosen_features(blocks, with_distributor=False)
+    counts = pool.groupby("distribuidora_id")[label].sum()
+    big = [int(d) for d in counts[counts >= 30].index]
+    trainers = {"todas": everyone, **{f"solo_{d}": (lambda df, d=d: df["distribuidora_id"] == d) for d in big}}
+    for trainer, condition in trainers.items():
+        logger.info("Transfer: model trained with %s", trainer)
+        scored, positives = score_years(condition, chosen, model)
+        for target in big:
+            sub = scored[scored["distribuidora_id"] == target]
+            if sub[label].sum() == 0:
+                continue
+            transfer.append({"entrenado_con": trainer, "evaluado_en": target, "positivos_train_medio": positives,
+                             "pr_auc": ml_metrics.average_precision(sub[label], sub[f"p_{model}"]),
+                             "prevalencia": float(sub[label].mean())})
+    transfer = pd.DataFrame(transfer)
+    if not transfer.empty:
+        transfer["lift"] = transfer["pr_auc"] / transfer["prevalencia"]
+
+    names = {}
+    try:
+        names = {int(r["distribuidora_id"]): r["source_database"] for r in spark.table(f"{GOLD}.fact_interrupciones_mt")
+                 .select("distribuidora_id", "source_database").distinct().collect()}
+    except Exception:  # noqa: BLE001
+        pass
+
+    report = "\n\n".join([
+        f"# Curva de aprendizaje de las horas de riesgo: {args.run_id}",
+        f"Años evaluados juntos: {', '.join(str(y) for y in years)}. Prevalencia {prevalence:.4f}; regla de la racha "
+        f"({reference}) PR-AUC {gust_ap:.4f}. Distribuidoras: "
+        + ", ".join(f"{k} = {v}" for k, v in sorted(names.items())),
+        "## Curva\n\n" + ml_metrics.markdown_table(summary, digits=4),
+        "## Proyección (recta sobre el logaritmo de los positivos de entrenamiento)\n\n"
+        + ml_metrics.markdown_table(projection, digits=4),
+        f"## Potencia frente a la regla de la racha (bootstrap por días, {reps} réplicas)\n\n"
+        "multiplo_datos_necesario es cuántas veces los datos actuales harían falta para que la diferencia fuera "
+        "significativa al 95 % (una cola) si se mantuviera.\n\n" + ml_metrics.markdown_table(power, digits=4),
+        f"## Transferencia ({variant}, sin distribuidora_id)\n\n" + ml_metrics.markdown_table(transfer, digits=4),
+    ]) + "\n"
+    export(config, args.run_id, report, {"curva": curve, "curva_resumen": summary, "proyeccion": projection,
+                                         "potencia": power, "transferencia": transfer})
+
+    run = pd.DataFrame([{
+        "run_id": args.run_id, "creado_ts": created, "dataset_version": dataset_version,
+        "etiqueta": f"distribuidora_hora_curva:{label}", "n_features": len(features),
+        "modelos_json": json.dumps(cc["variantes"]), "busqueda_json": "[]",
+        "config_json": json.dumps(config, ensure_ascii=False),
+        "resumen_json": json.dumps({f"{r.variante}:{r.fraccion}": r.pr_auc for r in summary.itertuples()}),
+        "splits_evaluados": ",".join(f"cv_{y}" for y in years), "artefactos_uri": "",
+    }])
+    save_frame(spark, run, RUNS_TABLE, args.run_id)
+    logger.info("Learning curve %s completed", args.run_id)
+    return args.run_id
+
+
 def main(argv=None):
     args = parse_args(argv)
     config = load_config(args.config)
@@ -1019,6 +1207,9 @@ def main(argv=None):
     if args.ablacion:
         return run_ablation(spark, args, config, cfg, meteo_cfg, pdf, features, labels, ct_features, dataset_version,
                             key, source, created)
+
+    if args.curva_aprendizaje:
+        return run_learning_curve(spark, args, config, cfg, pdf, features, labels, dataset_version, created)
 
     if args.por_anios:
         return run_by_years(spark, args, config, cfg, pdf, features, labels, dataset_version, created)

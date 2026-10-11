@@ -42,6 +42,9 @@ Silver deja una sola versión válida de cada registro y marca lo dudoso. Gold e
 | `feature_metadata` | feature | Bloque, ámbito, familia, ventana, fuente, descripción y porcentaje de nulos en train de cada feature | `job_gold_features_ct_hora.py` |
 | `dataset_train` | distribuidora, CT, hora | Etiquetas y features unidas, filtradas y partidas en train, valid y test | `job_gold_dataset_train.py` |
 | `dataset_versions` | versión | Una fila por construcción del dataset con los parámetros y las versiones Delta de todas las tablas de entrada | `job_gold_dataset_train.py` |
+| `meteo_celda_hora`, `map_ct_celda` | celda, hora; CT | Las features meteorológicas de cada celda y la celda de cada CT, que el entrenamiento une por `(celda_id, hora)` | `job_gold_meteo_celda_hora.py` |
+| `contexto_ct_anio` | distribuidora, CT, año | Datos públicos de cada CT por año, todos conocidos antes de que empiece: población del municipio, su variación en uno y cinco años, densidad, potencia y clientes por habitante, altitud, relieve y exposición de OpenStreetMap de su celda, obras públicas licitadas el año anterior y previstas para ese año, y viviendas construidas según el Catastro (ver [network-analysis.md](network-analysis.md)) | `job_gold_contexto_ct.py` |
+| `obras_municipio_anio` | municipio, año | Obras públicas publicadas y en ejecución (número, importe y meses dentro del año, las que abren zanja o calle aparte) y edificios, viviendas y m2 construidos y en pie, de cada municipio de los CT. Es descriptiva: el análisis de red la cruza con las averías de terceros | `job_gold_contexto_ct.py` |
 | `dq_metrics` | ejecución, métrica | Las métricas de calidad de Gold, con el mismo esquema que las de Silver | todos |
 
 ## 3. Del SCADA al CT
