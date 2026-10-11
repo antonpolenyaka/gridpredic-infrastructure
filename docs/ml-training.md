@@ -196,6 +196,30 @@ docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g 
     /app/jobs/04_ml/job_ml_horas_riesgo.py --config /app/config/04_ml/config_ml.json
 ```
 
+`--sin-prevision` deja fuera la previsión de las horas siguientes sobre la misma tabla (unos 4 minutos, la tabla tarda unos 18 en construirse la primera vez).
+
+Primeras ejecuciones (11.10.2026, valid 2025, 500 réplicas):
+
+| | Con previsión (`hr_20261011T073905_a68023`) | Sin previsión (`hr_20261011T082531_8f77c8`) |
+| --- | --- | --- |
+| Horas de valid / positivas | 26.210 / 68 | 26.210 / 68 |
+| Tasa base | 0,0026 | 0,0026 |
+| Racha máxima sola | 0,0133 | 0,0133 |
+| XGBoost PR-AUC [IC 95 %] | 0,0315 [0,0048 - 0,0745] | 0,0574 [0,0058 - 0,1409] |
+| XGBoost - tasa base | +0,027 [+0,003, +0,072], 100 % | +0,053 [+0,004, +0,138], 100 % |
+| XGBoost - racha máxima | +0,014 [-0,002, +0,040], 94,6 % | +0,040 [-0,017, +0,110], 89,6 % |
+| Random Forest PR-AUC | 0,0304 | 0,0173 |
+| recall_episodios@2 de XGBoost (racha: 0,226) | 0,194 | 0,194 |
+
+Lo que sale de aquí:
+
+- Las 4.258 horas positivas de valid por CT son solo 68 horas positivas por distribuidora, unas 31 incidencias en todo 2025: cada incidencia toca de media a unos 45 CT a la vez. La muestra efectiva es el número de incidencias, unas 30 al año en valid y un centenar en train, y eso explica la inestabilidad de todas las comparaciones por CT.
+- XGBoost queda por encima de la tasa base y del naif histórico en todas las réplicas, con o sin previsión (un lift de 12 a 22).
+- La racha máxima de la zona en las últimas 3 horas, sola, ya multiplica por 5 la tasa base. El modelo la supera en PR-AUC en el 90 - 95 % de las réplicas, pero el intervalo de la diferencia cruza el cero, y con 2 horas de alerta por distribuidora y día avisa de las mismas incidencias o de menos.
+- La previsión perfecta de las 3 horas siguientes no mejora el resultado: sin ella la PR-AUC sale incluso más alta, porque la búsqueda elige otra configuración (`min_child_weight` 20) y casi todo viene de la distribuidora 2. Con 31 incidencias la elección de la configuración en valid es en sí misma ruidosa.
+- Lo que más pesa en los dos modelos es la meteorología (lluvia, rachas, temperatura mínima, humedad) y el estado de la red aguas arriba: reenganches en 6 y 24 h, defectos a tierra en el grupo de red, microcortes y cortes del SCADA, cambios de comunicaciones.
+- Las distribuidoras 2 y 3 tienen las mismas horas positivas en test (26 y 2 locales), pero solo coinciden en 4 horas: no hay interrupciones duplicadas entre ellas. Sí comparten el mismo instante de inicio en eventos de transporte o del sistema que les afectan a la vez, como el apagón del 28.04.2025.
+
 ## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).
