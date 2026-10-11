@@ -250,7 +250,7 @@ def to_arrays(pdf: pd.DataFrame, features: list, label: str):
 
 
 def train(names: list, config: dict, cfg: dict, data: dict, base_rate: float, only_first: bool,
-          references: bool = True) -> tuple:
+          references: bool = True, rate: float = 1.0) -> tuple:
     seed = int(config.get("semilla", 0))
     n_jobs = int(config.get("n_jobs", -1))
     grids = {**config.get("busqueda", {}), **cfg.get("busqueda", {})}
@@ -289,7 +289,7 @@ def train(names: list, config: dict, cfg: dict, data: dict, base_rate: float, on
 
         for index, params in enumerate(grid):
             logger.info("Fitting %s, configuration %s of %s: %s", name, index + 1, len(grid), params)
-            scorer = ml_models.fit_model(name, params, data, 1.0, seed, n_jobs)
+            scorer = ml_models.fit_model(name, params, data, rate, seed, n_jobs)
             ap = keep(name, scorer, params, index)
 
             # A fold without positives in the inner validation gives nan:
@@ -393,7 +393,7 @@ def save_predictions(spark, pdf: pd.DataFrame, run_id: str, split: str, models: 
 # Rolling evaluation by years
 # ---------------------------------------------------------------------------
 
-def refit(name: str, scorer, data: dict, seed: int, n_jobs: int):
+def refit(name: str, scorer, data: dict, seed: int, n_jobs: int, rate: float = 1.0):
     """
     The chosen configuration fitted again on the whole training period of
     the fold. XGBoost keeps the number of trees found by early stopping.
@@ -404,12 +404,20 @@ def refit(name: str, scorer, data: dict, seed: int, n_jobs: int):
         trees = int(scorer.info.get("n_arboles", params.get("n_estimators", 1500)))
         params.update(n_estimators=trees, early_stopping_rounds=trees + 1)
 
-    return ml_models.fit_model(name, params, data, 1.0, seed, n_jobs)
+    return ml_models.fit_model(name, params, data, rate, seed, n_jobs)
+
+
+def sample_negatives(rows: pd.DataFrame, label: str, share: float, seed: int) -> pd.DataFrame:
+    """Every positive and a deterministic share of the negatives (share 1 keeps everything)."""
+    if share >= 1.0:
+        return rows
+    keep = (rows[label] == 1).to_numpy() | (np.random.default_rng(seed).random(len(rows)) < share)
+    return rows[keep]
 
 
 def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: dict, cfg: dict, years: list,
                        only_first: bool, test_until: str = None, names: list = None,
-                       references: bool = True) -> tuple:
+                       references: bool = True, negative_share: float = 1.0) -> tuple:
     """
     One fold per year Y of years, never touching test: the models are chosen
     on the last share (fraccion_validacion_interna) of the hours before Y,
@@ -417,6 +425,11 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
     30 incidents a year, pooling three years gives about three times the
     events to compare the models with, and every year is scored by a model
     that only saw its past.
+
+    negative_share < 1 fits on every positive and that share of the
+    negatives of the hours before Y (the zone model has two million rows),
+    with the prior correction of ml_models; the inner validation and the
+    year Y keep every row.
 
     With test_until (only with --evaluar-test) the hours of test before it
     join the pool, so the year of test can be scored once with the same
@@ -450,6 +463,7 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
         hours = np.sort(before["hora"].unique())
         cut = hours[int(len(hours) * (1 - share))]
         fit_part, check_part = before[before["hora"] < cut], before[before["hora"] >= cut]
+        fit_part = sample_negatives(fit_part, label, negative_share, seed + year)
 
         X, y = to_arrays(fit_part, features, label)
         Xv, yv = to_arrays(check_part, features, label)
@@ -458,17 +472,19 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
         logger.info("Year %s: choosing on %s hours (%s positive) and %s hours from %s (%s positive)", year,
                     len(y), int(y.sum()), len(yv), pd.Timestamp(cut), int(yv.sum()))
 
-        scorers, search = train(names, config, cfg, inner, float(y.mean()), only_first, references)
+        scorers, search = train(names, config, cfg, inner, float(y.mean()), only_first, references, negative_share)
         search_all += [{**row, "anio": year} for row in search]
 
-        Xa, ya = to_arrays(before, features, label)
+        del X, y, fit_part
+        Xa, ya = to_arrays(sample_negatives(before, label, negative_share, seed + year + 1), features, label)
         full = {"X": Xa, "y": ya, "w": np.ones(len(ya)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)),
                 "feature_names": features}
 
         for name in [n for n in scorers if n in ml_models.TRAINED]:
-            scorers[name] = refit(name, scorers[name], full, seed, n_jobs)
+            scorers[name] = refit(name, scorers[name], full, seed, n_jobs, negative_share)
+        del Xa, ya, full
         if "tasa_base" in scorers:
-            scorers["tasa_base"] = ml_models.build_reference("tasa_base", features, float(ya.mean()))
+            scorers["tasa_base"] = ml_models.build_reference("tasa_base", features, float(before[label].mean()))
 
         Xs, _ = to_arrays(target, features, label)
         for name, scorer in scorers.items():
@@ -766,6 +782,27 @@ def load_zones(spark, ct_features, labels, cfg, meteo_cfg, version, key, source,
     return pdf, ["distribuidora_id"] + names + [SEASON_FEATURE]
 
 
+def partial(config: dict, run_id: str, name: str, compute):
+    """
+    Scores of one variant, kept in exportar_dir/<run_id>/parciales/<name>.parquet
+    so a failed ablation can be launched again with the same --run-id and
+    only repeats what is missing.
+    """
+    folder = config.get("exportar_dir")
+    path = os.path.join(folder, run_id, "parciales", name.replace("+", "_mas_") + ".parquet") if folder else None
+
+    if path and os.path.exists(path):
+        logger.info("Ablation %s: reusing %s", name, path)
+        return pd.read_parquet(path)
+
+    frame = compute()
+
+    if path:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        frame.to_parquet(path, index=False)
+    return frame
+
+
 def renamed(scored: pd.DataFrame, prefix: str) -> pd.DataFrame:
     columns = {c: f"p_{prefix}:{c[2:]}" for c in scored.columns if c.startswith("p_")}
     return scored[KEYS + list(columns)].rename(columns=columns)
@@ -792,47 +829,65 @@ def run_ablation(spark, args, config, cfg, meteo_cfg, pdf, features, labels, ct_
     all_features = features + interactions
     sources = {f: source_of(f) for f in all_features}
 
-    refs, _, _, _ = rolling_evaluation(pdf, features, label, config, cfg, years, args.sin_busqueda,
-                                       names=["tasa_base", "naif_historico"])
-    combined = refs[KEYS + labels + [LEAD, SEASON_FEATURE, "anio", "ct_key"]].copy()
-    combined = combined.merge(renamed(refs, "ref"), on=KEYS)
+    def references_run():
+        refs, _, _, _ = rolling_evaluation(pdf, features, label, config, cfg, years, args.sin_busqueda,
+                                           names=["tasa_base", "naif_historico"])
+        return refs[KEYS + labels + [LEAD, SEASON_FEATURE, "anio", "ct_key"]].merge(renamed(refs, "ref"), on=KEYS)
+
+    combined = partial(config, args.run_id, "referencias", references_run)
     sizes = []
 
     for name, blocks in ab.get("conjuntos", DEFAULT_SETS).items():
         chosen = [f for f in all_features if sources[f] == "base" or sources[f] in blocks]
         sizes.append({"variante": name, "features": len(chosen)})
         logger.info("Ablation %s: %s features", name, len(chosen))
-        scored, _, _, _ = rolling_evaluation(pdf, chosen, label, config, cfg, years, args.sin_busqueda,
-                                             names=models, references=False)
-        combined = combined.merge(renamed(scored, name), on=KEYS, how="left")
+        def variant(chosen=chosen, name=name):
+            scored, _, _, _ = rolling_evaluation(pdf, chosen, label, config, cfg, years, args.sin_busqueda,
+                                                 names=models, references=False)
+            return renamed(scored, name)
+
+        combined = combined.merge(partial(config, args.run_id, name, variant), on=KEYS, how="left")
 
     full = [f for f in features]
     if ab.get("por_distribuidora", True):
-        parts = []
-        for dist in sorted(pdf["distribuidora_id"].unique()):
-            logger.info("One model per distribuidora: %s", dist)
-            scored, _, _, _ = rolling_evaluation(pdf[pdf["distribuidora_id"] == dist], full, label, config, cfg,
-                                                 years, args.sin_busqueda, names=models, references=False)
-            parts.append(scored)
-        combined = combined.merge(renamed(pd.concat(parts, ignore_index=True), "por_distribuidora"), on=KEYS,
+        def per_distributor():
+            parts = []
+            for dist in sorted(pdf["distribuidora_id"].unique()):
+                logger.info("One model per distribuidora: %s", dist)
+                scored, _, _, _ = rolling_evaluation(pdf[pdf["distribuidora_id"] == dist], full, label, config, cfg,
+                                                     years, args.sin_busqueda, names=models, references=False)
+                parts.append(scored)
+            return renamed(pd.concat(parts, ignore_index=True), "por_distribuidora")
+
+        combined = combined.merge(partial(config, args.run_id, "por_distribuidora", per_distributor), on=KEYS,
                                   how="left")
         sizes.append({"variante": "por_distribuidora", "features": len(full)})
 
     zone_rows = None
     if ab.get("zona", True) and meteo_cfg.get("activo"):
         windows = ab.get("zona_ventanas", ["6h", "24h"])
-        zpdf, zfeatures = load_zones(spark, ct_features, labels, cfg, meteo_cfg, dataset_version, key, source,
-                                     windows, args.reconstruir)
-        sizes.append({"variante": "zona", "features": len(zfeatures)})
-        logger.info("Zone model: %s rows, %s features", len(zpdf), len(zfeatures))
-        zscored, _, _, _ = rolling_evaluation(zpdf, zfeatures, label, config, cfg, years, args.sin_busqueda,
-                                              names=ab.get("zona_modelos", models), references=False)
-        zone_rows = ml_metrics.evaluate(zscored, [c for c in zscored.columns if c.startswith("p_")], [label],
-                                        budgets, {}, seed=seed)
+
+        def zone_run():
+            zpdf, zfeatures = load_zones(spark, ct_features, labels, cfg, meteo_cfg, dataset_version, key, source,
+                                         windows, args.reconstruir)
+            logger.info("Zone model: %s rows, %s features", len(zpdf), len(zfeatures))
+            zscored, _, _, _ = rolling_evaluation(
+                zpdf, zfeatures, label, config, cfg, years, args.sin_busqueda,
+                names=ab.get("zona_modelos", ["xgboost"]), references=False,
+                negative_share=float(ab.get("zona_tasa_negativos", 0.2)),
+            )
+            keep = ["distribuidora_id", "zona_id", "hora", "ct_key", label] + [c for c in zscored.columns
+                                                                               if c.startswith("p_")]
+            return zscored[keep].assign(n_features=len(zfeatures))
+
+        zscored = partial(config, args.run_id, "zona_filas", zone_run)
+        sizes.append({"variante": "zona", "features": int(zscored["n_features"].iloc[0])})
+        zcols = [c for c in zscored.columns if c.startswith("p_")]
+        zone_rows = ml_metrics.evaluate(zscored, zcols, [label], budgets, {}, seed=seed)
         zone_rows = zone_rows[zone_rows["metrica"].isin(["prevalencia", "pr_auc", "lift_pr_auc", "roc_auc"])]
-        best = zscored.groupby(KEYS)[[c for c in zscored.columns if c.startswith("p_")]].max().reset_index()
+        best = zscored.groupby(KEYS)[zcols].max().reset_index()
         combined = combined.merge(renamed(best, "zona"), on=KEYS, how="left")
-        del zpdf
+        del zscored
 
     scores = [c for c in combined.columns if c.startswith("p_")]
     for column in scores:

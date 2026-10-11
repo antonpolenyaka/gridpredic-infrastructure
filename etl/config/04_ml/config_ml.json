@@ -125,9 +125,9 @@
         "24h"
       ],
       "zona_modelos": [
-        "logistica",
         "xgboost"
-      ]
+      ],
+      "zona_tasa_negativos": 0.2
     }
   },
   "muestra_valid": {
