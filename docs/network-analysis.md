@@ -78,7 +78,20 @@ Las dos distribuidoras grandes ya están cerca del tope de bonificación: lo que
 
 `job_ml_riesgo_ct.py` convierte la persistencia del apartado 3 en un modelo: para cada CT y año predice los kVA·h imprevistos que tendrá, con lo que se sabía al empezar el año. Usa la historia del CT y de su cabecera, grupo y municipio en uno, dos y tres años (los kVA·h de la cabecera divididos por su potencia, para que una línea grande no parezca peor solo por su tamaño), la estructura, los cortes y microcortes del SCADA del año anterior, los datos públicos y el clima de su celda. Es un XGBoost con objetivo Tweedie (casi todos los CT tienen cero un año y unos pocos concentran casi todo), evaluado año a año con origen móvil.
 
-[RESULTADOS DEL MODELO DE RIESGO ANUAL]
+Resultado de la ejecución `rct_20261011T193747_b7ee8a`, media de los años evaluados 2021-2025: parte de los kVA·h imprevistos del año que cae en el top k % del ranking hecho con los años anteriores.
+
+| Nivel | Top | Naif (dos años anteriores) | Mejor combinación | Modelo con todo | Máximo posible |
+| --- | --- | --- | --- | --- | --- |
+| Cabecera | 10 % | 63,5 % | 70,9 % (historia y estructura) | 68,6 % | 80,7 % |
+| Cabecera | 20 % | 74,3 % | 82,9 % (historia, estructura y SCADA) | 81,6 % | 92,9 % |
+| CT | 10 % | 27,9 % | 30,9 % (historia, estructura y clima) | 27,2 % | 68,2 % |
+| CT | 20 % | 47,1 % | 52,1 % (historia, estructura y clima) | 50,3 % | 85,7 % |
+
+Por cabecera el modelo cierra casi la mitad de la distancia entre la lista naif y el máximo: las 5 cabeceras que señala (el 10 % de 47) recogen el 71 % de los kVA·h imprevistos del año siguiente, frente al 64 % si se ordenan por los dos años anteriores, y gana a la lista naif en cuatro de los cinco años. Por CT la mejora es pequeña (31 % frente a 28 %): la historia dice qué línea va a fallar, pero no en qué CT de esa línea caerá la avería, y eso es casi azar. La unidad de decisión útil es la cabecera, que es además donde se actúa con la revisión y poda de la línea o con el telemando.
+
+Los bloques nuevos aportan poco a este horizonte. El clima de la celda sube algo la captura por CT y el SCADA la de las cabeceras en el top 20 %; los datos públicos no la mejoran. La variable con más ganancia del modelo completo es el relieve de la celda (desviación de la altitud), pero coincide con las líneas de montaña del Jerte y del Ambroz que la historia ya marca. Con cinco años de evaluación y unas 30 incidencias al año, diferencias de uno o dos puntos entre bloques no son significativas.
+
+Para 2026, el modelo con todos los años pone en cabeza R89-1T1 (EOSA, 491 CT), CC52-3 y CECLAV_2 (Pitarch); las cinco primeras cabeceras concentran el 78 % de los kVA·h esperados (`prioridades_cabecera.csv` y `l3_gold.ml_riesgo_ct_ranking`). R89-1T1 es también la primera de la lista del telemando del apartado 4, así que es la candidata clara a una actuación combinada: revisión de la línea y un punto de maniobra telemandado.
 
 ## 8. Cuántas distribuidoras harían falta
 

@@ -46,6 +46,8 @@ Otras reglas de la capa:
 | `f_poblacion_municipio` | INE, Padrón continuo (`l1_bronze.ine_padron_municipio`) | municipio, año |
 | `d_municipio_publico` | Wikidata y Open-Meteo Elevation | municipio |
 | `d_celda_entorno` | Open-Meteo Elevation y OpenStreetMap | celda meteorológica |
+| `f_licitacion_obra` | Plataforma de Contratación del Sector Público (`l1_bronze.placsp_licitacion_obra`) | licitación de obra, municipio |
+| `f_edificacion_municipio` | Catastro, INSPIRE Buildings (`l1_bronze.catastro_edificio`) | municipio, año de construcción |
 | `dq_metrics` | todos los jobs | ejecución, entidad, métrica |
 
 Cada entidad tiene además su `<entidad>_rejected` con las filas descartadas y la columna `_motivo`.

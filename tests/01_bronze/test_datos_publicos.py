@@ -197,6 +197,8 @@ def test_placsp_filter_keeps_the_works_of_the_territory():
     ]) + ('<at:deleted-entry ref="https://contrataciondelestado.es/sindicacion/licitacionesPerfilContratante/9" '
           'when="2024-03-03T10:00:00.000+01:00"><at:comment type="ANULADA"/></at:deleted-entry></feed>')
     kept, deleted, read = landing.filter_feed(text, territory, works)
+    marks = landing.placsp_marks({"nuts": ["ES43"], "codigos_postales": ["06", "10"]})
+    assert landing.filter_feed(text, territory, works, marks) == (kept, deleted, read)
 
     assert read == 4
     assert [int(e.split("licitacionesPerfilContratante/")[1].split("<")[0]) for e in kept] == [1, 4]

@@ -49,6 +49,17 @@ the error goes to the log and the report and the rest goes on):
     TIEPI of the last three years, the value of one minute of TIEPI, the
     energy not supplied valued at the VoLL, and the value of the measures
     of the previous sections (economia.csv).
+11. Public works and building (l3_gold.obras_municipio_anio, from PLACSP and
+    the Catastro): the unplanned incidents of third parties, of machines and
+    works (read from the text) and the own ones (the control) by
+    distribuidora, municipality and year against the public works in
+    execution that dig the street, as rates per 100 CT-years and as rate
+    ratios of a Poisson model between towns and within every town, with an
+    interval that resamples municipalities; the same with the works tendered
+    before the year (a warning the distribuidora could have). And the
+    dwellings built in the last five years against the kVA installed in
+    every municipality, the new capacity the same pace would ask for
+    (obras_terceros_*.csv, crecimiento_municipios.csv).
 
 Outputs in exportar_dir/<run_id>/ (resumen.md and the CSV files) and the
 ranking tables l3_gold.analisis_red_* with the run_id, for the notebooks.
@@ -90,6 +101,8 @@ WEATHER_TABLE = f"{GOLD}.meteo_celda_hora"
 CELL_TABLE = f"{GOLD}.map_ct_celda"
 INCIDENTS_TABLE = "l2_silver.f_incidencia"
 SILVER_CT_TABLE = "l2_silver.d_ct"
+WORKS_TABLE = f"{GOLD}.obras_municipio_anio"
+CONTEXT_TABLE = f"{GOLD}.contexto_ct_anio"
 
 RANKING_TABLE = f"{GOLD}.analisis_red_prioridades"
 LOAD_TABLE = f"{GOLD}.analisis_red_carga_trafo"
@@ -207,7 +220,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--config", default=None)
     parser.add_argument("--secciones", default=None,
                         help="Comma separated subset: tiepi,limites,causas,cuando,donde,reposicion,meteo,carga,edad,"
-                             "economia")
+                             "economia,obras")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -1358,9 +1371,14 @@ def feeder_currents(data: Data, report: Report, state: dict) -> str:
     yearly["distribuidora"] = yearly["distribuidora_id"].map(data.databases)
     report.csv("carga_cabeceras_anual.csv", yearly)
 
-    complete = yearly[yearly["n_horas"] >= int(cfg["min_horas_carga"])]
+    # A year compares with another only when it has most of its hours (seasons), and a bay that starts near 0 A
+    # was being commissioned or mapped late: its growth is not load.
+    complete = yearly[(yearly["n_horas"] >= int(cfg.get("min_horas_anio_cabecera", 6500)))]
     trends = []
     for position, g in complete.groupby("posicion_id"):
+        g = g[g["p99_a"] >= float(cfg.get("min_amperios_cabecera", 5.0))]
+        if g.empty:
+            continue
         g = g.sort_values("anio")
         last = g.iloc[-1]
         slope = float(np.polyfit(g["anio"].astype(float), g["p99_a"].astype(float), 1)[0]) if len(g) >= 3 else np.nan
@@ -1378,18 +1396,27 @@ def feeder_currents(data: Data, report: Report, state: dict) -> str:
     if trends.empty:
         return "_Ninguna posición con años completos de intensidad._\n"
 
-    trends = trends.sort_values("crecimiento_anual", ascending=False)
+    trends["aumento_p99_a"] = trends["p99_ultimo_a"] - trends["p99_primero_a"]
+    trends = trends.sort_values(["crecimiento_anual", "aumento_p99_a"], ascending=False)
     report.csv("carga_cabeceras_tendencia.csv", trends)
     state["carga_cabeceras"] = trends
-    shown = trends.head(12).assign(crecimiento_anual=trends.head(12)["crecimiento_anual"].map(pct))
-    growing = int((trends["crecimiento_anual"] > 0.03).sum())
+    compared = trends[trends["anios"] >= 2]
+    growing = compared[compared["crecimiento_anual"] > 0.03]
+    # Three or more years of growth is demand; a jump between two years may be a line that took CTs of another.
+    steady = growing[growing["anios"] >= 3]
+    shown = steady.sort_values("aumento_p99_a", ascending=False).head(12)
+    shown = shown.assign(crecimiento_anual=shown["crecimiento_anual"].map(pct))
     return (
         f"Intensidad de las posiciones de cabecera de las subestaciones (ámbito AGUAS_ARRIBA de agg_medida_hora): "
-        f"{trends['posicion_id'].nunique()} posiciones con años completos; {growing} crecen más de un 3 % al año en "
-        "su p99. Es la carga de la línea entera, no la de cada trafo, y sin la intensidad admisible del conductor "
-        "solo podemos ordenar por crecimiento y por punta.\n\n"
+        f"{len(compared)} posiciones con dos o más años casi completos (al menos "
+        f"{int(cfg.get('min_horas_anio_cabecera', 6500))} horas) y una punta de más de "
+        f"{fmt(float(cfg.get('min_amperios_cabecera', 5.0)), 0)} A; {len(growing)} crecen más de un 3 % al año en su "
+        f"p99, {len(steady)} de ellas durante tres años o más. Es la carga de la línea entera, no la de cada trafo, y "
+        "sin la intensidad admisible del conductor solo podemos ordenar por crecimiento y por punta. Un salto grande "
+        "entre dos años suele ser una línea que ha pasado a alimentar CT de otra (cambio de esquema); un crecimiento "
+        "de tres años o más ya es demanda. Las que más amperios ganan con tres años o más:\n\n"
         + md_table(shown, ["distribuidora", "cabecera", "cts_alimentados", "kva_alimentado", "primer_anio",
-                           "ultimo_anio", "p99_primero_a", "p99_ultimo_a", "crecimiento_anual"])
+                           "ultimo_anio", "p99_primero_a", "p99_ultimo_a", "aumento_p99_a", "crecimiento_anual"])
     )
 
 
@@ -1400,19 +1427,30 @@ def customers_per_kva(data: Data, report: Report) -> str:
         return ""
     dim["kva_por_abonado"] = dim["kva"] / dim["num_abonados"]
     dim["distribuidora"] = dim["distribuidora_id"].map(data.databases)
+    # Below this the installed power of Calser is not credible (10 kVA for 330 customers): a data error to fix
+    # in the inventory, not a transformer to replace.
+    floor = float(data.cfg.get("min_kva_por_abonado_plausible", 0.3))
+    dim["revisar_potencia"] = dim["kva_por_abonado"] < floor
     ranking = dim.sort_values("kva_por_abonado")[
         ["distribuidora", "ct_id", "municipio_nombre", "kva", "num_abonados", "kva_por_abonado", "n_trafos_ct",
-         "cabecera"]]
+         "cabecera", "revisar_potencia"]]
     report.csv("cts_kva_por_abonado.csv", ranking)
-    q = dim["kva_por_abonado"].quantile([0.1, 0.5, 0.9])
-    below = int((dim["kva_por_abonado"] < 2.0).sum())
+    plausible = dim[~dim["revisar_potencia"]]
+    q = plausible["kva_por_abonado"].quantile([0.1, 0.5, 0.9])
+    below = int((plausible["kva_por_abonado"] < 2.0).sum())
+    doubtful = ranking[ranking["revisar_potencia"]]
     return (
         f"\nkVA instalados por cliente en los CT con al menos 20 clientes (Calser): p10 {fmt(q[0.1])}, mediana "
         f"{fmt(q[0.5])}, p90 {fmt(q[0.9])}. {below} CT tienen menos de 2 kVA por cliente: con la potencia media "
         "contratada de 4,3 kW, son los primeros que se quedan cortos si crece la demanda (bomba de calor, coche "
         "eléctrico). Sin la curva de carga no podemos confirmarlo; los diez primeros:\n\n"
-        + md_table(ranking.head(10), ["distribuidora", "ct_id", "municipio_nombre", "kva", "num_abonados",
-                                      "kva_por_abonado", "n_trafos_ct"])
+        + md_table(ranking[~ranking["revisar_potencia"]].head(10),
+                   ["distribuidora", "ct_id", "municipio_nombre", "kva", "num_abonados", "kva_por_abonado",
+                    "n_trafos_ct"])
+        + f"\n{len(doubtful)} CT tienen menos de {fmt(floor, 1)} kVA por cliente, una potencia que no es creíble: "
+        "hay que revisar su ficha en el inventario antes de sacar conclusiones ("
+        + ", ".join(f"{r.ct_id} {r.municipio_nombre} {fmt(float(r.kva), 0)} kVA y {int(r.num_abonados)} clientes"
+                    for r in doubtful.head(5).itertuples()) + ").\n"
     )
 
 
@@ -1755,6 +1793,255 @@ def section_money(data: Data, report: Report, state: dict):
 
 
 # ---------------------------------------------------------------------------
+# 11. Public works, building and third-party damage
+# ---------------------------------------------------------------------------
+
+def ct_towns(data: Data) -> pd.DataFrame:
+    """INE code of the municipality of every CT, as contexto_ct_anio matched it (code, else name)."""
+    ctx = read_table(data.spark, CONTEXT_TABLE, ["distribuidora_id", "ct_id", "codigo_ine_padron"])
+    if ctx is not None and "codigo_ine_padron" in ctx.columns:
+        towns = ctx.dropDuplicates(["distribuidora_id", "ct_id"]).toPandas().rename(
+            columns={"codigo_ine_padron": "codigo_ine"})
+    else:
+        towns = data.dim[["distribuidora_id", "ct_id", "municipio_id"]].copy()
+        digits = towns["municipio_id"].astype(str).str.replace(r"\D", "", regex=True)
+        towns["codigo_ine"] = np.where(digits.str.len() >= 6, digits.str[:5], digits.str.zfill(5))
+        towns = towns.drop(columns=["municipio_id"])
+    towns["ct_id"] = towns["ct_id"].astype(str)
+    return towns.dropna(subset=["codigo_ine"])
+
+
+def works_panel(data: Data, works: pd.DataFrame, towns: pd.DataFrame) -> pd.DataFrame:
+    """
+    One row per distribuidora, municipality and year with works data: CTs and
+    kVA of the distribuidora there, its unplanned incidents of third parties
+    (factor), of machines and works (cause read from the text) and its own
+    (propias, the control), and the works and building of the municipality.
+    """
+    years = sorted(int(y) for y in works.loc[works["obras_en_ejecucion"].notna(), "anio"].unique())
+    years = [y for y in years if int(data.cfg["anio_desde"]) <= y <= int(data.cfg["anio_hasta"])]
+    if not years:
+        return pd.DataFrame()
+
+    dim = data.dim.merge(towns, on=["distribuidora_id", "ct_id"], how="inner")
+    rows = []
+    for year in years:
+        lo, hi = pd.Timestamp(year=year, month=1, day=1), pd.Timestamp(year=year + 1, month=1, day=1)
+        valid = dim[(dim["vigente_desde"].isna() | (dim["vigente_desde"] < hi))
+                    & (dim["vigente_hasta_excl"].isna() | (dim["vigente_hasta_excl"] > lo))]
+        g = valid.groupby(["distribuidora_id", "codigo_ine"]).agg(
+            n_cts=("ct_id", "nunique"), kva=("kva", "sum"), abonados=("num_abonados", "sum")).reset_index()
+        rows.append(g.assign(anio=year))
+    panel = pd.concat(rows, ignore_index=True)
+
+    ev = data.events[(data.events["variante"] == "todas") & data.events["computa_imprevista"]]
+    ev = ev[ev["anio"].isin(years)].merge(towns, on=["distribuidora_id", "ct_id"], how="inner")
+    outcomes = ["inc_terceros", "inc_maquinaria", "inc_propias", "kva_h_terceros", "kva_h_propias"]
+    if not ev.empty:
+        patterns = [(name, re.compile(regex)) for name, regex in data.cfg["causas"]]
+        causes = ev.groupby("incidente")["texto"].first().fillna("").map(lambda t: classify_cause(t, patterns))
+        ev = ev.assign(causa=ev["incidente"].map(causes))
+        # An incident counts once in every municipality where it left some CT without supply.
+        pairs = ev.groupby(["distribuidora_id", "codigo_ine", "anio", "incidente"]).agg(
+            factor=("factor", "first"), causa=("causa", "first"), kva_h=("kva_h", "sum")).reset_index()
+        third = pairs["factor"] == "terceros"
+        own = pairs["factor"] == "propias"
+        pairs = pairs.assign(
+            inc_terceros=third.astype(int), inc_maquinaria=(pairs["causa"] == "terceros").astype(int),
+            inc_propias=own.astype(int), kva_h_terceros=pairs["kva_h"].where(third, 0.0),
+            kva_h_propias=pairs["kva_h"].where(own, 0.0))
+        counts = pairs.groupby(["distribuidora_id", "codigo_ine", "anio"])[outcomes].sum().reset_index()
+        panel = panel.merge(counts, on=["distribuidora_id", "codigo_ine", "anio"], how="left")
+    for column in outcomes:
+        panel[column] = panel[column].fillna(0.0) if column in panel else 0.0
+
+    columns = ["obras_publicadas", "obras_publicadas_importe", "obras_en_ejecucion", "obras_meses_ejecucion",
+               "obras_mov_tierras_meses", "obras_previstas_meses", "obras_previstas_mov_tierras_meses",
+               "edificios_nuevos", "viviendas_nuevas", "viviendas_parque"]
+    panel = panel.merge(works[["codigo_ine", "anio", *[c for c in columns if c in works]]],
+                        on=["codigo_ine", "anio"], how="left")
+    # A building finished in Y or Y + 1 had machines on site in Y.
+    following = works[["codigo_ine", "anio", "edificios_nuevos"]].assign(anio=works["anio"] - 1).rename(
+        columns={"edificios_nuevos": "_edificios_siguiente"})
+    panel = panel.merge(following, on=["codigo_ine", "anio"], how="left")
+    panel["edificios_en_obra"] = panel["edificios_nuevos"] + panel["_edificios_siguiente"]
+    panel = panel.drop(columns=["_edificios_siguiente"])
+    panel["obra_calle"] = (panel["obras_mov_tierras_meses"] > 0).astype(int)
+    panel["obra_prevista"] = (panel["obras_previstas_mov_tierras_meses"] > 0).astype(int)
+    panel["distribuidora"] = panel["distribuidora_id"].map(data.databases)
+    return panel
+
+
+def works_bands(panel: pd.DataFrame) -> pd.DataFrame:
+    months = panel["obras_mov_tierras_meses"].fillna(0.0)
+    band = np.select([months <= 0, months <= 6], ["0 (sin obras que abren calle)", "hasta 6 meses"], "más de 6 meses")
+    g = panel.assign(banda=band).groupby("banda").agg(
+        municipio_anios=("codigo_ine", "size"), ct_anios=("n_cts", "sum"), terceros=("inc_terceros", "sum"),
+        maquinaria=("inc_maquinaria", "sum"), propias=("inc_propias", "sum"),
+        kva_h_terceros=("kva_h_terceros", "sum")).reset_index()
+    for column in ("terceros", "maquinaria", "propias"):
+        g[f"{column}_por_100_ct"] = 100.0 * g[column] / g["ct_anios"].where(g["ct_anios"] > 0)
+    return g
+
+
+def poisson_ratios(panel: pd.DataFrame, outcome: str, flags: list, fixed: list, reps: int, seed: int) -> dict:
+    """
+    Rate ratio of every flag in a Poisson model of the incidents per CT-year
+    (exposure: CTs of the row) with the fixed effects of the list, and its 90 %
+    interval resampling municipalities (the rows of a municipality move
+    together, so years of the same town do not count as independent).
+    """
+    from sklearn.linear_model import PoissonRegressor
+
+    data = panel[panel["n_cts"] > 0].reset_index(drop=True)
+    dummies = pd.get_dummies(data[fixed].astype(str), drop_first=True, dtype=float) if fixed else pd.DataFrame(
+        index=data.index)
+    x = pd.concat([data[flags].astype(float), dummies], axis=1).to_numpy()
+    y = (data[outcome] / data["n_cts"]).to_numpy()
+    w = data["n_cts"].astype(float).to_numpy()
+
+    def fit(index):
+        if y[index].sum() <= 0:
+            return [np.nan] * len(flags)
+        model = PoissonRegressor(alpha=1e-6, max_iter=3000)
+        model.fit(x[index], y[index], sample_weight=w[index])
+        return list(model.coef_[:len(flags)])
+
+    point = fit(np.arange(len(data)))
+    groups = data.groupby("codigo_ine").indices
+    names = list(groups)
+    rng = np.random.default_rng(seed)
+    draws = []
+    for _ in range(reps):
+        chosen = rng.choice(len(names), size=len(names), replace=True)
+        draws.append(fit(np.concatenate([groups[names[i]] for i in chosen])))
+    draws = np.array(draws, dtype=float)
+    out = {}
+    for i, flag in enumerate(flags):
+        values = draws[:, i][np.isfinite(draws[:, i])]
+        low, high = (np.exp(np.percentile(values, [5, 95])) if len(values) >= 20 else (np.nan, np.nan))
+        out[flag] = {"razon": float(np.exp(point[i])) if np.isfinite(point[i]) else np.nan,
+                     "ic90_bajo": float(low), "ic90_alto": float(high),
+                     "p_mayor_que_1": float(np.mean(values > 0)) if len(values) else np.nan}
+    return out
+
+
+def growth_table(data: Data, works: pd.DataFrame, towns: pd.DataFrame) -> pd.DataFrame:
+    """
+    Dwellings built in the last five complete years of the Catastro against the
+    transformer kVA of the distribuidora in the municipality: the kVA the same
+    pace would need in the next five years at today's kVA per customer.
+    """
+    known = works.dropna(subset=["viviendas_parque"])
+    if known.empty:
+        return pd.DataFrame()
+    last = int(datetime.now(timezone.utc).year) - 2
+    last = min(last, int(known["anio"].max()))
+    stock = known.pivot_table(index="codigo_ine", columns="anio", values="viviendas_parque", aggfunc="first")
+    new = known[known["anio"].between(last - 4, last)].groupby("codigo_ine")["viviendas_nuevas"].sum()
+    out = pd.DataFrame({"viviendas_parque": stock.get(last), "viviendas_nuevas_5a": new})
+    base = stock.get(last - 10)
+    out["crec_viviendas_10a"] = out["viviendas_parque"] / base - 1 if base is not None else np.nan
+    out = out.reset_index().rename(columns={"index": "codigo_ine"})
+
+    lo, hi = pd.Timestamp(year=last + 1, month=1, day=1), pd.Timestamp(year=last + 2, month=1, day=1)
+    dim = data.dim.merge(towns, on=["distribuidora_id", "ct_id"], how="inner")
+    valid = dim[(dim["vigente_desde"].isna() | (dim["vigente_desde"] < hi))
+                & (dim["vigente_hasta_excl"].isna() | (dim["vigente_hasta_excl"] > lo))]
+    network = valid.groupby(["distribuidora_id", "codigo_ine"]).agg(
+        municipio=("municipio_nombre", "first"), cts=("ct_id", "nunique"), kva=("kva", "sum"),
+        abonados=("num_abonados", "sum")).reset_index()
+    out = network.merge(out, on="codigo_ine", how="left")
+    out["kva_por_abonado"] = out["kva"] / out["abonados"].where(out["abonados"] > 0)
+    # Below half the dwellings the distribuidora is not the only one in the town: the pace is not all ours.
+    out["abonados_por_vivienda"] = out["abonados"] / out["viviendas_parque"].where(out["viviendas_parque"] > 0)
+    out["kva_nuevos_5a"] = out["viviendas_nuevas_5a"] * out["kva_por_abonado"]
+    out["kva_nuevos_5a_pct"] = out["kva_nuevos_5a"] / out["kva"].where(out["kva"] > 0)
+    out["distribuidora"] = out["distribuidora_id"].map(data.databases)
+    out["anio_catastro"] = last
+    return out.sort_values("kva_nuevos_5a_pct", ascending=False)
+
+
+def section_works(data: Data, report: Report, state: dict):
+    works_df = read_table(data.spark, WORKS_TABLE)
+    if works_df is None:
+        report.section("11. Obras públicas, edificación y daños de terceros",
+                       "_Sin l3_gold.obras_municipio_anio: falta cargar PLACSP y el Catastro._")
+        return
+    works = works_df.toPandas()
+    towns = ct_towns(data)
+    lines = []
+
+    panel = works_panel(data, works, towns)
+    if not panel.empty:
+        report.csv("obras_terceros_panel.csv", panel)
+        bands = works_bands(panel)
+        report.csv("obras_terceros_bandas.csv", bands)
+        reps, seed = int(data.cfg.get("bootstrap_reps", 200)), int(data.cfg.get("semilla", 20261005))
+        models = []
+        for outcome in ("inc_terceros", "inc_maquinaria", "inc_propias"):
+            for name, flags, fixed in (("entre municipios", ["obra_calle"], ["distribuidora", "anio"]),
+                                       ("dentro de cada municipio", ["obra_calle"], ["codigo_ine", "anio"]),
+                                       ("aviso: obra licitada antes del año", ["obra_prevista"],
+                                        ["distribuidora", "anio"])):
+                if panel[flags[0]].nunique() < 2:
+                    continue
+                result = poisson_ratios(panel, outcome, flags, fixed, reps, seed)[flags[0]]
+                models.append({"incidencias": outcome, "modelo": name, "variable": flags[0], **result})
+        models = pd.DataFrame(models)
+        report.csv("obras_terceros_poisson.csv", models)
+
+        with_works = panel["obra_calle"] == 1
+        share_ct = share(panel.loc[with_works, "n_cts"].sum(), panel["n_cts"].sum())
+        share_third = share(panel.loc[with_works, "inc_terceros"].sum(), panel["inc_terceros"].sum())
+        share_machine = share(panel.loc[with_works, "inc_maquinaria"].sum(), panel["inc_maquinaria"].sum())
+        shown_bands = bands.copy()
+        shown_models = models.copy()
+        for column in ("p_mayor_que_1",):
+            if column in shown_models:
+                shown_models[column] = shown_models[column].map(pct)
+        lines.append(
+            f"Panel de {len(panel)} filas (distribuidora, municipio y año, {panel['anio'].min()} - "
+            f"{panel['anio'].max()}) con las incidencias imprevistas que dejaron sin servicio algún CT del "
+            "municipio: de terceros (factor de Calser), de máquinas y obras (causa leída del texto: excavadora, "
+            "camión, obra, tractor, grúa...) y propias, que sirven de control: una obra no debería cambiarlas. "
+            "obra_calle vale 1 cuando el municipio tiene ese año alguna obra pública en ejecución que abre zanja o "
+            "calle (PLACSP).\n\n"
+            + md_table(shown_bands, ["banda", "municipio_anios", "ct_anios", "terceros", "terceros_por_100_ct",
+                                     "maquinaria", "maquinaria_por_100_ct", "propias", "propias_por_100_ct"])
+            + f"\nLos años con obra que abre calle son el {pct(share_ct)} de los CT-año y tienen el "
+            f"{pct(share_third)} de las incidencias de terceros y el {pct(share_machine)} de las de máquinas y obras.\n"
+            "\nRazón de tasas (Poisson, exposición = CT, intervalo del 90 % remuestreando municipios). Entre "
+            "municipios compara pueblos con y sin obra (efectos de distribuidora y año); dentro de cada municipio "
+            "compara los años con obra y sin obra del mismo pueblo, que es la comparación más limpia; el aviso usa "
+            "solo obras licitadas antes de empezar el año, lo que una distribuidora sabría a tiempo.\n\n"
+            + md_table(shown_models, ["incidencias", "modelo", "razon", "ic90_bajo", "ic90_alto", "p_mayor_que_1"])
+        )
+        state["obras"] = {"bandas": bands, "modelos": models, "parte_ct": share_ct, "parte_terceros": share_third}
+
+    growth = growth_table(data, works, towns)
+    if not growth.empty:
+        report.csv("crecimiento_municipios.csv", growth)
+        partial = growth["abonados_por_vivienda"] < 0.5
+        watch = growth[~partial & (growth["kva_nuevos_5a_pct"] >= 0.05)]
+        lines.append(
+            f"\nCrecimiento y potencia (Catastro hasta {int(growth['anio_catastro'].iloc[0])}): viviendas construidas "
+            "en los últimos cinco años completos y los kVA que pediría el mismo ritmo en los cinco siguientes con los "
+            "kVA por cliente de hoy, frente a los kVA instalados de la distribuidora en el municipio. Los municipios "
+            "donde la distribuidora tiene menos clientes que la mitad de las viviendas (otra empresa da servicio al "
+            f"resto) quedan aparte ({int(partial.sum())}). {len(watch)} municipios pedirían un 5 % o más de potencia "
+            "nueva.\n\n"
+            + md_table(growth[~partial].head(15), ["distribuidora", "municipio", "cts", "kva", "abonados",
+                                                   "viviendas_parque", "crec_viviendas_10a", "viviendas_nuevas_5a",
+                                                   "kva_nuevos_5a", "kva_nuevos_5a_pct"])
+        )
+        state["crecimiento"] = growth
+
+    report.section("11. Obras públicas, edificación y daños de terceros",
+                   "\n".join(lines) if lines else "_Sin datos de obras ni de edificación en los años del análisis._")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1769,6 +2056,7 @@ SECTIONS = [
     ("carga", section_load),
     ("edad", section_age),
     ("economia", section_money),
+    ("obras", section_works),
 ]
 
 
