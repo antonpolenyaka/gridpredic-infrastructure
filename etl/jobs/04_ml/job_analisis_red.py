@@ -1895,7 +1895,15 @@ def poisson_ratios(panel: pd.DataFrame, outcome: str, flags: list, fixed: list, 
     """
     from sklearn.linear_model import PoissonRegressor
 
-    data = panel[panel["n_cts"] > 0].reset_index(drop=True)
+    data = panel[panel["n_cts"] > 0]
+    if "codigo_ine" in fixed:
+        # With a fixed effect per town, a town without any incident in any year says nothing about the flag (its
+        # effect goes to minus infinity): out, as in a conditional Poisson. It also keeps every fit short.
+        data = data[data.groupby("codigo_ine")[outcome].transform("sum") > 0]
+    data = data.reset_index(drop=True)
+    if data.empty:
+        return {flag: {"razon": np.nan, "ic90_bajo": np.nan, "ic90_alto": np.nan, "p_mayor_que_1": np.nan}
+                for flag in flags}
     dummies = pd.get_dummies(data[fixed].astype(str), drop_first=True, dtype=float) if fixed else pd.DataFrame(
         index=data.index)
     x = pd.concat([data[flags].astype(float), dummies], axis=1).to_numpy()
