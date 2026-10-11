@@ -1,0 +1,345 @@
+"""
+Landing of the free public data that describe where the network is, saved as
+the APIs return them:
+
+- INE, Padron continuo (operation DPOP): population of every municipality
+  of the provinces of the study, by year since 1996 (one table per province,
+  config ine.tablas_por_provincia). With tip=M every series carries the INE
+  code of its municipality, so the match with Calser is by code, not by name.
+  s3://datalake/00_landing/publicos/ine/padron_<tabla>.json
+- Wikidata (SPARQL endpoint): surface (km2) and altitude of every
+  municipality of those provinces, by the INE code (property P772).
+  .../wikidata/municipios.json
+- Open-Meteo Elevation API (Copernicus DEM, 90 m): a grid of
+  puntos_por_lado x puntos_por_lado points inside every weather cell and the
+  centre of every municipality, to describe the relief (mean, spread, top).
+  .../elevacion/puntos.json
+- OpenStreetMap through the Overpass API: power lines and cables, poles and
+  towers, transformers and substations, roads and tracks, forest, scrub,
+  construction sites and the number of buildings inside every weather cell.
+  One file per cell (.../osm/<celda_id>.json); a cell already there is not
+  asked again, so a run that stops is continued by launching it again. The
+  endpoints of the configuration are tried in order.
+
+The places are the municipalities of data/reference_data/municipios.xlsx and
+their cells, the same as the weather (job_landing_meteo_openmeteo).
+
+Exit codes: 0 everything landed; 4 some OSM cell could not be downloaded (the
+rest is in Landing and Bronze can run; launching again asks only the
+missing cells).
+
+    docker compose exec spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py
+    docker compose exec spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py --fuentes osm
+"""
+
+import argparse
+import json
+import logging
+import os
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from job_landing_meteo_openmeteo import filesystem, municipality_cells, read_reference  # noqa: E402
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("publicos")
+
+CONFIG_CANDIDATES = [
+    "/app/config/01_bronze/config_bronze_publicos.json",
+    "/opt/airflow/config/01_bronze/config_bronze_publicos.json",
+    os.path.join(HERE, "..", "..", "config", "01_bronze", "config_bronze_publicos.json"),
+]
+
+SOURCES = ["ine", "wikidata", "elevacion", "osm"]
+PARTIAL_EXIT = 4
+
+
+def load_config(path: str = None) -> dict:
+    for candidate in [path] if path else CONFIG_CANDIDATES:
+        if candidate and os.path.exists(candidate):
+            with open(candidate, encoding="utf-8") as file:
+                return json.load(file)
+
+    raise FileNotFoundError(f"config_bronze_publicos.json not found in {CONFIG_CANDIDATES}")
+
+
+def fetch(url: str, data: bytes = None, headers: dict = None, retries: int = 4, wait_s: float = 30,
+          timeout: float = 300) -> bytes:
+    """GET (or POST with data) with retries on 429, 5xx and network errors."""
+    headers = {"User-Agent": "GridPredict-TFM/1.0", **(headers or {})}
+
+    for attempt in range(1, retries + 1):
+        request = urllib.request.Request(url, data=data, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.read()
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8", "replace")[:200]
+            if error.code in (429, 500, 502, 503, 504) and attempt < retries:
+                logger.warning("HTTP %s from %s (%s), waiting %.0f s, attempt %s of %s",
+                               error.code, url[:80], body, wait_s * attempt, attempt, retries)
+                time.sleep(wait_s * attempt)
+                continue
+            raise RuntimeError(f"HTTP {error.code} for {url[:120]}: {body}") from error
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+            if attempt < retries:
+                logger.warning("%s for %s, waiting %.0f s, attempt %s of %s", error, url[:80], wait_s * attempt,
+                               attempt, retries)
+                time.sleep(wait_s * attempt)
+                continue
+            raise
+
+    raise RuntimeError(f"No answer for {url[:120]}")
+
+
+def save_json(fs, path: str, payload):
+    with fs.open(path, "w") as file:
+        json.dump(payload, file, ensure_ascii=False)
+
+
+def stamp(source: str, **extra) -> dict:
+    return {"fuente": source, "descargado_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"), **extra}
+
+
+# ---------------------------------------------------------------------------
+# Sources
+# ---------------------------------------------------------------------------
+
+def provinces_of(places: list) -> list:
+    return sorted({p["codigo_ine"][:2] for p in places if p.get("codigo_ine")})
+
+
+def land_ine(fs, cfg: dict, landing: str, provinces: list, force: bool) -> int:
+    ine = cfg["ine"]
+    done = 0
+
+    for province in provinces:
+        table = ine["tablas_por_provincia"].get(province)
+        if table is None:
+            logger.warning("No INE table configured for province %s", province)
+            continue
+
+        target = f"{landing}/ine/padron_{table}.json"
+        if fs.exists(target) and not force:
+            logger.info("INE table %s already in Landing", table)
+            continue
+
+        url = ine["url"].format(tabla=table, anios=int(ine.get("anios", 30)))
+        series = json.loads(fetch(url, retries=int(cfg["reintentos"]), wait_s=float(cfg["espera_reintento_s"])))
+        if not series:
+            raise RuntimeError(f"Empty answer of the INE for table {table}")
+
+        save_json(fs, target, {"_peticion": stamp("ine", tabla=table, provincia=province, url=url), "series": series})
+        done += 1
+        logger.info("INE table %s (province %s): %s series", table, province, len(series))
+        time.sleep(float(cfg["pausa_s"]))
+
+    return done
+
+
+def wikidata_query(provinces: list) -> str:
+    starts = " || ".join(f'STRSTARTS(?ine, "{p}")' for p in provinces)
+    return (
+        "SELECT ?item ?ine ?itemLabel ?area ?elev WHERE {\n"
+        "  ?item wdt:P772 ?ine .\n"
+        f"  FILTER(STRLEN(?ine) = 5 && ({starts}))\n"
+        "  OPTIONAL { ?item p:P2046/psn:P2046/wikibase:quantityAmount ?area . }\n"
+        "  OPTIONAL { ?item wdt:P2044 ?elev . }\n"
+        '  SERVICE wikibase:label { bd:serviceParam wikibase:language "es". }\n'
+        "}"
+    )
+
+
+def land_wikidata(fs, cfg: dict, landing: str, provinces: list, force: bool) -> int:
+    target = f"{landing}/wikidata/municipios.json"
+    if fs.exists(target) and not force:
+        logger.info("Wikidata already in Landing")
+        return 0
+
+    wd = cfg["wikidata"]
+    query = wikidata_query(provinces)
+    url = wd["url"] + "?" + urllib.parse.urlencode({"query": query, "format": "json"})
+    payload = json.loads(fetch(url, headers={"Accept": "application/sparql-results+json", "User-Agent": wd["agente"]},
+                               retries=int(cfg["reintentos"]), wait_s=float(cfg["espera_reintento_s"])))
+    rows = payload.get("results", {}).get("bindings", [])
+    if not rows:
+        raise RuntimeError("Empty answer of Wikidata")
+
+    payload["_peticion"] = stamp("wikidata", provincias=provinces, consulta=query)
+    save_json(fs, target, payload)
+    logger.info("Wikidata: %s municipalities", len(rows))
+    return 1
+
+
+def grid_points(cells: dict, size: float, per_side: int) -> list:
+    """per_side x per_side points evenly spread inside every cell (centre lat, lon, side size in degrees)."""
+    points = []
+    for cell, (lat, lon) in sorted(cells.items()):
+        for i in range(per_side):
+            for j in range(per_side):
+                points.append({
+                    "tipo": "celda", "clave": cell, "punto": i * per_side + j,
+                    "latitud": round(lat + ((i + 0.5) / per_side - 0.5) * size, 5),
+                    "longitud": round(lon + ((j + 0.5) / per_side - 0.5) * size, 5),
+                })
+    return points
+
+
+def land_elevation(fs, cfg: dict, landing: str, places: list, cells: dict, force: bool) -> int:
+    target = f"{landing}/elevacion/puntos.json"
+    if fs.exists(target) and not force:
+        logger.info("Elevation already in Landing")
+        return 0
+
+    el = cfg["elevacion"]
+    points = grid_points(cells, float(cfg["celda_grados"]), int(el["puntos_por_lado"]))
+    points += [{"tipo": "municipio", "clave": p["codigo_ine"], "punto": 0, "latitud": p["latitud"],
+                "longitud": p["longitud"]} for p in places]
+    size = int(el["max_por_peticion"])
+
+    for start in range(0, len(points), size):
+        batch = points[start:start + size]
+        query = urllib.parse.urlencode({
+            "latitude": ",".join(f"{p['latitud']:.5f}" for p in batch),
+            "longitude": ",".join(f"{p['longitud']:.5f}" for p in batch),
+        }, safe=",")
+        answer = json.loads(fetch(f"{el['url']}?{query}", retries=int(cfg["reintentos"]),
+                                  wait_s=float(cfg["espera_reintento_s"])))
+        values = answer.get("elevation", [])
+        if len(values) != len(batch):
+            raise RuntimeError(f"Elevation API returned {len(values)} values for {len(batch)} points")
+        for point, value in zip(batch, values):
+            point["elevacion_m"] = value
+        time.sleep(float(cfg["pausa_s"]))
+
+    save_json(fs, target, {"_peticion": stamp("open-meteo-elevation", url=el["url"]), "puntos": points})
+    logger.info("Elevation: %s points (%s cells, %s municipalities)", len(points), len(cells), len(places))
+    return 1
+
+
+def cell_bbox(lat: float, lon: float, size: float) -> tuple:
+    half = size / 2.0
+    return (round(lat - half, 5), round(lon - half, 5), round(lat + half, 5), round(lon + half, 5))
+
+
+def overpass_query(bbox: tuple, timeout: int) -> str:
+    south, west, north, east = bbox
+    return (
+        f"[out:json][timeout:{timeout}][bbox:{south},{west},{north},{east}];\n"
+        "(\n"
+        '  way["power"~"^(line|minor_line|cable)$"];\n'
+        '  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|track)$"];\n'
+        '  way["landuse"~"^(forest|construction)$"];\n'
+        '  way["natural"~"^(wood|scrub)$"];\n'
+        '  relation["landuse"="forest"];\n'
+        '  relation["natural"~"^(wood|scrub)$"];\n'
+        ");\n"
+        "out tags geom;\n"
+        "(\n"
+        '  node["power"~"^(pole|tower|transformer|substation|switch)$"];\n'
+        '  way["power"="substation"];\n'
+        ");\n"
+        "out tags center;\n"
+        'way["building"];\n'
+        "out count;\n"
+    )
+
+
+def land_osm(fs, cfg: dict, landing: str, cells: dict, force: bool, limit: int = None) -> tuple:
+    osm = cfg["osm"]
+    size = float(cfg["celda_grados"])
+    done = failed = 0
+
+    for cell, (lat, lon) in sorted(cells.items()):
+        target = f"{landing}/osm/{cell}.json"
+        if fs.exists(target) and not force:
+            continue
+        if limit is not None and done >= limit:
+            break
+
+        bbox = cell_bbox(lat, lon, size)
+        query = overpass_query(bbox, int(osm["timeout_s"]))
+        payload, used = None, None
+
+        for endpoint in osm["endpoints"]:
+            try:
+                raw = fetch(endpoint, data=urllib.parse.urlencode({"data": query}).encode("utf-8"),
+                            headers={"Content-Type": "application/x-www-form-urlencoded"},
+                            retries=2, wait_s=float(cfg["espera_reintento_s"]),
+                            timeout=float(osm["timeout_s"]) + 60)
+                candidate = json.loads(raw)
+                remark = str(candidate.get("remark", ""))
+                if "runtime error" in remark.lower():
+                    raise RuntimeError(remark[:200])
+                payload, used = candidate, endpoint
+                break
+            except Exception as error:  # noqa: BLE001
+                logger.warning("Overpass %s failed for cell %s: %s", endpoint, cell, str(error)[:200])
+
+        if payload is None:
+            failed += 1
+            logger.error("Cell %s not downloaded from any Overpass endpoint", cell)
+            continue
+
+        payload["_peticion"] = stamp("overpass", celda_id=cell, bbox=list(bbox), endpoint=used)
+        save_json(fs, target, payload)
+        done += 1
+        logger.info("OSM cell %s: %s elements from %s (%s now, %s failed)", cell, len(payload.get("elements", [])),
+                    used, done, failed)
+        time.sleep(float(osm.get("pausa_s", 10)))
+
+    return done, failed
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--fuentes", default=",".join(SOURCES), help="Comma separated subset of " + ",".join(SOURCES))
+    parser.add_argument("--forzar", action="store_true", help="Download again what is already in Landing")
+    parser.add_argument("--max-celdas", type=int, default=None, help="Stop OSM after this many cells")
+    args = parser.parse_args(argv)
+
+    cfg = load_config(args.config)["publicos"]
+    sources = [s.strip() for s in args.fuentes.split(",") if s.strip()]
+    unknown = set(sources) - set(SOURCES)
+    if unknown:
+        raise SystemExit(f"Unknown sources: {sorted(unknown)}")
+
+    fs = filesystem()
+    landing = cfg["landing"].rstrip("/")
+    places = municipality_cells(read_reference(fs, cfg["referencia_municipios"]), float(cfg["celda_grados"]))
+    cells = {}
+    for place in places:
+        cells.setdefault(place["celda_id"], (place["celda_latitud"], place["celda_longitud"]))
+    provinces = provinces_of(places)
+    logger.info("%s municipalities in %s cells, provinces %s; sources %s", len(places), len(cells), provinces, sources)
+
+    failed = 0
+    if "ine" in sources:
+        land_ine(fs, cfg, landing, provinces, args.forzar)
+    if "wikidata" in sources:
+        land_wikidata(fs, cfg, landing, provinces, args.forzar)
+    if "elevacion" in sources:
+        land_elevation(fs, cfg, landing, places, cells, args.forzar)
+    if "osm" in sources:
+        _, failed = land_osm(fs, cfg, landing, cells, args.forzar, args.max_celdas)
+
+    if failed:
+        logger.error("%s OSM cells are missing: launch again to ask only those", failed)
+        return PARTIAL_EXIT
+
+    logger.info("Landing of the public data complete")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
