@@ -220,6 +220,36 @@ Lo que sale de aquí:
 - Lo que más pesa en los dos modelos es la meteorología (lluvia, rachas, temperatura mínima, humedad) y el estado de la red aguas arriba: reenganches en 6 y 24 h, defectos a tierra en el grupo de red, microcortes y cortes del SCADA, cambios de comunicaciones.
 - Las distribuidoras 2 y 3 tienen las mismas horas positivas en test (26 y 2 locales), pero solo coinciden en 4 horas: no hay interrupciones duplicadas entre ellas. Sí comparten el mismo instante de inicio en eventos de transporte o del sistema que les afectan a la vez, como el apagón del 28.04.2025.
 
+#### Evaluación por años
+
+Con 31 incidencias en valid, elegir la configuración en valid y medirla en el mismo valid da cifras optimistas. `--por-anios` evalúa 2023, 2024 y 2025 por separado: cada año lo puntúa un modelo que solo ha visto los años anteriores, elegido en el último 25 % de esas horas (`fraccion_validacion_interna`) y reentrenado con todas, con XGBoost limitado a los árboles que encontró el early stopping. Test no se toca. Los tres años juntos son 104 incidencias.
+
+```bash
+docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \
+    --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py \
+    /app/jobs/04_ml/job_ml_horas_riesgo.py --config /app/config/04_ml/config_ml.json --por-anios --sin-prevision
+```
+
+Resultados (11.10.2026, 2023 - 2025 juntos, 500 réplicas por días):
+
+| Modelo | Sin previsión (`hr_20261011T092843_b0dd1a`) | Con previsión perfecta (`hr_20261011T093958_c0ffb7`) |
+| --- | --- | --- |
+| Tasa base | 0,0028 | 0,0028 |
+| Racha máxima observada | 0,0094 [0,0057 - 0,0173] | 0,0094 |
+| Racha máxima prevista | - | 0,0137 [0,0063 - 0,0331] |
+| Logística | 0,0084 [0,0056 - 0,0127] | 0,0097 [0,0064 - 0,0152] |
+| XGBoost | 0,0078 [0,0052 - 0,0128] | 0,0104 [0,0061 - 0,0185] |
+| Random Forest | 0,0049 [0,0033 - 0,0082] | 0,0177 [0,0080 - 0,0355] |
+| P(XGBoost mejor que la racha observada) | 22 % | 67 % |
+| recall_episodios@2: XGBoost / racha / tasa base | 0,135 / 0,192 / 0,183 | 0,164 / 0,192 / 0,183 |
+
+Conclusiones:
+
+- Todos los modelos entrenados quedan por encima de la tasa base y del naif histórico en todas las réplicas, unas 3 veces la prevalencia. Hay señal, y es sobre todo meteorológica y del estado de la red aguas arriba.
+- Sin previsión, ningún modelo supera a la regla de la racha máxima observada en la zona: XGBoost y la logística quedan empatados con ella y el bosque por debajo. Las cifras de 0,03 a 0,06 de la evaluación sobre valid salían de elegir y medir en el mismo año.
+- Con la previsión perfecta de las 3 horas siguientes el bosque llega a 6 veces la prevalencia y supera a la racha observada (99 % de las réplicas), pero no a la racha prevista. El valor está en la previsión del tiempo; un modelo en producción necesitaría una previsión real (AEMET, ECMWF) en lugar del reanálisis, y esta cifra es la cota superior de lo que podría aportar.
+- Con un presupuesto fijo de horas por día ningún modelo avisa de más incidencias que elegir las horas al azar. Los modelos saben qué días son peligrosos (temporal, red alterada), no a qué hora empezará la interrupción dentro del día; la alerta útil es por día o por umbral de riesgo, no por un número fijo de horas diarias.
+
 ## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).
