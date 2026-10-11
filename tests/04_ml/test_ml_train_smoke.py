@@ -440,6 +440,24 @@ def test_weather_features(spark, dataset, run):
     assert "huecos_horas" in set(metrics["metrica"])
 
 
+def test_comparison_with_bootstrap(workdir, run, config_path):
+    import job_ml_comparar
+
+    job_ml_comparar.main(["--config", config_path, "--runs", run, "--reps", "30", "--tasa-negativos", "0.5"])
+
+    folders = [f for f in os.listdir(os.path.join(workdir, "resultados")) if f.startswith("comparacion_")]
+    assert folders
+    folder = os.path.join(workdir, "resultados", sorted(folders)[-1])
+    intervals = pd.read_csv(os.path.join(folder, "intervalos.csv"))
+    diffs = pd.read_csv(os.path.join(folder, "diferencias.csv"))
+
+    total = intervals[intervals["segmento"] == "total"].set_index("nombre")
+    assert "1_red+grupos+meteo:xgboost" in total.index
+    assert (total["p2_5"] <= total["p97_5"]).all()
+    assert {"distribuidora 1", "distribuidora 2"} <= set(intervals["segmento"])
+    assert ("1_red+grupos+meteo:xgboost", "1_red+grupos+meteo:tasa_base") in set(zip(diffs["a"], diffs["b"]))
+
+
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
     import job_ml_train
 
