@@ -152,6 +152,161 @@ FROM lakehouse.l3_gold.ml_importancia
 WHERE run_id = '<run_id>' AND alerta_leakage;
 ```
 
+### Comparar ejecuciones con intervalos de confianza
+
+En valid hay unas 4.300 horas positivas en todo 2025 y llegan agrupadas en tormentas, así que una PR-AUC de 0,0008 frente a otra de 0,0019 puede ser ruido. `job_ml_comparar.py` no entrena: lee las predicciones de valid ya guardadas en `ml_predicciones`, junta las ejecuciones sobre las mismas filas (todos los positivos y el 2 % de los negativos, siempre los mismos, con peso 1 / 0,02) y hace un bootstrap por días: cada réplica sortea con reemplazo los 365 días de valid. Con las mismas réplicas para todas las ejecuciones y modelos, las diferencias son emparejadas.
+
+```bash
+docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \
+    --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py \
+    /app/jobs/04_ml/job_ml_comparar.py --config /app/config/04_ml/config_ml.json \
+    --runs <run_id_1>,<run_id_2>,...
+```
+
+Deja en `exportar_dir/comparacion_<fecha>/` el `resumen.md`, `intervalos.csv` (PR-AUC con su intervalo del 95 % por ejecución, modelo y distribuidora) y `diferencias.csv` (cada XGBoost contra la tasa base de su ejecución, el modelo por grupos contra el global y cada ejecución contra la primera). Si el intervalo de una diferencia cruza el cero, los datos no distinguen los dos modelos. Con 500 réplicas tarda unos 7 minutos en el portátil.
+
+Primera comparación (11.10.2026, 500 réplicas, tasa base 0,00038):
+
+| Ejecución | XGBoost PR-AUC [IC 95 %] | XGBoost - tasa base | P(mejor que la tasa base) | XGBoost - ejecución base | P(mejor que la base) |
+| --- | --- | --- | --- | --- | --- |
+| base | 0,00077 [0,00016 - 0,00183] | +0,00039 [+0,00006, +0,00096] | 99,8 % | - | - |
+| red | 0,00065 [0,00024 - 0,00158] | +0,00033 [+0,00009, +0,00134] | 100 % | -0,00006 [-0,00063, +0,00106] | 42,6 % |
+| grupos (k=4) | 0,00192 [0,00012 - 0,00772] | +0,00150 [+0,00003, +0,00686] | 99,4 % | +0,00111 [-0,00022, +0,00585] | 67,4 % |
+| grupos (k=3) + meteo | 0,00097 [0,00027 - 0,00592] | +0,00059 [-0,00020, +0,00572] | 81,8 % | +0,00019 [-0,00106, +0,00547] | 62,0 % |
+
+Lo que se puede afirmar con estos datos:
+
+- XGBoost aprende algo real: en tres de las cuatro ejecuciones su PR-AUC es mayor que la de la tasa base con un intervalo que no cruza el cero (unas dos veces la prevalencia).
+- Ninguna de las tres ampliaciones (estado de la red, grupos de CT, meteorología) mejora a la ejecución base de forma demostrable. El 0,0019 de grupos tiene un intervalo de 0,0001 a 0,0077: sale casi todo de unos pocos días de la distribuidora 2.
+- Los submodelos por grupo nunca superan al XGBoost global de su ejecución (probabilidad entre el 12 % y el 34 % en total).
+- En la distribuidora 1366, XGBoost queda por encima de su tasa base en más del 93 % de las réplicas en las cuatro ejecuciones, y es donde la PR-AUC es más alta (0,003 a 0,006 frente a una prevalencia de 0,0009).
+
+### Horas de riesgo por distribuidora
+
+Con un 0,04 % de positivos por CT y hora el ruido es mayor que las diferencias entre configuraciones, y el 94 % de las interrupciones son sistémicas: lo que las anuncia es el estado de toda la red y el tiempo, no el CT. `job_ml_horas_riesgo.py` hace la misma pregunta al nivel donde vive esa señal: ¿va a empezar una interrupción en algún CT de la distribuidora en las próximas 1 a 3 horas? Es también la decisión que toma el operador, qué horas del día necesitan una brigada preparada.
+
+- **Dataset** (`l3_gold.ml_dataset_distribuidora_hora`), una fila por distribuidora y hora. La etiqueta sale de `dataset_train` (1 si algún CT tiene `y_1_3h`, lo mismo con la local) con el número de CT positivos y la antelación más corta, y el split es el mismo. Las features salen de `features_ct_hora`, todos los CT y todas las horas, para que ninguna dependa de qué filas quitó el dataset (`en_corte` viene de las etiquetas): la media de cada feature del CT (`media_*`) y, para los bloques de eventos, SCADA e histórico (`horas_riesgo.prefijos_frac`), la fracción de CT donde no es cero (`frac_*`). La meteorología de la distribuidora es la media de sus celdas ponderada por los CT de cada una (`metd_media_*`) y la peor celda (`metd_max_*`). Se suman `distribuidora_id` y `estacion`. La tabla se reutiliza mientras no cambien la versión del dataset ni los parámetros de la agregación; `--reconstruir` la vuelve a hacer.
+- **Modelos**: los mismos de `modelos` con la misma búsqueda, más referencias de una sola feature (`horas_riesgo.referencias`): la racha máxima de las últimas 3 horas en la peor celda de la distribuidora y la de las 3 siguientes. Son lo que miraría un operador sin modelo, así que un modelo que no las supera no aporta nada. El naif histórico ordena por las interrupciones conocidas de los CT de la distribuidora en 365, 90 y 30 días. Con unas 150.000 filas se entrena con todo train, sin muestra, y valid entero sirve para el early stopping y para elegir la configuración.
+- **Evaluación**: PR-AUC, ROC-AUC, lift y alertas con un presupuesto de N horas por distribuidora y día (`presupuestos_horas_dia`: 1, 2, 4 y 6), por distribuidora y por estación, y el bootstrap por días con el intervalo de cada modelo y las diferencias emparejadas contra las referencias. Un episodio aquí son las horas positivas seguidas de una misma distribuidora.
+- **Salidas**: `ml_runs`, `ml_metricas` y `ml_importancia` con `run_id` `hr_*`, `l3_gold.ml_predicciones_distribuidora_hora` y, en `exportar_dir/<run_id>/`, `resumen.md`, `metricas.csv`, `importancia.csv`, `intervalos.csv`, `diferencias.csv` y `filas.csv`. `job_ml_comparar.py` deja fuera las ejecuciones `hr_*` si no se le pasan los `run_id`.
+
+```bash
+docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \
+    --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py \
+    /app/jobs/04_ml/job_ml_horas_riesgo.py --config /app/config/04_ml/config_ml.json
+```
+
+`--sin-prevision` deja fuera la previsión de las horas siguientes sobre la misma tabla (unos 4 minutos, la tabla tarda unos 18 en construirse la primera vez).
+
+Primeras ejecuciones (11.10.2026, valid 2025, 500 réplicas):
+
+| | Con previsión (`hr_20261011T073905_a68023`) | Sin previsión (`hr_20261011T082531_8f77c8`) |
+| --- | --- | --- |
+| Horas de valid / positivas | 26.210 / 68 | 26.210 / 68 |
+| Tasa base | 0,0026 | 0,0026 |
+| Racha máxima sola | 0,0133 | 0,0133 |
+| XGBoost PR-AUC [IC 95 %] | 0,0315 [0,0048 - 0,0745] | 0,0574 [0,0058 - 0,1409] |
+| XGBoost - tasa base | +0,027 [+0,003, +0,072], 100 % | +0,053 [+0,004, +0,138], 100 % |
+| XGBoost - racha máxima | +0,014 [-0,002, +0,040], 94,6 % | +0,040 [-0,017, +0,110], 89,6 % |
+| Random Forest PR-AUC | 0,0304 | 0,0173 |
+| recall_episodios@2 de XGBoost (racha: 0,226) | 0,194 | 0,194 |
+
+Lo que sale de aquí:
+
+- Las 4.258 horas positivas de valid por CT son solo 68 horas positivas por distribuidora, unas 31 incidencias en todo 2025: cada incidencia toca de media a unos 45 CT a la vez. La muestra efectiva es el número de incidencias, unas 30 al año en valid y un centenar en train, y eso explica la inestabilidad de todas las comparaciones por CT.
+- XGBoost queda por encima de la tasa base y del naif histórico en todas las réplicas, con o sin previsión (un lift de 12 a 22).
+- La racha máxima de la zona en las últimas 3 horas, sola, ya multiplica por 5 la tasa base. El modelo la supera en PR-AUC en el 90 - 95 % de las réplicas, pero el intervalo de la diferencia cruza el cero, y con 2 horas de alerta por distribuidora y día avisa de las mismas incidencias o de menos.
+- La previsión perfecta de las 3 horas siguientes no mejora el resultado: sin ella la PR-AUC sale incluso más alta, porque la búsqueda elige otra configuración (`min_child_weight` 20) y casi todo viene de la distribuidora 2. Con 31 incidencias la elección de la configuración en valid es en sí misma ruidosa.
+- Lo que más pesa en los dos modelos es la meteorología (lluvia, rachas, temperatura mínima, humedad) y el estado de la red aguas arriba: reenganches en 6 y 24 h, defectos a tierra en el grupo de red, microcortes y cortes del SCADA, cambios de comunicaciones.
+- Las distribuidoras 2 y 3 tienen las mismas horas positivas en test (26 y 2 locales), pero solo coinciden en 4 horas: no hay interrupciones duplicadas entre ellas. Sí comparten el mismo instante de inicio en eventos de transporte o del sistema que les afectan a la vez, como el apagón del 28.04.2025.
+
+#### Evaluación por años
+
+Con 31 incidencias en valid, elegir la configuración en valid y medirla en el mismo valid da cifras optimistas. `--por-anios` evalúa 2023, 2024 y 2025 por separado: cada año lo puntúa un modelo que solo ha visto los años anteriores, elegido en el último 25 % de esas horas (`fraccion_validacion_interna`) y reentrenado con todas, con XGBoost limitado a los árboles que encontró el early stopping. Test no se toca. Los tres años juntos son 104 incidencias.
+
+```bash
+docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \
+    --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py \
+    /app/jobs/04_ml/job_ml_horas_riesgo.py --config /app/config/04_ml/config_ml.json --por-anios --sin-prevision
+```
+
+Resultados (11.10.2026, 2023 - 2025 juntos, 500 réplicas por días):
+
+| Modelo | Sin previsión (`hr_20261011T092843_b0dd1a`) | Con previsión perfecta (`hr_20261011T093958_c0ffb7`) |
+| --- | --- | --- |
+| Tasa base | 0,0028 | 0,0028 |
+| Racha máxima observada | 0,0094 [0,0057 - 0,0173] | 0,0094 |
+| Racha máxima prevista | - | 0,0137 [0,0063 - 0,0331] |
+| Logística | 0,0084 [0,0056 - 0,0127] | 0,0097 [0,0064 - 0,0152] |
+| XGBoost | 0,0078 [0,0052 - 0,0128] | 0,0104 [0,0061 - 0,0185] |
+| Random Forest | 0,0049 [0,0033 - 0,0082] | 0,0177 [0,0080 - 0,0355] |
+| P(XGBoost mejor que la racha observada) | 22 % | 67 % |
+| recall_episodios@2: XGBoost / racha / tasa base | 0,135 / 0,192 / 0,183 | 0,164 / 0,192 / 0,183 |
+
+Conclusiones:
+
+- Todos los modelos entrenados quedan por encima de la tasa base y del naif histórico en todas las réplicas, unas 3 veces la prevalencia. Hay señal, y es sobre todo meteorológica y del estado de la red aguas arriba.
+- Sin previsión, ningún modelo supera a la regla de la racha máxima observada en la zona: XGBoost y la logística quedan empatados con ella y el bosque por debajo. Las cifras de 0,03 a 0,06 de la evaluación sobre valid salían de elegir y medir en el mismo año.
+- Con la previsión perfecta de las 3 horas siguientes el bosque llega a 6 veces la prevalencia y supera a la racha observada (99 % de las réplicas), pero no a la racha prevista. El valor está en la previsión del tiempo; un modelo en producción necesitaría una previsión real (AEMET, ECMWF) en lugar del reanálisis, y esta cifra es la cota superior de lo que podría aportar.
+- Con un presupuesto fijo de horas por día ningún modelo avisa de más incidencias que elegir las horas al azar. Los modelos saben qué días son peligrosos (temporal, red alterada), no a qué hora empezará la interrupción dentro del día; la alerta útil es por día o por umbral de riesgo, no por un número fijo de horas diarias.
+
+#### Evaluación final en test
+
+Con la configuración cerrada (sin previsión, mismo procedimiento que en los años anteriores), test se ha mirado una sola vez con `--por-anios 2026 --sin-prevision --evaluar-test`: el modelo se elige en el último 25 % de las horas hasta 2025 y se reentrena con todas, y puntúa enero a mayo de 2026 (`test_hasta` 01.06.2026, por la censura de las etiquetas). Ejecución `hr_20261011T100606_7391f5`, 10.855 horas, 48 positivas, 21 incidencias:
+
+| Modelo | PR-AUC [IC 95 %] | Lift | P(mejor que la tasa base) | P(mejor que la racha) | recall_episodios@2 |
+| --- | --- | --- | --- | --- | --- |
+| Random Forest | 0,0319 [0,0050 - 0,1386] | 7,2 | 100 % | 89 % | 0,143 |
+| XGBoost | 0,0172 [0,0037 - 0,0916] | 3,9 | 100 % | 65 % | 0,238 |
+| Logística | 0,0164 [0,0036 - 0,0488] | 3,7 | 100 % | 61 % | 0,333 |
+| Racha máxima observada | 0,0140 [0,0044 - 0,0398] | 3,2 | - | - | 0,190 |
+| Tasa base | 0,0044 | 1,0 | - | - | 0,286 |
+| Naif histórico | 0,0032 | 0,7 | - | - | 0,286 |
+
+Test confirma lo que dijo la evaluación por años: los modelos son claramente mejores que la tasa base y que el histórico (entre 3,7 y 7 veces la prevalencia, en todas las réplicas), pero ninguno se distingue de la regla de la racha máxima, y con un presupuesto fijo de horas por día no avisan de más incidencias que el azar. Lo que más pesa en XGBoost es la hora del día, los cambios de comunicaciones, la lluvia y las rachas, los microcortes del SCADA y las faltas de tensión en el CT y en su grupo de red.
+
+#### Fuentes, mezclas, grupos y zonas (`--ablacion`)
+
+¿Predice mejor la mezcla de TedisNet, Calser y la meteorología que cada fuente por separado? ¿Conviene separar por grupos o bajar a una unidad más pequeña que la distribuidora? `--ablacion` responde con la misma evaluación por años y compara todas las variantes sobre las mismas horas de distribuidora con un bootstrap emparejado:
+
+- **Por fuente** (`source_of`): `calser` (interrupciones conocidas en Calser, `hist_*` salvo los del SCADA), `tedisnet` (medidas, eventos, cortes, calidad y `hist_scada_*`), `meteo` (`metd_*`) y sus mezclas `calser+tedisnet`, `tedisnet+meteo` y `todo`. Las features de los CT, del calendario y la distribuidora entran siempre.
+- **Interacciones** (`todo+interacciones`): productos de una variable del tiempo y otra del estado de la red (`ablacion.interacciones`), por ejemplo la racha de la última hora por la fracción de CT con reenganches aguas arriba en 6 h, o la lluvia de 6 h por la fracción con defectos a tierra en su grupo de red. Los árboles pueden encontrarlas solos, pero con un centenar de incidencias al año en train un producto explícito es más fácil de aprender.
+- **Un modelo por distribuidora** (`por_distribuidora`): la misma evaluación con un modelo para cada una.
+- **Zona** (`zona`): `l3_gold.ml_dataset_zona_hora`, una fila por zona y hora, donde la zona es la celda meteorológica de 9 km del municipio de los CT (43 en las tres distribuidoras). Cada fila junta la fracción de CT de la zona con cada señal de eventos, SCADA e histórico en 6 y 24 h, la media de las features estáticas y de calendario, el tiempo de la celda (`metz_*`) y el estado de toda la distribuidora (`dist_*`: las mismas fracciones y el peor tiempo): lo local y el conjunto en la misma fila. El modelo de zona se mide por zona y hora y, llevado a la distribuidora con la zona de más riesgo de cada hora, se compara con los demás.
+
+```bash
+docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \
+    --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py \
+    /app/jobs/04_ml/job_ml_horas_riesgo.py --config /app/config/04_ml/config_ml.json --ablacion --sin-prevision
+```
+
+Deja `resumen.md`, `resumen.csv` (una fila por variante y modelo con la PR-AUC, su intervalo, el lift, el recall por episodios y la probabilidad de superar a la racha y a `todo`), `por_anio.csv`, `intervalos.csv`, `diferencias.csv` y `metricas.csv` en `exportar_dir/<run_id>/`.
+
+Resultados (11.10.2026, `hr_20261011T131024_10b6e9`, evaluación por años 2023 - 2025, sin previsión, XGBoost salvo que se diga otra cosa):
+
+| Variante | Features | PR-AUC [IC 95 %] | Lift | P(mejor que la racha) | P(mejor que las tres fuentes) |
+| --- | --- | --- | --- | --- | --- |
+| Solo meteorología | 58 | 0,0102 [0,0056 - 0,0208] | 3,4 | 61 % | 83 % |
+| Solo meteorología, regresión logística | 58 | 0,0111 [0,0064 - 0,0219] | 3,8 | 77 % | 88 % |
+| TedisNet + meteorología | 398 | 0,0101 [0,0061 - 0,0174] | 3,4 | 61 % | 94 % |
+| Las tres fuentes + interacciones tiempo x red | 420 | 0,0101 [0,0061 - 0,0180] | 3,4 | 63 % | 94 % |
+| Racha máxima (referencia) | 1 | 0,0094 [0,0057 - 0,0173] | 3,2 | - | - |
+| Un modelo por distribuidora | 412 | 0,0081 [0,0052 - 0,0131] | 2,7 | 18 % | 55 % |
+| Las tres fuentes | 412 | 0,0078 [0,0052 - 0,0128] | 2,6 | 22 % | - |
+| Solo TedisNet | 360 | 0,0061 [0,0041 - 0,0101] | 2,1 | 9 % | 16 % |
+| Calser + TedisNet (solo datos eléctricos) | 374 | 0,0059 [0,0042 - 0,0084] | 2,0 | 4 % | 11 % |
+| Modelo por zona, llevado a la distribuidora | 215 | 0,0047 [0,0029 - 0,0078] | 1,6 | 0 % | 0,6 % |
+| Solo Calser | 34 | 0,0044 [0,0031 - 0,0066] | 1,5 | 0,6 % | 2 % |
+| Tasa base | - | 0,0028 | 1,0 | - | - |
+
+Lectura:
+
+- La fuente que más aporta es la meteorología. Los datos eléctricos solos tienen señal (TedisNet duplica la tasa base con un intervalo que no la toca), pero bastante menos.
+- Mezclar las fuentes tal cual no suma: TedisNet más meteorología queda igual que la meteorología sola, y al añadir el histórico de Calser baja. Con un centenar de incidencias en train, cada bloque que no aporta es ruido. Las interacciones explícitas devuelven la mezcla completa al nivel de la meteorología y es la variante más estable año a año (0,0093, 0,0122 y 0,0174, por encima de la racha en los tres años), aunque en el conjunto solo supera a la racha en el 63 % de las réplicas.
+- Separar no ayuda: un modelo por distribuidora queda igual que el global, y el modelo por zona sale peor (lift de 1,6 medido por zona y hora): cada celda de 9 km tiene muy pocas incidencias propias.
+- Esta comparación se hizo después de usar test, así que test no se ha vuelto a usar para elegir entre variantes.
+
+
 ## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).

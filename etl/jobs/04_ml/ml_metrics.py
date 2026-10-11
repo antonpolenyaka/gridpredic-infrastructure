@@ -336,3 +336,70 @@ def report_markdown(metrics: pd.DataFrame, importance: pd.DataFrame, search: lis
 
 def json_compact(params: dict) -> str:
     return ", ".join(f"{k}={v}" for k, v in params.items() if k != "verbose")
+
+
+# ---------------------------------------------------------------------------
+# Uncertainty
+# ---------------------------------------------------------------------------
+
+def bootstrap_pr_auc(y, weight, day, scores: dict, reps: int = 500, seed: int = 0) -> tuple:
+    """
+    Block bootstrap of the PR-AUC by days: every replica draws the days of
+    the split with replacement and gives every row the weight of its row
+    times the times its day was drawn. Interruptions come in storms that last
+    hours, so resampling rows would understate the uncertainty; days keep a
+    storm together.
+
+    scores: {name: score array}. The same replicas are used for every score,
+    so the difference between two scores is paired.
+    Returns (DataFrame name, pr_auc, p2_5, p50, p97_5; replicas as {name: array}).
+    """
+    y = np.asarray(y)
+    weight = np.asarray(weight, dtype=np.float64)
+    codes, day_index = np.unique(np.asarray(day), return_inverse=True)
+    n_days = len(codes)
+    rng = np.random.default_rng(seed)
+    replicas = {name: np.empty(reps) for name in scores}
+
+    for r in range(reps):
+        counts = np.bincount(rng.integers(0, n_days, n_days), minlength=n_days)
+        w = weight * counts[day_index]
+        keep = w > 0
+
+        for name, score in scores.items():
+            replicas[name][r] = average_precision(y[keep], np.asarray(score)[keep], w[keep])
+
+    rows = []
+    for name, score in scores.items():
+        values = replicas[name]
+        rows.append({
+            "nombre": name,
+            "pr_auc": average_precision(y, score, weight),
+            "p2_5": float(np.nanpercentile(values, 2.5)),
+            "p50": float(np.nanpercentile(values, 50)),
+            "p97_5": float(np.nanpercentile(values, 97.5)),
+        })
+
+    return pd.DataFrame(rows), replicas
+
+
+def paired_differences(replicas: dict, pairs: list) -> pd.DataFrame:
+    """
+    For every (a, b): the bootstrap interval of PR-AUC(a) - PR-AUC(b) and the
+    share of replicas where a beats b. An interval that crosses zero means
+    the data do not tell the two apart.
+    """
+    rows = []
+
+    for a, b in pairs:
+        diff = replicas[a] - replicas[b]
+        rows.append({
+            "a": a,
+            "b": b,
+            "dif_p2_5": float(np.nanpercentile(diff, 2.5)),
+            "dif_p50": float(np.nanpercentile(diff, 50)),
+            "dif_p97_5": float(np.nanpercentile(diff, 97.5)),
+            "prob_a_mejor": float(np.nanmean(diff > 0)),
+        })
+
+    return pd.DataFrame(rows)
