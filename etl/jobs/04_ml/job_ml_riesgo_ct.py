@@ -22,6 +22,11 @@ Features, all known before Y starts:
 - publicos: l3_gold.contexto_ct_anio (population and its change, density,
   altitude, network per inhabitant, relief and OpenStreetMap exposure of the
   cell).
+- obras: also from contexto_ct_anio, the public works of the municipality
+  (PLACSP: tendered the year before, the ones that dig, months of execution
+  planned for the year) and the building of the Catastro (dwellings and m2
+  built, stock and its change), the activity that brings machines near the
+  network and new load.
 - clima: hours with gusts of 70 km/h or more and days with 30 mm of rain or
   more per year in the cell of the CT, mean of the years before Y.
 
@@ -79,7 +84,7 @@ DEFAULTS = {
                 "colsample_bytree": 0.8, "min_child_weight": 5, "objective": "reg:tweedie",
                 "tweedie_variance_power": 1.3},
     "bloques": ["historia", "historia+estructura", "historia+estructura+scada", "historia+estructura+publicos",
-                "historia+estructura+clima", "todo"],
+                "historia+estructura+obras", "historia+estructura+clima", "todo"],
 }
 
 LEVELS = {"ct": ["distribuidora_id", "ct_id"], "cabecera": ["distribuidora_id", "cabecera"],
@@ -92,6 +97,9 @@ PUBLIC = ["pob_municipio", "pob_crec_1a", "pob_crec_5a_anual", "densidad_hab_km2
           "celda_desnivel_m", "celda_dens_linea_aerea_km_km2", "celda_dens_apoyos_km2", "celda_dens_carreteras_km_km2",
           "celda_dens_pistas_km_km2", "celda_pct_bosque", "celda_pct_matorral", "celda_dens_edificios_km2",
           "celda_pct_cable", "celda_km2_obras"]
+WORKS = ["obras_publicadas_1a", "obras_importe_1a", "obras_mov_tierras_1a", "obras_previstas_meses",
+         "obras_previstas_mov_tierras_meses", "viviendas_nuevas_3a", "m2_nuevos_3a", "viviendas_parque_2a",
+         "crec_viviendas_5a"]
 CLIMATE = ["clima_horas_racha", "clima_dias_lluvia"]
 
 
@@ -232,8 +240,8 @@ def build_table(data: Data, cfg: dict, last_year: int) -> pd.DataFrame:
 
     context = read_table(spark, CONTEXT_TABLE)
     if context is not None:
-        ctx = context.select("distribuidora_id", "ct_id", "anio", *[c for c in PUBLIC if c in context.columns]
-                             ).toPandas()
+        ctx = context.select("distribuidora_id", "ct_id", "anio",
+                             *[c for c in PUBLIC + WORKS if c in context.columns]).toPandas()
         ctx["ct_id"] = ctx["ct_id"].astype(str)
         grid = grid.merge(ctx, on=["distribuidora_id", "ct_id", "anio"], how="left")
 
@@ -254,7 +262,7 @@ def build_table(data: Data, cfg: dict, last_year: int) -> pd.DataFrame:
             means = pd.concat(rows).rename(columns={"horas_racha": "clima_horas_racha", "dias_lluvia": "clima_dias_lluvia"})
             grid = grid.merge(means, on=["celda_id", "anio"], how="left")
 
-    for column in STRUCTURE + PUBLIC + CLIMATE:
+    for column in STRUCTURE + PUBLIC + WORKS + CLIMATE:
         if column not in grid.columns:
             grid[column] = np.nan
     grid["tiene_telemetria"] = grid["tiene_telemetria"].astype(float)
@@ -265,7 +273,8 @@ def block_columns(grid: pd.DataFrame) -> dict:
     hist = [c for c in grid.columns if c.startswith(("kva_h_", "interrupciones_", "horas_", "tiepi_"))
             and not c.startswith(("horas_racha",))] + ["anios_desde_ultima"]
     scada = [c for c in grid.columns if c.startswith(("microcortes_", "cortes_scada_", "episodios_scada_"))]
-    return {"historia": hist, "estructura": STRUCTURE, "scada": scada, "publicos": PUBLIC, "clima": CLIMATE}
+    return {"historia": hist, "estructura": STRUCTURE, "scada": scada, "publicos": PUBLIC, "obras": WORKS,
+            "clima": CLIMATE}
 
 
 def features_of(name: str, blocks: dict) -> list:
