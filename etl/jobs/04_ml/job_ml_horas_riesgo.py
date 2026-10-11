@@ -109,6 +109,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--reconstruir", action="store_true", help="Build the distribuidora-hour dataset again")
     parser.add_argument("--sin-busqueda", action="store_true", help="Only the first configuration of every model")
     parser.add_argument("--evaluar-test", action="store_true", help="Score and evaluate the test split too")
+    parser.add_argument("--sin-prevision", action="store_true",
+                        help="Leave out the forecast of the next hours (meteo.prevision false)")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -127,7 +129,8 @@ def dataset_key(version: str, source: str, frac_prefixes: list, meteo_cfg: dict,
         "fuente": source,
         "frac": sorted(frac_prefixes),
         "meteo": bool(meteo_cfg.get("activo")),
-        "prevision": bool(meteo_cfg.get("prevision", True)),
+        # The table always stores the forecast of the next hours.
+        "prevision": True,
         "etiquetas": labels,
     }
     return hashlib.sha1(json.dumps(settings, sort_keys=True).encode("utf-8")).hexdigest()[:12]
@@ -157,9 +160,8 @@ def distributor_weather(spark, meteo_cfg: dict):
     weather = spark.table(weather_table)
     names = [c for c in weather.columns if c.startswith(("met_", "metprev_"))]
 
-    if not meteo_cfg.get("prevision", True):
-        names = [c for c in names if not c.startswith("metprev_")]
-
+    # The next hours (metprev_*) are always stored; meteo.prevision false
+    # leaves them out when training, so both runs share the table.
     joined = weather.select("celda_id", "hora", *names).join(F.broadcast(weights), "celda_id")
     aggs = []
 
@@ -387,6 +389,10 @@ def main(argv=None):
     created = datetime.now(timezone.utc).replace(tzinfo=None)
 
     cfg = config.get("horas_riesgo", {})
+
+    if args.sin_prevision:
+        config["meteo"] = {**config.get("meteo", {}), "prevision": False}
+
     meteo_cfg = config.get("meteo", {})
     evaluation = config.get("evaluacion", {})
     seed = int(config.get("semilla", 0))
@@ -410,6 +416,10 @@ def main(argv=None):
         names = build_dataset(spark, ct_features, labels, cfg, meteo_cfg, dataset_version, key, source)
     else:
         logger.info("Reusing %s (key %s)", DATASET_HR, key)
+
+    if not meteo_cfg.get("prevision", True):
+        names = [n for n in names if "metprev_" not in n]
+        logger.info("meteo.prevision false: the forecast of the next hours is left out")
 
     features = ["distribuidora_id"] + names + [SEASON_FEATURE]
     table = add_season(spark.table(DATASET_HR))
