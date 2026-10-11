@@ -239,3 +239,24 @@ def test_cluster_scorer_routes_rows_to_their_group(synthetic):
 
     shap = ml_models.importances(scorer, data["Xv"][:300])
     assert "shap_medio_abs_grupo_1.0" in shap
+
+
+def test_bootstrap_by_days_and_paired_differences():
+    rng = np.random.default_rng(5)
+    n = 6000
+    day = rng.integers(0, 60, n)
+    y = (rng.random(n) < 0.03).astype(int)
+    good = y + rng.random(n) * 0.8
+    noise = rng.random(n)
+
+    table, replicas = ml_metrics.bootstrap_pr_auc(y, np.ones(n), day, {"bueno": good, "ruido": noise}, reps=200)
+    row = table.set_index("nombre")
+
+    assert row.loc["bueno", "p2_5"] <= row.loc["bueno", "pr_auc"] <= row.loc["bueno", "p97_5"]
+    assert row.loc["ruido", "p97_5"] < row.loc["bueno", "p2_5"]
+    assert len(replicas["bueno"]) == 200
+
+    diff = ml_metrics.paired_differences(replicas, [("bueno", "ruido"), ("ruido", "ruido")]).set_index("a")
+    assert diff.loc["bueno", "dif_p2_5"] > 0
+    assert diff.loc["bueno", "prob_a_mejor"] == pytest.approx(1.0)
+    assert diff.loc["ruido", "dif_p50"] == pytest.approx(0.0)
