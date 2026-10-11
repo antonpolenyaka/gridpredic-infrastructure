@@ -520,6 +520,39 @@ def test_risk_hours_per_distributor(spark, dataset, run, workdir, config_path):
         assert not [f for f in json.load(file)["features"] if "metprev_" in f]
 
 
+def test_risk_hours_by_years(spark, dataset, run, workdir, config_path):
+    import job_ml_horas_riesgo
+
+    job_ml_horas_riesgo.main(["--run-id", "hr_cv_test", "--config", config_path, "--por-anios", "2025",
+                              "--sin-busqueda", "--sin-prevision"])
+
+    metrics = spark.table("l3_gold.ml_metricas").where(F.col("run_id") == "hr_cv_test").toPandas()
+    assert {"cv_2025", "cv_total"} <= set(metrics["split"])
+    pr_auc = metrics[(metrics["split"] == "cv_total") & (metrics["segmento"] == "total")
+                     & (metrics["etiqueta"] == "y_1_3h") & (metrics["metrica"] == "pr_auc")].set_index("modelo")["valor"]
+    # The synthetic risk is per CT and weak once aggregated: only check the
+    # models were all fitted and scored (the signal is checked above).
+    assert {"tasa_base", "naif_historico", "logistica", "random_forest", "xgboost"} <= set(pr_auc.index)
+    assert pr_auc.between(0, 1).all()
+
+    # Only the hours of 2025 are scored, and test is never used.
+    predictions = spark.table("l3_gold.ml_predicciones_distribuidora_hora").where(F.col("run_id") == "hr_cv_test")
+    years = {r[0] for r in predictions.select(F.year("hora")).distinct().collect()}
+    assert years == {2025}
+    assert {r[0] for r in predictions.select("split").distinct().collect()} == {"cv_2025"}
+
+    folder = os.path.join(workdir, "resultados", "hr_cv_test")
+    intervals = pd.read_csv(os.path.join(folder, "intervalos.csv"))
+    assert "año 2025" in set(intervals["segmento"])
+    with open(os.path.join(folder, "resumen.md"), encoding="utf-8") as file:
+        report = file.read()
+    assert "## Por año" in report and "## Los años juntos" in report
+
+    run_row = spark.table("l3_gold.ml_runs").where(F.col("run_id") == "hr_cv_test").first()
+    assert run_row["etiqueta"] == "distribuidora_hora_por_anios:y_1_3h"
+    assert all(row["anio"] == 2025 for row in json.loads(run_row["busqueda_json"]))
+
+
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
     import job_ml_train
 
