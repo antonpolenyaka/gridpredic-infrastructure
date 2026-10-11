@@ -42,6 +42,13 @@ Otras reglas de la capa:
 | `f_command_execution` | `*CommandExecutions` | ejecución de mando (estado final) |
 | `f_corte_evento` | `*ElectricPowerCutEvents` | evento de corte canónico |
 | `f_corte_elemento` | `*ElectricPowerCutElementEvents` | evento, elemento afectado |
+| `d_meteo_celda`, `f_meteo_hora` | Open-Meteo (`l1_bronze.meteo_openmeteo_*`) | municipio y su celda; celda y hora |
+| `f_poblacion_municipio` | INE, Padrón continuo (`l1_bronze.ine_padron_municipio`) | municipio, año |
+| `d_municipio_publico` | Wikidata y Open-Meteo Elevation | municipio |
+| `d_celda_entorno` | Open-Meteo Elevation y OpenStreetMap | celda meteorológica |
+| `f_licitacion_obra` | Plataforma de Contratación del Sector Público (`l1_bronze.placsp_licitacion_obra`) | licitación de obra, municipio |
+| `f_edificacion_municipio` | Catastro, INSPIRE Buildings (`l1_bronze.catastro_edificio`) | municipio, año de construcción |
+| `f_proyeccion_ame`, `d_ame_municipio` | Proyecciones de población 2024-2039 del IEEX (`l1_bronze.ieex_proyeccion_ame`, `ieex_ame_municipio`) | agrupación de municipios y año; municipio |
 | `dq_metrics` | todos los jobs | ejecución, entidad, métrica |
 
 Cada entidad tiene además su `<entidad>_rejected` con las filas descartadas y la columna `_motivo`.

@@ -99,6 +99,10 @@
       "medidas_meses": 1,
       "features_meses": 1,
       "dataset_meses": 6
+    },
+    "contexto": {
+      "anio_desde": 2016,
+      "anio_hasta": 2027
     }
   },
   "jobs": [
@@ -149,6 +153,10 @@
     {
       "name": "meteo_celda_hora",
       "depends_on": ["dim_ct"]
+    },
+    {
+      "name": "contexto_ct",
+      "depends_on": ["meteo_celda_hora"]
     },
     {
       "name": "dq_checks",

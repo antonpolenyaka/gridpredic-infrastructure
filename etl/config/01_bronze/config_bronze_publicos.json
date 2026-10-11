@@ -1,0 +1,65 @@
+{
+  "publicos": {
+    "referencia_municipios": "s3://datalake/00_landing/reference_data/municipios.xlsx",
+    "landing": "s3://datalake/00_landing/publicos",
+    "celda_grados": 0.1,
+    "pausa_s": 2,
+    "reintentos": 4,
+    "espera_reintento_s": 30,
+    "ine": {
+      "url": "https://servicios.ine.es/wstempus/js/ES/DATOS_TABLA/{tabla}?nult={anios}&tip=M",
+      "tablas_por_provincia": {"06": 2859, "10": 2863},
+      "anios": 30
+    },
+    "wikidata": {
+      "url": "https://query.wikidata.org/sparql",
+      "agente": "GridPredict-TFM-UPC/1.0 (datos abiertos para un trabajo de master)"
+    },
+    "elevacion": {
+      "url": "https://api.open-meteo.com/v1/elevation",
+      "puntos_por_lado": 5,
+      "max_por_peticion": 100
+    },
+    "osm": {
+      "endpoints": [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+      ],
+      "timeout_s": 240,
+      "pausa_s": 10
+    },
+    "obras": {
+      "url_anual": "https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3_{anio}.zip",
+      "anio_desde": 2018,
+      "anio_hasta": 2025,
+      "nuts": ["ES43"],
+      "codigos_postales": ["06", "10"],
+      "tipos_contrato": ["3"],
+      "cpv_prefijos": ["45"],
+      "reintentos_descarga": 3
+    },
+    "catastro": {
+      "url_provincia": "https://www.catastro.hacienda.gob.es/INSPIRE/buildings/{provincia}/ES.SDGC.bu.atom_{provincia}.xml",
+      "pausa_s": 2
+    },
+    "proyecciones": {
+      "ficheros": ["ieex_proyecciones_ame.csv", "ieex_ame_municipios.csv"],
+      "origen": "https://www.juntaex.es/w/proyecciones-de-poblacion"
+    },
+    "tablas": {
+      "padron": "l1_bronze.ine_padron_municipio",
+      "wikidata": "l1_bronze.wikidata_municipio",
+      "elevacion": "l1_bronze.openmeteo_elevacion_punto",
+      "osm": "l1_bronze.osm_elemento_celda",
+      "osm_resumen": "l1_bronze.osm_consulta_celda",
+      "obras": "l1_bronze.placsp_licitacion_obra",
+      "obras_borradas": "l1_bronze.placsp_entrada_borrada",
+      "catastro": "l1_bronze.catastro_edificio",
+      "catastro_municipios": "l1_bronze.catastro_municipio",
+      "proyecciones": "l1_bronze.ieex_proyeccion_ame",
+      "ame_municipios": "l1_bronze.ieex_ame_municipio"
+    }
+  }
+}
