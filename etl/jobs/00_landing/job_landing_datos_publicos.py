@@ -24,9 +24,9 @@ the APIs return them:
 The places are the municipalities of data/reference_data/municipios.xlsx and
 their cells, the same as the weather (job_landing_meteo_openmeteo).
 
-Exit codes: 0 everything landed; 4 some OSM cell could not be downloaded (the
-rest is in Landing and Bronze can run; launching again asks only the
-missing cells).
+Exit codes: 0 everything landed; 4 some source (or some OSM cell) could not be
+downloaded: the rest is in Landing and Bronze can run, and launching again
+asks only what is missing.
 
     docker compose exec spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py
     docker compose exec spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py --fuentes osm
@@ -167,9 +167,12 @@ def land_wikidata(fs, cfg: dict, landing: str, provinces: list, force: bool) -> 
 
     wd = cfg["wikidata"]
     query = wikidata_query(provinces)
-    url = wd["url"] + "?" + urllib.parse.urlencode({"query": query, "format": "json"})
-    payload = json.loads(fetch(url, headers={"Accept": "application/sparql-results+json", "User-Agent": wd["agente"]},
-                               retries=int(cfg["reintentos"]), wait_s=float(cfg["espera_reintento_s"])))
+    # POST: the endpoint accepts the query in the body, which avoids the limits of long URLs.
+    payload = json.loads(fetch(
+        wd["url"], data=urllib.parse.urlencode({"query": query, "format": "json"}).encode("utf-8"),
+        headers={"Accept": "application/sparql-results+json", "User-Agent": wd["agente"],
+                 "Content-Type": "application/x-www-form-urlencoded"},
+        retries=int(cfg["reintentos"]), wait_s=float(cfg["espera_reintento_s"])))
     rows = payload.get("results", {}).get("bindings", [])
     if not rows:
         raise RuntimeError("Empty answer of Wikidata")
@@ -323,18 +326,28 @@ def main(argv=None):
     provinces = provinces_of(places)
     logger.info("%s municipalities in %s cells, provinces %s; sources %s", len(places), len(cells), provinces, sources)
 
-    failed = 0
-    if "ine" in sources:
-        land_ine(fs, cfg, landing, provinces, args.forzar)
-    if "wikidata" in sources:
-        land_wikidata(fs, cfg, landing, provinces, args.forzar)
-    if "elevacion" in sources:
-        land_elevation(fs, cfg, landing, places, cells, args.forzar)
-    if "osm" in sources:
-        _, failed = land_osm(fs, cfg, landing, cells, args.forzar, args.max_celdas)
+    # A source that fails does not stop the others: Bronze loads what is in Landing.
+    missing = []
+    steps = {
+        "ine": lambda: land_ine(fs, cfg, landing, provinces, args.forzar),
+        "wikidata": lambda: land_wikidata(fs, cfg, landing, provinces, args.forzar),
+        "elevacion": lambda: land_elevation(fs, cfg, landing, places, cells, args.forzar),
+        "osm": lambda: land_osm(fs, cfg, landing, cells, args.forzar, args.max_celdas),
+    }
+    for source in SOURCES:
+        if source not in sources:
+            continue
+        try:
+            result = steps[source]()
+            if source == "osm" and result[1]:
+                logger.error("%s OSM cells are missing: launch again to ask only those", result[1])
+                missing.append(source)
+        except Exception as error:  # noqa: BLE001
+            logger.error("Source %s not landed: %s", source, str(error)[:300])
+            missing.append(source)
 
-    if failed:
-        logger.error("%s OSM cells are missing: launch again to ask only those", failed)
+    if missing:
+        logger.error("Sources incomplete: %s. Launch again to ask only what is missing", missing)
         return PARTIAL_EXIT
 
     logger.info("Landing of the public data complete")
