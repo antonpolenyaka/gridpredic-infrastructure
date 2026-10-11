@@ -1324,13 +1324,107 @@ def hourly_load(spark, ratings: pd.DataFrame):
     return hourly, diagnostics
 
 
+def feeder_currents(data: Data, report: Report, state: dict) -> str:
+    """Peak current of every feeder bay of the substations (AGUAS_ARRIBA scope) by year, and its trend."""
+    cfg = data.cfg
+    agg = read_table(data.spark, AGG_TABLE)
+    upstream = read_table(data.spark, UPSTREAM_TABLE, ["trafo_elemento_id", "posicion_id", "elemento_corte_nombre",
+                                                        "n_cortes"])
+    if agg is None or upstream is None:
+        return "_Sin series de las posiciones de cabecera._\n"
+
+    current = agg.where((F.col("ambito") == F.lit("AGUAS_ARRIBA")) & (F.col("familia") == F.lit("intensidad")))
+    hourly = current.select(F.col("clave_id").alias("posicion_id"), "hora",
+                            F.try_divide(F.col("suma"), F.col("n_muestras")).alias("amperios"))
+    yearly = hourly.where(F.col("amperios").isNotNull() & (F.col("amperios") >= 0)).groupBy(
+        "posicion_id", F.year("hora").alias("anio")).agg(
+        F.count(F.lit(1)).alias("n_horas"),
+        F.percentile_approx("amperios", 0.5).alias("p50_a"),
+        F.percentile_approx("amperios", 0.95).alias("p95_a"),
+        F.percentile_approx("amperios", 0.99).alias("p99_a"),
+        F.max("amperios").alias("max_a"),
+    ).toPandas()
+    if yearly.empty:
+        return "_Ninguna posición de cabecera con serie de intensidad._\n"
+
+    links = upstream.toPandas()
+    links = links.merge(data.dim[["trafo_elemento_id", "distribuidora_id", "ct_id", "kva", "num_abonados"]],
+                        on="trafo_elemento_id", how="inner")
+    names = links.sort_values("n_cortes", ascending=False).drop_duplicates("posicion_id")[
+        ["posicion_id", "elemento_corte_nombre", "distribuidora_id"]]
+    fed = links.drop_duplicates(["posicion_id", "ct_id"]).groupby("posicion_id").agg(
+        cts_alimentados=("ct_id", "nunique"), kva_alimentado=("kva", "sum"), abonados=("num_abonados", "sum"))
+    yearly = yearly.merge(names, on="posicion_id", how="left").merge(fed.reset_index(), on="posicion_id", how="left")
+    yearly["distribuidora"] = yearly["distribuidora_id"].map(data.databases)
+    report.csv("carga_cabeceras_anual.csv", yearly)
+
+    complete = yearly[yearly["n_horas"] >= int(cfg["min_horas_carga"])]
+    trends = []
+    for position, g in complete.groupby("posicion_id"):
+        g = g.sort_values("anio")
+        last = g.iloc[-1]
+        slope = float(np.polyfit(g["anio"].astype(float), g["p99_a"].astype(float), 1)[0]) if len(g) >= 3 else np.nan
+        first = g.iloc[0]
+        growth = (float(last["p99_a"]) / float(first["p99_a"])) ** (1.0 / max(int(last["anio"] - first["anio"]), 1)) - 1.0 \
+            if first["p99_a"] and first["p99_a"] > 0 and last["anio"] > first["anio"] else np.nan
+        trends.append({
+            "posicion_id": position, "distribuidora": last["distribuidora"], "cabecera": last["elemento_corte_nombre"],
+            "cts_alimentados": last["cts_alimentados"], "kva_alimentado": last["kva_alimentado"], "anios": len(g),
+            "primer_anio": int(first["anio"]), "ultimo_anio": int(last["anio"]), "p99_primero_a": float(first["p99_a"]),
+            "p99_ultimo_a": float(last["p99_a"]), "max_ultimo_a": float(last["max_a"]),
+            "pendiente_p99_a_anual": slope, "crecimiento_anual": growth,
+        })
+    trends = pd.DataFrame(trends)
+    if trends.empty:
+        return "_Ninguna posición con años completos de intensidad._\n"
+
+    trends = trends.sort_values("crecimiento_anual", ascending=False)
+    report.csv("carga_cabeceras_tendencia.csv", trends)
+    state["carga_cabeceras"] = trends
+    shown = trends.head(12).assign(crecimiento_anual=trends.head(12)["crecimiento_anual"].map(pct))
+    growing = int((trends["crecimiento_anual"] > 0.03).sum())
+    return (
+        f"Intensidad de las posiciones de cabecera de las subestaciones (ámbito AGUAS_ARRIBA de agg_medida_hora): "
+        f"{trends['posicion_id'].nunique()} posiciones con años completos; {growing} crecen más de un 3 % al año en "
+        "su p99. Es la carga de la línea entera, no la de cada trafo, y sin la intensidad admisible del conductor "
+        "solo podemos ordenar por crecimiento y por punta.\n\n"
+        + md_table(shown, ["distribuidora", "cabecera", "cts_alimentados", "kva_alimentado", "primer_anio",
+                           "ultimo_anio", "p99_primero_a", "p99_ultimo_a", "crecimiento_anual"])
+    )
+
+
+def customers_per_kva(data: Data, report: Report) -> str:
+    """CTs with the fewest kVA installed per customer: the ones a growing demand fills first."""
+    dim = data.dim[(data.dim["kva"] > 0) & (data.dim["num_abonados"] >= 20)].copy()
+    if dim.empty:
+        return ""
+    dim["kva_por_abonado"] = dim["kva"] / dim["num_abonados"]
+    dim["distribuidora"] = dim["distribuidora_id"].map(data.databases)
+    ranking = dim.sort_values("kva_por_abonado")[
+        ["distribuidora", "ct_id", "municipio_nombre", "kva", "num_abonados", "kva_por_abonado", "n_trafos_ct",
+         "cabecera"]]
+    report.csv("cts_kva_por_abonado.csv", ranking)
+    q = dim["kva_por_abonado"].quantile([0.1, 0.5, 0.9])
+    below = int((dim["kva_por_abonado"] < 2.0).sum())
+    return (
+        f"\nkVA instalados por cliente en los CT con al menos 20 clientes (Calser): p10 {fmt(q[0.1])}, mediana "
+        f"{fmt(q[0.5])}, p90 {fmt(q[0.9])}. {below} CT tienen menos de 2 kVA por cliente: con la potencia media "
+        "contratada de 4,3 kW, son los primeros que se quedan cortos si crece la demanda (bomba de calor, coche "
+        "eléctrico). Sin la curva de carga no podemos confirmarlo; los diez primeros:\n\n"
+        + md_table(ranking.head(10), ["distribuidora", "ct_id", "municipio_nombre", "kva", "num_abonados",
+                                      "kva_por_abonado", "n_trafos_ct"])
+    )
+
+
 def section_load(data: Data, report: Report, state: dict):
     cfg = data.cfg
     ratings = anchor_ratings(data.dim)
     built = hourly_load(data.spark, ratings)
+    feeders_text = feeder_currents(data, report, state)
+    customers_text = customers_per_kva(data, report)
 
     if built is None:
-        report.section("8. Carga de los transformadores", "_Sin agg_medida_hora._")
+        report.section("8. Carga de la red", "_Sin agg_medida_hora._\n\n" + feeders_text + customers_text)
         return
 
     hourly, diagnostics = built
@@ -1359,6 +1453,7 @@ def section_load(data: Data, report: Report, state: dict):
             lambda v: min(NOMINAL_KV, key=lambda n: abs(math.log(max(v, 1e-6) / n))) if v and v > 0 else np.nan)
         nominal = nominal[(nominal["v_mediana"] / nominal["v_nominal"]).between(0.85, 1.15)]
 
+    voltage = pd.DataFrame()
     if not nominal.empty:
         vn = data.spark.createDataFrame(
             nominal[["anchor_id", "v_nominal"]].astype({"anchor_id": "int64", "v_nominal": float}),
@@ -1372,71 +1467,61 @@ def section_load(data: Data, report: Report, state: dict):
         voltage = voltage.merge(ratings[["anchor_id", "distribuidora_id", "ct_ids", "municipio_nombre"]],
                                 on="anchor_id", how="left")
         report.csv("tension_ct.csv", voltage)
-    else:
-        voltage = pd.DataFrame()
 
-    if yearly.empty:
-        report.section("8. Carga de los transformadores", "_Ningún CT con serie de carga o potencia._")
-        return
-
-    yearly = yearly.merge(ratings, on="anchor_id", how="left")
-    plausible = yearly.groupby("anchor_id")["p99"].transform("max") <= float(cfg["carga_max_plausible"])
-    yearly["plausible"] = plausible | (yearly["fuente"] == "carga_trafo")
-    report.csv("carga_trafo_anual.csv", yearly)
-
-    good = yearly[yearly["plausible"] & (yearly["n_horas"] >= int(cfg["min_horas_carga"]))]
-    trends = []
-    for anchor, g in good.groupby("anchor_id"):
-        g = g.sort_values("anio")
-        last = g.iloc[-1]
-        slope = float("nan")
-        if len(g) >= 3:
-            slope = float(np.polyfit(g["anio"].astype(float), g["p95"].astype(float), 1)[0])
-        reach = float("nan")
-        if slope > 0 and last["p95"] < 1.0:
-            reach = float(last["anio"]) + (1.0 - float(last["p95"])) / slope
-        trends.append({
-            "anchor_id": anchor, "distribuidora_id": last["distribuidora_id"], "ct_ids": last["ct_ids"],
-            "municipio_nombre": last["municipio_nombre"], "cabecera": last["cabecera"],
-            "kva_nominal": last["kva_nominal"], "fuente": last["fuente"], "anios": len(g),
-            "ultimo_anio": int(last["anio"]), "p95_ultimo": float(last["p95"]), "p99_ultimo": float(last["p99"]),
-            "max_ultimo": float(last["max"]), "horas_80_ultimo": int(last["horas_80"]),
-            "horas_100_ultimo": int(last["horas_100"]), "pendiente_p95_anual": slope, "anio_llega_100": reach,
-        })
-
-    trends = pd.DataFrame(trends)
-    if not trends.empty:
-        trends["prioridad"] = np.select(
-            [trends["p99_ultimo"] >= hi, trends["p95_ultimo"] >= lo,
-             trends["anio_llega_100"].notna() & (trends["anio_llega_100"] <= trends["ultimo_anio"] + 5)],
-            ["ya_al_limite", "cerca_del_limite", "llega_en_5_anios"], default="con_margen",
+    trafo_text = "_Ningún CT con serie de carga o potencia en el SCADA._\n"
+    if not yearly.empty:
+        yearly = yearly.merge(ratings, on="anchor_id", how="left")
+        plausible = yearly.groupby("anchor_id")["p99"].transform("max") <= float(cfg["carga_max_plausible"])
+        yearly["plausible"] = plausible | (yearly["fuente"] == "carga_trafo")
+        report.csv("carga_trafo_anual.csv", yearly)
+        good = yearly[yearly["plausible"] & (yearly["n_horas"] >= int(cfg["min_horas_carga"]))]
+        trends = []
+        for anchor, g in good.groupby("anchor_id"):
+            g = g.sort_values("anio")
+            last = g.iloc[-1]
+            slope = float(np.polyfit(g["anio"].astype(float), g["p95"].astype(float), 1)[0]) if len(g) >= 3 \
+                else float("nan")
+            reach = float("nan")
+            if slope > 0 and last["p95"] < 1.0:
+                reach = float(last["anio"]) + (1.0 - float(last["p95"])) / slope
+            trends.append({
+                "anchor_id": anchor, "distribuidora_id": last["distribuidora_id"], "ct_ids": last["ct_ids"],
+                "municipio_nombre": last["municipio_nombre"], "cabecera": last["cabecera"],
+                "kva_nominal": last["kva_nominal"], "fuente": last["fuente"], "anios": len(g),
+                "ultimo_anio": int(last["anio"]), "p95_ultimo": float(last["p95"]), "p99_ultimo": float(last["p99"]),
+                "max_ultimo": float(last["max"]), "horas_80_ultimo": int(last["horas_80"]),
+                "horas_100_ultimo": int(last["horas_100"]), "pendiente_p95_anual": slope, "anio_llega_100": reach,
+            })
+        trends = pd.DataFrame(trends)
+        if not trends.empty:
+            trends["prioridad"] = np.select(
+                [trends["p99_ultimo"] >= hi, trends["p95_ultimo"] >= lo,
+                 trends["anio_llega_100"].notna() & (trends["anio_llega_100"] <= trends["ultimo_anio"] + 5)],
+                ["ya_al_limite", "cerca_del_limite", "llega_en_5_anios"], default="con_margen",
+            )
+            trends = trends.sort_values(["p99_ultimo"], ascending=False)
+        report.csv("carga_trafo_tendencia.csv", trends)
+        state["carga"] = trends
+        counts = trends["prioridad"].value_counts().to_dict() if not trends.empty else {}
+        trafo_text = (
+            f"CT con serie de carga o potencia en el SCADA (ámbito LOCAL): {yearly['anchor_id'].nunique()}. Con serie "
+            f"plausible y al menos {cfg['min_horas_carga']} horas en algún año: {good['anchor_id'].nunique()}. La carga "
+            "sale de la señal de % de carga del trafo cuando existe y, si no, de la potencia aparente frente a la "
+            "nominal. La pendiente es la del p95 anual y el año en que llega al 100 % la extrapola en línea recta.\n\n"
+            f"Clasificación: {', '.join(f'{k}: {v}' for k, v in counts.items()) or '-'}.\n\n"
+            + md_table(trends.head(15) if not trends.empty else trends,
+                       ["ct_ids", "municipio_nombre", "kva_nominal", "fuente", "ultimo_anio", "p95_ultimo", "p99_ultimo",
+                        "horas_100_ultimo", "pendiente_p95_anual", "anio_llega_100", "prioridad"])
         )
-        trends = trends.sort_values(["p99_ultimo"], ascending=False)
-    report.csv("carga_trafo_tendencia.csv", trends)
-    state["carga"] = trends
 
-    measured = yearly["anchor_id"].nunique()
-    counts = trends["prioridad"].value_counts().to_dict() if not trends.empty else {}
-    top = trends.head(15) if not trends.empty else trends
     volt_line = ""
     if not voltage.empty:
         worst_v = voltage.groupby("anchor_id")[["horas_bajo_93", "horas_sobre_107"]].sum()
-        volt_line = (f"\nTensión: {len(worst_v)} CT con serie de tensión utilizable; {int((worst_v['horas_bajo_93'] > 0).sum())} "
-                     f"con alguna hora por debajo del 93 % de la nominal y {int((worst_v['horas_sobre_107'] > 0).sum())} "
-                     "por encima del 107 % (límite de +-7 % del art. 104).\n")
+        volt_line = (f"\nTensión: {len(worst_v)} CT con serie de tensión utilizable; "
+                     f"{int((worst_v['horas_bajo_93'] > 0).sum())} con alguna hora por debajo del 93 % de la nominal y "
+                     f"{int((worst_v['horas_sobre_107'] > 0).sum())} por encima del 107 % (límite de +-7 % del art. 104).\n")
 
-    report.section(
-        "8. Carga de los transformadores",
-        f"CT con serie de carga o potencia en el SCADA (ámbito LOCAL): {measured}. Con serie plausible y al "
-        f"menos {cfg['min_horas_carga']} horas en algún año: {good['anchor_id'].nunique()}. La carga sale de la "
-        "señal de % de carga del trafo cuando existe y, si no, de la potencia aparente frente a la nominal "
-        "(TedisNet, o la de Calser si falta). La pendiente es la del p95 anual y el año en que llega al 100 % la "
-        "extrapola en línea recta.\n\n"
-        f"Clasificación: {', '.join(f'{k}: {v}' for k, v in counts.items()) or '-'}.\n\n"
-        + md_table(top, ["ct_ids", "municipio_nombre", "kva_nominal", "fuente", "ultimo_anio", "p95_ultimo",
-                         "p99_ultimo", "horas_100_ultimo", "pendiente_p95_anual", "anio_llega_100", "prioridad"])
-        + volt_line
-    )
+    report.section("8. Carga de la red", trafo_text + volt_line + "\n" + feeders_text + customers_text)
 
 
 # ---------------------------------------------------------------------------
