@@ -229,7 +229,31 @@ def tables(spark):
     pes = pd.DataFrame({"distribuidora_id": dim["distribuidora_id"], "periodo_id": "202501", "id": dim["ct_id"],
                         "fecha_pes": pd.to_datetime(["1980-05-01"] * 4 + ["2015-05-01"] * 4 + ["2000-01-01"] * 6)})
     save(spark, pes, "l2_silver.d_ct")
+    save(spark, works(), "l3_gold.obras_municipio_anio")
     return dim
+
+
+def works() -> pd.DataFrame:
+    """Uno grows (5 dwellings a year since 2015), Dos has a works that digs the street in 2023 (the year of I2)."""
+    rows = []
+    for code in ("10001", "10002", "10003"):
+        stock = 100.0
+        for year in range(2014, 2026):
+            new = 5.0 if code == "10001" and year >= 2015 else 0.0
+            stock += new
+            digs = 4.0 if (code, year) == ("10002", 2023) else 0.0
+            rows.append({
+                "codigo_ine": code, "anio": year, "obras_publicadas": 1.0 if digs else 0.0,
+                "obras_publicadas_importe": 50000.0 if digs else 0.0, "obras_publicadas_mov_tierras": 1.0 if digs else 0.0,
+                "obras_en_ejecucion": (1.0 if digs else 0.0) if year >= 2019 else np.nan,
+                "obras_meses_ejecucion": digs if year >= 2019 else np.nan,
+                "obras_mov_tierras_meses": digs if year >= 2019 else np.nan,
+                "obras_previstas_meses": (2.0 if digs else 0.0) if year >= 2019 else np.nan,
+                "obras_previstas_mov_tierras_meses": (2.0 if digs else 0.0) if year >= 2019 else np.nan,
+                "edificios_nuevos": new, "viviendas_nuevas": new, "m2_nuevos": 100.0 * new,
+                "edificios_parque": stock, "viviendas_parque": stock,
+            })
+    return pd.DataFrame(rows)
 
 
 @pytest.fixture(scope="module")
@@ -266,7 +290,7 @@ def test_report_has_every_section(result):
     assert code == 0
     text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
     assert "Error en" not in text
-    for number in range(1, 11):
+    for number in range(1, 12):
         assert f"## {number}." in text
 
 
@@ -380,3 +404,28 @@ def test_feeder_currents_and_customers(result):
     assert feeders.loc["CAB-1", "cts_alimentados"] == 4
     customers = read(folder, "cts_kva_por_abonado.csv")
     assert customers.iloc[0]["kva_por_abonado"] == pytest.approx(250.0 / 50.0)
+
+
+def test_works_and_third_party_damage(result):
+    _, folder = result
+    panel = read(folder, "obras_terceros_panel.csv")
+    # Three municipalities (one per distribuidora and town) and the years 2022 - 2025 of the analysis.
+    assert len(panel) == 12 and set(panel["anio"]) == {2022, 2023, 2024, 2025}
+    dos = panel[(panel["codigo_ine"] == 10002) & (panel["anio"] == 2023)].iloc[0]
+    assert dos["obra_calle"] == 1 and dos["inc_terceros"] == 1 and dos["inc_maquinaria"] == 1
+    assert dos["n_cts"] == 4 and dos["kva_h_terceros"] == pytest.approx(400.0)
+    assert panel["inc_terceros"].sum() == 1  # the blackout of 28.04.2025 stays out
+    uno = panel[(panel["codigo_ine"] == 10001) & (panel["anio"] == 2023)].iloc[0]
+    assert uno["inc_propias"] == 1 and uno["obra_calle"] == 0
+
+    bands = read(folder, "obras_terceros_bandas.csv").set_index("banda")
+    assert bands.loc["hasta 6 meses", "terceros_por_100_ct"] == pytest.approx(25.0)
+    assert bands.loc["0 (sin obras que abren calle)", "terceros"] == 0
+    models = read(folder, "obras_terceros_poisson.csv")
+    assert {"inc_terceros", "inc_propias"} <= set(models["incidencias"])
+
+    growth = read(folder, "crecimiento_municipios.csv")
+    uno = growth[growth["codigo_ine"] == 10001].iloc[0]
+    # 25 dwellings in 2020 - 2024 at 1000 kVA / 200 customers: 125 kVA, 12,5 % of the installed.
+    assert uno["viviendas_nuevas_5a"] == 25 and uno["kva_nuevos_5a"] == pytest.approx(125.0)
+    assert uno["kva_nuevos_5a_pct"] == pytest.approx(0.125) and uno["crec_viviendas_10a"] == pytest.approx(150 / 100 - 1)

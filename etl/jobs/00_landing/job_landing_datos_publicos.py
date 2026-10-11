@@ -365,6 +365,11 @@ DELETED = re.compile(r"<(?:[\w-]+:)?deleted-entry\b([^>]*)>(.*?)</(?:[\w-]+:)?de
 ATTRIBUTE = re.compile(r'([\w:-]+)="([^"]*)"')
 
 
+def placsp_marks(cfg: dict) -> list:
+    """Plain strings every entry of the territory contains: found with str.find, much faster than a regex."""
+    return [f">{n}" for n in cfg["nuts"]] + [f"PostalZone>{p}" for p in cfg["codigos_postales"]]
+
+
 def placsp_patterns(cfg: dict) -> tuple:
     """(territory, works) regular expressions over the raw text of an entry, whatever the namespace prefixes."""
     nuts = "|".join(re.escape(n) for n in cfg["nuts"])
@@ -379,30 +384,49 @@ def placsp_patterns(cfg: dict) -> tuple:
     return territory, works
 
 
-def filter_feed(text: str, territory, works) -> tuple:
+def filter_feed(text: str, territory, works, marks: list = None) -> tuple:
     """
     (kept entries, deleted entries, entries read) of one ATOM file of PLACSP.
     Only the entries with a mark of the territory are cut out and tested, so
     the 97 % of the country is skipped by a search over the text, not parsed.
+    With marks, the candidates come from plain string searches and the regular
+    expressions only run on them.
     """
-    kept, seen = [], set()
-    for match in territory.finditer(text):
-        start = text.rfind(ENTRY_OPEN, 0, match.start())
-        if start < 0 or start in seen:
-            continue
-        end = text.find(ENTRY_CLOSE, match.end())
+    starts = set()
+    if marks:
+        for mark in marks:
+            position = text.find(mark)
+            while position >= 0:
+                start = text.rfind(ENTRY_OPEN, 0, position)
+                if start >= 0:
+                    starts.add(start)
+                position = text.find(mark, position + len(mark))
+    else:
+        for match in territory.finditer(text):
+            start = text.rfind(ENTRY_OPEN, 0, match.start())
+            if start >= 0:
+                starts.add(start)
+
+    kept = []
+    for start in sorted(starts):
+        end = text.find(ENTRY_CLOSE, start)
         if end < 0:
             continue
-        seen.add(start)
         entry = text[start:end + len(ENTRY_CLOSE)]
-        if works.search(entry):
+        if territory.search(entry) and works.search(entry):
             kept.append(entry)
 
     deleted = []
-    for match in DELETED.finditer(text):
+    position = text.find("deleted-entry")
+    while position >= 0:
+        match = DELETED.match(text, text.rfind("<", 0, position))
+        if match is None:
+            position = text.find("deleted-entry", position + 13)
+            continue
         attrs = dict(ATTRIBUTE.findall(match.group(1)))
         kind = re.search(r'type="([^"]*)"', match.group(2))
         deleted.append({"ref": attrs.get("ref"), "when": attrs.get("when"), "tipo": kind.group(1) if kind else None})
+        position = text.find("deleted-entry", match.end())
 
     return kept, deleted, text.count(ENTRY_OPEN)
 
@@ -437,7 +461,7 @@ def download(url: str, target: str, retries: int = 3, wait_s: float = 30, chunk:
     raise RuntimeError(f"No answer for {url}")
 
 
-def placsp_archive(path: str, territory, works) -> dict:
+def placsp_archive(path: str, territory, works, marks: list = None) -> dict:
     """The entries of the territory of a PLACSP zip already on disk."""
     kept, deleted, namespaces, read, files = [], [], {}, 0, 0
     with zipfile.ZipFile(path) as archive:
@@ -447,7 +471,7 @@ def placsp_archive(path: str, territory, works) -> dict:
             with archive.open(name) as member:
                 text = member.read().decode("utf-8", "replace")
             namespaces.update(NAMESPACE.findall(text[:5000]))
-            entries, gone, n = filter_feed(text, territory, works)
+            entries, gone, n = filter_feed(text, territory, works, marks)
             kept += entries
             deleted += gone
             read += n
@@ -459,6 +483,7 @@ def placsp_archive(path: str, territory, works) -> dict:
 def land_obras(fs, cfg: dict, landing: str, force: bool) -> tuple:
     ob = cfg["obras"]
     territory, works = placsp_patterns(ob)
+    marks = placsp_marks(ob)
     done = failed = 0
 
     for year in range(int(ob["anio_desde"]), int(ob["anio_hasta"]) + 1):
@@ -473,7 +498,7 @@ def land_obras(fs, cfg: dict, landing: str, force: bool) -> tuple:
             with tempfile.TemporaryDirectory(prefix="placsp_") as folder:
                 path = os.path.join(folder, f"placsp_{year}.zip")
                 size = download(url, path, int(ob.get("reintentos_descarga", 3)), float(cfg["espera_reintento_s"]))
-                payload = placsp_archive(path, territory, works)
+                payload = placsp_archive(path, territory, works, marks)
         except Exception as error:  # noqa: BLE001
             failed += 1
             logger.error("PLACSP %s not landed: %s", year, str(error)[:300])
