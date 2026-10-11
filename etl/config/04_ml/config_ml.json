@@ -76,6 +76,28 @@
     "random_forest",
     "xgboost"
   ],
+  "horas_riesgo": {
+    "prefijos_frac": [
+      "ev_",
+      "evred_",
+      "evaa_",
+      "scada_",
+      "calidad_",
+      "corte_error_comm_",
+      "hist_"
+    ],
+    "referencias": {
+      "naif_racha": "metd_max_met_racha_max_3h",
+      "naif_racha_prevision": "metd_max_metprev_racha_max_3h"
+    },
+    "presupuestos_horas_dia": [
+      1,
+      2,
+      4,
+      6
+    ],
+    "bootstrap_reps": 500
+  },
   "muestra_valid": {
     "tasa_negativos": 0.02,
     "semilla": 20261011

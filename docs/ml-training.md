@@ -181,6 +181,21 @@ Lo que se puede afirmar con estos datos:
 - Los submodelos por grupo nunca superan al XGBoost global de su ejecución (probabilidad entre el 12 % y el 34 % en total).
 - En la distribuidora 1366, XGBoost queda por encima de su tasa base en más del 93 % de las réplicas en las cuatro ejecuciones, y es donde la PR-AUC es más alta (0,003 a 0,006 frente a una prevalencia de 0,0009).
 
+### Horas de riesgo por distribuidora
+
+Con un 0,04 % de positivos por CT y hora el ruido es mayor que las diferencias entre configuraciones, y el 94 % de las interrupciones son sistémicas: lo que las anuncia es el estado de toda la red y el tiempo, no el CT. `job_ml_horas_riesgo.py` hace la misma pregunta al nivel donde vive esa señal: ¿va a empezar una interrupción en algún CT de la distribuidora en las próximas 1 a 3 horas? Es también la decisión que toma el operador, qué horas del día necesitan una brigada preparada.
+
+- **Dataset** (`l3_gold.ml_dataset_distribuidora_hora`), una fila por distribuidora y hora. La etiqueta sale de `dataset_train` (1 si algún CT tiene `y_1_3h`, lo mismo con la local) con el número de CT positivos y la antelación más corta, y el split es el mismo. Las features salen de `features_ct_hora`, todos los CT y todas las horas, para que ninguna dependa de qué filas quitó el dataset (`en_corte` viene de las etiquetas): la media de cada feature del CT (`media_*`) y, para los bloques de eventos, SCADA e histórico (`horas_riesgo.prefijos_frac`), la fracción de CT donde no es cero (`frac_*`). La meteorología de la distribuidora es la media de sus celdas ponderada por los CT de cada una (`metd_media_*`) y la peor celda (`metd_max_*`). Se suman `distribuidora_id` y `estacion`. La tabla se reutiliza mientras no cambien la versión del dataset ni los parámetros de la agregación; `--reconstruir` la vuelve a hacer.
+- **Modelos**: los mismos de `modelos` con la misma búsqueda, más referencias de una sola feature (`horas_riesgo.referencias`): la racha máxima de las últimas 3 horas en la peor celda de la distribuidora y la de las 3 siguientes. Son lo que miraría un operador sin modelo, así que un modelo que no las supera no aporta nada. El naif histórico ordena por las interrupciones conocidas de los CT de la distribuidora en 365, 90 y 30 días. Con unas 150.000 filas se entrena con todo train, sin muestra, y valid entero sirve para el early stopping y para elegir la configuración.
+- **Evaluación**: PR-AUC, ROC-AUC, lift y alertas con un presupuesto de N horas por distribuidora y día (`presupuestos_horas_dia`: 1, 2, 4 y 6), por distribuidora y por estación, y el bootstrap por días con el intervalo de cada modelo y las diferencias emparejadas contra las referencias. Un episodio aquí son las horas positivas seguidas de una misma distribuidora.
+- **Salidas**: `ml_runs`, `ml_metricas` y `ml_importancia` con `run_id` `hr_*`, `l3_gold.ml_predicciones_distribuidora_hora` y, en `exportar_dir/<run_id>/`, `resumen.md`, `metricas.csv`, `importancia.csv`, `intervalos.csv`, `diferencias.csv` y `filas.csv`. `job_ml_comparar.py` deja fuera las ejecuciones `hr_*` si no se le pasan los `run_id`.
+
+```bash
+docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \
+    --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py \
+    /app/jobs/04_ml/job_ml_horas_riesgo.py --config /app/config/04_ml/config_ml.json
+```
+
 ## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).

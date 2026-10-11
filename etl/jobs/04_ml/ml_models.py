@@ -120,12 +120,12 @@ class HistoricalScorer(Scorer):
     integers, so the weights keep the order of the first feature.
     """
 
-    def __init__(self, feature_names: list):
+    def __init__(self, feature_names: list, naive_features=NAIVE_FEATURES):
         super().__init__("naif_historico", feature_names)
-        self.columns = [feature_names.index(f) for f in NAIVE_FEATURES if f in feature_names]
+        self.columns = [feature_names.index(f) for f in naive_features if f in feature_names]
 
         if not self.columns:
-            raise ValueError(f"The naive reference needs one of {NAIVE_FEATURES} in the features")
+            raise ValueError(f"The naive reference needs one of {list(naive_features)} in the features")
 
         self.params = {"features": [feature_names[i] for i in self.columns]}
 
@@ -136,6 +136,29 @@ class HistoricalScorer(Scorer):
             out += weight * np.nan_to_num(X[:, column].astype(np.float64), nan=0.0)
 
         return out.astype(np.float32)
+
+
+class FeatureScorer(Scorer):
+    """
+    One feature used as the score (missing values at the bottom). A
+    reference of what an operator would watch without a model, for example
+    the strongest gust forecast in the area of the distribuidora.
+    """
+
+    def __init__(self, name: str, feature_names: list, feature: str):
+        super().__init__(name, feature_names)
+
+        if feature not in feature_names:
+            raise ValueError(f"The reference {name} needs the feature {feature}")
+
+        self.column = feature_names.index(feature)
+        self.params = {"feature": feature}
+
+    def score(self, X):
+        x = X[:, self.column].astype(np.float64)
+        missing = np.isnan(x)
+        low = np.nanmin(x) - 1.0 if not missing.all() else 0.0
+        return np.where(missing, low, x).astype(np.float32)
 
 
 class EstimatorScorer(Scorer):
@@ -260,12 +283,12 @@ def fit_model(name: str, params: dict, data: dict, rate: float, seed: int, n_job
     return scorer
 
 
-def build_reference(name: str, feature_names: list, base_rate: float) -> Scorer:
+def build_reference(name: str, feature_names: list, base_rate: float, naive_features=NAIVE_FEATURES) -> Scorer:
     if name == "tasa_base":
         return ConstantScorer(feature_names, base_rate)
 
     if name == "naif_historico":
-        return HistoricalScorer(feature_names)
+        return HistoricalScorer(feature_names, naive_features)
 
     raise ValueError(f"Unknown reference {name}")
 
