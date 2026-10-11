@@ -178,6 +178,8 @@ En el portátil del stack (12 CPU lógicas, 32 GB): el modelo por CT entrena sob
 
 Contra los criterios de aceptación de esta ficha: la PR-AUC supera con claridad a la tasa base y al naif histórico (se cumple), pero no a la regla de la racha máxima, que es una referencia sin modelo; con un presupuesto fijo de horas de alerta al día ningún modelo avisa de más incidencias que el azar (no se cumple para una alerta horaria). Con la previsión perfecta de las 3 horas siguientes (reanálisis, cota superior) Random Forest llega a 6 veces la prevalencia en 2023 - 2025 y supera a la racha observada, lo que indica que el valor está en una previsión meteorológica real.
 
+**Fuentes, grupos y zonas** (evaluación por años, `hr_20261011T131024_10b6e9`). La meteorología sola es la fuente que más aporta (XGBoost 0,0102, regresión logística 0,0111); los datos eléctricos solos tienen señal pero menos (TedisNet 0,0061, Calser 0,0044). Mezclar las fuentes tal cual no mejora a la meteorología sola, y con interacciones explícitas entre tiempo y estado de la red la mezcla vuelve a su nivel (0,0101) con el comportamiento más estable año a año. Ni un modelo por distribuidora (0,0081) ni un modelo por zona meteorológica (0,0047) mejoran al modelo global. Ninguna variante se distingue con claridad de la regla de la racha máxima.
+
 **Lectura.** El modelo sirve para señalar días y zonas de riesgo con unas horas de antelación, apoyado en la meteorología y en el estado de la red aguas arriba; no sirve para anunciar la hora exacta ni el CT concreto de la interrupción. No recomendamos pasarlo a serving como alerta horaria por CT.
 
 ## Model Examination [optional]
