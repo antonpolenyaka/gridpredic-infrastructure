@@ -152,6 +152,35 @@ FROM lakehouse.l3_gold.ml_importancia
 WHERE run_id = '<run_id>' AND alerta_leakage;
 ```
 
+### Comparar ejecuciones con intervalos de confianza
+
+En valid hay unas 4.300 horas positivas en todo 2025 y llegan agrupadas en tormentas, así que una PR-AUC de 0,0008 frente a otra de 0,0019 puede ser ruido. `job_ml_comparar.py` no entrena: lee las predicciones de valid ya guardadas en `ml_predicciones`, junta las ejecuciones sobre las mismas filas (todos los positivos y el 2 % de los negativos, siempre los mismos, con peso 1 / 0,02) y hace un bootstrap por días: cada réplica sortea con reemplazo los 365 días de valid. Con las mismas réplicas para todas las ejecuciones y modelos, las diferencias son emparejadas.
+
+```bash
+docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \
+    --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py \
+    /app/jobs/04_ml/job_ml_comparar.py --config /app/config/04_ml/config_ml.json \
+    --runs <run_id_1>,<run_id_2>,...
+```
+
+Deja en `exportar_dir/comparacion_<fecha>/` el `resumen.md`, `intervalos.csv` (PR-AUC con su intervalo del 95 % por ejecución, modelo y distribuidora) y `diferencias.csv` (cada XGBoost contra la tasa base de su ejecución, el modelo por grupos contra el global y cada ejecución contra la primera). Si el intervalo de una diferencia cruza el cero, los datos no distinguen los dos modelos. Con 500 réplicas tarda unos 7 minutos en el portátil.
+
+Primera comparación (11.10.2026, 500 réplicas, tasa base 0,00038):
+
+| Ejecución | XGBoost PR-AUC [IC 95 %] | XGBoost - tasa base | P(mejor que la tasa base) | XGBoost - ejecución base | P(mejor que la base) |
+| --- | --- | --- | --- | --- | --- |
+| base | 0,00077 [0,00016 - 0,00183] | +0,00039 [+0,00006, +0,00096] | 99,8 % | - | - |
+| red | 0,00065 [0,00024 - 0,00158] | +0,00033 [+0,00009, +0,00134] | 100 % | -0,00006 [-0,00063, +0,00106] | 42,6 % |
+| grupos (k=4) | 0,00192 [0,00012 - 0,00772] | +0,00150 [+0,00003, +0,00686] | 99,4 % | +0,00111 [-0,00022, +0,00585] | 67,4 % |
+| grupos (k=3) + meteo | 0,00097 [0,00027 - 0,00592] | +0,00059 [-0,00020, +0,00572] | 81,8 % | +0,00019 [-0,00106, +0,00547] | 62,0 % |
+
+Lo que se puede afirmar con estos datos:
+
+- XGBoost aprende algo real: en tres de las cuatro ejecuciones su PR-AUC es mayor que la de la tasa base con un intervalo que no cruza el cero (unas dos veces la prevalencia).
+- Ninguna de las tres ampliaciones (estado de la red, grupos de CT, meteorología) mejora a la ejecución base de forma demostrable. El 0,0019 de grupos tiene un intervalo de 0,0001 a 0,0077: sale casi todo de unos pocos días de la distribuidora 2.
+- Los submodelos por grupo nunca superan al XGBoost global de su ejecución (probabilidad entre el 12 % y el 34 % en total).
+- En la distribuidora 1366, XGBoost queda por encima de su tasa base en más del 93 % de las réplicas en las cuatro ejecuciones, y es donde la PR-AUC es más alta (0,003 a 0,006 frente a una prevalencia de 0,0009).
+
 ## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).
