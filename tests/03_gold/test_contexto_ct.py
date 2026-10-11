@@ -194,6 +194,17 @@ def built(spark):
          "superficie_m2": 80.0},
     ]), "l1_bronze.catastro_edificio")
 
+    save(spark, pd.DataFrame([
+        {"ame_codigo": "1012", "ame_nombre": "VALLE DEL JERTE", "anio": "2024", "poblacion": "1000.0"},
+        {"ame_codigo": "1012", "ame_nombre": "VALLE DEL JERTE", "anio": "2039", "poblacion": "1010.0"},
+        {"ame_codigo": "1012", "ame_nombre": "VALLE DEL JERTE", "anio": "2039", "poblacion": "1005.0"},
+        {"ame_codigo": "1009", "ame_nombre": "AMBROZ", "anio": "2024", "poblacion": "-1"},
+    ]), "l1_bronze.ieex_proyeccion_ame")
+    save(spark, pd.DataFrame([
+        {"codigo_ine": "10001", "municipio": "Uno", "ame_codigo": "1012", "ame_nombre": "VALLE DEL JERTE"},
+        {"codigo_ine": "6148", "municipio": "Valle", "ame_codigo": "611", "ame_nombre": "SIERRA SUROESTE"},
+    ]), "l1_bronze.ieex_ame_municipio")
+
     run("job_silver_contexto_publico", [])
     run("job_gold_contexto_ct", ["--config", GOLD_CONFIG])
     return spark
@@ -308,3 +319,12 @@ def test_context_with_works_and_buildings(built):
     b1 = ctx[ctx["ct_id"] == "B1"].set_index("anio")
     assert b1.loc[2023, "obras_publicadas_1a"] == 0.5
     assert b1.loc[2023, "obras_previstas_meses"] == pytest.approx(0.5 * 243 / 30.4)
+
+
+def test_ieex_projection_in_silver(built):
+    projection = built.table("l2_silver.f_proyeccion_ame").toPandas().set_index(["ame_codigo", "anio"])
+    assert projection.loc[("1012", 2039), "poblacion"] == 1010.0 and len(projection) == 2
+    reasons = built.table("l2_silver.f_proyeccion_ame_rejected").toPandas()["_motivo"].value_counts().to_dict()
+    assert reasons == {"INVALID_VALUE": 1, "DUPLICATE_ID": 1}
+    towns = built.table("l2_silver.d_ame_municipio").toPandas().set_index("codigo_ine")
+    assert towns.loc["06148", "ame_codigo"] == "0611" and towns.loc["10001", "ame_codigo"] == "1012"

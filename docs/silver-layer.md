@@ -48,6 +48,7 @@ Otras reglas de la capa:
 | `d_celda_entorno` | Open-Meteo Elevation y OpenStreetMap | celda meteorológica |
 | `f_licitacion_obra` | Plataforma de Contratación del Sector Público (`l1_bronze.placsp_licitacion_obra`) | licitación de obra, municipio |
 | `f_edificacion_municipio` | Catastro, INSPIRE Buildings (`l1_bronze.catastro_edificio`) | municipio, año de construcción |
+| `f_proyeccion_ame`, `d_ame_municipio` | Proyecciones de población 2024-2039 del IEEX (`l1_bronze.ieex_proyeccion_ame`, `ieex_ame_municipio`) | agrupación de municipios y año; municipio |
 | `dq_metrics` | todos los jobs | ejecución, entidad, métrica |
 
 Cada entidad tiene además su `<entidad>_rejected` con las filas descartadas y la columna `_motivo`.

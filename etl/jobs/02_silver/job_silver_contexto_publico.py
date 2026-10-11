@@ -36,6 +36,9 @@ OpenStreetMap), cleaned and taken to the units Gold uses.
 - f_edificacion_municipio: buildings, dwellings and built surface (total and
   by use) of every municipality by year of construction, from the Catastro.
   Ruins and years outside 1800 - this year are left out.
+- f_proyeccion_ame and d_ame_municipio: population projected by the IEEX for
+  every group of municipalities (AME) and year, and the AME of every
+  municipality (one per INE code).
 
     docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/02_silver/job_silver_contexto_publico.py
 """
@@ -64,6 +67,8 @@ MUNICIPALITY = "d_municipio_publico"
 CELL = "d_celda_entorno"
 TENDERS = "f_licitacion_obra"
 BUILDINGS = "f_edificacion_municipio"
+PROJECTION = "f_proyeccion_ame"
+AME = "d_ame_municipio"
 
 PADRON_TABLE = "l1_bronze.ine_padron_municipio"
 WIKIDATA_TABLE = "l1_bronze.wikidata_municipio"
@@ -73,6 +78,8 @@ OSM_CELLS_TABLE = "l1_bronze.osm_consulta_celda"
 PLACSP_TABLE = "l1_bronze.placsp_licitacion_obra"
 PLACSP_DELETED_TABLE = "l1_bronze.placsp_entrada_borrada"
 CATASTRO_TABLE = "l1_bronze.catastro_edificio"
+IEEX_TABLE = "l1_bronze.ieex_proyeccion_ame"
+IEEX_AME_TABLE = "l1_bronze.ieex_ame_municipio"
 
 WORKS = {
     "nuts": ["ES43"],
@@ -417,6 +424,29 @@ def buildings(catastro):
     return out.withColumn("audit_loaded_at", F.current_timestamp()), union_rejects([rejected, duplicated])
 
 
+def projections(ieex):
+    """(rows of f_proyeccion_ame, rejected)."""
+    df = ieex.select(
+        F.lpad(F.trim(F.col("ame_codigo")), 4, "0").alias("ame_codigo"), F.trim(F.col("ame_nombre")).alias("ame_nombre"),
+        F.col("anio").cast("int").alias("anio"), F.col("poblacion").cast("double").alias("poblacion"))
+    kept, rejected = split_rejects(df, [
+        ("NULL_KEY", F.col("ame_codigo").isNull() | F.col("anio").isNull()),
+        ("INVALID_VALUE", F.col("poblacion").isNull() | (F.col("poblacion") < 0)),
+    ])
+    kept, duplicated = keep_first(kept, ["ame_codigo", "anio"], [F.col("poblacion").desc()], "DUPLICATE_ID")
+    return kept.withColumn("audit_loaded_at", F.current_timestamp()), union_rejects([rejected, duplicated])
+
+
+def ame_towns(members):
+    """(rows of d_ame_municipio, rejected): one AME per INE code."""
+    df = members.select(normalized_code(F.col("codigo_ine")).alias("codigo_ine"), F.trim(F.col("municipio")).alias(
+        "municipio"), F.lpad(F.trim(F.col("ame_codigo")), 4, "0").alias("ame_codigo"),
+        F.trim(F.col("ame_nombre")).alias("ame_nombre"))
+    kept, rejected = split_rejects(df, [("NULL_KEY", F.col("codigo_ine").isNull() | F.col("ame_codigo").isNull())])
+    kept, duplicated = keep_first(kept, ["codigo_ine"], [F.col("ame_codigo")], "DUPLICATE_ID")
+    return kept.withColumn("audit_loaded_at", F.current_timestamp()), union_rejects([rejected, duplicated])
+
+
 def optional(spark, table):
     if spark.catalog.tableExists(table):
         return spark.table(table)
@@ -497,6 +527,15 @@ def main():
         if rejected is not None:
             for row in rejected.groupBy("_motivo").count().collect():
                 dq.add(BUILDINGS, f"rechazo:{row['_motivo']}", row["count"], total, umbral_pct=10.0)
+
+    for source, entity, build in ((IEEX_TABLE, PROJECTION, projections), (IEEX_AME_TABLE, AME, ame_towns)):
+        bronze = optional(spark, source)
+        if bronze is None:
+            continue
+        out, rejected = build(bronze)
+        write_table(out, silver_table(entity))
+        write_rejected(rejected, entity, args.run_id)
+        dq.add(entity, "filas", spark.table(silver_table(entity)).count())
 
     dq.flush()
     logger.info("Silver completed: public data")
