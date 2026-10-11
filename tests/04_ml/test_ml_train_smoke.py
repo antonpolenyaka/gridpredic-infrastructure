@@ -242,6 +242,9 @@ def config_path(workdir):
     config["contexto_red"] = {"activo": True, "prefijos": ["ev_"], "ventanas": ["24h"], "region": True}
     config["clusters"].update({"k": [2, 3], "min_cts": 5})
     config["submodelos"] = {"activo": True, "min_positivos": 20}
+    config["horas_riesgo"]["bootstrap_reps"] = 30
+    config["horas_riesgo"]["ablacion"]["interacciones"] = [["metd_max_met_racha_1h", "frac_ev_defecto_tierra_24h"],
+                                                           ["no_existe", "frac_ev_defecto_tierra_24h"]]
     config["spark_conf"] = {}
 
     path = os.path.join(workdir, "config_ml_test.json")
@@ -438,6 +441,183 @@ def test_weather_features(spark, dataset, run):
     assert {"racha_kmh", "precipitacion_mm", "fuera_rango", "racha_menor_viento"} <= set(silver.columns)
     metrics = spark.table("l2_silver.dq_metrics").where(F.col("entidad") == "f_meteo_hora").toPandas()
     assert "huecos_horas" in set(metrics["metrica"])
+
+
+def test_comparison_with_bootstrap(workdir, run, config_path):
+    import job_ml_comparar
+
+    job_ml_comparar.main(["--config", config_path, "--runs", run, "--reps", "30", "--tasa-negativos", "0.5"])
+
+    folders = [f for f in os.listdir(os.path.join(workdir, "resultados")) if f.startswith("comparacion_")]
+    assert folders
+    folder = os.path.join(workdir, "resultados", sorted(folders)[-1])
+    intervals = pd.read_csv(os.path.join(folder, "intervalos.csv"))
+    diffs = pd.read_csv(os.path.join(folder, "diferencias.csv"))
+
+    total = intervals[intervals["segmento"] == "total"].set_index("nombre")
+    assert "1_red+grupos+meteo:xgboost" in total.index
+    assert (total["p2_5"] <= total["p97_5"]).all()
+    assert {"distribuidora 1", "distribuidora 2"} <= set(intervals["segmento"])
+    assert ("1_red+grupos+meteo:xgboost", "1_red+grupos+meteo:tasa_base") in set(zip(diffs["a"], diffs["b"]))
+
+
+def test_risk_hours_per_distributor(spark, dataset, run, workdir, config_path):
+    import job_ml_horas_riesgo
+
+    hr = job_ml_horas_riesgo.main(["--run-id", "hr_test", "--config", config_path, "--evaluar-test"])
+
+    table = spark.table("l3_gold.ml_dataset_distribuidora_hora").toPandas()
+    hours = dataset.groupby(["distribuidora_id", "hora"]).agg(y=("y_1_3h", "max"), n=("y_1_3h", "sum"))
+    assert len(table) == len(hours)
+
+    merged = table.merge(hours.reset_index(), on=["distribuidora_id", "hora"])
+    assert (merged["y_1_3h"] == merged["y"]).all()
+    assert (merged["n_cts_positivos"] == merged["n"]).all()
+    assert {"media_ev_defecto_tierra_24h", "frac_ev_defecto_tierra_24h", "frac_hist_interr_30d",
+            "metd_media_met_racha_max_3h", "metd_max_metprev_racha_max_3h"} <= set(table.columns)
+
+    # The share of CTs with an earth fault in the last 24 h, checked by hand.
+    when = dataset[dataset["split"] == "valid"]["hora"].iloc[40]
+    rows = dataset[(dataset["distribuidora_id"] == 1) & (dataset["hora"] == when)]
+    row = table[(table["distribuidora_id"] == 1) & (table["hora"] == when)].iloc[0]
+    assert row["frac_ev_defecto_tierra_24h"] == pytest.approx((rows["ev_defecto_tierra_24h"] > 0).mean())
+    assert row["media_hist_interr_365d"] == pytest.approx(rows["hist_interr_365d"].mean())
+
+    run_row = spark.table("l3_gold.ml_runs").where(F.col("run_id") == hr).first()
+    assert run_row["etiqueta"] == "distribuidora_hora:y_1_3h"
+    models = set(json.loads(run_row["modelos_json"]))
+    assert {"tasa_base", "naif_historico", "naif_racha", "logistica", "random_forest", "xgboost"} <= models
+
+    predictions = spark.table("l3_gold.ml_predicciones_distribuidora_hora").where(F.col("run_id") == hr)
+    counts = {r["split"]: r["count"] for r in predictions.groupBy("split").count().collect()}
+    assert counts["valid"] == len(table[table["split"] == "valid"])
+
+    metrics = spark.table("l3_gold.ml_metricas").where(F.col("run_id") == hr).toPandas()
+    total = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == "y_1_3h") & (metrics["split"] == "valid")]
+    pr_auc = total[total["metrica"] == "pr_auc"].set_index("modelo")["valor"]
+    assert pr_auc["xgboost"] > pr_auc["tasa_base"]
+    assert {"precision@2", "recall_episodios@2"} <= set(metrics["metrica"])
+    assert {"distribuidora", "estacion"} <= set(metrics["segmento"])
+
+    folder = os.path.join(workdir, "resultados", hr)
+    intervals = pd.read_csv(os.path.join(folder, "intervalos.csv"))
+    diffs = pd.read_csv(os.path.join(folder, "diferencias.csv"))
+    assert {"total", "distribuidora 1", "distribuidora 2"} <= set(intervals["segmento"])
+    assert ("xgboost", "tasa_base") in set(zip(diffs["a"], diffs["b"]))
+    assert ("xgboost", "naif_racha") in set(zip(diffs["a"], diffs["b"]))
+
+    with open(os.path.join(folder, "resumen.md"), encoding="utf-8") as file:
+        report = file.read()
+    assert "## Filas y prevalencia" in report and "Diferencias emparejadas" in report
+
+    # A second run with the same settings reuses the dataset.
+    loaded = spark.table("l3_gold.ml_dataset_distribuidora_hora").agg(F.max("audit_loaded_at")).first()[0]
+    job_ml_horas_riesgo.main(["--run-id", "hr_test2", "--config", config_path, "--sin-busqueda", "--sin-prevision"])
+    assert spark.table("l3_gold.ml_dataset_distribuidora_hora").agg(F.max("audit_loaded_at")).first()[0] == loaded
+
+    # Without the forecast the models do not see the next hours.
+    second = json.loads(spark.table("l3_gold.ml_runs").where(F.col("run_id") == "hr_test2").first()["modelos_json"])
+    assert "naif_racha_prevision" not in second
+    with open(os.path.join(workdir, "modelos", "hr_test2", "run.json"), encoding="utf-8") as file:
+        assert not [f for f in json.load(file)["features"] if "metprev_" in f]
+
+
+def test_risk_hours_by_years(spark, dataset, run, workdir, config_path):
+    import job_ml_horas_riesgo
+
+    job_ml_horas_riesgo.main(["--run-id", "hr_cv_test", "--config", config_path, "--por-anios", "2025",
+                              "--sin-busqueda", "--sin-prevision"])
+
+    metrics = spark.table("l3_gold.ml_metricas").where(F.col("run_id") == "hr_cv_test").toPandas()
+    assert {"cv_2025", "cv_total"} <= set(metrics["split"])
+    pr_auc = metrics[(metrics["split"] == "cv_total") & (metrics["segmento"] == "total")
+                     & (metrics["etiqueta"] == "y_1_3h") & (metrics["metrica"] == "pr_auc")].set_index("modelo")["valor"]
+    # The synthetic risk is per CT and weak once aggregated: only check the
+    # models were all fitted and scored (the signal is checked above).
+    assert {"tasa_base", "naif_historico", "logistica", "random_forest", "xgboost"} <= set(pr_auc.index)
+    assert pr_auc.between(0, 1).all()
+
+    # Only the hours of 2025 are scored, and test is never used.
+    predictions = spark.table("l3_gold.ml_predicciones_distribuidora_hora").where(F.col("run_id") == "hr_cv_test")
+    years = {r[0] for r in predictions.select(F.year("hora")).distinct().collect()}
+    assert years == {2025}
+    assert {r[0] for r in predictions.select("split").distinct().collect()} == {"cv_2025"}
+
+    folder = os.path.join(workdir, "resultados", "hr_cv_test")
+    intervals = pd.read_csv(os.path.join(folder, "intervalos.csv"))
+    assert "año 2025" in set(intervals["segmento"])
+    with open(os.path.join(folder, "resumen.md"), encoding="utf-8") as file:
+        report = file.read()
+    assert "## Por año" in report and "## Los años juntos" in report
+
+    run_row = spark.table("l3_gold.ml_runs").where(F.col("run_id") == "hr_cv_test").first()
+    assert run_row["etiqueta"] == "distribuidora_hora_por_anios:y_1_3h"
+    assert all(row["anio"] == 2025 for row in json.loads(run_row["busqueda_json"]))
+
+
+def test_risk_hours_test_year_only_with_flag(spark, dataset, run, config_path):
+    import job_ml_horas_riesgo
+
+    # Without --evaluar-test the year of test has no hours in the pool.
+    with pytest.raises(ValueError):
+        job_ml_horas_riesgo.main(["--run-id", "hr_cv_no", "--config", config_path, "--por-anios", "2026",
+                                  "--sin-busqueda", "--sin-prevision"])
+
+    job_ml_horas_riesgo.main(["--run-id", "hr_cv_test2026", "--config", config_path, "--por-anios", "2026",
+                              "--sin-busqueda", "--sin-prevision", "--evaluar-test"])
+    predictions = spark.table("l3_gold.ml_predicciones_distribuidora_hora").where(F.col("run_id") == "hr_cv_test2026")
+    last = predictions.agg(F.max("hora")).first()[0]
+    assert last < datetime(2026, 1, 20)
+    assert {r[0] for r in predictions.select("split").distinct().collect()} == {"cv_2026"}
+
+
+def test_source_of_feature():
+    import job_ml_horas_riesgo as hr
+
+    assert hr.source_of("media_hist_interr_365d") == "calser"
+    assert hr.source_of("frac_hist_scada_microcortes_90d") == "tedisnet"
+    assert hr.source_of("frac_evaa_reenganche_6h") == "tedisnet"
+    assert hr.source_of("dist_frac_ev_defecto_tierra_24h") == "tedisnet"
+    assert hr.source_of("metd_max_met_racha_1h") == "meteo"
+    assert hr.source_of("metz_met_lluvia_3h") == "meteo"
+    assert hr.source_of("media_ct_potencia_kva") == "base"
+    assert hr.source_of("zona_n_cts") == "base"
+    assert hr.source_of("int_a__x__b") == "interacciones"
+
+
+def test_ablation_sources_groups_zones(spark, dataset, run, workdir, config_path):
+    import job_ml_horas_riesgo
+
+    job_ml_horas_riesgo.main(["--run-id", "hr_ab_test", "--config", config_path, "--ablacion", "--por-anios", "2025",
+                              "--sin-busqueda", "--sin-prevision"])
+
+    zones = spark.table("l3_gold.ml_dataset_zona_hora").toPandas()
+    # Two zones by INE, one by name (CT020 - CT027); CT028 and CT029 have no cell.
+    assert zones["zona_id"].nunique() == 3
+    assert {"frac_ev_defecto_tierra_24h", "metz_met_racha_1h", "dist_frac_ev_defecto_tierra_24h", "zona_n_cts"} \
+        <= set(zones.columns)
+    assert zones["zona_n_cts"].sum() / zones.groupby(["distribuidora_id", "zona_id"]).ngroups >= 1
+
+    folder = os.path.join(workdir, "resultados", "hr_ab_test")
+    summary = pd.read_csv(os.path.join(folder, "resumen.csv"))
+    expected = {"ref:tasa_base", "ref:naif_racha", "calser:xgboost", "tedisnet:xgboost", "meteo:xgboost",
+                "todo:xgboost", "todo+interacciones:xgboost", "por_distribuidora:xgboost", "zona:xgboost"}
+    assert expected <= set(summary["modelo"])
+    assert summary["pr_auc"].between(0, 1).all()
+
+    diffs = pd.read_csv(os.path.join(folder, "diferencias.csv"))
+    assert ("meteo:xgboost", "todo:xgboost") in set(zip(diffs["a"], diffs["b"]))
+    with open(os.path.join(folder, "resumen.md"), encoding="utf-8") as file:
+        report = file.read()
+    assert "## Modelo de zona medido por zona y hora" in report
+
+    # Every variant is kept apart, and launching again with the same run_id reuses them.
+    parts = set(os.listdir(os.path.join(folder, "parciales")))
+    assert {"referencias.parquet", "todo.parquet", "zona_filas.parquet"} <= parts
+    stamp = os.path.getmtime(os.path.join(folder, "parciales", "todo.parquet"))
+    job_ml_horas_riesgo.main(["--run-id", "hr_ab_test", "--config", config_path, "--ablacion", "--por-anios", "2025",
+                              "--sin-busqueda", "--sin-prevision"])
+    assert os.path.getmtime(os.path.join(folder, "parciales", "todo.parquet")) == stamp
 
 
 def test_wrong_dataset_version_is_refused(spark, dataset, config_path):
