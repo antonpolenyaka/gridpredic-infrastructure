@@ -79,6 +79,10 @@
       "depends_on": []
     },
     {
+      "name": "contexto_publico",
+      "depends_on": []
+    },
+    {
       "name": "dq_checks",
       "depends_on": [
         "d_salida",
