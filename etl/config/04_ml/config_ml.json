@@ -96,7 +96,13 @@
       4,
       6
     ],
-    "bootstrap_reps": 500
+    "bootstrap_reps": 500,
+    "anios_evaluacion": [
+      2023,
+      2024,
+      2025
+    ],
+    "fraccion_validacion_interna": 0.25
   },
   "muestra_valid": {
     "tasa_negativos": 0.02,
