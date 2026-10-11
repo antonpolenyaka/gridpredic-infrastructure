@@ -78,6 +78,8 @@ WORKS = {
     "nuts": ["ES43"],
     "provincias": ["06", "10"],
     "nuts_provincia": {"ES431": "06", "ES432": "10"},
+    # The capitals share the name of their province: "Albalá (Cáceres)" or "Diputación de Badajoz" name the province.
+    "nombres_provincia": ["badajoz", "caceres"],
     "meses_por_defecto": 6.0,
     "cpv_mov_tierras": ["4511", "4523", "4524", "45262"],
     "palabras_mov_tierras": "calle|pavimenta|urbaniza|abastecimiento|saneamiento|alcantarillado|colector|red de agua|"
@@ -220,9 +222,19 @@ def cells(spark, elevation, osm, osm_cells):
 # Works tenders (PLACSP) and buildings (Catastro)
 # ---------------------------------------------------------------------------
 
-def plain_text(column):
-    """Lower case without accents, every run of other characters as one space, a space at both ends."""
+def plain_text(column, provinces: list = None):
+    """
+    Lower case without accents, every run of other characters as one space, a space at both ends. With the names
+    of the provinces, the mentions of a province (between brackets, "provincia de", "Diputación de") go out first,
+    so they do not count as the capital of the same name.
+    """
     low = F.translate(F.lower(F.coalesce(column, F.lit(""))), "áàäâéèëêíìïîóòöôúùüûñç", "aaaaeeeeiiiioooouuuunc")
+    if provinces:
+        names = "|".join(provinces)
+        low = F.regexp_replace(low, rf"\(\s*(provincia de\s+)?({names})\s*\)", " ")
+        low = F.regexp_replace(
+            low, rf"(provincia|diputacion(\s+provincial)?|excma\.?\s+diputacion(\s+provincial)?)\s+de\s+(la\s+)?({names})",
+            " ")
     return F.concat(F.lit(" "), F.trim(F.regexp_replace(low, "[^a-z]+", " ")), F.lit(" "))
 
 
@@ -309,7 +321,7 @@ def tenders(placsp, deleted, towns, cfg: dict = None):
         ("OUT_OF_TERRITORY", ~(nuts_ok | (no_place & local))),
     ])
 
-    text = plain_text(F.concat_ws(" ", F.col("titulo"), F.col("objeto")))
+    text = plain_text(F.concat_ws(" ", F.col("titulo"), F.col("objeto")), cfg.get("nombres_provincia"))
     nuts_province = F.lit(None).cast("string")
     for code, province in cfg["nuts_provincia"].items():
         nuts_province = F.when(F.col("nuts") == code, F.lit(province)).otherwise(nuts_province)

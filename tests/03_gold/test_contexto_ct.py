@@ -72,7 +72,7 @@ def built(spark):
     for year, a, b in ((2018, 1000, 500), (2019, 1010, 490), (2020, 1020, 480), (2021, 1030, 470),
                        (2022, 1040, 460), (2023, 1050, 450), (2024, 1060, 440)):
         for code, name, value in (("10001", "Uno", a), ("10002", "Dos", b), ("10003", "Valle de Uno", 100),
-                                  ("10004", "Torno, El", 200)):
+                                  ("10004", "Torno, El", 200), ("10037", "Cáceres", 900)):
             for sex, factor in (("Total", 1.0), ("Hombres", 0.5)):
                 padron.append({"tabla_id": "2863", "serie_cod": f"S{code}{sex}", "serie_nombre": name,
                                "codigo_ine": code, "municipio": name, "provincia_codigo": "10", "sexo": sex,
@@ -164,6 +164,12 @@ def built(spark):
         # 8: no town in the title.
         {**tender, "licitacion_id": "8", "actualizado": "2023-06-01T10:00:00.000+02:00", "dir3": "L02000010",
          "titulo": "Obras en carreteras provinciales", "fichero_anio": 2023, "fecha_primera_publicacion": "2023-06-01"},
+        # 9: the province after the town and the Diputacion are not the capital; 10: the capital itself.
+        {**tender, "licitacion_id": "9", "actualizado": "2023-06-01T10:00:00.000+02:00", "dir3": "A11000000",
+         "titulo": "Viviendas en Valle de Uno (Cáceres) del plan de la Diputación de Cáceres", "fichero_anio": 2023,
+         "fecha_primera_publicacion": "2023-06-01"},
+        {**tender, "licitacion_id": "10", "actualizado": "2023-06-01T10:00:00.000+02:00", "dir3": "A11000000",
+         "titulo": "Colector de la ciudad de Cáceres", "fichero_anio": 2023, "fecha_primera_publicacion": "2023-06-01"},
     ]), "l1_bronze.placsp_licitacion_obra")
     save(spark, pd.DataFrame([{"licitacion_id": "7", "ref": "x/7", "borrado": "2023-03-05", "motivo": "ANULADA",
                                "fichero_anio": 2023}]), "l1_bronze.placsp_entrada_borrada")
@@ -195,7 +201,7 @@ def built(spark):
 
 def test_population_in_silver(built):
     pop = built.table("l2_silver.f_poblacion_municipio").toPandas()
-    assert len(pop) == 28
+    assert len(pop) == 35
     assert pop.groupby(["codigo_ine", "anio"]).size().max() == 1
     assert built.table("l2_silver.f_poblacion_municipio_rejected").count() == 1
 
@@ -252,6 +258,8 @@ def test_works_tenders_in_silver(built):
     assert works.loc[works["licitacion_id"] == "6", "codigo_ine"].tolist() == ["10004"]
     assert bool(works.loc[works["licitacion_id"] == "5", "anulada"].iloc[0])
     assert bool(works.loc[works["licitacion_id"] == "7", "anulada"].iloc[0])
+    assert works.loc[works["licitacion_id"] == "9", "codigo_ine"].tolist() == ["10003"]
+    assert works.loc[works["licitacion_id"] == "10", "codigo_ine"].tolist() == ["10037"]
     eight = works[works["licitacion_id"] == "8"].iloc[0]
     assert eight["cruce"] == "sin_municipio" and pd.isna(eight["codigo_ine"]) and eight["provincia"] == "10"
 
