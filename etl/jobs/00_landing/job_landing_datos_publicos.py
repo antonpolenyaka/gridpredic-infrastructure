@@ -257,6 +257,45 @@ def overpass_query(bbox: tuple, timeout: int) -> str:
     )
 
 
+def overpass_parts(bbox: tuple, timeout: int) -> dict:
+    """The query of a cell in three lighter parts: the busy servers time out less with each one alone."""
+    south, west, north, east = bbox
+    head = f"[out:json][timeout:{timeout}][bbox:{south},{west},{north},{east}];\n"
+    return {
+        "red": head + (
+            'way["power"~"^(line|minor_line|cable)$"];\nout tags geom;\n'
+            '(\n  node["power"~"^(pole|tower|transformer|substation|switch)$"];\n  way["power"="substation"];\n);\n'
+            'out tags center;\nway["building"];\nout count;\n'
+        ),
+        "viario": head + (
+            'way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|track)$"];\n'
+            "out tags geom;\n"
+        ),
+        "cubierta": head + (
+            '(\n  way["landuse"~"^(forest|construction)$"];\n  way["natural"~"^(wood|scrub)$"];\n'
+            '  relation["landuse"="forest"];\n  relation["natural"~"^(wood|scrub)$"];\n);\nout tags geom;\n'
+        ),
+    }
+
+
+def overpass_call(cfg: dict, query: str, cell: str, part: str):
+    """(answer, endpoint) of the first endpoint that answers the query, or (None, None)."""
+    osm = cfg["osm"]
+    for endpoint in osm["endpoints"]:
+        try:
+            raw = fetch(endpoint, data=urllib.parse.urlencode({"data": query}).encode("utf-8"),
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                        retries=2, wait_s=float(cfg["espera_reintento_s"]), timeout=float(osm["timeout_s"]) + 60)
+            answer = json.loads(raw)
+            remark = str(answer.get("remark", ""))
+            if "runtime error" in remark.lower():
+                raise RuntimeError(remark[:200])
+            return answer, endpoint
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Overpass %s failed for cell %s (%s): %s", endpoint, cell, part, str(error)[:160])
+    return None, None
+
+
 def land_osm(fs, cfg: dict, landing: str, cells: dict, force: bool, limit: int = None) -> tuple:
     osm = cfg["osm"]
     size = float(cfg["celda_grados"])
@@ -270,34 +309,28 @@ def land_osm(fs, cfg: dict, landing: str, cells: dict, force: bool, limit: int =
             break
 
         bbox = cell_bbox(lat, lon, size)
-        query = overpass_query(bbox, int(osm["timeout_s"]))
-        payload, used = None, None
-
-        for endpoint in osm["endpoints"]:
-            try:
-                raw = fetch(endpoint, data=urllib.parse.urlencode({"data": query}).encode("utf-8"),
-                            headers={"Content-Type": "application/x-www-form-urlencoded"},
-                            retries=2, wait_s=float(cfg["espera_reintento_s"]),
-                            timeout=float(osm["timeout_s"]) + 60)
-                candidate = json.loads(raw)
-                remark = str(candidate.get("remark", ""))
-                if "runtime error" in remark.lower():
-                    raise RuntimeError(remark[:200])
-                payload, used = candidate, endpoint
+        elements, used, base = [], {}, None
+        for part, query in overpass_parts(bbox, int(osm["timeout_s"])).items():
+            answer, endpoint = overpass_call(cfg, query, cell, part)
+            if answer is None:
+                elements = None
                 break
-            except Exception as error:  # noqa: BLE001
-                logger.warning("Overpass %s failed for cell %s: %s", endpoint, cell, str(error)[:200])
+            elements += answer.get("elements", [])
+            used[part] = endpoint
+            base = base or answer.get("osm3s")
+            time.sleep(float(cfg["pausa_s"]))
 
-        if payload is None:
+        if elements is None:
             failed += 1
             logger.error("Cell %s not downloaded from any Overpass endpoint", cell)
             continue
 
-        payload["_peticion"] = stamp("overpass", celda_id=cell, bbox=list(bbox), endpoint=used)
+        payload = {"elements": elements, "osm3s": base or {}}
+        payload["_peticion"] = stamp("overpass", celda_id=cell, bbox=list(bbox),
+                                     endpoint=",".join(sorted(set(used.values()))), partes=used)
         save_json(fs, target, payload)
         done += 1
-        logger.info("OSM cell %s: %s elements from %s (%s now, %s failed)", cell, len(payload.get("elements", [])),
-                    used, done, failed)
+        logger.info("OSM cell %s: %s elements (%s now, %s failed)", cell, len(elements), done, failed)
         time.sleep(float(osm.get("pausa_s", 10)))
 
     return done, failed
