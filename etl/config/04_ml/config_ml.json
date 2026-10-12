@@ -304,6 +304,8 @@
       {"nombre": "larga_etiqueta_meteo", "desde": "2017-01-08", "bloques": ["meteo", "calendario", "historia"],
        "etiqueta": "meteo"},
       {"nombre": "larga_conveccion", "desde": "2017-01-08", "bloques": ["meteo", "conveccion", "calendario", "historia"],
+       "etiqueta": "principal"},
+      {"nombre": "larga_antecedente", "desde": "2017-01-08", "bloques": ["meteo", "antecedente", "calendario", "historia"],
        "etiqueta": "principal"}
     ],
     "comparaciones": [
@@ -314,7 +316,9 @@
       ["larga__logistica", "larga__naif_racha"],
       ["larga__xgboost", "larga_meteo__xgboost"],
       ["larga_etiqueta_meteo__xgboost", "larga__xgboost"],
-      ["larga_conveccion__xgboost", "larga__xgboost"]
+      ["larga_conveccion__xgboost", "larga__xgboost"],
+      ["larga_antecedente__xgboost", "larga__xgboost"],
+      ["larga_antecedente__logistica", "larga__logistica"]
     ]
   }
 }

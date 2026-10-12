@@ -71,3 +71,34 @@ def test_cape_reaches_silver_and_gold(spark):
     assert last["39.40_-6.30"]["met_cape_max_24h"] == 1500.0
     assert last["39.40_-6.30"]["met_li_min_6h"] == -2.0
     assert last["40.20_-5.80"]["met_cape_max_6h"] == 10.0
+
+
+def test_antecedent_rain_and_humidity(spark):
+    import job_gold_meteo_celda_hora as gold
+    import job_silver_f_meteo_hora as silver
+
+    hours = pd.date_range("2022-01-01 00:00", periods=40 * 24, freq="h")
+    rain = pd.Series(0.0, index=hours)
+    rain[pd.Timestamp("2022-01-03 10:00")] = 4.0     # 37 days before the check: out of every window
+    rain[pd.Timestamp("2022-01-20 10:00")] = 6.0     # inside the previous 30 days
+    rain[pd.Timestamp("2022-02-07 12:00")] = 2.0     # 47 h before: in the 72 h, not in the 24 h
+    rain[pd.Timestamp("2022-02-09 06:00")] = 1.0     # in the last 24 h
+    humidity = pd.Series(60.0, index=hours)
+    humidity[pd.Timestamp("2022-02-09 07:00")] = 98.0
+    frame = pd.DataFrame({"celda_id": "39.40_-6.30", "hora": hours, "temperature_2m": 10.0,
+                          "relative_humidity_2m": humidity.to_numpy(), "precipitation": rain.to_numpy(),
+                          "snowfall": 0.0, "wind_speed_10m": 10.0, "wind_gusts_10m": 20.0, "pressure_msl": 1015.0,
+                          "modelo": "ecmwf_ifs"})
+
+    out, _ = silver.transform(spark.createDataFrame(frame))
+    features, names = gold.weather_features(out, 0, False)
+    assert {"met_lluvia_72h", "met_lluvia_previa_30d", "met_humedad_max_6h"} <= set(names)
+
+    row = features.where(features.hora == pd.Timestamp("2022-02-09 11:00").to_pydatetime()).first()
+    assert row["met_lluvia_24h"] == 1.0
+    assert row["met_lluvia_72h"] == 3.0
+    # From 30 days to 24 h before: the rain of 20.01 and of 07.02, not the one of 03.01.
+    assert row["met_lluvia_previa_30d"] == 8.0
+    assert row["met_humedad_max_6h"] == 98.0
+    first = features.where(features.hora == hours[0].to_pydatetime()).first()
+    assert first["met_lluvia_previa_30d"] == 0.0

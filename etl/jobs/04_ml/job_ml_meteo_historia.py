@@ -90,9 +90,12 @@ CAUSES_TABLE = "l2_silver.f_incidencia_causa"
 LABELS = ["y_principal", "y_meteo"]
 MAIN_LABEL = "y_principal"
 
-# Families of weather features that do not cover the whole history or come
-# from another source: a variant uses them only when it names the block.
+# Families of weather features that do not cover the whole history, come
+# from another source or are measured on their own (antecedente: the rain of
+# the days before and the humid hours): a variant uses them only when it
+# names the block.
 WEATHER_BLOCKS = {
+    "antecedente": ("_lluvia_72h", "_lluvia_previa_30d", "_humedad_max_6h"),
     "conveccion": ("_cape", "_li_"),
     "aire": ("_polvo", "_pm10"),
     "suelo": ("_humedad_suelo",),
@@ -408,10 +411,13 @@ def describe(pdf: pd.DataFrame) -> pd.DataFrame:
 def variant_features(variant: dict, blocks: dict) -> list:
     chosen = list(blocks.get("distribuidora", []))
     for block in variant["bloques"]:
-        if block not in blocks:
-            logger.warning("Variant %s: block %s has no features", variant["nombre"], block)
         chosen += blocks.get(block, [])
     return chosen
+
+
+def missing_blocks(variant: dict, blocks: dict) -> list:
+    """Blocks a variant asks for that the dataset does not have (a source not loaded yet)."""
+    return [block for block in variant["bloques"] if not blocks.get(block)]
 
 
 def variant_years(variant: dict, cfg: dict) -> list:
@@ -520,6 +526,14 @@ def main(argv=None):
     sizes = describe(pdf)
     logger.info("Dataset: %s rows, blocks %s\n%s", len(pdf), {k: len(v) for k, v in blocks.items()},
                 ml_metrics.markdown_table(sizes, digits=3))
+
+    # A variant that asks for a block without features would repeat another one.
+    for variant in [v for v in variants if missing_blocks(v, blocks)]:
+        logger.warning("Variant %s skipped: no features of the blocks %s", variant["nombre"],
+                       missing_blocks(variant, blocks))
+    variants = [v for v in variants if not missing_blocks(v, blocks)]
+    if not variants:
+        raise ValueError("No variant has all its blocks")
 
     outs, search, last = [], [], {}
     for variant in variants:

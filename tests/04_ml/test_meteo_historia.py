@@ -88,6 +88,11 @@ def test_blocks_keep_partial_families_apart():
     assert mh.block_of("metd_max_met_cape_max_24h") == "conveccion"
     assert mh.block_of("metd_media_met_li_min_6h") == "conveccion"
     assert mh.block_of("metd_max_met_polvo_24h") == "aire"
+    assert mh.block_of("metd_max_met_lluvia_72h") == "antecedente"
+    assert mh.block_of("metd_media_met_lluvia_previa_30d") == "antecedente"
+    assert mh.block_of("metd_max_met_humedad_max_6h") == "antecedente"
+    assert mh.block_of("metd_max_met_lluvia_24h") == "meteo"
+    assert mh.block_of("metd_media_met_humedad_1h") == "meteo"
     assert mh.block_of("cal_hora_sin") == "calendario"
     assert mh.block_of("estacion") == "calendario"
     assert mh.block_of("hist_incidencias_7d") == "historia"
@@ -220,6 +225,8 @@ def config_path(workdir):
              "bloques": ["meteo", "conveccion", "calendario", "historia"], "etiqueta": "principal"},
             {"nombre": "larga_etiqueta_meteo", "desde": "2019-01-08", "bloques": ["meteo", "calendario", "historia"],
              "etiqueta": "meteo"},
+            # No dust in the weather of the test: skipped, not a copy of larga.
+            {"nombre": "larga_aire", "desde": "2019-01-08", "bloques": ["meteo", "aire"], "etiqueta": "principal"},
         ],
         "comparaciones": [["larga__xgboost", "corta__xgboost"], ["larga__logistica", "corta__logistica"],
                           ["larga__logistica", "larga__naif_racha"], ["larga_etiqueta_meteo__logistica",
@@ -276,7 +283,7 @@ def test_models_beat_the_base_rate(result):
     best = table[(table["variante"] == "larga") & (table["modelo"].isin(["logistica", "xgboost"]))]["pr_auc"].max()
     base = table[(table["variante"] == "larga") & (table["modelo"] == "tasa_base")]["pr_auc"].item()
     assert best > 2 * base
-    assert {"corta", "larga", "larga_conveccion", "larga_etiqueta_meteo"} <= set(table["variante"])
+    assert {"corta", "larga", "larga_conveccion", "larga_etiqueta_meteo"} == set(table["variante"])
     diffs = read(folder, "diferencias.csv")
     assert len(diffs) == 4
 
