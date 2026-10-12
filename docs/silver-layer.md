@@ -52,6 +52,8 @@ Otras reglas de la capa:
 | `f_edificacion_municipio` | Catastro, INSPIRE Buildings (`l1_bronze.catastro_edificio`) | municipio, año de construcción |
 | `f_aves_celda_anio`, `f_aves_celda_mes` | GBIF (`l1_bronze.gbif_conteo_celda`) | celda, especie y año; celda, especie y mes |
 | `f_area_quemada` | EFFIS (`l1_bronze.effis_area_quemada`) | área quemada |
+| `f_aviso_meteo` | AEMET (`l1_bronze.aemet_aviso`) | aviso y celda |
+| `f_foco_incendio` | NASA FIRMS (`l1_bronze.firms_foco`) | foco de incendio |
 | `f_proyeccion_ame`, `d_ame_municipio` | Proyecciones de población 2024-2039 del IEEX (`l1_bronze.ieex_proyeccion_ame`, `ieex_ame_municipio`) | agrupación de municipios y año; municipio |
 | `dq_metrics` | todos los jobs | ejecución, entidad, métrica |
 
