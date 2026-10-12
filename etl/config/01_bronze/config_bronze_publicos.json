@@ -91,7 +91,7 @@
       "hasta": "2026-08-31",
       "dias_por_peticion": 5,
       "margen_grados": 0.3,
-      "pausa_s": 1,
+      "pausa_s": 0.3,
       "timeout_s": 180
     },
     "fwi": {
