@@ -48,6 +48,30 @@
       "ficheros": ["ieex_proyecciones_ame.csv", "ieex_ame_municipios.csv"],
       "origen": "https://www.juntaex.es/w/proyecciones-de-poblacion"
     },
+    "aves": {
+      "api": "https://api.gbif.org/v1/occurrence/search",
+      "taxones": {
+        "ciguena_blanca": {"scientificName": "Ciconia ciconia"},
+        "aves": {"classKey": "212"}
+      },
+      "anio_desde": 2000,
+      "anio_hasta": 2026,
+      "facet_limite": 60,
+      "pausa_s": 1
+    },
+    "incendios": {
+      "wfs": "https://maps.effis.emergency.copernicus.eu/effis",
+      "margen_grados": 0.2,
+      "timeout_s": 600,
+      "variantes": [
+        {"version": "1.1.0", "typename": "ms:modis.ba.poly", "srsName": "EPSG:4326",
+         "bbox": "{lat0},{lon0},{lat1},{lon1},urn:ogc:def:crs:EPSG::4326"},
+        {"version": "1.0.0", "typename": "ms:modis.ba.poly", "srsName": "EPSG:4326",
+         "bbox": "{lon0},{lat0},{lon1},{lat1}"},
+        {"version": "1.1.0", "typename": "ms:modis.ba.poly", "bbox": "{lon0},{lat0},{lon1},{lat1},EPSG:4326"},
+        {"version": "1.0.0", "typename": "modis.ba.poly", "bbox": "{lon0},{lat0},{lon1},{lat1}"}
+      ]
+    },
     "tablas": {
       "padron": "l1_bronze.ine_padron_municipio",
       "wikidata": "l1_bronze.wikidata_municipio",
@@ -59,7 +83,9 @@
       "catastro": "l1_bronze.catastro_edificio",
       "catastro_municipios": "l1_bronze.catastro_municipio",
       "proyecciones": "l1_bronze.ieex_proyeccion_ame",
-      "ame_municipios": "l1_bronze.ieex_ame_municipio"
+      "ame_municipios": "l1_bronze.ieex_ame_municipio",
+      "aves": "l1_bronze.gbif_conteo_celda",
+      "incendios": "l1_bronze.effis_area_quemada"
     }
   }
 }

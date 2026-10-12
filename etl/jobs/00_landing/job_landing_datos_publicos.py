@@ -40,6 +40,20 @@ the APIs return them:
   read (Excel 97 inside 7z, a PDF map), so extract_ieex_proyecciones.py turns
   them once into two CSV files of the configuration, which this source copies
   to Landing (.../proyecciones/).
+- GBIF (Global Biodiversity Information Facility), occurrence search API,
+  free and without key: the records of the white stork (Ciconia ciconia) and
+  of all the birds inside every weather cell, by year and month (only the
+  counts, limit=0 with facets). Stork nests on poles are the first cause of
+  the faults of the own overhead lines that the operators name; the share of
+  storks among the bird records of a cell corrects the effort of the
+  observers. One file per cell (.../aves/<celda_id>.json).
+- EFFIS (European Forest Fire Information System, Copernicus), burnt areas
+  of 30 ha or more mapped from MODIS, through its open WFS: the polygons of
+  the study area with the date, the municipality and the area
+  (.../incendios/effis_area_quemada.gml). The fires lead to cuts asked by the
+  emergency services and to damaged insulators. The axis order of the WFS
+  versions differs, so the request tries the variants of the configuration
+  and keeps the first one whose polygons fall in the study area.
 
 The places are the municipalities of data/reference_data/municipios.xlsx and
 their cells, the same as the weather (job_landing_meteo_openmeteo).
@@ -86,7 +100,7 @@ CONFIG_CANDIDATES = [
     os.path.join(HERE, "..", "..", "config", "01_bronze", "config_bronze_publicos.json"),
 ]
 
-SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones"]
+SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones", "aves", "incendios"]
 PARTIAL_EXIT = 4
 
 
@@ -674,6 +688,127 @@ def land_projections(fs, cfg: dict, landing: str) -> int:
     return done
 
 
+# GBIF ----------------------------------------------------------------------
+
+def gbif_params(taxon: dict, lat: float, lon: float, half: float, cfg: dict) -> dict:
+    """Query of the occurrence search API for the counts of a taxon inside a cell, by year and month."""
+    return {
+        **taxon,
+        "decimalLatitude": f"{lat - half:.4f},{lat + half:.4f}",
+        "decimalLongitude": f"{lon - half:.4f},{lon + half:.4f}",
+        "hasCoordinate": "true",
+        "occurrenceStatus": "PRESENT",
+        "year": f"{cfg['anio_desde']},{cfg['anio_hasta']}",
+        "limit": "0",
+        "facet": ["year", "month"],
+        "facetLimit": str(cfg.get("facet_limite", 60)),
+    }
+
+
+def land_birds(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    birds = cfg["aves"]
+    half = float(cfg["celda_grados"]) / 2.0
+    done = failed = 0
+
+    for cell, (lat, lon) in sorted(cells.items()):
+        target = f"{landing}/aves/{cell}.json"
+        if fs.exists(target) and not force:
+            continue
+
+        answers = {}
+        try:
+            for name, taxon in birds["taxones"].items():
+                query = urllib.parse.urlencode(gbif_params(taxon, lat, lon, half, birds), doseq=True, safe=",")
+                answers[name] = json.loads(fetch(f"{birds['api']}?{query}").decode("utf-8"))
+                time.sleep(float(birds.get("pausa_s", 1)))
+        except Exception as error:  # noqa: BLE001
+            failed += 1
+            logger.error("GBIF cell %s not downloaded: %s", cell, str(error)[:200])
+            continue
+
+        payload = {"taxones": answers, "_peticion": stamp("gbif", celda_id=cell, latitud=lat, longitud=lon,
+                                                          bbox=[lat - half, lon - half, lat + half, lon + half])}
+        save_json(fs, target, payload)
+        done += 1
+        logger.info("GBIF cell %s: %s", cell, {k: v.get("count") for k, v in answers.items()})
+
+    return done, failed
+
+
+# EFFIS ---------------------------------------------------------------------
+
+COORDINATE_PAIRS = re.compile(r"<(?:[\w-]+:)?(?:posList|coordinates|pos)\b[^>]*>([^<]+)<")
+
+
+def first_points(text: str, limit: int = 20) -> list:
+    """Some (a, b) pairs of the first geometries of a GML answer, whatever the axis order."""
+    points = []
+    for match in COORDINATE_PAIRS.finditer(text):
+        numbers = [float(x) for x in re.split(r"[\s,]+", match.group(1).strip()) if x]
+        points += list(zip(numbers[0::2], numbers[1::2]))[:3]
+        if len(points) >= limit:
+            break
+    return points
+
+
+def in_area(points: list, box: tuple) -> bool:
+    """True when most points fall in box (min lon, min lat, max lon, max lat) in either axis order."""
+    if not points:
+        return False
+    lon0, lat0, lon1, lat1 = box
+    inside = sum(1 for a, b in points if (lon0 <= a <= lon1 and lat0 <= b <= lat1)
+                 or (lat0 <= a <= lat1 and lon0 <= b <= lon1))
+    return inside >= 0.5 * len(points)
+
+
+def effis_requests(fires: dict, box: tuple) -> list:
+    """The variants of the GetFeature request, from the configuration."""
+    lon0, lat0, lon1, lat1 = box
+    values = {"lon0": f"{lon0:.4f}", "lat0": f"{lat0:.4f}", "lon1": f"{lon1:.4f}", "lat1": f"{lat1:.4f}"}
+    out = []
+    for variant in fires["variantes"]:
+        params = {key: str(value).format(**values) for key, value in variant.items()}
+        params.setdefault("service", "WFS")
+        params.setdefault("request", "GetFeature")
+        out.append(f"{fires['wfs']}?{urllib.parse.urlencode(params, safe=',:')}")
+    return out
+
+
+def land_fires(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    fires = cfg["incendios"]
+    target = f"{landing}/incendios/effis_area_quemada.gml"
+    if fs.exists(target) and not force:
+        return 0, 0
+
+    margin = float(fires.get("margen_grados", 0.2)) + float(cfg["celda_grados"]) / 2.0
+    lats = [c[0] for c in cells.values()]
+    lons = [c[1] for c in cells.values()]
+    box = (min(lons) - margin, min(lats) - margin, max(lons) + margin, max(lats) + margin)
+
+    for url in effis_requests(fires, box):
+        try:
+            raw = fetch(url, timeout=float(fires.get("timeout_s", 600)))
+        except Exception as error:  # noqa: BLE001
+            logger.warning("EFFIS request failed (%s): %s", url[:160], str(error)[:200])
+            continue
+        text = raw.decode("utf-8", "replace")
+        features = len(re.findall(r"<(?:[\w-]+:)?featureMember\b", text))
+        if "ExceptionReport" in text[:3000] or "ServiceException" in text[:3000]:
+            logger.warning("EFFIS refused %s: %s", url[:160], text[:300])
+            continue
+        if not features or not in_area(first_points(text), box):
+            logger.warning("EFFIS answer without polygons in the area (%s features): %s", features, url[:160])
+            continue
+        with fs.open(target, "wb") as file:
+            file.write(raw)
+        save_json(fs, f"{landing}/incendios/peticion.json",
+                  stamp("effis-wfs", url=url, bbox=list(box), poligonos=features, bytes=len(raw)))
+        logger.info("EFFIS: %s burnt areas (%s bytes)", features, len(raw))
+        return 1, 0
+
+    return 0, 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
@@ -709,13 +844,15 @@ def main(argv=None):
         "obras": lambda: land_obras(fs, cfg, landing, args.forzar, args.anios, args.procesos),
         "catastro": lambda: land_catastro(fs, cfg, landing, places, provinces, args.forzar),
         "proyecciones": lambda: land_projections(fs, cfg, landing),
+        "aves": lambda: land_birds(fs, cfg, landing, cells, args.forzar),
+        "incendios": lambda: land_fires(fs, cfg, landing, cells, args.forzar),
     }
     for source in SOURCES:
         if source not in sources:
             continue
         try:
             result = steps[source]()
-            if source in ("osm", "obras", "catastro") and result[1]:
+            if source in ("osm", "obras", "catastro", "aves", "incendios") and result[1]:
                 logger.error("%s pieces of %s are missing: launch again to ask only those", result[1], source)
                 missing.append(source)
         except Exception as error:  # noqa: BLE001
