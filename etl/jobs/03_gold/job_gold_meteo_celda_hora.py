@@ -145,8 +145,10 @@ def weather_features(hourly, lead: int, region: bool):
         *[F.sum("lluvia").over(past(h)).alias(f"met_lluvia_{h}h") for h in (3, 6, 24, 72)],
         # Rain of the 29 days before the last 24 h: the first rain after a dry
         # spell washes the dirt of the insulators onto them, and soaked ground
-        # lets the wind bring the trees down.
-        F.coalesce(F.sum("lluvia").over(before(30 * 24, 24)), F.lit(0.0)).alias("met_lluvia_previa_30d"),
+        # lets the wind bring the trees down. Null when the window has less
+        # than 90 % of its hours (the start of the series, gaps), not "dry".
+        F.when(F.count("lluvia").over(before(30 * 24, 24)) >= int(0.9 * 29 * 24),
+               F.sum("lluvia").over(before(30 * 24, 24))).alias("met_lluvia_previa_30d"),
         F.sum("nieve").over(past(24)).alias("met_nieve_24h"),
         F.col("temp").alias("met_temp_1h"),
         F.min("temp").over(past(24)).alias("met_temp_min_24h"),

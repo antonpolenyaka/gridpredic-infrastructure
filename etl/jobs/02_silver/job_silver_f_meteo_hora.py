@@ -140,8 +140,15 @@ def add_extra(out: DataFrame, extra: DataFrame) -> DataFrame:
     return add_coarse(out, extra, EXTRA)
 
 
-def add_coarse(out: DataFrame, conv: DataFrame, variables: dict) -> DataFrame:
-    """The variables of the nearest cell of a coarser grid, by (cell, hour)."""
+# Farthest a cell of the coarse grid (0.25 degrees) can be from a cell to
+# give it its values, in latitude and in longitude: one step of the grid. A
+# coarse cell still missing (a Landing stopped by the daily limit) leaves
+# nulls, not the values of a cell 200 km away.
+MAX_COARSE_STEP = 0.25
+
+
+def add_coarse(out: DataFrame, conv: DataFrame, variables: dict, max_step: float = MAX_COARSE_STEP) -> DataFrame:
+    """The variables of the nearest cell of a coarser grid within max_step degrees, by (cell, hour)."""
     present = {k: v for k, v in variables.items() if k in conv.columns}
     if not present:
         return out
@@ -154,8 +161,10 @@ def add_coarse(out: DataFrame, conv: DataFrame, variables: dict) -> DataFrame:
     conv_cells = conv_cells.select("celda_conv", clat.alias("_clat"), clon.alias("_clon"))
 
     distance = (F.col("_lat") - F.col("_clat")) ** 2 + (F.col("_lon") - F.col("_clon")) ** 2
+    close = (F.abs(F.col("_lat") - F.col("_clat")) <= F.lit(max_step + 1e-9)) & (
+        F.abs(F.col("_lon") - F.col("_clon")) <= F.lit(max_step + 1e-9))
     nearest = (
-        cells.crossJoin(F.broadcast(conv_cells)).withColumn("_d", distance)
+        cells.crossJoin(F.broadcast(conv_cells)).where(close).withColumn("_d", distance)
         .withColumn("_r", F.row_number().over(Window.partitionBy("celda_id").orderBy("_d", "celda_conv")))
         .where(F.col("_r") == 1).select("celda_id", "celda_conv")
     )
