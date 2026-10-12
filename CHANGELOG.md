@@ -37,6 +37,8 @@ Causas de todas las incidencias de Calser de las tres distribuidoras, qué datos
 - Silver de meteorología: una celda solo toma los valores de la celda gruesa más cercana si está a un paso de rejilla como mucho; con la descarga a medias queda nula en vez de copiar una celda lejana.
 - `meteo_historia`: búsqueda de la regresión logística con más regularización (C de 0,001 a 0,03).
 - Avisos de AEMET: peticiones de 2 días como mucho y 4 s entre peticiones, porque el archivo responde con un error a periodos más largos y limita las peticiones por minuto.
+- Avisos de AEMET en Bronze: fuera los mensajes verdes (sin aviso), que son casi todo el archivo porque cada zona y fenómeno se envía en verde varias veces al día, y una fila por mensaje y zona aunque el mensaje se repita en varios paquetes de la misma pieza. Con el archivo completo, Bronze pasaba de unos pocos miles de filas a unos 2,7 millones y se quedaba sin memoria.
+- FIRMS: 0,3 s entre peticiones en lugar de 1 s.
 - `distributor_weather` lee solo las columnas de Gold con los prefijos que se le piden (`met_` y `metprev_` por defecto).
 
 ## [0.8.0] - sin publicar
