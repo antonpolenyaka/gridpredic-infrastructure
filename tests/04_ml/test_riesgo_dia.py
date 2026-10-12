@@ -97,6 +97,16 @@ def test_warnings_count_only_when_sent_the_evening_before():
     assert 2 not in rows.index.get_level_values(0)
 
 
+def test_quantile_map_takes_the_forecast_to_the_scale_of_the_reanalysis():
+    rng = np.random.default_rng(0)
+    reanalysis = rng.gamma(4.0, 8.0, 2000)
+    forecast = reanalysis * 1.2 + 5.0
+    mapped = rd.quantile_map(forecast, reanalysis, np.quantile(forecast, [0.1, 0.5, 0.9]))
+    assert mapped == pytest.approx(np.quantile(reanalysis, [0.1, 0.5, 0.9]), rel=0.02)
+    # Too few days to fit: the values go as they are.
+    assert rd.quantile_map([1.0, 2.0], [3.0, 4.0], [5.0]).tolist() == [5.0]
+
+
 def test_top_share_counts_the_positive_days_of_the_top_of_each_year():
     y = np.array([1, 0, 0, 0, 1, 0, 0, 0, 0, 1])
     score = np.array([0.9, 0.1, 0.2, 0.3, 0.05, 0.8, 0.1, 0.2, 0.3, 0.7])
@@ -180,6 +190,14 @@ def synthetic():
     weather = pd.concat(weather, ignore_index=True)
     region = weather.groupby("hora")["met_racha_1h"].max().rolling(3, min_periods=1).max()
     weather["met_region_racha_max_3h"] = weather["hora"].map(region)
+    # What a model forecast the day before, from 2024: the same weather with noise and stronger gusts.
+    archived = weather["hora"] >= "2024-01-01"
+    noise = rng.normal(1.0, 0.15, len(weather))
+    weather["metp1_racha_1h"] = np.where(archived, weather["met_racha_1h"] * 1.15 * noise, np.nan)
+    weather["metp1_viento_1h"] = np.where(archived, weather["met_viento_1h"] * 1.15 * noise, np.nan)
+    weather["metp1_lluvia_1h"] = np.where(archived, weather["met_lluvia_1h"] * noise.clip(0), np.nan)
+    weather["metp1_temp_1h"] = np.where(archived, weather["met_temp_1h"] + 1.0, np.nan)
+    weather["metp1_humedad_1h"] = np.where(archived, 60.0, np.nan)
     # The archive of warnings starts in the middle of 2019, as the real one in 2018.
     warnings = pd.DataFrame(warnings)
     warnings = warnings[warnings["enviado_ts"] >= "2019-06-18"].reset_index(drop=True)
@@ -225,7 +243,10 @@ def config_path(workdir):
             {"nombre": "ayer", "desde": "2019-01-08", "bloques": ["calendario", "historia", "ayer"]},
             {"nombre": "avisos", "desde": "2019-06-25", "bloques": ["calendario", "historia", "ayer", "avisos"]},
             {"nombre": "perfecta", "desde": "2019-01-08", "bloques": ["calendario", "historia", "ayer", "dia"]},
+            {"nombre": "perfecta_comun", "desde": "2019-01-08",
+             "bloques": ["calendario", "historia", "ayer", "dia_comun"]},
         ],
+        "anios_prevision": [2024, 2025],
         "comparaciones": [["perfecta__logistica", "ayer__logistica"], ["avisos__logistica", "ayer__logistica"]],
     }
     path = os.path.join(workdir, "config.json")
@@ -271,7 +292,30 @@ def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
     assert len(read(folder, "diferencias.csv")) == 2
 
 
+def test_the_real_forecast_scores_the_years_it_covers(result):
+    _, folder = result
+    table = read(folder, "prevision.csv").set_index(["tiempo_del_dia", "modelo"])
+    assert {"reanalisis", "prevision", "prevision_cuantiles", "solo_ayer"} <= set(table.index.get_level_values(0))
+    perfect = table.loc[("reanalisis", "logistica"), "pr_auc"]
+    mapped = table.loc[("prevision_cuantiles", "logistica"), "pr_auc"]
+    # A noisy forecast keeps most of what the weather of the day says, far above knowing only yesterday.
+    assert mapped > 2 * table.loc[("solo_ayer", "logistica"), "pr_auc"]
+    assert mapped > 0.6 * perfect
+    assert len(read(folder, "prevision_diferencias.csv")) >= 2
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "## Con la previsión real del día anterior (2024, 2025)" in text
+
+
 def test_metrics_and_run_saved(result, spark):
     assert spark.table("l3_gold.ml_metricas").where(f"run_id = '{RUN_ID}'").count() > 100
     run = spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}'").first()
     assert run is not None and run["etiqueta"] == "meteo_dia:y_dia"
+
+
+def test_the_models_of_the_hours_never_see_the_forecast_of_the_day_before(spark, tables):
+    from job_ml_horas_riesgo import distributor_weather
+
+    _, names = distributor_weather(spark, {"activo": True})
+    assert names and not any("metp1_" in n or "metp2_" in n for n in names)
+    _, names = distributor_weather(spark, {"activo": True}, prefixes=("met_", "metp1_"))
+    assert "metd_max_metp1_racha_1h" in names
