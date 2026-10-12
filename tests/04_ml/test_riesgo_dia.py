@@ -289,7 +289,10 @@ def config_path(workdir):
              "bloques": ["calendario", "historia", "ayer", "dia_comun"]},
             {"nombre": "perfecta_extremos", "desde": "2019-01-08",
              "bloques": ["calendario", "historia", "ayer", "dia", "extremos"]},
+            {"nombre": "comun_avisos", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun"]},
         ],
+        "variante_prevision": ["perfecta_comun", "comun_avisos"],
         "anios_prevision": [2024, 2025],
         "comparaciones": [["perfecta__logistica", "ayer__logistica"], ["avisos__logistica", "ayer__logistica"]],
     }
@@ -333,8 +336,10 @@ def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
     assert perfect > 2 * nothing
     # The warnings announce most storms the evening before: better than the weather of yesterday.
     assert warned > 1.5 * table.loc[("ayer", "logistica"), "pr_auc"]
-    assert table.loc[("perfecta", "naif_racha_dia"), "pr_auc"] > nothing
-    assert table.loc[("avisos", "naif_aviso"), "dias_positivos_en_top_10pct"] > 0.3
+    # A reference is shown once, under the first variant that has its feature.
+    references = table.reset_index().set_index("modelo")
+    assert references.loc["naif_racha_dia", "pr_auc"] > nothing
+    assert references.loc["naif_aviso", "dias_positivos_en_top_10pct"] > 0.3
     # The two models of every variant together by their percentiles in the year.
     assert table.loc[("perfecta", "rango"), "pr_auc"] > 2 * nothing
     assert len(read(folder, "diferencias.csv")) == 2
@@ -342,15 +347,22 @@ def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
 
 def test_the_real_forecast_scores_the_years_it_covers(result):
     _, folder = result
-    table = read(folder, "prevision.csv").set_index(["tiempo_del_dia", "modelo"])
+    full = read(folder, "prevision.csv")
+    # Both variants of the forecast, with the models of yesterday once.
+    assert set(full["variante"]) == {"perfecta_comun", "comun_avisos", "ayer"}
+    table = full[full["variante"].isin(["perfecta_comun", "ayer"])].set_index(["tiempo_del_dia", "modelo"])
     assert {"reanalisis", "prevision", "prevision_cuantiles", "solo_ayer"} <= set(table.index.get_level_values(0))
+    warned = full[full["variante"] == "comun_avisos"].set_index(["tiempo_del_dia", "modelo"])
+    assert warned.loc[("prevision_cuantiles", "logistica"), "pr_auc"] > full.loc[
+        (full["variante"] == "ayer") & (full["modelo"] == "logistica"), "pr_auc"].iloc[0]
     assert ("prevision_cuantiles", "rango") in table.index
     perfect = table.loc[("reanalisis", "logistica"), "pr_auc"]
     mapped = table.loc[("prevision_cuantiles", "logistica"), "pr_auc"]
     # A noisy forecast keeps most of what the weather of the day says, far above knowing only yesterday.
     assert mapped > 2 * table.loc[("solo_ayer", "logistica"), "pr_auc"]
     assert mapped > 0.6 * perfect
-    assert len(read(folder, "prevision_diferencias.csv")) >= 2
+    differences = read(folder, "prevision_diferencias.csv")
+    assert len(differences) >= 4 and differences["a"].str.startswith("comun_avisos__").any()
     text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
     assert "## Con la previsión real del día anterior (2024, 2025)" in text
 

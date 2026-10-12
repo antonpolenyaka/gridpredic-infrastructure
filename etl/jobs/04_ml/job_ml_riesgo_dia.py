@@ -555,15 +555,20 @@ def busy_days_table(metrics: pd.DataFrame, shares: list) -> pd.DataFrame:
 
 
 def forecast_comparison(metrics: pd.DataFrame, shares: list) -> pd.DataFrame:
-    """One row per model and weather of the day (reanalysis, forecast, mapped forecast, only yesterday)."""
+    """
+    One row per variant, model and weather of the day (reanalysis, forecast,
+    mapped forecast; only yesterday for the variant ayer). The scores are
+    named p_<variant>__<model>__<weather> and p_ayer__<model>.
+    """
     rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)]
     wanted = ["pr_auc", "lift_pr_auc", "roc_auc"] + [f"dias_positivos_en_top_{int(round(s * 100))}pct" for s in shares]
     table = rows[rows["metrica"].isin(wanted)].pivot_table(index="modelo", columns="metrica", values="valor")
     table = table[[c for c in wanted if c in table.columns]].reset_index()
-    parts = table["modelo"].str.split("__", n=1, expand=True)
+    parts = table["modelo"].str.split("__", n=2, expand=True).reindex(columns=[0, 1, 2])
     yesterday = parts[0] == "ayer"
-    table.insert(0, "tiempo_del_dia", np.where(yesterday, "solo_ayer", parts[1]))
-    table["modelo"] = np.where(yesterday, parts[1], parts[0])
+    table.insert(0, "variante", parts[0])
+    table.insert(1, "tiempo_del_dia", np.where(yesterday, "solo_ayer", parts[2]))
+    table["modelo"] = parts[1]
     return table.sort_values("pr_auc", ascending=False).reset_index(drop=True)
 
 
@@ -780,13 +785,24 @@ def main(argv=None):
             {name[2:]: pooled[name].to_numpy() for name in named}, reps, seed)
         differences = ml_metrics.paired_differences(replicas, [(a[2:], b[2:]) for a, b in pairs])
 
-    # The real forecast: the models of variante_prevision with the forecast of
-    # ICON-EU in place of the weather of the day, on the days it covers.
+    # The real forecast: the models of variante_prevision (one variant or a
+    # list) with the forecast of ICON-EU in place of the weather of the day,
+    # on the days it covers.
     forecast_table, forecast_differences = pd.DataFrame(), pd.DataFrame()
-    reference = next((v for v in variants if v["nombre"] == cfg.get("variante_prevision", "perfecta_comun")), None)
-    years_forecast = forecast_years(pdf, cfg) if reference is not None else []
+    chosen = cfg.get("variante_prevision", "perfecta_comun")
+    chosen = [chosen] if isinstance(chosen, str) else list(chosen)
+    references = [v for v in variants if v["nombre"] in chosen]
+    years_forecast = forecast_years(pdf, cfg) if references else []
     if years_forecast:
-        found = forecast_evaluation(pdf, reference, blocks, config, run_cfg, years_forecast, args.sin_busqueda)
+        found = pd.DataFrame()
+        for reference in references:
+            part = forecast_evaluation(pdf, reference, blocks, config, run_cfg, years_forecast, args.sin_busqueda)
+            if part.empty:
+                continue
+            part = part.rename(columns={c: f"p_{reference['nombre']}__{c[2:]}" for c in part.columns
+                                        if c.startswith("p_")})
+            found = part if found.empty else found.merge(part.drop(columns=["anio"] + LABELS),
+                                                         on=["distribuidora_id", "fecha"], how="inner")
         before = [c for c in columns if c.startswith("p_ayer__")]
         if not found.empty and before:
             found = found.merge(scored[["distribuidora_id", "fecha"] + before], on=["distribuidora_id", "fecha"],
@@ -797,9 +813,12 @@ def main(argv=None):
                                            "prevision_comun")
             metrics = pd.concat([metrics, forecast_metrics], ignore_index=True)
             forecast_table = forecast_comparison(forecast_metrics, shares)
-            wanted = [(f"p_{m}__prevision_cuantiles", f"p_{m}__reanalisis") for m in ("logistica", "xgboost")]
-            wanted += [(f"p_{m}__prevision", f"p_{m}__reanalisis") for m in ("logistica", "xgboost")]
-            wanted += [(f"p_{m}__prevision_cuantiles", f"p_ayer__{m}") for m in ("logistica", "xgboost")]
+            wanted = []
+            for name in [r["nombre"] for r in references]:
+                for m in ("logistica", "xgboost", "rango"):
+                    wanted += [(f"p_{name}__{m}__prevision_cuantiles", f"p_{name}__{m}__reanalisis"),
+                               (f"p_{name}__{m}__prevision", f"p_{name}__{m}__reanalisis"),
+                               (f"p_{name}__{m}__prevision_cuantiles", f"p_ayer__{m}")]
             wanted = [(a, b) for a, b in wanted if a in found.columns and b in found.columns]
             if wanted:
                 named = sorted({name for pair in wanted for name in pair})
@@ -847,8 +866,8 @@ def main(argv=None):
         + ml_metrics.markdown_table(differences, digits=4),
     ] + ([
         f"## Con la previsión real del día anterior ({', '.join(str(y) for y in years_forecast)})\n\n"
-        f"Los modelos de la variante {reference['nombre']} se entrenan con el reanálisis y puntúan los días con "
-        "previsión tres veces: con el tiempo del día sacado del reanálisis (reanalisis), con lo que preveía ICON-EU el "
+        f"Los modelos de {', '.join(r['nombre'] for r in references)} se entrenan con el reanálisis y puntúan los "
+        "días con previsión tres veces: con el tiempo del día sacado del reanálisis (reanalisis), con lo que preveía ICON-EU el "
         "día anterior (prevision) y con esa previsión llevada por cuantiles a la escala del reanálisis "
         "(prevision_cuantiles). ayer es la variante que solo sabe el tiempo del día anterior.\n\n"
         + ml_metrics.markdown_table(forecast_table, digits=4)
