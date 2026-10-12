@@ -54,6 +54,13 @@ the APIs return them:
   emergency services and to damaged insulators. The axis order of the WFS
   versions differs, so the request tries the variants of the configuration
   and keeps the first one whose polygons fall in the study area.
+- AEMET OpenData, archive of the warnings of adverse weather (CAP messages,
+  from 18.06.2018, CC BY 4.0): wind, rain, thunderstorms, snow and heat by
+  warning zone, with the level (yellow, orange, red), the time it was issued
+  and the hours it covers. It is the forecast the operators already watch
+  and a forecast made in advance, not the reanalysis. It needs the free key
+  of opendata.aemet.es in AEMET_API_KEY. One tar per piece of days, as AEMET
+  gives it (.../avisos/<desde>_<hasta>.tar).
 
 The places are the municipalities of data/reference_data/municipios.xlsx and
 their cells, the same as the weather (job_landing_meteo_openmeteo).
@@ -100,7 +107,7 @@ CONFIG_CANDIDATES = [
     os.path.join(HERE, "..", "..", "config", "01_bronze", "config_bronze_publicos.json"),
 ]
 
-SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones", "aves", "incendios"]
+SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones", "aves", "incendios", "avisos"]
 PARTIAL_EXIT = 4
 
 
@@ -809,6 +816,75 @@ def land_fires(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
     return 0, 1
 
 
+# AEMET ----------------------------------------------------------------------
+
+def warning_chunks(first: str, last: str, days: int) -> list:
+    """[(start, end)] dates covering [first, last] in pieces of days."""
+    from datetime import date, timedelta
+
+    lo, hi = date.fromisoformat(first), date.fromisoformat(last)
+    out = []
+    while lo <= hi:
+        end = min(hi, lo + timedelta(days=days - 1))
+        out.append((lo, end))
+        lo = end + timedelta(days=1)
+    return out
+
+
+def aemet_url(warnings: dict, lo, hi) -> str:
+    """URL of the archive of warnings between two dates (AEMET wants UTC times with the UTC suffix)."""
+    return warnings["api"].format(ini=f"{lo.isoformat()}T00:00:00UTC", fin=f"{hi.isoformat()}T23:59:59UTC")
+
+
+def land_warnings(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    """
+    Archive of the warnings of adverse weather of AEMET (CAP, from
+    18.06.2018, CC BY 4.0) by pieces of dias_por_peticion days, saved as AEMET
+    gives them (a tar with the CAP messages) in avisos/<desde>_<hasta>.tar.
+    AEMET OpenData answers first with a JSON that points to the data. Needs the
+    free key of opendata.aemet.es in the environment variable clave_env.
+    """
+    warnings = cfg["avisos"]
+    key = os.environ.get(warnings.get("clave_env", "AEMET_API_KEY"), "").strip()
+    if not key:
+        logger.error("No %s in the environment: the warnings of AEMET need the free key of opendata.aemet.es",
+                     warnings.get("clave_env", "AEMET_API_KEY"))
+        return 0, 1
+
+    # The cells of the study, so Bronze keeps only the warning zones around them.
+    save_json(fs, f"{landing}/celdas.json",
+              [{"celda_id": c, "latitud": lat, "longitud": lon} for c, (lat, lon) in sorted(cells.items())])
+    headers = {"api_key": key, "Accept": "application/json"}
+    done = failed = 0
+    for lo, hi in warning_chunks(warnings["desde"], warnings["hasta"], int(warnings.get("dias_por_peticion", 31))):
+        target = f"{landing}/avisos/{lo:%Y%m%d}_{hi:%Y%m%d}.tar"
+        empty = f"{landing}/avisos/{lo:%Y%m%d}_{hi:%Y%m%d}.vacio.json"
+        if (fs.exists(target) or fs.exists(empty)) and not force:
+            continue
+        try:
+            answer = json.loads(fetch(aemet_url(warnings, lo, hi), headers=headers,
+                                      timeout=float(warnings.get("timeout_s", 300))).decode("utf-8", "replace"))
+            if int(answer.get("estado", 0)) == 404:
+                save_json(fs, empty, stamp("aemet-avisos", desde=str(lo), hasta=str(hi), respuesta=answer))
+                logger.info("AEMET %s - %s: no warnings", lo, hi)
+                continue
+            if int(answer.get("estado", 0)) != 200 or not answer.get("datos"):
+                raise RuntimeError(f"unexpected answer {str(answer)[:200]}")
+            raw = fetch(answer["datos"], headers={"api_key": key}, timeout=float(warnings.get("timeout_s", 300)))
+        except Exception as error:  # noqa: BLE001
+            failed += 1
+            logger.error("AEMET %s - %s not downloaded: %s", lo, hi, str(error)[:200])
+            time.sleep(float(warnings.get("pausa_s", 3)))
+            continue
+        with fs.open(target, "wb") as file:
+            file.write(raw)
+        done += 1
+        logger.info("AEMET %s - %s: %s bytes", lo, hi, len(raw))
+        time.sleep(float(warnings.get("pausa_s", 3)))
+
+    return done, failed
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
@@ -846,13 +922,14 @@ def main(argv=None):
         "proyecciones": lambda: land_projections(fs, cfg, landing),
         "aves": lambda: land_birds(fs, cfg, landing, cells, args.forzar),
         "incendios": lambda: land_fires(fs, cfg, landing, cells, args.forzar),
+        "avisos": lambda: land_warnings(fs, cfg, landing, cells, args.forzar),
     }
     for source in SOURCES:
         if source not in sources:
             continue
         try:
             result = steps[source]()
-            if source in ("osm", "obras", "catastro", "aves", "incendios") and result[1]:
+            if source in ("osm", "obras", "catastro", "aves", "incendios", "avisos") and result[1]:
                 logger.error("%s pieces of %s are missing: launch again to ask only those", result[1], source)
                 missing.append(source)
         except Exception as error:  # noqa: BLE001

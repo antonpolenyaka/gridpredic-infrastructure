@@ -72,6 +72,16 @@
         {"version": "1.0.0", "typename": "modis.ba.poly", "bbox": "{lon0},{lat0},{lon1},{lat1}"}
       ]
     },
+    "avisos": {
+      "api": "https://opendata.aemet.es/opendata/api/avisos_cap/archivo/fechaini/{ini}/fechafin/{fin}",
+      "clave_env": "AEMET_API_KEY",
+      "desde": "2018-06-18",
+      "hasta": "2026-08-31",
+      "dias_por_peticion": 31,
+      "pausa_s": 3,
+      "timeout_s": 300,
+      "margen_grados": 0.3
+    },
     "tablas": {
       "padron": "l1_bronze.ine_padron_municipio",
       "wikidata": "l1_bronze.wikidata_municipio",
@@ -85,7 +95,8 @@
       "proyecciones": "l1_bronze.ieex_proyeccion_ame",
       "ame_municipios": "l1_bronze.ieex_ame_municipio",
       "aves": "l1_bronze.gbif_conteo_celda",
-      "incendios": "l1_bronze.effis_area_quemada"
+      "incendios": "l1_bronze.effis_area_quemada",
+      "avisos": "l1_bronze.aemet_aviso"
     }
   }
 }
