@@ -67,6 +67,18 @@ the APIs return them:
   for the last months. It needs the free MAP_KEY of FIRMS in the environment
   (it goes in the URL, so the URL is never written to the log). One CSV per
   sensor and piece (.../focos/<sensor>/<desde>.csv), as FIRMS gives it.
+- Copernicus EWDS (Early Warning Data Store of CEMS), fire danger indices
+  of the reanalysis (cems-fire-historical-v1, CC BY 4.0): the Fire Weather
+  Index of the Canadian system and its parts (FFMC, DMC, DC, ISI, BUI) every
+  day on the grid of 0.25 degrees in the box of the study, one request per
+  year, from the consolidated dataset while it covers the month and from the
+  intermediate one after. It needs the free Personal Access Token of the
+  EWDS in COPERNICUS_EWDS_KEY (and the URL of the API in COPERNICUS_EWDS_URL,
+  the one of the configuration by default), sent in a header, never written
+  to the log, and the licence of the dataset accepted on its page. The
+  requests wait in the queue of the EWDS; several go at once. One NetCDF per
+  piece (.../fwi/<anio>_<conjunto>_<mes>-<mes>.nc) with the request next to
+  it (.json).
 
 The places are the municipalities of data/reference_data/municipios.xlsx and
 their cells, the same as the weather (job_landing_meteo_openmeteo).
@@ -114,7 +126,7 @@ CONFIG_CANDIDATES = [
 ]
 
 SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones", "aves", "incendios", "avisos",
-           "focos"]
+           "focos", "fwi"]
 PARTIAL_EXIT = 4
 
 
@@ -992,6 +1004,174 @@ def land_hotspots(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tupl
     return done, failed
 
 
+# Copernicus EWDS ---------------------------------------------------------------
+
+def fwi_plan(constraints: list, first: str, last: str, product: str = "reanalysis", data_format: str = "netcdf",
+             grid: str = None) -> list:
+    """
+    [(dataset_type, year, [months])]: the months between first and last by
+    year, from the consolidated dataset while it has every day of the month
+    and from the intermediate one after. constraints is the constraints.json
+    of the dataset (the valid combinations of the request).
+    """
+    from calendar import monthrange
+    from datetime import date
+
+    days = {}
+    for entry in constraints:
+        if product not in entry.get("product_type", [product]) or data_format not in entry.get("data_format",
+                                                                                                [data_format]):
+            continue
+        if grid and grid not in entry.get("grid", [grid]):
+            continue
+        for kind in entry.get("dataset_type", []):
+            seen = days.setdefault(kind, set())
+            for year in entry.get("year", []):
+                for month in entry.get("month", []):
+                    seen.update((int(year), int(month), int(day)) for day in entry.get("day", []))
+
+    lo, hi = date.fromisoformat(first), date.fromisoformat(last)
+    plan = {}
+    year, month = lo.year, lo.month
+    while (year, month) <= (hi.year, hi.month):
+        start = lo.day if (year, month) == (lo.year, lo.month) else 1
+        end = hi.day if (year, month) == (hi.year, hi.month) else monthrange(year, month)[1]
+        needed = {(year, month, day) for day in range(start, end + 1)}
+        for kind in ("consolidated_dataset", "intermediate_dataset"):
+            if needed <= days.get(kind, set()):
+                plan.setdefault((year, kind), []).append(month)
+                break
+        else:
+            logger.warning("EWDS has no complete data for %s-%02d yet", year, month)
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return [(kind, year, months) for (year, kind), months in sorted(plan.items())]
+
+
+def fwi_area(cells: dict, margin: float, size: float) -> list:
+    """[north, west, south, east] of the cells of the study with the margin (the order of the EWDS)."""
+    lats = [c[0] for c in cells.values()]
+    lons = [c[1] for c in cells.values()]
+    half = size / 2.0 + margin
+    return [round(max(lats) + half, 2), round(min(lons) - half, 2), round(min(lats) - half, 2),
+            round(max(lons) + half, 2)]
+
+
+def fwi_request(fwi: dict, kind: str, year: int, months: list, area: list) -> dict:
+    """Request of one piece; the days that a month does not have are ignored by the EWDS."""
+    return {
+        "product_type": fwi.get("producto", "reanalysis"),
+        "variable": list(fwi["variables"]),
+        "dataset_type": kind,
+        "system_version": [fwi.get("version", "4_1")],
+        "year": [str(year)],
+        "month": [f"{m:02d}" for m in months],
+        "day": [f"{d:02d}" for d in range(1, 32)],
+        "grid": fwi.get("rejilla", "0.25/0.25"),
+        "data_format": fwi.get("formato", "netcdf"),
+        "area": area,
+    }
+
+
+def fwi_piece(kind: str, year: int, months: list) -> str:
+    return f"{year}_{kind.split('_')[0]}_{months[0]:02d}-{months[-1]:02d}"
+
+
+def land_fwi(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    """
+    Fire danger indices of CEMS (Fire Weather Index and its parts) from the
+    EWDS, one NetCDF per year and dataset type. A request goes to the queue
+    of the EWDS and is downloaded when it is ready; peticiones_simultaneas
+    wait at once and espera_max_s bounds the whole run (what is left is asked
+    in the next one).
+    """
+    fwi = cfg["fwi"]
+    key = os.environ.get(fwi.get("clave_env", "COPERNICUS_EWDS_KEY"), "").strip()
+    if not key:
+        logger.error("No %s in the environment: the EWDS needs the free Personal Access Token of Copernicus",
+                     fwi.get("clave_env", "COPERNICUS_EWDS_KEY"))
+        return 0, 1
+    api = (os.environ.get(fwi.get("url_env", "COPERNICUS_EWDS_URL"), "").strip() or fwi["api"]).rstrip("/")
+    dataset = fwi["conjunto"]
+    timeout = float(fwi.get("timeout_s", 300))
+    # The token goes in a header; the object store of the files does not need it and never gets it.
+    auth = {"PRIVATE-TOKEN": key, "Accept": "application/json"}
+
+    constraints = json.loads(fetch(f"{api}/catalogue/v1/collections/{dataset}/constraints.json", timeout=timeout,
+                                   label="EWDS constraints").decode("utf-8"))
+    plan = fwi_plan(constraints, fwi["desde"], fwi["hasta"], fwi.get("producto", "reanalysis"),
+                    fwi.get("formato", "netcdf"), fwi.get("rejilla"))
+    area = fwi_area(cells, float(fwi.get("margen_grados", 0.3)), float(cfg["celda_grados"]))
+    queue = []
+    for kind, year, months in plan:
+        name = fwi_piece(kind, year, months)
+        target = f"{landing}/fwi/{name}.nc"
+        if fs.exists(target) and not force:
+            continue
+        queue.append((name, target, fwi_request(fwi, kind, year, months, area)))
+    logger.info("EWDS %s: %s pieces in the plan, %s to ask, area %s", dataset, len(plan), len(queue), area)
+
+    done = failed = 0
+    running = {}
+    deadline = time.time() + float(fwi.get("espera_max_s", 4 * 3600))
+    while (queue or running) and time.time() < deadline:
+        while queue and len(running) < int(fwi.get("peticiones_simultaneas", 2)):
+            name, target, request = queue.pop(0)
+            try:
+                answer = json.loads(fetch(f"{api}/retrieve/v1/processes/{dataset}/execution",
+                                          data=json.dumps({"inputs": request}).encode("utf-8"),
+                                          headers={**auth, "Content-Type": "application/json"}, timeout=timeout,
+                                          label=f"EWDS {name}").decode("utf-8"))
+            except Exception as error:  # noqa: BLE001
+                failed += 1
+                hint = " (accept the licence of the dataset on its page)" if "licence" in str(error) else ""
+                logger.error("EWDS %s not submitted: %s%s", name, str(error)[:300], hint)
+                continue
+            monitor = [link["href"] for link in answer.get("links", []) if link.get("rel") == "monitor"]
+            job = monitor[0] if monitor else f"{api}/retrieve/v1/jobs/{answer['jobID']}"
+            running[name] = (job, target, request)
+            logger.info("EWDS %s submitted: %s", name, answer.get("status"))
+
+        time.sleep(float(fwi.get("pausa_s", 20)))
+        for name in list(running):
+            job, target, request = running[name]
+            try:
+                status = json.loads(fetch(job, headers=auth, timeout=timeout,
+                                          label=f"EWDS job {name}").decode("utf-8")).get("status")
+            except Exception as error:  # noqa: BLE001
+                logger.warning("EWDS %s: no status (%s)", name, str(error)[:200])
+                continue
+            if status in ("accepted", "running"):
+                continue
+            del running[name]
+            try:
+                results = json.loads(fetch(f"{job}/results", headers=auth, timeout=timeout,
+                                           label=f"EWDS results {name}").decode("utf-8"))
+                if status != "successful":
+                    raise RuntimeError(f"state {status}: {str(results)[:300]}")
+                asset = results["asset"]["value"]
+                raw = fetch(urllib.parse.urljoin(job, asset["href"]), timeout=timeout, label=f"EWDS file {name}")
+            except Exception as error:  # noqa: BLE001
+                failed += 1
+                logger.error("EWDS %s not downloaded: %s", name, str(error)[:300])
+                continue
+            if not raw.startswith((b"\x89HDF", b"CDF")):
+                failed += 1
+                logger.error("EWDS %s: the answer is not a NetCDF (%s)", name, raw[:40])
+                continue
+            with fs.open(target, "wb") as file:
+                file.write(raw)
+            save_json(fs, target[:-3] + ".json", stamp("cems-fwi", conjunto=dataset, peticion=request,
+                                                       bytes=len(raw)))
+            done += 1
+            logger.info("EWDS %s: %s bytes", name, len(raw))
+
+    if queue or running:
+        failed += len(queue) + len(running)
+        logger.error("EWDS: %s pieces not finished in espera_max_s; launch again to ask them",
+                     len(queue) + len(running))
+    return done, failed
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
@@ -1031,13 +1211,14 @@ def main(argv=None):
         "incendios": lambda: land_fires(fs, cfg, landing, cells, args.forzar),
         "avisos": lambda: land_warnings(fs, cfg, landing, cells, args.forzar),
         "focos": lambda: land_hotspots(fs, cfg, landing, cells, args.forzar),
+        "fwi": lambda: land_fwi(fs, cfg, landing, cells, args.forzar),
     }
     for source in SOURCES:
         if source not in sources:
             continue
         try:
             result = steps[source]()
-            if source in ("osm", "obras", "catastro", "aves", "incendios", "avisos", "focos") and result[1]:
+            if source in ("osm", "obras", "catastro", "aves", "incendios", "avisos", "focos", "fwi") and result[1]:
                 logger.error("%s pieces of %s are missing: launch again to ask only those", result[1], source)
                 missing.append(source)
         except Exception as error:  # noqa: BLE001
