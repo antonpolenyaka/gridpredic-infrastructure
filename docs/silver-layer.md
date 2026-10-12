@@ -44,7 +44,7 @@ Otras reglas de la capa:
 | `f_command_execution` | `*CommandExecutions` | ejecución de mando (estado final) |
 | `f_corte_evento` | `*ElectricPowerCutEvents` | evento de corte canónico |
 | `f_corte_elemento` | `*ElectricPowerCutElementEvents` | evento, elemento afectado |
-| `d_meteo_celda`, `f_meteo_hora` | Open-Meteo (`l1_bronze.meteo_openmeteo_*`, con el CAPE de `meteo_openmeteo_convectivo_hora`) | municipio y su celda; celda y hora |
+| `d_meteo_celda`, `f_meteo_hora` | Open-Meteo (`l1_bronze.meteo_openmeteo_*`, con el CAPE de `meteo_openmeteo_convectivo_hora` y las variables extra de `meteo_openmeteo_extra_hora`, las dos en celdas de 0,25 grados que se asignan a la celda más cercana) | municipio y su celda; celda y hora |
 | `f_poblacion_municipio` | INE, Padrón continuo (`l1_bronze.ine_padron_municipio`) | municipio, año |
 | `d_municipio_publico` | Wikidata y Open-Meteo Elevation | municipio |
 | `d_celda_entorno` | Open-Meteo Elevation y OpenStreetMap | celda meteorológica |

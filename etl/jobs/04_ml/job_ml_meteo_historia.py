@@ -302,6 +302,8 @@ def block_of(name: str) -> str:
         return "historia"
     if name.startswith("dist_"):
         return "distribuidora"
+    if name.startswith("int_"):
+        return "interacciones"
     for block, parts in WEATHER_BLOCKS.items():
         if any(part in name for part in parts):
             return block
@@ -344,12 +346,22 @@ def build_dataset(spark, config: dict, cfg: dict, with_forecast: bool) -> tuple:
         pdf[f"dist_{dist}"] = (pdf["distribuidora_id"] == dist).astype("float64")
         dists.append(f"dist_{dist}")
 
+    # The same storm does not hit every network the same way: the weather of
+    # interacciones_meteo times the column of each distribuidora lets the
+    # logistic regression learn one slope per distribuidora.
+    interactions = []
+    for feature in [f for f in cfg.get("interacciones_meteo", []) if f in pdf.columns]:
+        for dist in dists:
+            name = f"int_{dist}__{feature}"
+            pdf[name] = pdf[dist] * pdf[feature]
+            interactions.append(name)
+
     pdf["anio"] = pdf["hora"].dt.year
     pdf["ct_key"] = pdf["distribuidora_id"]
     pdf["split"] = "train"
 
     blocks = {}
-    for name in names + list(cal.columns) + history + dists:
+    for name in names + list(cal.columns) + history + dists + interactions:
         blocks.setdefault(block_of(name), []).append(name)
 
     covered = pdf.groupby("anio")[names[0]].apply(lambda s: float(s.notna().mean())) if names else pd.Series()
@@ -513,6 +525,17 @@ def save_predictions(spark, scored: pd.DataFrame, columns: list, run_id: str):
     logger.info("%s rows of predictions written to %s", len(long), PREDICTIONS_TABLE)
 
 
+def by_distribuidora(metrics: pd.DataFrame) -> pd.DataFrame:
+    """PR-AUC of every model in each distribuidora, in the common years."""
+    rows = metrics[(metrics["split"] == "cv_comun") & (metrics["segmento"] == "distribuidora")
+                   & (metrics["etiqueta"] == MAIN_LABEL) & (metrics["metrica"] == "pr_auc")]
+    if rows.empty:
+        return pd.DataFrame()
+    table = rows.pivot_table(index="modelo", columns="valor_segmento", values="valor")
+    table.columns = [f"distribuidora {c}" for c in table.columns]
+    return table.reset_index()
+
+
 def by_year(metrics: pd.DataFrame) -> pd.DataFrame:
     rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)
                    & (metrics["metrica"] == "pr_auc")]
@@ -577,6 +600,12 @@ def main(argv=None):
         scored = scored.merge(out[KEYS + [c for c in out.columns if c.startswith("p_")]], on=KEYS, how="left")
 
     scored = scored.sort_values(KEYS).reset_index(drop=True)
+    # Mean of the two trained models of every variant: two rankings that
+    # make different mistakes usually rank better together.
+    for variant in [v["nombre"] for v in variants]:
+        pair = [f"p_{variant}__logistica", f"p_{variant}__xgboost"]
+        if all(c in scored.columns for c in pair):
+            scored[f"p_{variant}__media"] = scored[pair].mean(axis=1, skipna=False)
     columns = [c for c in scored.columns if c.startswith("p_")]
     segment_map = {"distribuidora": "distribuidora_id", "estacion": SEASON_FEATURE}
     years = sorted(scored["anio"].unique().tolist())
@@ -596,6 +625,7 @@ def main(argv=None):
     metrics = pd.concat(all_metrics, ignore_index=True)
     comparison = comparison_table(metrics[metrics["split"] == "cv_comun"], budget) if common else pd.DataFrame()
     days = day_level(pooled, columns, MAIN_LABEL) if common else pd.DataFrame()
+    per_dist = by_distribuidora(metrics)
 
     reps = int(cfg["bootstrap_reps"])
     pairs = [(f"p_{a}", f"p_{b}") for a, b in cfg["comparaciones"] if f"p_{a}" in columns and f"p_{b}" in columns]
@@ -645,6 +675,7 @@ def main(argv=None):
         "puntuación más alta de sus horas. dias_positivos_en_top_k es la parte de los días con avería que caen en el "
         "k % de días con más riesgo de cada año.\n\n" + ml_metrics.markdown_table(days, digits=4),
         "## PR-AUC por año\n\n" + ml_metrics.markdown_table(by_year(metrics), digits=4),
+        "## PR-AUC por distribuidora en los años comunes\n\n" + ml_metrics.markdown_table(per_dist, digits=4),
         f"## PR-AUC con intervalo del 95 % (bootstrap por días, {reps} réplicas)\n\n"
         + ml_metrics.markdown_table(intervals, digits=4),
         "## Diferencias emparejadas (a - b)\n\nSi el intervalo cruza el cero, los datos no distinguen a de b.\n\n"
@@ -654,6 +685,7 @@ def main(argv=None):
             shap.sort_values("valor", ascending=False).head(15)[["feature", "valor"]], digits=5),
     ]) + "\n"
     export(config, args.run_id, report, {"metricas": metrics, "comparacion": comparison, "dias": days,
+                                         "distribuidoras": per_dist,
                                          "intervalos": intervals, "diferencias": differences,
                                          "importancia": importance, "filas": sizes, "entreno": trained})
 
