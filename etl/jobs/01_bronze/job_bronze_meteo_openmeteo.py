@@ -15,12 +15,18 @@ Bronze of the hourly weather downloaded by job_landing_meteo_openmeteo.py.
   does not exist and there is no row, as in the sources.
 - meteo_openmeteo_celdas: municipality (INE code, name, distribuidora of the
   reference file, coordinates) and the cell of its weather.
+- With --fuente openmeteo_convectivo, meteo_openmeteo_convectivo_hora: CAPE
+  and lifted index of the archived GFS runs by cell of 0.25 degrees
+  (celda_id of that grid), same hour convention.
 
 The whole table is rebuilt in every run (a few million rows).
 
     docker compose exec spark-master spark-submit /app/jobs/01_bronze/job_bronze_meteo_openmeteo.py
+    docker compose exec spark-master spark-submit /app/jobs/01_bronze/job_bronze_meteo_openmeteo.py \
+        --fuente openmeteo_convectivo
 """
 
+import argparse
 import json
 import logging
 import os
@@ -37,7 +43,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("meteo")
 
 SUM_VARIABLES = {"precipitation", "rain", "snowfall"}
-MAX_VARIABLES = {"wind_speed_10m", "wind_gusts_10m"}
+MAX_VARIABLES = {"wind_speed_10m", "wind_gusts_10m", "cape"}
 
 
 def payload_frame(payload: dict, variables: list, zone: str) -> pd.DataFrame:
@@ -57,11 +63,15 @@ def merge_local_hours(df: pd.DataFrame, variables: list) -> pd.DataFrame:
     return df.groupby(["celda_id", "hora"], as_index=False).agg(how)
 
 
-def main():
+def main(argv=None):
     from pyspark.sql import SparkSession
     from pyspark.sql import functions as F
 
-    cfg = load_config()["openmeteo"]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--fuente", default="openmeteo")
+    args, _ = parser.parse_known_args(argv)
+
+    cfg = load_config()[args.fuente]
     variables = list(cfg["variables"])
     zone = cfg.get("zona_horaria", "Europe/Madrid")
     landing = cfg["landing"].rstrip("/")
@@ -88,7 +98,7 @@ def main():
 
     hourly = merge_local_hours(pd.concat(frames, ignore_index=True), variables)
     hourly["anio"] = hourly["hora"].dt.year.astype("int32")
-    hourly["modelo"] = cfg.get("modelo", "ecmwf_ifs")
+    hourly["modelo"] = cfg.get("modelo") or ",".join(cfg.get("modelos", []))
 
     logger.info("%s hourly rows, %s cells, %s to %s, nulls per variable: %s",
                 len(hourly), hourly["celda_id"].nunique(), hourly["hora"].min(), hourly["hora"].max(),
@@ -100,6 +110,10 @@ def main():
         .write.format("delta").mode("overwrite").option("overwriteSchema", "true")
         .partitionBy("anio").saveAsTable(cfg["tabla_horas"])
     )
+
+    if not cfg.get("tabla_celdas"):
+        logger.info("Bronze completed: %s", cfg["tabla_horas"])
+        return
 
     with fs.open(f"{landing}/municipios_celdas.json", "r") as file:
         places = pd.DataFrame(json.load(file))
