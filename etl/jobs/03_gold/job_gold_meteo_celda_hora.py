@@ -23,6 +23,13 @@ Gold weather: the features of every cell and hour and the cell of every CT.
   - met_cape_* and met_li_min_6h, when Silver has CAPE (from 23.03.2021):
     the instability of the air of the hour and its maximum of 6 and 24 h,
     and the lowest lifted index of 6 h, the conditions of a thunderstorm.
+  - When Silver has the extra variables of the reanalysis: wind direction
+    (sine and cosine) and wind at 100 m of the hour; soil moisture at 0 - 7
+    and 28 - 100 cm (soaked ground lets the trees fall with the wind);
+    temperature minus dew point (near zero, dew or fog wet the dirty
+    insulators); highest vapour pressure deficit of 24 h and
+    evapotranspiration of 7 days (dryness, fires); low clouds of 6 h; and
+    the highest weather code of 6 h with a flag for thunderstorm codes.
 
 Both tables are small and are rebuilt whole. They are not joined into
 features_ct_hora: the training step joins them by (celda_id, hora), so the
@@ -48,6 +55,16 @@ from gold_common import (
 
 WEATHER_TABLE = gold_table("meteo_celda_hora")
 MAP_TABLE = gold_table("map_ct_celda")
+
+# Extra variables of the reanalysis in Silver -> short name in the window functions.
+EXTRA_COLUMNS = {
+    "direccion_viento_grados": "dir", "viento_100m_kmh": "v100", "humedad_suelo_0_7_m3m3": "hs07",
+    "humedad_suelo_28_100_m3m3": "hs28", "punto_rocio_c": "rocio", "deficit_presion_vapor_kpa": "dpv",
+    "nubes_bajas_pct": "nubes", "evapotranspiracion_mm": "et0", "codigo_tiempo": "codigo",
+}
+# Features that only exist for part of the history (CAPE from 2021) or while the extra grid loads.
+PARTIAL_FEATURES = ("met_cape_", "met_li_", "met_dir_viento_", "met_viento_100m_", "met_humedad_suelo_",
+                    "met_rocio_", "met_dpv_", "met_nubes_bajas_", "met_et0_", "met_codigo_", "met_tormenta_")
 
 
 def normalized_name(column):
@@ -102,6 +119,7 @@ def weather_features(hourly, lead: int, region: bool):
         *([F.col("cape_jkg").alias("cape"),
            (F.col("indice_levantamiento") if "indice_levantamiento" in hourly.columns
             else F.lit(None).cast("double")).alias("li")] if convective else []),
+        *[F.col(source).alias(alias) for source, alias in EXTRA_COLUMNS.items() if source in hourly.columns],
     ).withColumn("_t", F.unix_timestamp("hora"))
 
     ordered = Window.partitionBy("celda_id").orderBy("_t")
@@ -146,6 +164,28 @@ def weather_features(hourly, lead: int, region: bool):
             *[F.max("cape").over(past(h)).alias(f"met_cape_max_{h}h") for h in (6, 24)],
             F.min("li").over(past(6)).alias("met_li_min_6h"),
         ]
+
+    present = set(w.columns)
+    if "dir" in present:
+        columns += [F.sin(F.radians("dir")).alias("met_dir_viento_sin"),
+                    F.cos(F.radians("dir")).alias("met_dir_viento_cos")]
+    if "v100" in present:
+        columns.append(F.col("v100").alias("met_viento_100m_1h"))
+    if "hs07" in present:
+        columns.append(F.col("hs07").alias("met_humedad_suelo_0_7"))
+    if "hs28" in present:
+        columns.append(F.col("hs28").alias("met_humedad_suelo_28_100"))
+    if "rocio" in present:
+        columns.append((F.col("temp") - F.col("rocio")).alias("met_rocio_dif_1h"))
+    if "dpv" in present:
+        columns.append(F.max("dpv").over(past(24)).alias("met_dpv_max_24h"))
+    if "nubes" in present:
+        columns.append(F.avg("nubes").over(past(6)).alias("met_nubes_bajas_6h"))
+    if "et0" in present:
+        columns.append(F.sum("et0").over(past(7 * 24)).alias("met_et0_7d"))
+    if "codigo" in present:
+        code = F.max("codigo").over(past(6))
+        columns += [code.alias("met_codigo_max_6h"), (code >= 95).cast("double").alias("met_tormenta_6h")]
 
     if lead > 0:
         columns += [
@@ -207,8 +247,9 @@ def main():
     nulls = written.agg(*[F.sum(F.col(n).isNull().cast("long")).alias(n) for n in names]).first().asDict()
     for name, value in nulls.items():
         # The first and last hours of the window have incomplete windows. The
-        # convective features only exist from 23.03.2021: no threshold.
-        partial = name.startswith(("met_cape_", "met_li_"))
+        # convective features only exist from 23.03.2021 and the extra grid
+        # may still be loading: no threshold.
+        partial = name.startswith(PARTIAL_FEATURES)
         dq.add("meteo_celda_hora", f"nulos:{name}", value or 0, rows, umbral_pct=None if partial else 2.0)
     dq.flush()
 
