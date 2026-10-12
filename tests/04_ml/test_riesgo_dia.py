@@ -289,6 +289,8 @@ def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
     assert warned > 1.5 * table.loc[("ayer", "logistica"), "pr_auc"]
     assert table.loc[("perfecta", "naif_racha_dia"), "pr_auc"] > nothing
     assert table.loc[("avisos", "naif_aviso"), "dias_positivos_en_top_10pct"] > 0.3
+    # The two models of every variant together by their percentiles in the year.
+    assert table.loc[("perfecta", "rango"), "pr_auc"] > 2 * nothing
     assert len(read(folder, "diferencias.csv")) == 2
 
 
@@ -296,6 +298,7 @@ def test_the_real_forecast_scores_the_years_it_covers(result):
     _, folder = result
     table = read(folder, "prevision.csv").set_index(["tiempo_del_dia", "modelo"])
     assert {"reanalisis", "prevision", "prevision_cuantiles", "solo_ayer"} <= set(table.index.get_level_values(0))
+    assert ("prevision_cuantiles", "rango") in table.index
     perfect = table.loc[("reanalisis", "logistica"), "pr_auc"]
     mapped = table.loc[("prevision_cuantiles", "logistica"), "pr_auc"]
     # A noisy forecast keeps most of what the weather of the day says, far above knowing only yesterday.
