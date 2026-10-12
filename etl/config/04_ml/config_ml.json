@@ -346,5 +346,28 @@
       ["larga__logistica_regla", "larga__naif_racha"],
       ["larga__rango", "larga__logistica"], ["larga__rango", "larga__media"], ["avisos__rango", "larga__rango"]
     ]
+  },
+  "meteo_dia": {
+    "desde": "2017-01-08",
+    "hasta": "2026-01-01",
+    "anios_evaluacion": [2022, 2023, 2024, 2025],
+    "aviso_corte_h": 20,
+    "variantes": [
+      {"nombre": "calendario_historia", "desde": "2017-01-08", "bloques": ["calendario", "historia"]},
+      {"nombre": "ayer", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer"]},
+      {"nombre": "avisos", "desde": "2018-06-25", "bloques": ["calendario", "historia", "ayer", "avisos"]},
+      {"nombre": "perfecta", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer", "dia"]},
+      {"nombre": "perfecta_avisos", "desde": "2018-06-25", "bloques": ["calendario", "historia", "ayer", "dia", "avisos"]}
+    ],
+    "comparaciones": [
+      ["ayer__logistica", "calendario_historia__logistica"],
+      ["avisos__logistica", "ayer__logistica"],
+      ["avisos__xgboost", "ayer__xgboost"],
+      ["avisos__logistica", "avisos__naif_aviso"],
+      ["perfecta__logistica", "ayer__logistica"],
+      ["perfecta__logistica", "avisos__logistica"],
+      ["perfecta__logistica", "perfecta__naif_racha_dia"],
+      ["perfecta_avisos__logistica", "perfecta__logistica"]
+    ]
   }
 }
