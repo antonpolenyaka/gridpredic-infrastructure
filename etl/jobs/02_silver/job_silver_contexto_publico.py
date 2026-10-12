@@ -56,6 +56,14 @@ OpenStreetMap), cleaned and taken to the units Gold uses.
   the cell. Rows without identifier or times (NULL_KEY) or without polygon
   (NO_GEOMETRY) are rejected; the zones that hold no cell of the study are
   left out.
+- f_foco_incendio: one row per active fire of FIRMS: time of the pass in UTC
+  and in the wall clock of Madrid, position, sensor and satellite, the
+  confidence as it comes and as a level (1 low, 2 nominal, 3 high; MODIS
+  below 30, from 30 to 80 and above), fire radiative power, day or night,
+  and the nearest cell of the study within one step and a half of the grid
+  with its distance (null cell for the fires farther away, which stay for
+  the alerts around the network). Rows without position or time are
+  rejected (NULL_KEY) and a repeated pass keeps one row (DUPLICATE_KEY).
 
     docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/02_silver/job_silver_contexto_publico.py
 """
@@ -100,6 +108,8 @@ IEEX_AME_TABLE = "l1_bronze.ieex_ame_municipio"
 GBIF_TABLE = "l1_bronze.gbif_conteo_celda"
 EFFIS_TABLE = "l1_bronze.effis_area_quemada"
 AEMET_TABLE = "l1_bronze.aemet_aviso"
+FIRMS_TABLE = "l1_bronze.firms_foco"
+HOTSPOTS = "f_foco_incendio"
 WEATHER_CELLS_TABLE = "l2_silver.d_meteo_celda"
 WARNINGS = "f_aviso_meteo"
 WARNING_LEVELS = {"verde": 0, "amarillo": 1, "naranja": 2, "rojo": 3}
@@ -592,6 +602,70 @@ def weather_warnings(spark, aemet, cells: list):
     return df, rejected
 
 
+def confidence_level(values):
+    """Level of the confidence of FIRMS: l, n, h of VIIRS and 0 - 100 of MODIS -> 1 low, 2 nominal, 3 high."""
+    import numpy as np
+    import pandas as pd
+
+    text = pd.Series(values).fillna("").astype(str).str.strip().str.lower()
+    named = text.map({"l": 1.0, "low": 1.0, "n": 2.0, "nominal": 2.0, "h": 3.0, "high": 3.0})
+    number = pd.to_numeric(text, errors="coerce")
+    by_number = pd.Series(np.where(number < 30, 1.0, np.where(number < 80, 2.0, 3.0)), index=text.index)
+    return named.fillna(by_number.where(number.notna()))
+
+
+def hotspots(spark, firms, cells: list, max_step: float = 1.5 * CELL_DEGREES):
+    """(rows of f_foco_incendio, rejected rows as a list of dicts) from the fires of Bronze and the cells."""
+    import numpy as np
+    import pandas as pd
+
+    pdf = firms.toPandas()
+    for column in ("latitud", "longitud", "fecha", "hora_utc", "satelite", "instrumento", "confianza", "frp",
+                   "dia_noche", "fuente"):
+        if column not in pdf.columns:
+            pdf[column] = None
+    pdf["latitud"] = pd.to_numeric(pdf["latitud"], errors="coerce")
+    pdf["longitud"] = pd.to_numeric(pdf["longitud"], errors="coerce")
+    clock = pdf["hora_utc"].fillna("").astype(str).str.strip().str.zfill(4)
+    pdf["ts_utc"] = pd.to_datetime(pdf["fecha"].astype(str) + " " + clock, format="%Y-%m-%d %H%M", errors="coerce")
+    bad = pdf["latitud"].isna() | pdf["longitud"].isna() | pdf["ts_utc"].isna()
+    rejected = [{**r, "_motivo": "NULL_KEY"} for r in pdf[bad].astype(str).to_dict("records")]
+    pdf = pdf[~bad].copy()
+    duplicated = pdf.duplicated(["satelite", "ts_utc", "latitud", "longitud"])
+    rejected += [{**r, "_motivo": "DUPLICATE_KEY"} for r in pdf[duplicated].astype(str).to_dict("records")]
+    pdf = pdf[~duplicated].copy()
+
+    pdf["ts"] = pdf["ts_utc"].dt.tz_localize("UTC").dt.tz_convert("Europe/Madrid").dt.tz_localize(None)
+    pdf["sensor"] = np.where(pdf["instrumento"].fillna("").str.upper().str.contains("VIIRS"), "VIIRS", "MODIS")
+    pdf["confianza_nivel"] = confidence_level(pdf["confianza"]).to_numpy()
+    pdf["frp"] = pd.to_numeric(pdf["frp"], errors="coerce")
+    pdf["celda_id"], pdf["distancia_celda_km"] = None, np.nan
+    if len(pdf) and cells:
+        ids = np.array([c[0] for c in cells])
+        clat = np.array([c[1] for c in cells])
+        clon = np.array([c[2] for c in cells])
+        dlat = np.abs(pdf["latitud"].to_numpy()[:, None] - clat[None, :])
+        dlon = np.abs(pdf["longitud"].to_numpy()[:, None] - clon[None, :])
+        nearest = np.argmin(dlat ** 2 + dlon ** 2, axis=1)
+        rows = np.arange(len(pdf))
+        close = (dlat[rows, nearest] <= max_step + 1e-9) & (dlon[rows, nearest] <= max_step + 1e-9)
+        km = 111.2 * np.sqrt(dlat[rows, nearest] ** 2
+                             + (dlon[rows, nearest] * np.cos(np.radians(pdf["latitud"].to_numpy()))) ** 2)
+        pdf["celda_id"] = np.where(close, ids[nearest], None)
+        pdf["distancia_celda_km"] = np.where(close, km, np.nan)
+    pdf["foco_id"] = (pdf["satelite"].fillna("").astype(str) + "|" + pdf["ts_utc"].dt.strftime("%Y%m%d%H%M") + "|"
+                      + pdf["latitud"].round(5).astype(str) + "|" + pdf["longitud"].round(5).astype(str))
+    out = pdf[["foco_id", "fuente", "sensor", "satelite", "ts_utc", "ts", "latitud", "longitud", "confianza",
+               "confianza_nivel", "frp", "dia_noche", "celda_id", "distancia_celda_km"]].copy()
+    for column in ("foco_id", "fuente", "sensor", "satelite", "confianza", "dia_noche", "celda_id"):
+        out[column] = out[column].astype("string")
+    if not len(out):
+        return None, rejected
+    df = spark.createDataFrame(out).withColumn("anio", F.year("ts")).withColumn("audit_loaded_at",
+                                                                                F.current_timestamp())
+    return df, rejected
+
+
 def optional(spark, table):
     if spark.catalog.tableExists(table):
         return spark.table(table)
@@ -729,6 +803,27 @@ def main():
                    umbral_pct=5.0)
     elif aemet is not None:
         logger.warning("%s needs %s for the cells of the study", WARNINGS, WEATHER_CELLS_TABLE)
+
+    firms = optional(spark, FIRMS_TABLE)
+    if firms is not None and spark.catalog.tableExists(WEATHER_CELLS_TABLE):
+        study = [
+            (r["celda_id"], float(r["celda_id"].split("_")[0]), float(r["celda_id"].split("_")[1]))
+            for r in spark.table(WEATHER_CELLS_TABLE).select("celda_id").distinct().collect() if r["celda_id"]
+        ]
+        total = firms.count()
+        out, rejected = hotspots(spark, firms, study)
+        if out is not None:
+            write_table(out, silver_table(HOTSPOTS), partition_by=["anio"])
+            written = spark.table(silver_table(HOTSPOTS))
+            rows = written.count()
+            dq.add(HOTSPOTS, "focos_entrada", total)
+            dq.add(HOTSPOTS, "filas", rows, total)
+            dq.add(HOTSPOTS, "con_celda", written.where(F.col("celda_id").isNotNull()).count(), rows)
+            span = written.agg(F.min("ts"), F.max("ts")).first()
+            dq.add(HOTSPOTS, "rango_fechas", rows, detalle=f"{span[0]} - {span[1]}")
+        for reason in sorted({r["_motivo"] for r in rejected}):
+            dq.add(HOTSPOTS, f"rechazo:{reason}", sum(r["_motivo"] == reason for r in rejected), total,
+                   umbral_pct=5.0)
 
     dq.flush()
     logger.info("Silver completed: public data")

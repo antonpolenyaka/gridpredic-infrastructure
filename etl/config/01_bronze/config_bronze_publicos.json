@@ -82,6 +82,18 @@
       "timeout_s": 300,
       "margen_grados": 0.3
     },
+    "focos": {
+      "api": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{clave}/{fuente}/{area}/{dias}/{fecha}",
+      "disponibilidad": "https://firms.modaps.eosdis.nasa.gov/api/data_availability/csv/{clave}/all",
+      "clave_env": "MAP_KEY",
+      "sensores": ["VIIRS_SNPP", "VIIRS_NOAA20", "MODIS"],
+      "desde": "2017-01-01",
+      "hasta": "2026-08-31",
+      "dias_por_peticion": 5,
+      "margen_grados": 0.3,
+      "pausa_s": 1,
+      "timeout_s": 180
+    },
     "tablas": {
       "padron": "l1_bronze.ine_padron_municipio",
       "wikidata": "l1_bronze.wikidata_municipio",
@@ -96,7 +108,8 @@
       "ame_municipios": "l1_bronze.ieex_ame_municipio",
       "aves": "l1_bronze.gbif_conteo_celda",
       "incendios": "l1_bronze.effis_area_quemada",
-      "avisos": "l1_bronze.aemet_aviso"
+      "avisos": "l1_bronze.aemet_aviso",
+      "focos": "l1_bronze.firms_foco"
     }
   }
 }

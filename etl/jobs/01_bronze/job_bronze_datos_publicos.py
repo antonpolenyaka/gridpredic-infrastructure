@@ -49,6 +49,11 @@ cleaning and the aggregates are in Silver.
   offset), phenomenon code and name, level, threshold, probability, zone
   code and name, polygon (lat lon pairs) and its box. The archive comes as
   tar files that may hold other tar or gzip files; every XML inside is read.
+- firms_foco: one row per active fire of FIRMS in the box of the study:
+  latitude, longitude, date and UTC time of the pass, satellite, instrument,
+  confidence (l, n, h for VIIRS; 0 - 100 for MODIS), fire radiative power,
+  day or night, brightness, the pixel size and the source (sensor and
+  processing), as text, as FIRMS gives them.
 
 The tables are rebuilt whole in every run (a few thousand rows, the
 buildings about a hundred thousand).
@@ -56,6 +61,7 @@ buildings about a hundred thousand).
     docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/01_bronze/job_bronze_datos_publicos.py
 """
 
+import csv
 import gzip
 import io
 import json
@@ -757,6 +763,28 @@ def parse_cap(raw: bytes, box: tuple = None) -> list:
     return rows
 
 
+# CSV column of FIRMS -> Bronze column (VIIRS gives bright_ti4, MODIS brightness).
+FIRMS_COLUMNS = {
+    "latitude": "latitud", "longitude": "longitud", "acq_date": "fecha", "acq_time": "hora_utc",
+    "satellite": "satelite", "instrument": "instrumento", "confidence": "confianza", "frp": "frp",
+    "daynight": "dia_noche", "bright_ti4": "brillo", "brightness": "brillo", "scan": "scan", "track": "track",
+    "version": "version",
+}
+
+
+def parse_firms(text: str, source: str) -> list:
+    """Rows of a CSV of the area API of FIRMS (empty answers have only the header)."""
+    rows = []
+    for record in csv.DictReader(io.StringIO(text)):
+        row = {"fuente": source}
+        for column, name in FIRMS_COLUMNS.items():
+            if column in record and record[column] not in (None, ""):
+                row[name] = record[column]
+        if row.get("latitud") and row.get("longitud") and row.get("fecha"):
+            rows.append(row)
+    return rows
+
+
 def parse_aemet_archive(raw: bytes, box: tuple = None, depth: int = 0) -> list:
     """Rows of every CAP message inside an archive of AEMET (tar, tar.gz, gzip or a bare XML), recursively."""
     if depth > 4 or not raw:
@@ -918,6 +946,13 @@ def main():
             logger.info("AEMET %s: %s messages and zones in the area", path.rsplit("/", 1)[-1], len(rows))
     if "avisos" in tables:
         write(warnings, tables["avisos"], "AEMET warnings")
+
+    hotspots = []
+    if "focos" in tables:
+        for path in sorted(fs.glob(f"{landing}/focos/*/*.csv")):
+            with fs.open(path, "r") as file:
+                hotspots += parse_firms(file.read(), path.rsplit("/", 2)[-2])
+        write(hotspots, tables["focos"], "FIRMS active fires")
 
     logger.info("Bronze of the public data completed")
 

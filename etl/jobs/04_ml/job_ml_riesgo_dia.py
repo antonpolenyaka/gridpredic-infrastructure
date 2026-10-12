@@ -25,8 +25,9 @@ Features, every one known before D starts except the block dia:
 - ayer_*: the weather of D - 1 from the reanalysis, by day: strongest gust
   and wind of the worst cell and of the mean of the cells weighted by their
   CT, rain of the day (worst cell and mean), hottest hour, coldest mean
-  hour, mean humidity, lowest pressure and its biggest drop in 24 h, snow
-  and the strongest gust of the whole area (the size of the storm).
+  hour, mean humidity, lowest pressure and its biggest drop in 24 h, snow,
+  the strongest gust of the whole area (the size of the storm) and the
+  active fires of FIRMS near the cells (when Gold has them).
 - aviso_*: the warnings of AEMET for D (l2_silver.f_aviso_meteo) sent
   before aviso_corte_h of D - 1: highest level (1 yellow, 2 orange, 3 red)
   in the cells of the distribuidora, in total and for wind, rain,
@@ -121,6 +122,7 @@ DAILY = {
     "presion_caida_24h": ("metd_media_met_presion_delta_24h", "min"),
     "nieve_max": ("metd_max_met_nieve_24h", "max"),
     "region_racha_max": ("metd_max_met_region_racha_max_3h", "max"),
+    "focos_max": ("metd_max_met_focos_24h", "max"),
 }
 
 # The same daily weather from the forecast of ICON-EU made the day before
