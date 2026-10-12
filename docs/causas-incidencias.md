@@ -255,6 +255,21 @@ Los avisos de la víspera casi doblan la PR-AUC frente al tiempo de ayer (+0,044
 
 **Los rayos del satélite.** Descargamos los flashes del Lightning Imager de MTG (EUMETSAT, producto LI-2-LFL, cada 10 minutos) en las 3 - 4 horas anteriores a las incidencias de agosto de 2024 a noviembre de 2025 y en ventanas de control sin incidencias: 2.593 productos y 19.318 flashes en la caja de estudio. Antes del 17 % de las incidencias hubo rayos a menos de 10 km de las celdas de la distribuidora en la hora anterior, frente al 1,1 % de las ventanas de control, y a menos de 20 km en las 3 horas anteriores, el 24 % frente al 2,8 %. Entre las incidencias con rayos a menos de 20 km hay 2 de las 17 averías de equipos de la muestra y 2 de las 8 de causa desconocida, así que parte de esas causas pueden ser rayos que no se anotaron como tales. Con 46 incidencias en la muestra no da para entrenar, pero en el MVP es la señal más directa para el aviso de la hora siguiente.
 
+**Precursores en el SCADA.** Siguiendo lo que publican Texas A&M, SEL y los fabricantes de relés (apartado 9), medimos en TedisNet (2021 - 2026) cuántas señales de cada tipo hubo antes de 1.135 inicios de interrupción en el CT, en su grupo de red y en las posiciones que lo alimentan (aguas arriba), frente a 3.384 horas de control de los mismos CT sin incidencias a menos de 7 días:
+
+| Señal en los 7 días anteriores | Antes de una incidencia | En las horas de control | Veces más |
+| --- | --- | --- | --- |
+| Paso de falta en las posiciones aguas arriba | 2,7 % | 0,6 % | 4,4 |
+| Paso de falta en el grupo de red | 6,6 % | 1,8 % | 3,6 |
+| Falta de tensión en el CT el día anterior | 2,8 % | 1,1 % | 2,6 |
+| Falta entre fases aguas arriba | 38,7 % | 25,6 % | 1,5 |
+| Falta a tierra aguas arriba | 42,1 % | 29,3 % | 1,4 |
+| Disparo aguas arriba | 39,5 % | 30,3 % | 1,3 |
+
+Antes de las averías de equipos la señal es más clara: faltas entre fases aguas arriba en la semana anterior en el 47 % de los casos y faltas a tierra en el 52 %, frente al 26 % y el 29 % de las horas de control. Es lo que describen los fabricantes: faltas intermitentes que acaban en una avería permanente. En las averías por meteorología también suben (faltas a tierra en el grupo, 20 % frente a 10 %), pero ahí pesa que los temporales vienen seguidos. La señal está en la última semana: con 28 o 56 días se diluye (entre 1,0 y 1,5 veces), así que no hace falta añadir a Gold ventanas más largas que las de 7 días que ya usa el modelo de TedisNet. Coincide con lo que más pesa en ese modelo (faltas a tierra del grupo, reenganches aguas arriba).
+
+**Dónde, el día de riesgo.** Para mandar las brigadas no basta con saber qué día será malo; hay que saber dónde. Con la meteorología de cada celda montamos una tabla de cabecera y día (47 cabeceras, 2017 - 2025) con el tamaño de la cabecera, su historia y el tiempo de sus celdas, y miramos, en los días con avería de 2022 - 2025 en EOSA y Pitarch (Valle de Santa Ana tiene una sola cabecera), en qué puesto de riesgo quedaba la cabecera que falló (unas 340). Ordenadas solo por su número de CT, la cabecera más grande es la que falla en el 17 % de los casos y una de las tres más grandes en el 32 %, cuando al azar serían el 4 - 5 % y el 12 - 14 %. Añadir la historia y el tiempo de las celdas de cada cabecera apenas cambia ese orden dentro del día (entre el 32 % y el 35 % entre las tres primeras), aunque sí ayuda a saber qué días son malos. Tampoco lo cambia el riesgo anual: por CT, el 10 % de CT de más riesgo solo recoge el 10 % de los CT que fallan cada día, porque una avería en una línea apaga todos los CT de la cabecera a la vez y el ranking anual, medido en kVA·h, sube sobre todo a los CT grandes. Con el reanálisis a 10 km, el tiempo no distingue una cabecera de la de al lado: el día de riesgo, lo que dice dónde mirar primero es el tamaño de la red de cada cabecera.
+
 ## 9. Lo que hacen otras distribuidoras y los fabricantes
 
 Revisamos lo publicado por centros de investigación, distribuidoras y fabricantes de aparamenta de otros países para ver qué variables pesan y qué secuencias de eventos anuncian una avería.
@@ -265,7 +280,7 @@ Revisamos lo publicado por centros de investigación, distribuidoras y fabricant
 
 **Qué podemos aplicar con nuestros datos**, de más a menos útil:
 
-1. Recurrencia por CT y por posición en TedisNet: faltas a tierra, reenganches, disparos y microcortes en los últimos 7, 30 y 60 días, el tiempo desde el último y una marca de falta que se repite en el mismo sitio. Antes conviene medir en Calser y TedisNet con cuánta antelación aparece el primer precursor en la posición de cada avería.
+1. Recurrencia por CT y por posición en TedisNet: faltas a tierra, reenganches, disparos y microcortes. Medido (apartado 8): la señal está en los 7 días anteriores y se diluye con 30 o 60 días.
 2. Precursores cruzados con la previsión: faltas a tierra recientes con lluvia prevista (terminales y nidos mojados) y faltas entre fases con viento previsto (conductores que se tocan, ramas).
 3. Viento como horas por encima de un umbral y como exceso sobre el clima de cada zona. Lo primero no aporta y lo segundo está en el bloque `extremos` del día siguiente (apartado 8).
 4. Rayos medidos por el satélite (EUMETSAT) para ver qué incidencias de causa desconocida tuvieron rayos cerca.
