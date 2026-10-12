@@ -712,6 +712,10 @@ def polygon_points(text: str) -> list:
     return points
 
 
+CAP_LEVEL = re.compile(rb"AEMET-Meteoalerta nivel</valueName>\s*<value>\s*([^<\s]*)")
+CAP_CANCEL = re.compile(rb"<msgType>\s*Cancel\s*</msgType>")
+
+
 def parse_cap(raw: bytes, box: tuple = None, green: bool = False) -> list:
     """
     Rows of one CAP message of AEMET, one per area, in Spanish when the
@@ -721,6 +725,11 @@ def parse_cap(raw: bytes, box: tuple = None, green: bool = False) -> list:
     several times a day) are left out unless green is set; a cancellation
     is always kept.
     """
+    if not green:
+        # Most messages are green: a look at the raw text saves parsing them.
+        levels = set(CAP_LEVEL.findall(raw))
+        if levels and levels <= {b"verde"} and not CAP_CANCEL.search(raw):
+            return []
     try:
         root = ET.fromstring(raw)
     except ET.ParseError:
