@@ -85,7 +85,7 @@ Por horas, las programadas empiezan casi siempre en horario de trabajo (83 % de 
 
 ## 6. ¿Bastan los datos que tenemos?
 
-Para el riesgo meteorológico por horas, casi: rachas, lluvia, temperatura, humedad y presión cubren las causas que más pesan y responden con fuerza, y desde ahora tenemos nueve años de historia en lugar de cinco. Lo que más echamos en falta son los rayos observados (las tormentas de verano se ven mal en la lluvia y el viento del reanálisis) y una previsión real archivada para medir el modelo como funcionaría de verdad.
+Para el riesgo meteorológico por horas, casi: rachas, lluvia, temperatura, humedad y presión cubren las causas que más pesan y responden con fuerza, y desde ahora tenemos nueve años de historia en lugar de cinco. Faltaba una previsión real archivada para medir el modelo como funcionaría de verdad, y ya la tenemos: los avisos de AEMET desde 2018 y lo que preveía ICON-EU desde 2024 (apartado 8). Lo que sigue faltando son los rayos observados antes de 2024 (las tormentas de verano se ven mal en la lluvia y el viento del reanálisis); el satélite MTG los da desde julio de 2024.
 
 Para el riesgo anual por CT, la historia de cada CT y su cabecera ya dice mucho y lo que falta es información de los activos: edad de líneas y transformadores, fechas de revisión y poda, apoyos protegidos frente a la avifauna. Eso no está en datos abiertos y lo tendría que dar la distribuidora.
 
@@ -100,7 +100,7 @@ El límite más duro es el número de casos. Con unas 45 incidencias imprevistas
 | [Open-Meteo Historical Forecast API](https://open-meteo.com/en/docs/historical-forecast-api), GFS | CAPE e índice de levantamiento desde el 23.03.2021 | Libre | Integrada, celdas de 0,25 grados |
 | [Open-Meteo Air Quality API](https://open-meteo.com/en/docs/air-quality-api), CAMS | PM10 desde 2013, polvo sahariano desde 2018 | Libre | Probada y descartada por ahora: los días de calima no tienen más incidencias (riesgo relativo 0,9 con más de 25 µg/m³ de polvo) y la combinación de polvo acumulado y lluvia ligera solo junta 6 incidencias |
 | Índice de rayos de ICON (`lightning_potential`) | Potencial de rayos | Libre | Descartada: solo existe para ICON-D2, que no cubre España |
-| [AEMET OpenData](https://opendata.aemet.es/), [avisos de fenómenos adversos](https://datos.gob.es/es/catalogo/e05068001-avisos-meteorologicos) | Avisos amarillos, naranjas y rojos de viento, lluvia, tormentas y nieve por zona, en CAP, desde el 18.06.2018 (CC BY 4.0); rayos solo como mapa del momento | Clave gratuita por correo, válida tres meses | Integrada de Landing a Gold (`avisos` en `config_bronze_publicos.json`, `l2_silver.f_aviso_meteo`, `met_aviso_*`), con la referencia `naif_aviso_aemet` en el modelo por horas y el bloque `avisos` en el del día siguiente. El archivo solo admite 2 días por petición y limita las peticiones por minuto, así que la historia completa son unas 1.500 peticiones. Es una previsión real emitida con antelación y lo que hoy mira un jefe de brigadas |
+| [AEMET OpenData](https://opendata.aemet.es/), [avisos de fenómenos adversos](https://datos.gob.es/es/catalogo/e05068001-avisos-meteorologicos) | Avisos amarillos, naranjas y rojos de viento, lluvia, tormentas y nieve por zona, en CAP, desde el 18.06.2018 (CC BY 4.0); rayos solo como mapa del momento | Clave gratuita por correo, válida tres meses | Integrada de Landing a Gold (`avisos` en `config_bronze_publicos.json`, `l2_silver.f_aviso_meteo`, `met_aviso_*`), con la referencia `naif_aviso_aemet` en el modelo por horas y el bloque `avisos` en el del día siguiente. El archivo solo admite 2 días por petición y limita las peticiones por minuto, así que la historia completa son unas 1.500 peticiones. Es una previsión real emitida con antelación y lo que hoy mira un jefe de brigadas. Con el archivo completo es la fuente que más mejora los dos modelos (apartado 8) |
 | [Open-Meteo Previous Runs API](https://open-meteo.com/en/docs/previous-runs-api), ICON-EU | Lo que preveía el modelo para cada hora uno y dos días antes, desde enero de 2024 | Libre | Integrada de Landing a Gold (`openmeteo_previo` en `config_bronze_meteo.json`, columnas `*_prev1_*` de `l2_silver.f_meteo_hora`, `metp1_*` y `metp2_*` de Gold). Es la previsión real con la que medimos el modelo del día siguiente. De ECMWF IFS no hay rachas previstas en el archivo y de ICON-EU sí |
 | [EUMETSAT Data Store](https://data.eumetsat.int/), Lightning Imager de MTG | Rayos observados desde el satélite geoestacionario: flashes con posición, hora, duración y radiancia cada 10 minutos (producto LI-2-LFL, unos 0,4 MB) | Cuenta gratuita y credenciales del Data Store | Probada. El archivo empieza el 04.07.2024. Entre las 13:50 y las 14:00 UTC del 12.08.2025 hubo 54 flashes en la caja de estudio, en plena ola de incendios del norte de Cáceres; EOSA cortó por incendio a las 03:33 del día siguiente. Para el MVP es el dato de rayos en tiempo real; con año y medio de historia no da para entrenar |
 | [REE, REData](https://www.ree.es/es/apidatos) | Demanda nacional cada 5 minutos, generación, intercambios y precios; de calidad de servicio, el tiempo de interrupción medio de la red de transporte, por año | API libre, sin clave | Revisada y descartada: la demanda nacional sigue a la temperatura, que ya tenemos, y la calidad de la red de transporte solo viene agregada por año. La demanda por comunidad no la devuelve para Extremadura |
@@ -223,6 +223,33 @@ Contar horas por encima de un umbral, que es como lo hacen en Connecticut, no a�
 | Cinco o más | 10 | 60 % | 70 % | 40 % |
 
 Son los modelos de la regresión logística entrenados con cada etiqueta, y con 10 o 26 días las cifras se mueven mucho de una réplica a otra. El trabajo de Valencia y Albacete detecta el 73 % de los días extremos con un 3 % de falsas alarmas, pero define el día extremo por el número de averías de una provincia entera, así que las cifras no se comparan directamente. Contadas las interrupciones en lugar de los días, el 10 % de días de más riesgo de cada año concentra el 51 % de todas las interrupciones. Aprender el número de interrupciones del día (regresión de Poisson, también con XGBoost) en lugar de sí o no no mejora la ordenación (8 % y 68 % de las réplicas). El job mide ya los días con dos incidencias o más (`y_dia_varias`) con los mismos modelos del día siguiente.
+
+**Los avisos de AEMET, la previsión real que faltaba.** Con el archivo completo de avisos (2018 - 2026, unas 1.500 piezas de 2 días) repetimos en el Lakehouse el modelo por horas y el del día siguiente (`mh_avisos_c_20261012_1845` y `dia_c_20261012_1845`). En Gold, cada hora sabe el nivel de los avisos en vigor que ya se habían emitido y el de los que empiezan en las 6 horas siguientes; el modelo del día siguiente solo cuenta los avisos de ese día enviados antes de las 20:00 de la víspera. El modelo por horas, en 2020 - 2025:
+
+| Variante | Regresión logística | XGBoost | Rango |
+| --- | --- | --- | --- |
+| Meteorología, calendario e historia | 0,0140 | 0,0129 | 0,0158 |
+| Más la lluvia de los días anteriores | 0,0137 | 0,0162 | 0,0164 |
+| Más el fuego (FWI de CEMS y focos de FIRMS) | 0,0169 | 0,0156 | 0,0179 |
+| Más los avisos de AEMET (desde 2018) | 0,0183 | 0,0189 | 0,0261 |
+| Regla de la racha | 0,0126 | - | - |
+| Solo el nivel del aviso | 0,0064 | - | - |
+
+Con los avisos, y aunque la variante aprende con año y medio menos de historia, la combinación por percentiles sube un 65 % (+0,0095, de 0,0027 a 0,0220, en todas las réplicas) y la logística mejora con el intervalo por encima de cero (+0,0045, 99 %). La mejora crece en los últimos años: 0,046 en 2024 y 0,040 en 2025, el doble que sin avisos. El aviso solo vale poco (0,0064, por debajo de la regla de la racha), pero junto al tiempo dice qué temporales preocupaban a los meteorólogos. El bloque de fuego también ayuda a la logística (+0,0032, 99,8 %) y no a XGBoost.
+
+En el modelo del día siguiente, en 2022 - 2025:
+
+| Variante | Regresión logística | XGBoost | Rango | Días con avería en el 10 % de días de más riesgo |
+| --- | --- | --- | --- | --- |
+| Calendario e historia | 0,055 | 0,055 | 0,055 | 21 % |
+| Más el tiempo de ayer | 0,062 | 0,055 | 0,061 | 20 % |
+| Más los avisos enviados la víspera | 0,107 | 0,096 | 0,132 | 31 % |
+| Previsión perfecta del día | 0,117 | 0,122 | 0,130 | 36 % |
+| Previsión perfecta y avisos | 0,132 | 0,106 | 0,123 | 36 % |
+| Previsión perfecta y extremos | 0,139 | 0,092 | 0,125 | 34 % |
+| Regla de la racha del día | 0,100 | - | - | 34 % |
+
+Los avisos de la víspera casi doblan la PR-AUC frente al tiempo de ayer (+0,044, de 0,014 a 0,088, en todas las réplicas) y quedan a la altura de la previsión perfecta: la diferencia entre las dos no se distingue (72 % de las réplicas). Es lo más útil del día, porque convierte el modelo del día siguiente en uno que funciona con una previsión real y con archivo desde 2018, sin depender del reanálisis del propio día. Por años, la logística con avisos da 0,136, 0,108, 0,210 y 0,127, frente a 0,062 - 0,081 con el tiempo de ayer. El bloque de extremos sube la logística de la previsión perfecta de 0,117 a 0,139 (96 %), pero empeora a XGBoost (solo es mejor en el 3 % de las réplicas), así que no lo damos por bueno. Los días con dos incidencias o más (solo 16 en esos años) caen casi todos en los días marcados: con los avisos de la víspera, el 10 % de días de más riesgo recoge entre el 75 % y el 81 %.
 
 ## 9. Lo que hacen otras distribuidoras y los fabricantes
 
