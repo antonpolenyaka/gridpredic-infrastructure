@@ -155,6 +155,29 @@ def load_calser(spark):
            "INCIDENCIA_FECHA_ALTA date, INCIDENCIA_PERIODO_ID string, INCIDENCIA_TS string, "
            "INCIDENCIA_USUARIO_ID string")
 
+        # Extremadura module: cause code 33 (external agent), origin and
+        # cabecera, and two collection methods (telecontrol and customer call).
+        save(spark, f"{db}_incidencias_ex", [
+            ("I1", "202601", 0, "LINEA ZARZA", "J52", "Apoyo 12 linea Zarza", "A12", 33, 0, None, 1, 2, 250.0,
+             410.0, 17, 0),
+        ], "INCIDENCIA_EX_ID string, INCIDENCIA_EX_PERIODO_ID string, INCIDENCIA_EX_PLAN_MEJORA int, "
+           "INCIDENCIA_EX_INSTALACION_CABECERA string, INCIDENCIA_EX_CODIGO_CABECERA string, "
+           "INCIDENCIA_EX_INSTALACION_ORIGEN string, INCIDENCIA_EX_CODIGO_REFERENCIA_ORIGEN string, "
+           "INCIDENCIA_EX_TIPO_CASUISTICA int, INCIDENCIA_EX_TIPO_DIA int, INCIDENCIA_EX_NUMERO_SOLICITUD string, "
+           "INCIDENCIA_EX_NIVEL_TENSION int, INCIDENCIA_EX_NUMERO_INTERRUPCIONES int, "
+           "INCIDENCIA_EX_POTENCIA_CONTRATADA double, INCIDENCIA_EX_POTENCIA_INSTALADA double, "
+           "INCIDENCIA_EX_NUMERO_CLIENTES_CTD int, INCIDENCIA_EX_NUMERO_CLIENTES_CTP int")
+
+        save(spark, f"{db}_incidencias_metodos_recogida_ex", [
+            (4, "I1", "202601"), (7, "I1", "202601"),
+        ], "METODO_RECOGIDA_EX_ID int, INCIDENCIA_ID string, PERIODO_ID string")
+
+        save(spark, f"{db}_interrupciones_ex", [
+            ("1", "202601", "LINEA ZARZA", None, None, "01011", 1, 12, 0, 250.0),
+        ], "INT_EX_ID string, INT_EX_PERIODO_ID string, INT_EX_INSTALACIONES string, INT_EX_MOTIVOS string, "
+           "INT_EX_TRABAJOS_REALIZAR string, INT_EX_CODIGO_ELEMENTO string, INT_EX_NIVEL_TENSION int, "
+           "INT_EX_NUMERO_CLIENTES_CTD int, INT_EX_NUMERO_CLIENTES_CTP int, INT_EX_POTENCIA_CONTRATADA double")
+
         def interruption(int_id, element, start, end, duration, desc="Corte", incidencia="I1",
                          salida=None, period="202601"):
             return (
@@ -360,8 +383,8 @@ def run_d_elemento():
 
 ORDER = [
     "d_periodo", "d_municipio", "d_tipo_generico", "d_ct", "d_salida",
-    "f_incidencia", "f_interrupcion", "d_tag", "f_tag_value_change", "f_evento",
-    "f_command_execution", "f_corte",
+    "f_incidencia", "f_interrupcion", "f_incidencia_ex", "f_incidencia_causa", "d_tag", "f_tag_value_change",
+    "f_evento", "f_command_execution", "f_corte",
 ]
 
 
@@ -455,6 +478,30 @@ def test_interrupcion_rules(silver):
     assert rows["10"]["incidencia_inexistente"]
     assert rows["1"]["inicio_ts"] == ts("2026-01-10 10:00:00")
     assert "INT_DURACION_OPTIMIZADA" not in df.columns
+
+
+def test_incidencia_ex_codes_and_methods(silver):
+    rows = table(silver, "f_incidencia_ex").collect()
+    assert len(rows) == 2
+    row = rows[0]
+    assert (row["casuistica"], row["casuistica_nombre"], row["nivel_tension"], row["tipo_dia"]) == (
+        33, "agente_externo", "MT", "laborable")
+    assert row["metodos_recogida"] == "atencion_cliente+telecontrol"
+    assert row["detectada_telecontrol"] and row["aviso_cliente"] and not row["sin_incidencia"]
+    assert row["instalacion_origen"] == "Apoyo 12 linea Zarza"
+
+
+def test_incidencia_causa(silver):
+    rows = {r["source_database"]: r for r in table(silver, "f_incidencia_causa").collect()}
+    assert set(rows) == {"Calser_EOSA", "Calser_Pitarch"}
+    row = rows["Calser_EOSA"]
+    # "Averia" names no agent: the cause comes from the official code.
+    assert (row["causa"], row["fuente_causa"], row["casuistica_nombre"]) == (
+        "agente_externo", "codigo_oficial", "agente_externo")
+    assert row["nivel_afectacion"] == "ct"
+    assert row["n_int_ct"] >= 1 and row["anio"] == 2026
+    # The technical descriptions of the import ("INCOMPLETA. SCADA") are left out of the text.
+    assert "averia" in row["texto_causa"] and "incompleta" not in row["texto_causa"]
 
 
 def test_tag_orphans(silver):

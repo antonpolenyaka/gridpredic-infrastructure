@@ -260,5 +260,17 @@
     "umbral_carga": [0.8, 1.0],
     "carga_max_plausible": 1.6,
     "min_horas_carga": 1000
+  },
+  "causas_incidencias": {
+    "anio_corte": 2016,
+    "rachas_kmh": [60, 80],
+    "lluvias_mm": [10, 30],
+    "helada_c": 0.0,
+    "calor_c": 38.0,
+    "lluvia_tras_seca_mm": 5.0,
+    "dias_secos_min": 20,
+    "cape_jkg": 1000.0,
+    "min_repeticiones": 2,
+    "min_ct_anios": 50
   }
 }

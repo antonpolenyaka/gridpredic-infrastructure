@@ -38,6 +38,14 @@
       "depends_on": ["d_ct", "f_incidencia", "d_periodo"]
     },
     {
+      "name": "f_incidencia_ex",
+      "depends_on": ["f_incidencia"]
+    },
+    {
+      "name": "f_incidencia_causa",
+      "depends_on": ["f_incidencia_ex", "f_interrupcion"]
+    },
+    {
       "name": "d_tag",
       "depends_on": ["d_elemento"]
     },
