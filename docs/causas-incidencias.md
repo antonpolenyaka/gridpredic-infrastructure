@@ -237,7 +237,7 @@ Son los modelos de la regresión logística entrenados con cada etiqueta, y con 
 
 Con los avisos, y aunque la variante aprende con año y medio menos de historia, la combinación por percentiles sube un 65 % (+0,0095, de 0,0027 a 0,0220, en todas las réplicas) y la logística mejora con el intervalo por encima de cero (+0,0045, 99 %). La mejora crece en los últimos años: 0,046 en 2024 y 0,040 en 2025, el doble que sin avisos. El aviso solo vale poco (0,0064, por debajo de la regla de la racha), pero junto al tiempo dice qué temporales preocupaban a los meteorólogos. El bloque de fuego también ayuda a la logística (+0,0032, 99,8 %) y no a XGBoost.
 
-En el modelo del día siguiente, en 2022 - 2025:
+Visto día a día (2018 - 2025, con los avisos enviados antes de las 20:00 de la víspera), el 15 % de los días tiene algún aviso amarillo o superior en las celdas de la distribuidora, y en ellos hay avería el 6,5 % de las veces frente al 2,5 % del resto: recogen un tercio de los días con avería. Los avisos de viento son los que más dicen: solo hay en el 2 % de los días, pero en el 19 % de ellos hay avería, siete veces más que el resto. La mayoría de los avisos del archivo son de calor y de lluvia. En el modelo del día siguiente, en 2022 - 2025:
 
 | Variante | Regresión logística | XGBoost | Rango | Días con avería en el 10 % de días de más riesgo |
 | --- | --- | --- | --- | --- |
