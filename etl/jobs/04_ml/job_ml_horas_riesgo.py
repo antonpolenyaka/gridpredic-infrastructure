@@ -145,11 +145,13 @@ def dataset_key(version: str, source: str, frac_prefixes: list, meteo_cfg: dict,
     return hashlib.sha1(json.dumps(settings, sort_keys=True).encode("utf-8")).hexdigest()[:12]
 
 
-def distributor_weather(spark, meteo_cfg: dict):
+def distributor_weather(spark, meteo_cfg: dict, prefixes: tuple = ("met_", "metprev_")):
     """
     (distribuidora_id, hora, metd_media_*, metd_max_*): the weather of every
     distribuidora, the mean of its cells weighted by the number of CTs of
-    each cell and the worst cell. None without the weather tables.
+    each cell and the worst cell. None without the weather tables. Only the
+    columns of Gold with one of prefixes: the forecasts of the day before
+    (metp1_, metp2_) are for the model of the next day.
     """
     if not meteo_cfg.get("activo"):
         return None, []
@@ -167,7 +169,7 @@ def distributor_weather(spark, meteo_cfg: dict):
         .agg(F.count(F.lit(1)).cast("double").alias("_n"))
     )
     weather = spark.table(weather_table)
-    names = [c for c in weather.columns if c.startswith(("met_", "metprev_"))]
+    names = [c for c in weather.columns if c.startswith(tuple(prefixes))]
 
     # The next hours (metprev_*) are always stored; meteo.prevision false
     # leaves them out when training, so both runs share the table.

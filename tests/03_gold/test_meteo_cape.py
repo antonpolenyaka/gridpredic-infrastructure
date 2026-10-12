@@ -152,3 +152,37 @@ def test_extra_variables_reach_silver_and_gold(spark):
     assert after["met_et0_7d"] == pytest.approx(0.1 * 115)
     later = features.where(features.hora == pd.Timestamp("2022-06-05 21:00").to_pydatetime()).first()
     assert later["met_tormenta_6h"] == 0.0
+
+
+def test_forecast_of_the_day_before_reaches_silver_and_gold(spark):
+    import job_gold_meteo_celda_hora as gold
+    import job_silver_f_meteo_hora as silver
+
+    hours = pd.date_range("2024-03-01 00:00", periods=48, freq="h")
+    reanalysis = pd.DataFrame({"celda_id": "39.40_-6.30", "hora": hours, "temperature_2m": 12.0,
+                               "relative_humidity_2m": 70.0, "precipitation": 0.0, "snowfall": 0.0,
+                               "wind_speed_10m": 15.0, "wind_gusts_10m": 30.0, "pressure_msl": 1012.0,
+                               "modelo": "ecmwf_ifs"})
+    forecast = pd.DataFrame({
+        "celda_id": "39.40_-6.30", "hora": hours, "wind_gusts_10m_previous_day1": 45.0,
+        "wind_speed_10m_previous_day1": 20.0, "precipitation_previous_day1": [0.5] * 47 + [500.0],
+        "snowfall_previous_day1": 0.0, "temperature_2m_previous_day1": 13.0,
+        "relative_humidity_2m_previous_day1": 65.0, "wind_gusts_10m_previous_day2": 50.0,
+        "precipitation_previous_day2": 1.0, "wind_gusts_10m": 40.0, "precipitation": 0.2,
+    })
+    # The forecast of a neighbour cell of the same grid never goes to this one.
+    other = forecast.assign(celda_id="39.50_-6.30", wind_gusts_10m_previous_day1=99.0)
+
+    out, _ = silver.transform(spark.createDataFrame(reanalysis))
+    out = silver.add_forecast(out, spark.createDataFrame(pd.concat([forecast, other], ignore_index=True)))
+    rows = out.toPandas().set_index("hora")
+    assert rows["racha_prev1_kmh"].eq(45.0).all() and rows["racha_icon_kmh"].eq(40.0).all()
+    assert rows["temperatura_prev1_c"].eq(13.0).all() and rows["racha_prev2_kmh"].eq(50.0).all()
+    # 500 mm in an hour is out of range: null, the rest of the hour stays.
+    assert pd.isna(rows.iloc[-1]["precipitacion_prev1_mm"]) and rows.iloc[-1]["racha_prev1_kmh"] == 45.0
+
+    features, names = gold.weather_features(out, 3, False)
+    assert {"metp1_racha_1h", "metp1_viento_1h", "metp1_lluvia_1h", "metp1_nieve_1h", "metp1_temp_1h",
+            "metp1_humedad_1h", "metp2_racha_1h", "metp2_lluvia_1h"} <= set(names)
+    first = features.where(features.hora == hours[5].to_pydatetime()).first()
+    assert first["metp1_racha_1h"] == 45.0 and first["met_racha_1h"] == 30.0

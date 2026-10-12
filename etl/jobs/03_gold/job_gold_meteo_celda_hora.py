@@ -30,6 +30,12 @@ Gold weather: the features of every cell and hour and the cell of every CT.
     insulators); highest vapour pressure deficit of 24 h and
     evapotranspiration of 7 days (dryness, fires); low clouds of 6 h; and
     the highest weather code of 6 h with a flag for thunderstorm codes.
+  - metp1_* and metp2_*, when Silver has the forecasts of ICON-EU (from
+    January 2024): what was forecast for the hour one day before (gust,
+    wind, rain, snow, temperature and humidity of the hour) and two days
+    before (gust and rain). They are passed as they come, with their own
+    prefix, so the models of the next hours never take them by mistake: the
+    model of the next day uses them in place of the weather of the day.
   - met_aviso_*, when Silver has the warnings of AEMET (f_aviso_meteo, from
     18.06.2018): the highest level (1 yellow, 2 orange, 3 red) of the
     warnings in force at hora that had been issued by then, in total and for
@@ -72,7 +78,15 @@ EXTRA_COLUMNS = {
 # extra grid loads.
 PARTIAL_FEATURES = ("met_cape_", "met_li_", "met_dir_viento_", "met_viento_100m_", "met_humedad_suelo_",
                     "met_rocio_", "met_dpv_", "met_nubes_bajas_", "met_et0_", "met_codigo_", "met_tormenta_",
-                    "met_aviso_")
+                    "met_aviso_", "metp1_", "metp2_")
+
+# Forecasts of ICON-EU in Silver -> hourly column of Gold (one and two days before).
+FORECAST_COLUMNS = {
+    "racha_prev1_kmh": "metp1_racha_1h", "viento_prev1_kmh": "metp1_viento_1h",
+    "precipitacion_prev1_mm": "metp1_lluvia_1h", "nieve_prev1_cm": "metp1_nieve_1h",
+    "temperatura_prev1_c": "metp1_temp_1h", "humedad_prev1_pct": "metp1_humedad_1h",
+    "racha_prev2_kmh": "metp2_racha_1h", "precipitacion_prev2_mm": "metp2_lluvia_1h",
+}
 WARNINGS_TABLE = "l2_silver.f_aviso_meteo"
 # Groups of phenomena of AEMET for the warning features.
 WARNING_GROUPS = {"viento": ["VI"], "lluvia": ["PR"], "tormenta": ["TO"], "nieve": ["NE"]}
@@ -131,6 +145,7 @@ def weather_features(hourly, lead: int, region: bool):
            (F.col("indice_levantamiento") if "indice_levantamiento" in hourly.columns
             else F.lit(None).cast("double")).alias("li")] if convective else []),
         *[F.col(source).alias(alias) for source, alias in EXTRA_COLUMNS.items() if source in hourly.columns],
+        *[F.col(source).alias(alias) for source, alias in FORECAST_COLUMNS.items() if source in hourly.columns],
     ).withColumn("_t", F.unix_timestamp("hora"))
 
     ordered = Window.partitionBy("celda_id").orderBy("_t")
@@ -200,6 +215,8 @@ def weather_features(hourly, lead: int, region: bool):
         code = F.max("codigo").over(past(6))
         columns += [code.alias("met_codigo_max_6h"), (code >= 95).cast("double").alias("met_tormenta_6h")]
 
+    columns += [F.col(alias) for alias in FORECAST_COLUMNS.values() if alias in present]
+
     if lead > 0:
         columns += [
             F.max("racha").over(ahead(lead)).alias(f"metprev_racha_max_{lead}h"),
@@ -220,7 +237,7 @@ def weather_features(hourly, lead: int, region: bool):
         region_df = features.groupBy("hora").agg(*[F.max(c).alias(region_name(c)) for c in sources])
         features = features.join(region_df, "hora", "left")
 
-    names = [c for c in features.columns if c.startswith(("met_", "metprev_"))]
+    names = [c for c in features.columns if c.startswith(("met_", "metprev_", "metp1_", "metp2_"))]
     return features.select("celda_id", "hora", *names), names
 
 
