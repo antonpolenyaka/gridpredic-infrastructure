@@ -49,6 +49,9 @@ Y is scored by models chosen and fitted only on the days before Y
 (rolling_evaluation of job_ml_horas_riesgo), with the strongest gust of the
 day before, of the day itself and the highest warning as references.
 
+Every variant also gets rango, the mean of the percentiles in the year of
+its logistic regression and its XGBoost.
+
 Metrics on the years every variant scored, against y_dia: PR-AUC of the
 days, lift, the share of the days with interruptions that falls in the 5,
 10 and 20 % of the days of each year with more risk (a crew on alert those
@@ -99,7 +102,8 @@ CELLS_TABLE = "l3_gold.map_ct_celda"
 LABELS = ["y_dia", "y_dia_meteo"]
 MAIN_LABEL = "y_dia"
 WARNING_GROUPS = {"viento": ["VI"], "lluvia": ["PR"], "tormenta": ["TO"], "nieve": ["NE"]}
-TRAINED = ("logistica", "xgboost", "random_forest")
+# Models with one score per variant (the references score the same in every variant that has their feature).
+TRAINED = ("logistica", "xgboost", "random_forest", "rango")
 
 # Daily weather of a distribuidora: name -> (hourly column of distributor_weather, aggregation over the day).
 DAILY = {
@@ -502,6 +506,20 @@ def by_distribuidora(metrics: pd.DataFrame) -> pd.DataFrame:
     return once(table.reset_index())
 
 
+def add_rank_mean(scored: pd.DataFrame, pairs: dict) -> pd.DataFrame:
+    """
+    {new column: (column a, column b)}: the mean of the percentiles of a and b
+    in each year. XGBoost and the logistic regression put their probabilities
+    at different levels every year; the percentiles weigh both rankings the
+    same.
+    """
+    for name, pair in pairs.items():
+        if all(c in scored.columns for c in pair):
+            ranks = scored.groupby("anio")[list(pair)].rank(pct=True)
+            scored[name] = ranks.mean(axis=1, skipna=False)
+    return scored
+
+
 def quantile_map(fit_forecast, fit_reanalysis, values) -> np.ndarray:
     """
     Forecast values taken to the distribution of the reanalysis: the value of
@@ -582,7 +600,9 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     if not parts:
         return pd.DataFrame()
     found = pd.concat(parts, ignore_index=True)
-    return found[found["con_prevision"]].drop(columns="con_prevision").reset_index(drop=True)
+    found = found[found["con_prevision"]].drop(columns="con_prevision").reset_index(drop=True)
+    return add_rank_mean(found, {f"p_rango__{source}": (f"p_logistica__{source}", f"p_xgboost__{source}")
+                                 for source in ("reanalisis", "prevision", "prevision_cuantiles")})
 
 
 # ---------------------------------------------------------------------------
@@ -647,6 +667,8 @@ def main(argv=None):
         scored["anio"] = scored["fecha"].dt.year
     scored = scored.drop(columns=LABELS).merge(pdf[["distribuidora_id", "fecha"] + LABELS],
                                                on=["distribuidora_id", "fecha"], how="left")
+    scored = add_rank_mean(scored, {f"p_{v['nombre']}__rango": (f"p_{v['nombre']}__logistica", f"p_{v['nombre']}__xgboost")
+                                    for v in variants})
     columns = [c for c in scored.columns if c.startswith("p_")]
     years = sorted(scored["anio"].unique().tolist())
     common = [y for y in years if scored.loc[scored["anio"] == y, columns].notna().all(axis=None)]
