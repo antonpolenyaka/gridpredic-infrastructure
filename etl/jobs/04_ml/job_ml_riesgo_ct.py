@@ -37,6 +37,16 @@ With --causas (families of l2_silver.f_incidencia_causa, comma separated)
 the label and the history only count the incidents of those causes: the
 risk of fauna faults, of weather faults... The other features do not change.
 
+Without --causas, when l2_silver.f_incidencia_causa exists, the job also
+trains one model per family of causes (riesgo_ct.familias_causa, plus resto
+with every other incident, the ones without a cause included), each with the
+label and the history of its family, and adds them up: por_causa:<bloque>
+(riesgo_ct.bloques_por_causa), evaluated against all the kVA·h like the rest.
+The fauna of a line comes back to the same supports and the failures of the
+equipment to the same old devices, which the history of all the causes
+mixes up. The ranking of the next year adds what each family expects
+(esperado_<familia>), which says what to do on each line.
+
 Evaluation by rolling origin: for each Y of riesgo_ct.anios_evaluacion the
 model learns from the years before and ranks the CTs of Y. The metric is the
 capture: the share of the kVA·h of Y that falls in the top k % of the ranking,
@@ -92,7 +102,18 @@ DEFAULTS = {
                 "tweedie_variance_power": 1.3},
     "bloques": ["historia", "historia+estructura", "historia+estructura+scada", "historia+estructura+publicos",
                 "historia+estructura+obras", "historia+estructura+clima", "historia+estructura+naturaleza", "todo"],
+    # One model per family of causes (label and history of that family only), added up: the fauna of a line
+    # repeats in the same supports, the failures of equipment follow the age and the load, the weather follows
+    # the exposure. resto takes every other incident, the ones without a cause included, so the sum stands
+    # for all the kVA·h.
+    "familias_causa": {"meteo": ["meteorologia", "desconocida", "vegetacion", "incendio", "objeto_ajeno"],
+                       "fauna": ["fauna"], "equipo": ["equipo"]},
+    "bloques_por_causa": ["historia", "historia+estructura", "historia+estructura+scada", "historia+estructura+clima"],
+    "bloque_ranking_por_causa": "historia+estructura",
 }
+
+KEYS = ["distribuidora_id", "ct_id", "anio"]
+LABEL_COLUMNS = ["y_kva_h", "y_interrupciones", "y_horas"]
 
 LEVELS = {"ct": ["distribuidora_id", "ct_id"], "cabecera": ["distribuidora_id", "cabecera"],
           "grupo": ["distribuidora_id", "grupo_red_id"], "municipio": ["distribuidora_id", "municipio_id"]}
@@ -196,14 +217,14 @@ def climate_features(spark, cfg: dict) -> pd.DataFrame:
     return per_year[per_year["horas"] >= 0.9 * 8760]
 
 
-def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.DataFrame:
-    spark = data.spark
+def prepare_dim(data: Data) -> pd.DataFrame:
+    """The CTs of dim_ct with the size of their feeder and their upstream bays."""
     dim = data.dim.copy()
     dim["municipio_id"] = dim["municipio_id"].astype(str)
     per_feeder = dim.groupby(["distribuidora_id", "cabecera"]).agg(cts_cabecera=("ct_id", "nunique"),
                                                                   kva_cabecera=("kva", "sum")).reset_index()
     dim = dim.merge(per_feeder, on=["distribuidora_id", "cabecera"], how="left")
-    upstream = read_table(spark, f"{GOLD}.dim_ct", ["distribuidora_id", "ct_id", "n_posiciones_aguas_arriba"])
+    upstream = read_table(data.spark, f"{GOLD}.dim_ct", ["distribuidora_id", "ct_id", "n_posiciones_aguas_arriba"])
     if upstream is not None:
         up = upstream.toPandas()
         up["ct_id"] = up["ct_id"].astype(str)
@@ -211,21 +232,21 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
             up, on=["distribuidora_id", "ct_id"], how="left")
     else:
         dim["n_posiciones_aguas_arriba"] = np.nan
+    return dim
 
-    years = list(range(int(cfg["anio_primero"]), last_year + 2))
-    rows = []
-    for year in years:
-        lo, hi = pd.Timestamp(year=year, month=1, day=1), pd.Timestamp(year=year + 1, month=1, day=1)
-        valid = dim[(dim["vigente_desde"].isna() | (dim["vigente_desde"] < hi))
-                    & (dim["vigente_hasta_excl"].isna() | (dim["vigente_hasta_excl"] > lo))]
-        rows.append(valid.assign(anio=year))
-    grid = pd.concat(rows, ignore_index=True)
 
-    per_ct = yearly_events(data, keep)
+def history_columns(grid: pd.DataFrame) -> list:
+    """The columns add_label_history writes (label, history, kVA·h per kVA, years since the last one)."""
+    return LABEL_COLUMNS + [c for c in grid.columns if c.startswith(("kva_h_", "interrupciones_", "horas_", "tiepi_"))
+                            and not c.startswith("horas_racha")] + ["anios_desde_ultima"]
+
+
+def add_label_history(grid: pd.DataFrame, per_ct: pd.DataFrame, dim: pd.DataFrame, last_year: int) -> pd.DataFrame:
+    """Label of the year and history of the CT and its network levels from the yearly events per_ct."""
     labels = per_ct.rename(columns={"kva_h": "y_kva_h", "interrupciones": "y_interrupciones", "horas": "y_horas"})
-    grid = grid.merge(labels, on=["distribuidora_id", "ct_id", "anio"], how="left")
-    grid[["y_kva_h", "y_interrupciones", "y_horas"]] = grid[["y_kva_h", "y_interrupciones", "y_horas"]].fillna(0.0)
-    grid.loc[grid["anio"] > last_year, ["y_kva_h", "y_interrupciones", "y_horas"]] = np.nan
+    grid = grid.merge(labels, on=KEYS, how="left")
+    grid[LABEL_COLUMNS] = grid[LABEL_COLUMNS].fillna(0.0)
+    grid.loc[grid["anio"] > last_year, LABEL_COLUMNS] = np.nan
 
     for level in LEVELS:
         hist = history(per_ct, grid, dim, level, (1, 2, 3))
@@ -238,12 +259,27 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
             grid[f"tiepi_{level}_{span}a"] = grid[f"kva_h_{level}_{span}a"] / size
 
     last = per_ct[per_ct["kva_h"] > 0][["distribuidora_id", "ct_id", "anio"]].rename(columns={"anio": "_ultimo"})
-    since = grid[["distribuidora_id", "ct_id", "anio"]].merge(last, on=["distribuidora_id", "ct_id"], how="left")
+    since = grid[KEYS].merge(last, on=["distribuidora_id", "ct_id"], how="left")
     since = since[since["_ultimo"] < since["anio"]]
-    since = since.groupby(["distribuidora_id", "ct_id", "anio"])["_ultimo"].max().reset_index()
-    grid = grid.merge(since, on=["distribuidora_id", "ct_id", "anio"], how="left")
+    since = since.groupby(KEYS)["_ultimo"].max().reset_index()
+    grid = grid.merge(since, on=KEYS, how="left")
     grid["anios_desde_ultima"] = (grid["anio"] - grid["_ultimo"]).clip(upper=10).fillna(10.0)
-    grid = grid.drop(columns=["_ultimo"])
+    return grid.drop(columns=["_ultimo"])
+
+
+def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.DataFrame:
+    spark = data.spark
+    dim = prepare_dim(data)
+
+    years = list(range(int(cfg["anio_primero"]), last_year + 2))
+    rows = []
+    for year in years:
+        lo, hi = pd.Timestamp(year=year, month=1, day=1), pd.Timestamp(year=year + 1, month=1, day=1)
+        valid = dim[(dim["vigente_desde"].isna() | (dim["vigente_desde"] < hi))
+                    & (dim["vigente_hasta_excl"].isna() | (dim["vigente_hasta_excl"] > lo))]
+        rows.append(valid.assign(anio=year))
+    grid = pd.concat(rows, ignore_index=True)
+    grid = add_label_history(grid, yearly_events(data, keep), dim, last_year)
 
     scada = scada_counts(spark, dim)
     if not scada.empty:
@@ -290,7 +326,38 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
         if column not in grid.columns:
             grid[column] = np.nan
     grid["tiene_telemetria"] = grid["tiene_telemetria"].astype(float)
-    return grid
+    return grid.sort_values(KEYS, kind="stable").reset_index(drop=True)
+
+
+def family_keys(spark, data: Data, families: dict) -> dict:
+    """
+    {family: incident keys} for every family of causes plus resto, the other
+    incidents of the principal variant (without a cause included). None
+    without l2_silver.f_incidencia_causa.
+    """
+    df = read_table(spark, CAUSES_TABLE, ["distribuidora_id", "periodo_id", "id", "causa"])
+    if df is None:
+        logger.warning("%s not found: no model per family of causes", CAUSES_TABLE)
+        return None
+    pdf = df.toPandas()
+    key = pdf["distribuidora_id"].astype(str) + "|" + pdf["periodo_id"].astype(str) + "|" + pdf["id"].astype(str)
+    out = {name: set(key[pdf["causa"].isin(causes)]) for name, causes in families.items()}
+    every = set(data.events.loc[data.events["variante"] == "principal", "incidente"])
+    out["resto"] = every - set().union(*out.values())
+    return out
+
+
+def family_grids(data: Data, grid: pd.DataFrame, keys: dict, last_year: int) -> dict:
+    """{family: the CT x year table with the label and the history of that family}, rows as in grid."""
+    dim = prepare_dim(data)
+    base = grid.drop(columns=history_columns(grid))
+    out = {}
+    for name, keep in keys.items():
+        table = add_label_history(base, yearly_events(data, keep), dim, last_year)
+        out[name] = table.sort_values(KEYS, kind="stable").reset_index(drop=True)[grid.columns]
+        if not out[name][KEYS].equals(grid[KEYS]):
+            raise ValueError(f"The table of the family {name} does not have the rows of the main table")
+    return out
 
 
 def block_columns(grid: pd.DataFrame) -> dict:
@@ -334,7 +401,20 @@ def feeder_frame(test: pd.DataFrame, columns: list) -> pd.DataFrame:
     return test.groupby(["distribuidora_id", "cabecera"])[["y_kva_h", *columns]].sum().reset_index()
 
 
-def evaluate(grid: pd.DataFrame, cfg: dict, seed: int) -> tuple:
+def family_sum(families: dict, year: int, features: list, params: dict, seed: int, n_rows: int) -> np.ndarray:
+    """Sum over the families of causes of the kVA·h each model expects in year, trained on the years before."""
+    total = np.zeros(n_rows)
+    for table in families.values():
+        train = table[(table["anio"] < year) & table["y_kva_h"].notna()]
+        test = table[table["anio"] == year]
+        if train["y_kva_h"].sum() <= 0:
+            continue
+        _, pred = fit_predict(train, test, features, params, seed)
+        total += pred
+    return total
+
+
+def evaluate(grid: pd.DataFrame, cfg: dict, seed: int, families: dict = None) -> tuple:
     blocks = block_columns(grid)
     params = dict(cfg["xgboost"])
     fractions = [float(f) for f in cfg["fracciones_top"]]
@@ -358,6 +438,11 @@ def evaluate(grid: pd.DataFrame, cfg: dict, seed: int) -> tuple:
             if block == "todo":
                 gain = model.get_booster().get_score(importance_type="gain")
                 importance += [{"anio": year, "feature": features[int(k[1:])], "gain": v} for k, v in gain.items()]
+
+        for block in (cfg.get("bloques_por_causa") or []) if families else []:
+            name = f"por_causa:{block}"
+            test[f"s_{name}"] = family_sum(families, year, features_of(block, blocks), params, seed, len(test))
+            names.append(name)
 
         feeders = feeder_frame(test, [f"s_{n}" for n in names])
         # The naive ranking of a feeder is its own history, not the sum of its CTs.
@@ -383,22 +468,37 @@ def evaluate(grid: pd.DataFrame, cfg: dict, seed: int) -> tuple:
     return pd.DataFrame(rows), pd.DataFrame(importance), (pd.concat(scored) if scored else pd.DataFrame())
 
 
-def rank_next_year(grid: pd.DataFrame, cfg: dict, seed: int, last_year: int) -> tuple:
+def rank_next_year(grid: pd.DataFrame, cfg: dict, seed: int, last_year: int, families: dict = None) -> tuple:
     blocks = block_columns(grid)
     features = features_of("todo", blocks)
+    params = dict(cfg["xgboost"])
     train = grid[grid["y_kva_h"].notna()]
     test = grid[grid["anio"] == last_year + 1].copy()
     if train.empty or test.empty:
         return pd.DataFrame(), pd.DataFrame()
-    _, pred = fit_predict(train, test, features, dict(cfg["xgboost"]), seed)
+    _, pred = fit_predict(train, test, features, params, seed)
     test["kva_h_esperado"] = pred
     test["puesto"] = test["kva_h_esperado"].rank(ascending=False, method="first").astype(int)
+
+    # What each family of causes expects: where to look at the supports and the nests, where at the equipment.
+    expected = []
+    if families:
+        family_features = features_of(cfg.get("bloque_ranking_por_causa", "historia+estructura"), blocks)
+        for name, table in families.items():
+            column = f"esperado_{name}"
+            fam_train = table[table["y_kva_h"].notna()]
+            fam_test = table[table["anio"] == last_year + 1]
+            test[column] = (fit_predict(fam_train, fam_test, family_features, params, seed)[1]
+                            if fam_train["y_kva_h"].sum() > 0 else 0.0)
+            expected.append(column)
+
     cts = test.sort_values("puesto")[["anio", "distribuidora_id", "ct_id", "municipio_nombre", "cabecera",
                                       "grupo_red_id", "kva", "num_abonados", "kva_h_ct_2a", "tiepi_cabecera_2a",
-                                      "kva_h_esperado", "puesto"]]
+                                      "kva_h_esperado", "puesto", *expected]]
     feeders = test.groupby(["anio", "distribuidora_id", "cabecera"]).agg(
         cts=("ct_id", "nunique"), kva=("kva", "sum"), kva_h_esperado=("kva_h_esperado", "sum"),
-        kva_h_2a=("kva_h_cabecera_2a", "first")).reset_index().sort_values("kva_h_esperado", ascending=False)
+        kva_h_2a=("kva_h_cabecera_2a", "first"), **{c: (c, "sum") for c in expected},
+    ).reset_index().sort_values("kva_h_esperado", ascending=False)
     return cts, feeders
 
 
@@ -425,8 +525,17 @@ def main(argv=None):
     logger.info("Table CT x year: %s rows, %s columns, years %s - %s", len(grid), grid.shape[1],
                 grid["anio"].min(), grid["anio"].max())
 
-    metrics, importance, scored = evaluate(grid, cfg, seed)
-    cts, feeders = rank_next_year(grid, cfg, seed, last_year)
+    # The models per family of causes only make sense for the ranking of all the causes.
+    families, family_sizes = None, {}
+    if not causes and cfg.get("familias_causa"):
+        keys = family_keys(spark, data, cfg["familias_causa"])
+        if keys:
+            family_sizes = {name: len(keep_f) for name, keep_f in keys.items()}
+            families = family_grids(data, grid, keys, last_year)
+            logger.info("Families of causes (incidents): %s", family_sizes)
+
+    metrics, importance, scored = evaluate(grid, cfg, seed, families)
+    cts, feeders = rank_next_year(grid, cfg, seed, last_year, families)
 
     report = Report(config.get("exportar_dir"), args.run_id)
     report.csv("captura.csv", metrics)
@@ -440,7 +549,8 @@ def main(argv=None):
         mean = metrics[metrics["modelo"] != "tasa_base"].groupby(["nivel", "modelo", "top"])["captura"].mean()
         table = mean.unstack("top").reset_index()
         table.columns = [c if isinstance(c, str) else f"top_{int(round(100 * c))}pct" for c in table.columns]
-        order = {m: i for i, m in enumerate(["oraculo", "naif", "naif_cabecera", *cfg["bloques"]])}
+        order = {m: i for i, m in enumerate(["oraculo", "naif", "naif_cabecera", *cfg["bloques"],
+                                             *[f"por_causa:{b}" for b in cfg.get("bloques_por_causa") or []]])}
         table = table.sort_values(["nivel", "modelo"], key=lambda s: s.map(order) if s.name == "modelo" else s)
         shown = table.copy()
         for column in [c for c in shown.columns if c.startswith("top_")]:
@@ -453,12 +563,17 @@ def main(argv=None):
         hits = metrics[(metrics["nivel"] == "ct") & (metrics["top"] == 0.1)].groupby("modelo")[
             "con_interrupcion_en_top"].mean()
         base = metrics.loc[metrics["modelo"] == "tasa_base", "con_interrupcion_en_top"].mean()
+        by_family = ""
+        if family_sizes:
+            listed = ", ".join(f"{name} ({n})" for name, n in family_sizes.items())
+            by_family = (f" por_causa:<bloque> suma un modelo por familia de causas, cada uno con la etiqueta y la "
+                         f"historia de su familia: {listed} incidencias.")
         report.section(
             "Captura del año siguiente",
             "Parte de los kVA·h imprevistos de cada año que cae en el top k % del ranking hecho con los años "
             f"anteriores (media de {', '.join(str(y) for y in sorted(metrics['anio'].unique()))}). naif ordena por "
             "los kVA·h del CT en los dos años anteriores y naif_cabecera por los de su cabecera; el oráculo es el "
-            "máximo posible.\n\n" + md_table(shown)
+            f"máximo posible.{by_family}\n\n" + md_table(shown)
             + "\nPor año, top 10 %:\n\n" + md_table(per_year)
             + f"\nCT del top 10 % que tienen alguna interrupción ese año: modelo todo {pct(hits.get('todo'))}, naif "
             f"{pct(hits.get('naif'))}; un CT cualquiera, {pct(base)}.\n"
@@ -471,11 +586,16 @@ def main(argv=None):
     if not cts.empty:
         top_cts = cts.head(15).assign(distribuidora=cts.head(15)["distribuidora_id"].map(databases))
         top_feeders = feeders.head(10).assign(distribuidora=feeders.head(10)["distribuidora_id"].map(databases))
+        expected = [c for c in feeders.columns if c.startswith("esperado_")]
         report.section(
             f"Prioridades para {last_year + 1}",
             "Ranking del modelo con todos los años: kVA·h imprevistos esperados de cada CT y de cada cabecera "
-            "(suma de sus CT).\n\n"
-            + md_table(top_feeders, ["distribuidora", "cabecera", "cts", "kva", "kva_h_2a", "kva_h_esperado"])
+            "(suma de sus CT)."
+            + (f" esperado_<familia> es lo que espera el modelo de cada familia de causas (bloque "
+               f"{cfg.get('bloque_ranking_por_causa')}): dice qué actuación toca en cada línea." if expected else "")
+            + "\n\n"
+            + md_table(top_feeders, ["distribuidora", "cabecera", "cts", "kva", "kva_h_2a", "kva_h_esperado",
+                                     *expected])
             + "\n" + md_table(top_cts, ["distribuidora", "ct_id", "municipio_nombre", "cabecera", "kva",
                                         "kva_h_ct_2a", "kva_h_esperado", "puesto"])
         )
