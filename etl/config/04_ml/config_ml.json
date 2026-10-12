@@ -283,6 +283,8 @@
     "retraso_conocido_dias": 7,
     "ventanas_historia_dias": [7, 30, 365],
     "horario_laboral": [8, 18],
+    "interacciones_meteo": ["metd_max_met_racha_max_3h", "metd_max_met_lluvia_24h", "metd_max_met_viento_1h",
+                            "metd_media_met_lluvia_3h"],
     "modelos": ["tasa_base", "logistica", "xgboost"],
     "referencias": {"naif_racha": "metd_max_met_racha_max_3h"},
     "fraccion_validacion_interna": 0.25,
@@ -311,7 +313,9 @@
        "bloques": ["meteo", "antecedente", "extra", "suelo", "calendario", "historia"], "etiqueta": "principal"},
       {"nombre": "larga_todo", "desde": "2017-01-08",
        "bloques": ["meteo", "antecedente", "extra", "suelo", "conveccion", "calendario", "historia"],
-       "etiqueta": "principal"}
+       "etiqueta": "principal"},
+      {"nombre": "larga_interacciones", "desde": "2017-01-08",
+       "bloques": ["meteo", "antecedente", "calendario", "historia", "interacciones"], "etiqueta": "principal"}
     ],
     "comparaciones": [
       ["larga__xgboost", "corta__xgboost"],
@@ -327,7 +331,10 @@
       ["larga_extra__xgboost", "larga_antecedente__xgboost"],
       ["larga_extra__logistica", "larga_antecedente__logistica"],
       ["larga_todo__xgboost", "larga__xgboost"],
-      ["larga_todo__xgboost", "larga__naif_racha"]
+      ["larga_todo__xgboost", "larga__naif_racha"],
+      ["larga_interacciones__logistica", "larga_antecedente__logistica"],
+      ["larga__media", "larga__logistica"],
+      ["larga__media", "larga__naif_racha"]
     ]
   }
 }

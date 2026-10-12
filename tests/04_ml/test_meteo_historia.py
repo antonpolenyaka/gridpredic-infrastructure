@@ -102,6 +102,7 @@ def test_blocks_keep_partial_families_apart():
     assert mh.block_of("estacion") == "calendario"
     assert mh.block_of("hist_incidencias_7d") == "historia"
     assert mh.block_of("dist_2") == "distribuidora"
+    assert mh.block_of("int_dist_2__metd_max_met_lluvia_24h") == "interacciones"
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +233,10 @@ def config_path(workdir):
              "etiqueta": "meteo"},
             # No dust in the weather of the test: skipped, not a copy of larga.
             {"nombre": "larga_aire", "desde": "2019-01-08", "bloques": ["meteo", "aire"], "etiqueta": "principal"},
+            {"nombre": "larga_interacciones", "desde": "2019-01-08", "bloques": ["meteo", "interacciones"],
+             "etiqueta": "principal"},
         ],
+        "interacciones_meteo": ["metd_max_met_racha_max_3h", "no_existe"],
         "comparaciones": [["larga__xgboost", "corta__xgboost"], ["larga__logistica", "corta__logistica"],
                           ["larga__logistica", "larga__naif_racha"], ["larga_etiqueta_meteo__logistica",
                                                                       "larga__logistica"]],
@@ -260,7 +264,8 @@ def test_report_and_files(result):
     for title in ("## Variantes", "## Comparación en los años comunes", "## PR-AUC por año",
                   "## Diferencias emparejadas"):
         assert title in text
-    for name in ("metricas.csv", "comparacion.csv", "diferencias.csv", "filas.csv", "entreno.csv", "dias.csv"):
+    for name in ("metricas.csv", "comparacion.csv", "diferencias.csv", "filas.csv", "entreno.csv", "dias.csv",
+                 "distribuidoras.csv"):
         assert os.path.exists(os.path.join(folder, name))
 
 
@@ -288,7 +293,10 @@ def test_models_beat_the_base_rate(result):
     best = table[(table["variante"] == "larga") & (table["modelo"].isin(["logistica", "xgboost"]))]["pr_auc"].max()
     base = table[(table["variante"] == "larga") & (table["modelo"] == "tasa_base")]["pr_auc"].item()
     assert best > 2 * base
-    assert {"corta", "larga", "larga_conveccion", "larga_etiqueta_meteo"} == set(table["variante"])
+    assert {"corta", "larga", "larga_conveccion", "larga_etiqueta_meteo", "larga_interacciones"} == set(
+        table["variante"])
+    # The mean of the logistic regression and XGBoost of every variant.
+    assert ((table["variante"] == "larga") & (table["modelo"] == "media")).any()
     diffs = read(folder, "diferencias.csv")
     assert len(diffs) == 4
 
