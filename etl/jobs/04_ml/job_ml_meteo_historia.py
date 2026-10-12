@@ -101,6 +101,7 @@ MAIN_LABEL = "y_principal"
 # names the block.
 WEATHER_BLOCKS = {
     "antecedente": ("_lluvia_72h", "_lluvia_previa_30d", "_humedad_max_6h"),
+    "avisos": ("_aviso_",),
     "conveccion": ("_cape", "_li_"),
     "aire": ("_polvo", "_pm10"),
     "suelo": ("_humedad_suelo",),

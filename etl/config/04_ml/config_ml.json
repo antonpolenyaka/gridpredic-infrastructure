@@ -286,7 +286,7 @@
     "interacciones_meteo": ["metd_max_met_racha_max_3h", "metd_max_met_lluvia_24h", "metd_max_met_viento_1h",
                             "metd_media_met_lluvia_3h"],
     "modelos": ["tasa_base", "logistica", "xgboost"],
-    "referencias": {"naif_racha": "metd_max_met_racha_max_3h"},
+    "referencias": {"naif_racha": "metd_max_met_racha_max_3h", "naif_aviso_aemet": "metd_max_met_aviso_max_nivel"},
     "fraccion_validacion_interna": 0.25,
     "presupuestos_horas_dia": [1, 2, 4, 6],
     "bootstrap_reps": 500,
@@ -315,7 +315,9 @@
        "bloques": ["meteo", "antecedente", "extra", "suelo", "conveccion", "calendario", "historia"],
        "etiqueta": "principal"},
       {"nombre": "larga_interacciones", "desde": "2017-01-08",
-       "bloques": ["meteo", "antecedente", "calendario", "historia", "interacciones"], "etiqueta": "principal"}
+       "bloques": ["meteo", "antecedente", "calendario", "historia", "interacciones"], "etiqueta": "principal"},
+      {"nombre": "avisos", "desde": "2018-06-25", "bloques": ["meteo", "antecedente", "avisos", "calendario", "historia"],
+       "etiqueta": "principal"}
     ],
     "comparaciones": [
       ["larga__xgboost", "corta__xgboost"],
@@ -334,7 +336,11 @@
       ["larga_todo__xgboost", "larga__naif_racha"],
       ["larga_interacciones__logistica", "larga_antecedente__logistica"],
       ["larga__media", "larga__logistica"],
-      ["larga__media", "larga__naif_racha"]
+      ["larga__media", "larga__naif_racha"],
+      ["avisos__xgboost", "larga_antecedente__xgboost"],
+      ["avisos__logistica", "larga_antecedente__logistica"],
+      ["avisos__logistica", "avisos__naif_aviso_aemet"],
+      ["avisos__naif_aviso_aemet", "larga__naif_racha"]
     ]
   }
 }
