@@ -610,6 +610,13 @@ def main(argv=None):
         pair = [f"p_{variant}__logistica", f"p_{variant}__xgboost"]
         if all(c in scored.columns for c in pair):
             scored[f"p_{variant}__media"] = scored[pair].mean(axis=1, skipna=False)
+        # The model and the gust rule together (mean of their percentiles in the
+        # year): the rule is hard to beat in some networks (Pitarch) and the model
+        # in others.
+        rule = [f"p_{variant}__logistica", f"p_{variant}__naif_racha"]
+        if all(c in scored.columns for c in rule):
+            ranks = scored.groupby("anio")[rule].rank(pct=True)
+            scored[f"p_{variant}__logistica_regla"] = ranks.mean(axis=1, skipna=False)
     columns = [c for c in scored.columns if c.startswith("p_")]
     segment_map = {"distribuidora": "distribuidora_id", "estacion": SEASON_FEATURE}
     years = sorted(scored["anio"].unique().tolist())

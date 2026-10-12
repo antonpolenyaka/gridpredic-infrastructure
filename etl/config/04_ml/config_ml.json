@@ -340,7 +340,9 @@
       ["avisos__xgboost", "larga_antecedente__xgboost"],
       ["avisos__logistica", "larga_antecedente__logistica"],
       ["avisos__logistica", "avisos__naif_aviso_aemet"],
-      ["avisos__naif_aviso_aemet", "larga__naif_racha"]
+      ["avisos__naif_aviso_aemet", "larga__naif_racha"],
+      ["larga__logistica_regla", "larga__logistica"],
+      ["larga__logistica_regla", "larga__naif_racha"]
     ]
   }
 }
