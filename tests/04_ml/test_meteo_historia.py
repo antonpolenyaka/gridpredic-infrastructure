@@ -292,3 +292,8 @@ def test_metrics_saved(result, spark):
     rows = spark.table("l3_gold.ml_metricas").where(f"run_id = '{RUN_ID}'").count()
     assert rows > 100
     assert spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}'").count() == 1
+    predictions = spark.table("l3_gold.ml_predicciones_meteo_historia").where(f"run_id = '{RUN_ID}'")
+    models = {r["modelo"] for r in predictions.select("modelo").distinct().collect()}
+    assert {"larga__xgboost", "corta__logistica", "larga__naif_racha"} <= models
+    # Two years of two distribuidoras, without the blackout day, for every model.
+    assert predictions.where("modelo = 'larga__xgboost'").count() == 2 * (8784 + 8736)
