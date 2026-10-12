@@ -125,32 +125,31 @@ def test_top_share_counts_the_positive_days_of_the_top_of_each_year():
     assert rd.top_share(y, score, year, 0.4) == pytest.approx(2 / 3)
 
 
-def test_extremes_against_the_climate_of_each_distribuidora():
-    hours = pd.date_range("2020-01-01", "2022-01-05 23:00", freq="h")
-    gusts = {1: 40.0, 2: 80.0}
-    hourly = pd.concat([pd.DataFrame({"distribuidora_id": dist, "hora": hours, "metd_max_met_racha_1h": gust,
-                                      "metd_media_met_racha_1h": gust / 2}) for dist, gust in gusts.items()],
-                       ignore_index=True)
-    # A storm on 03.01.2022: twice the usual gust for six hours in both distribuidoras; a gap on 04.01 in 1.
+def test_extremes_from_the_gusts_against_the_climate_of_each_cell():
+    hours = pd.date_range("2022-01-02", "2022-01-05 23:00", freq="h")
+    hourly = pd.concat([pd.DataFrame({"distribuidora_id": dist, "hora": hours, "metd_max_met_racha_clima_1h": 0.8,
+                                      "metd_media_met_racha_clima_1h": 0.5, "metd_media_met_racha_ku_1h": 0.0})
+                        for dist in (1, 2)], ignore_index=True)
+    # A storm on 03.01: the worst cell at twice its p98 for six hours, the CT weighted mean at 1.5.
     storm = (hourly["hora"] >= "2022-01-03 10:00") & (hourly["hora"] < "2022-01-03 16:00")
-    hourly.loc[storm, ["metd_max_met_racha_1h", "metd_media_met_racha_1h"]] *= 2
+    hourly.loc[storm, "metd_max_met_racha_clima_1h"] = 2.0
+    hourly.loc[storm, "metd_media_met_racha_clima_1h"] = 1.5
+    hourly.loc[storm, "metd_media_met_racha_ku_1h"] = 0.125
+    # 18 hours of gusts on 04.01 in 1 are not a day.
     gap = (hourly["distribuidora_id"] == 1) & (hourly["hora"] >= "2022-01-04 00:00") & (hourly["hora"] < "2022-01-04 06:00")
-    hourly.loc[gap, ["metd_max_met_racha_1h", "metd_media_met_racha_1h"]] = np.nan
+    hourly.loc[gap, ["metd_max_met_racha_clima_1h", "metd_media_met_racha_clima_1h", "metd_media_met_racha_ku_1h"]] = np.nan
     days = pd.date_range("2021-12-28", "2022-01-05", freq="D")
     heat = [30, 36, 37, 20, 36, 36, 36, np.nan, 38]
-    daily = pd.concat([pd.DataFrame({"distribuidora_id": dist, "fecha": days, "temp_max": heat}) for dist in gusts],
+    daily = pd.concat([pd.DataFrame({"distribuidora_id": dist, "fecha": days, "temp_max": heat}) for dist in (1, 2)],
                       ignore_index=True)
-    out = rd.extremes(hourly, daily, "2022-01-01", 35.0, 20).set_index(["distribuidora_id", "fecha"])
+    out = rd.extremes(hourly, daily, 35.0, 20).set_index(["distribuidora_id", "fecha"])
 
     calm, stormy = out.loc[(2, pd.Timestamp("2022-01-02"))], out.loc[(2, pd.Timestamp("2022-01-03"))]
-    assert calm["ext_racha_max_p98"] == pytest.approx(1.0) and calm["ext_racha_max_ku"] == 0
-    # The ratio is the same for both distribuidoras: each one against its own climate.
-    assert stormy["ext_racha_max_p98"] == pytest.approx(2.0)
-    assert stormy["ext_racha_max_ku"] == pytest.approx(6.0)
-    assert out.loc[(1, pd.Timestamp("2022-01-03")), "ext_racha_media_ku"] == pytest.approx(6.0)
-    # 18 hours of gusts are not a day.
-    assert pd.isna(out.loc[(1, pd.Timestamp("2022-01-04")), "ext_racha_max_p98"])
-    assert out.loc[(2, pd.Timestamp("2022-01-04")), "ext_racha_max_p98"] == pytest.approx(1.0)
+    assert calm["ext_racha_clima_max"] == pytest.approx(0.8) and calm["ext_racha_ku"] == 0
+    assert stormy["ext_racha_clima_max"] == pytest.approx(2.0) and stormy["ext_racha_clima_media"] == pytest.approx(1.5)
+    assert stormy["ext_racha_ku"] == pytest.approx(0.75)
+    assert pd.isna(out.loc[(1, pd.Timestamp("2022-01-04")), "ext_racha_clima_max"])
+    assert out.loc[(2, pd.Timestamp("2022-01-04")), "ext_racha_clima_max"] == pytest.approx(0.8)
     # Days in a row at 35 degrees or more, up to the day; an unknown day breaks the run.
     runs = out.loc[1, "ext_dias_calor"].dropna()
     assert runs.loc["2021-12-29":"2022-01-03"].tolist() == [1.0, 2.0, 0.0, 1.0, 2.0, 3.0]
