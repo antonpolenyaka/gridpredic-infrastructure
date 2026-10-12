@@ -260,7 +260,7 @@ def test_report_and_files(result):
     for title in ("## Variantes", "## Comparación en los años comunes", "## PR-AUC por año",
                   "## Diferencias emparejadas"):
         assert title in text
-    for name in ("metricas.csv", "comparacion.csv", "diferencias.csv", "filas.csv", "entreno.csv"):
+    for name in ("metricas.csv", "comparacion.csv", "diferencias.csv", "filas.csv", "entreno.csv", "dias.csv"):
         assert os.path.exists(os.path.join(folder, name))
 
 
@@ -291,6 +291,16 @@ def test_models_beat_the_base_rate(result):
     assert {"corta", "larga", "larga_conveccion", "larga_etiqueta_meteo"} == set(table["variante"])
     diffs = read(folder, "diferencias.csv")
     assert len(diffs) == 4
+
+
+def test_days_of_risk(result):
+    _, folder = result
+    days = read(folder, "dias.csv").set_index("modelo")
+    # Two years of two distribuidoras, without the blackout day.
+    assert days["dias"].iloc[0] == 2 * (366 + 364)
+    assert days.loc["larga__xgboost", "pr_auc_dia"] > 2 * days.loc["larga__tasa_base", "pr_auc_dia"]
+    top = days["dias_positivos_en_top_10pct"]
+    assert top.between(0, 1).all() and top.loc["larga__xgboost"] > 0.2
 
 
 def test_metrics_saved(result, spark):

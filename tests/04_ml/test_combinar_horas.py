@@ -138,3 +138,5 @@ def test_differences_and_metrics(result, spark):
     # Every combination against its two parts and the gust rule, plus the four pairs of single models.
     assert len(diffs) == 8 * 3 + 4
     assert spark.table("l3_gold.ml_metricas").where(f"run_id = '{RUN_ID}'").count() > 50
+    days = pd.read_csv(os.path.join(folder, "dias.csv")).set_index("modelo")
+    assert days.loc["media:hr__xgboost+mh__larga__xgboost", "pr_auc_dia"] > days.loc["hr__naif_racha", "pr_auc_dia"]

@@ -67,6 +67,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import job_analisis_red as red  # noqa: E402
+from calendario import working_days  # noqa: E402
 from job_ml_train import GOLD, get_spark, load_config, logger, save_frame  # noqa: E402
 
 CAUSES_TABLE = "l2_silver.f_incidencia_causa"
@@ -402,10 +403,12 @@ def section_code(c: Causes, report: red.Report, state: dict):
 # ---------------------------------------------------------------------------
 
 def working_day(inc: pd.DataFrame) -> pd.Series:
-    weekend = inc["inicio_ts"].dt.dayofweek >= 5
-    declared = inc["tipo_dia"] if "tipo_dia" in inc.columns else pd.Series(index=inc.index, dtype=object)
-    holiday = declared.eq("festivo_domingo") | (declared.isna() & weekend)
-    return ~holiday
+    """
+    Monday to Friday and not a holiday of Extremadura, from the start of the
+    incident. The tipo de día of Calser is not used: since 2016 it marks as
+    working day 85 incidents that started on a Saturday or a Sunday.
+    """
+    return pd.Series(working_days(inc["inicio_ts"]), index=inc.index)
 
 
 def section_when(c: Causes, report: red.Report, state: dict):
@@ -445,7 +448,8 @@ def section_when(c: Causes, report: red.Report, state: dict):
         "5. Cuándo pasa cada causa",
         f"Incidencias de CT desde {cut}. meses_pico son los tres meses con más incidencias de la causa (parte de "
         "sus incidencias); de_8_a_18 la parte que empieza en horario de trabajo, noche_0_6 de 0 a 6 h y laborable "
-        "la parte en día laborable (tipo de día de Calser o, sin él, de lunes a viernes).\n\n"
+        "la parte en día laborable (de lunes a viernes sin los festivos de Extremadura; el tipo de día de Calser "
+        "marca como laborables muchas incidencias de fin de semana).\n\n"
         + red.md_table(share_table(summary, ["de_8_a_18", "noche_0_6", "laborable"]), max_rows=30)
     )
     state["cuando"] = summary
