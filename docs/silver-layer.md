@@ -32,6 +32,8 @@ Otras reglas de la capa:
 | `d_ct_scada` | `d_ct` + `d_elemento` + `SystemNodes` + `SystemElectricElectricalTransformers` | distribuidora, CT: el puente Calser - TedisNet |
 | `d_salida` | Calser `salidas` | distribuidora, período, salida |
 | `f_incidencia` | Calser `incidencias` | distribuidora, período, incidencia |
+| `f_incidencia_ex` | Calser `incidencias_ex` e `incidencias_metodos_recogida_ex` (módulo de Extremadura) | distribuidora, período, incidencia |
+| `f_incidencia_causa` | `f_incidencia`, `f_incidencia_ex`, `f_interrupcion` e `interrupciones_ex` | distribuidora, período, incidencia |
 | `f_interrupcion` | Calser `interrupciones` | distribuidora, período, interrupción |
 | `d_tag` | TedisNet `SystemTags` + `LibTagClasses` | tag |
 | `f_tag_value_change` | `HistoricTagValueChanges` + `SystemTagValueChanges` | cambio de valor |
@@ -42,12 +44,14 @@ Otras reglas de la capa:
 | `f_command_execution` | `*CommandExecutions` | ejecución de mando (estado final) |
 | `f_corte_evento` | `*ElectricPowerCutEvents` | evento de corte canónico |
 | `f_corte_elemento` | `*ElectricPowerCutElementEvents` | evento, elemento afectado |
-| `d_meteo_celda`, `f_meteo_hora` | Open-Meteo (`l1_bronze.meteo_openmeteo_*`) | municipio y su celda; celda y hora |
+| `d_meteo_celda`, `f_meteo_hora` | Open-Meteo (`l1_bronze.meteo_openmeteo_*`, con el CAPE de `meteo_openmeteo_convectivo_hora`) | municipio y su celda; celda y hora |
 | `f_poblacion_municipio` | INE, Padrón continuo (`l1_bronze.ine_padron_municipio`) | municipio, año |
 | `d_municipio_publico` | Wikidata y Open-Meteo Elevation | municipio |
 | `d_celda_entorno` | Open-Meteo Elevation y OpenStreetMap | celda meteorológica |
 | `f_licitacion_obra` | Plataforma de Contratación del Sector Público (`l1_bronze.placsp_licitacion_obra`) | licitación de obra, municipio |
 | `f_edificacion_municipio` | Catastro, INSPIRE Buildings (`l1_bronze.catastro_edificio`) | municipio, año de construcción |
+| `f_aves_celda_anio`, `f_aves_celda_mes` | GBIF (`l1_bronze.gbif_conteo_celda`) | celda, especie y año; celda, especie y mes |
+| `f_area_quemada` | EFFIS (`l1_bronze.effis_area_quemada`) | área quemada |
 | `f_proyeccion_ame`, `d_ame_municipio` | Proyecciones de población 2024-2039 del IEEX (`l1_bronze.ieex_proyeccion_ame`, `ieex_ame_municipio`) | agrupación de municipios y año; municipio |
 | `dq_metrics` | todos los jobs | ejecución, entidad, métrica |
 
@@ -101,6 +105,8 @@ Se añade `nivel_afectacion` (ABONADO > ACOMETIDA > SALIDA > CT), la misma prior
 ### Resto de Calser
 
 - `f_incidencia`: flags `es_imprevista` (CL_IMPRE), `es_programada` (CL_PROGR), `es_factor_cliente` (FA_CLIEN), `intervalo_invalido`. `fecha_alta` es leakage.
+- `f_incidencia_ex`: lo que la distribuidora declara a la Junta de Extremadura de cada incidencia: el código de causa (`casuistica`, de 21 fuerza mayor a 36 no subsumible, con su nombre), la instalación donde empezó y la cabecera que la despejó, el nivel de tensión, el tipo de día, el plan de mejora y cómo se detectó (`metodos_recogida`, con `detectada_telecontrol` y `aviso_cliente`). Hasta 2015 casi todas tienen el código 35 (desconocida), que es el valor por defecto; se guarda tal cual. Marca `sin_incidencia` si la incidencia no está en `f_incidencia`.
+- `f_incidencia_causa`: la causa de cada incidencia en dos ejes, `causa`/`subcausa` (el agente: meteorología, fauna, vegetación, incendio, terceros, fallo de equipo por componente, red de baja tensión, instalación del cliente, sobrecarga, red aguas arriba, programada, desconocida o sin causa escrita) y `origen` (aguas arriba, subestación, línea de 45 kV, línea de media tensión, CT, red de baja tensión, instalación particular, cliente). Las reglas están en `causas_incidencia.py`: decide el texto cuando nombra un agente, si no el código oficial y en último lugar el factor; `regla`, `fuente_causa` y `texto_causa` permiten revisar cada caso. Ver [causas-incidencias.md](causas-incidencias.md).
 - `d_ct`: rechaza los CT cuyo municipio no existe en el período. Flags `potencia_cero` (37 % en EOSA, 48 % en Pitarch), `potencia_admin_cero` y `sin_telemetria`. La imputación de la potencia la hace Gold, como la hace Calser.
 - `d_ct_scada`: una fila por (distribuidora, CT) con su trafo en TedisNet. La clave que verificamos es `CT_ID` = `SystemElements.ShortName` de un elemento de tipo 145 (TRAFO CT) de la misma distribuidora, comparando como texto y respetando mayúsculas. Añade `tiene_nodo`: un trafo sin nodo en `SystemNodes` nunca entra en el flood fill y no puede aparecer como cortado. Si hay dos trafos con el mismo nombre se marca `mapeo_ambiguo`. Desde octubre de 2026 trae también los datos eléctricos del trafo (`SystemElectricElectricalTransformers`): `is_power_cut`, `potencia_nominal_kva`, tensiones y `ucc_pct`, y el flag `observable` (nodo e `IsPowerCut = 1` a la vez). La potencia nominal es la segunda fuente para los CT con potencia 0 en Calser.
 - `d_salida`: el ejemplo de Josep completado con distribuidora, textos limpios, deduplicación y comprobación de que el CT existe en el período.
@@ -214,6 +220,8 @@ d_elemento  -> d_tag -> f_tag_value_change -> f_evento
 d_elemento  -> d_ct -> d_salida
 d_municipio -> d_ct -> f_interrupcion
 f_incidencia, d_periodo -> f_interrupcion
+f_incidencia -> f_incidencia_ex
+f_incidencia_ex, f_interrupcion -> f_incidencia_causa
 d_elemento, f_command_execution -> f_corte
 todos -> dq_checks
 ```
