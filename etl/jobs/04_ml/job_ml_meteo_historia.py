@@ -45,9 +45,12 @@ Steps:
    and alerts under a budget of hours per distribuidora and day, by year,
    and the block bootstrap by days of the paired differences
    (meteo_historia.comparaciones).
-4. Outputs: ml_runs, ml_metricas and ml_importancia with run_id mh_*, and
-   resumen.md, metricas.csv, comparacion.csv, diferencias.csv,
-   importancia.csv and filas.csv in exportar_dir/<run_id>/.
+4. Outputs: ml_runs, ml_metricas and ml_importancia with run_id mh_*, the
+   score of every variant and model for every hour it scored in
+   l3_gold.ml_predicciones_meteo_historia (to compare or combine it with
+   other runs hour by hour), and resumen.md, metricas.csv, comparacion.csv,
+   diferencias.csv, importancia.csv and filas.csv in
+   exportar_dir/<run_id>/.
 
     docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \\
         --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py,/app/jobs/04_ml/job_ml_horas_riesgo.py \\
@@ -86,6 +89,7 @@ from job_ml_train import (  # noqa: E402
 
 GOLD = "l3_gold"
 FACTS_TABLE = f"{GOLD}.fact_interrupciones_mt"
+PREDICTIONS_TABLE = f"{GOLD}.ml_predicciones_meteo_historia"
 CAUSES_TABLE = "l2_silver.f_incidencia_causa"
 LABELS = ["y_principal", "y_meteo"]
 MAIN_LABEL = "y_principal"
@@ -492,6 +496,27 @@ def comparison_table(metrics: pd.DataFrame, budget: int) -> pd.DataFrame:
     return table.sort_values("pr_auc", ascending=False).reset_index(drop=True)
 
 
+def save_predictions(spark, scored: pd.DataFrame, columns: list, run_id: str):
+    """
+    Scores of every variant and model for every hour it scored, in long
+    format (l3_gold.ml_predicciones_meteo_historia, partitioned by run_id),
+    so other runs can be compared or combined with them hour by hour.
+    """
+    keep = KEYS + ["anio"] + LABELS
+    long = scored[keep + columns].melt(id_vars=keep, value_vars=columns, var_name="modelo", value_name="p")
+    long = long[long["p"].notna()]
+    long["modelo"] = long["modelo"].str[2:]
+    long["run_id"] = run_id
+    df = spark.createDataFrame(long).withColumn("audit_loaded_at", F.current_timestamp())
+    writer = df.write.format("delta").option("mergeSchema", "true")
+
+    if spark.catalog.tableExists(PREDICTIONS_TABLE):
+        writer.mode("overwrite").option("replaceWhere", f"run_id = '{run_id}'").saveAsTable(PREDICTIONS_TABLE)
+    else:
+        writer.mode("overwrite").partitionBy("run_id").saveAsTable(PREDICTIONS_TABLE)
+    logger.info("%s rows of predictions written to %s", len(long), PREDICTIONS_TABLE)
+
+
 def by_year(metrics: pd.DataFrame) -> pd.DataFrame:
     rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)
                    & (metrics["metrica"] == "pr_auc")]
@@ -594,6 +619,7 @@ def main(argv=None):
     if not importance.empty:
         save_frame(spark, add_context(importance, args.run_id, version, f"cv_{years[-1]}"), IMPORTANCE_TABLE,
                    args.run_id)
+    save_predictions(spark, scored, columns, args.run_id)
 
     variant_rows = pd.DataFrame([{
         "variante": v["nombre"], "desde": v["desde"], "bloques": "+".join(v["bloques"]),
