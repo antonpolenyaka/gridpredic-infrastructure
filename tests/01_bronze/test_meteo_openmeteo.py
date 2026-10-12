@@ -130,3 +130,32 @@ def test_stored_window_must_cover_the_year():
     assert landing.covers(["2021-01-01", "2021-12-31"], date(2021, 1, 1), date(2021, 12, 31))
     assert landing.covers(["2026-01-01", "2026-08-31"], date(2026, 1, 1), date(2026, 8, 31))
     assert not landing.covers(None, date(2021, 1, 1), date(2021, 12, 31))
+
+
+def test_forecast_source_url_and_merge_of_suffixed_variables():
+    cfg = landing.load_config()["openmeteo_previo"]
+    assert len(cfg["variables"]) <= 10 and cfg["celda_grados"] == 0.1
+    url = landing.request_url(40.3, -6.0, date(2024, 1, 1), date(2024, 12, 31), cfg)
+    assert url.startswith("https://previous-runs-api.open-meteo.com/v1/forecast?")
+    assert "wind_gusts_10m_previous_day1" in url and "models=icon_eu" in url
+    assert bronze.forecast_of("precipitation_previous_day2") == "precipitation"
+    assert bronze.forecast_of("wind_gusts_10m") == "wind_gusts_10m"
+
+    # The forecast of the hour that repeats when the clock goes back is merged like the variable it forecasts.
+    utc = pd.date_range("2025-10-25 23:00", periods=4, freq="h", tz="UTC")
+    variables = ["wind_gusts_10m_previous_day1", "precipitation_previous_day1", "temperature_2m_previous_day1"]
+    payload = {
+        "hourly": {
+            "time": [int(t.timestamp()) for t in utc],
+            "wind_gusts_10m_previous_day1": [30.0, 50.0, 40.0, None],
+            "precipitation_previous_day1": [0.5, 1.0, 2.0, 0.0],
+            "temperature_2m_previous_day1": [10.0, 9.0, 8.0, 7.0],
+        },
+        "_peticion": {"celda_id": "40.30_-6.00"},
+    }
+    merged = bronze.merge_local_hours(bronze.payload_frame(payload, variables, "Europe/Madrid"), variables)
+    merged = merged.set_index("hora")
+    assert merged.loc["2025-10-26 02:00", "wind_gusts_10m_previous_day1"] == pytest.approx(50.0)
+    assert merged.loc["2025-10-26 02:00", "precipitation_previous_day1"] == pytest.approx(3.0)
+    assert merged.loc["2025-10-26 02:00", "temperature_2m_previous_day1"] == pytest.approx(8.5)
+    assert pd.isna(merged.loc["2025-10-26 03:00", "wind_gusts_10m_previous_day1"])
