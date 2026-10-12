@@ -29,6 +29,13 @@ Features, all known before Y starts:
   network and new load.
 - clima: hours with gusts of 70 km/h or more and days with 30 mm of rain or
   more per year in the cell of the CT, mean of the years before Y.
+- naturaleza: also from contexto_ct_anio, the records of white storks and of
+  all the birds in the cell in the five years before (GBIF) and the burnt
+  areas of 30 ha or more around it (EFFIS).
+
+With --causas (families of l2_silver.f_incidencia_causa, comma separated)
+the label and the history only count the incidents of those causes: the
+risk of fauna faults, of weather faults... The other features do not change.
 
 Evaluation by rolling origin: for each Y of riesgo_ct.anios_evaluacion the
 model learns from the years before and ranks the CTs of Y. The metric is the
@@ -84,7 +91,7 @@ DEFAULTS = {
                 "colsample_bytree": 0.8, "min_child_weight": 5, "objective": "reg:tweedie",
                 "tweedie_variance_power": 1.3},
     "bloques": ["historia", "historia+estructura", "historia+estructura+scada", "historia+estructura+publicos",
-                "historia+estructura+obras", "historia+estructura+clima", "todo"],
+                "historia+estructura+obras", "historia+estructura+clima", "historia+estructura+naturaleza", "todo"],
 }
 
 LEVELS = {"ct": ["distribuidora_id", "ct_id"], "cabecera": ["distribuidora_id", "cabecera"],
@@ -101,15 +108,21 @@ WORKS = ["obras_publicadas_1a", "obras_importe_1a", "obras_mov_tierras_1a", "obr
          "obras_previstas_mov_tierras_meses", "viviendas_nuevas_3a", "m2_nuevos_3a", "viviendas_parque_2a",
          "crec_viviendas_5a"]
 CLIMATE = ["clima_horas_racha", "clima_dias_lluvia"]
+NATURE = ["celda_ciguena_5a", "celda_aves_5a", "celda_ciguena_parte_aves_5a", "celda_incendios_5a",
+          "celda_area_quemada_5a_ha"]
+CAUSES_TABLE = "l2_silver.f_incidencia_causa"
 
 
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--config", default=None)
+    parser.add_argument("--causas", default=None, help="Only the incidents of these cause families (comma separated)")
     args, _ = parser.parse_known_args(argv)
     if not args.run_id:
-        args.run_id = "rct_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid.uuid4().hex[:6]
+        suffix = "_" + "-".join(c.strip() for c in args.causas.split(",")) if args.causas else ""
+        args.run_id = ("rct" + suffix + "_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_"
+                       + uuid.uuid4().hex[:6])
     return args
 
 
@@ -117,8 +130,19 @@ def parse_args(argv=None) -> argparse.Namespace:
 # Table CT x year
 # ---------------------------------------------------------------------------
 
-def yearly_events(data: Data) -> pd.DataFrame:
+def cause_incidents(spark, causes: list) -> set:
+    """Keys (distribuidora|periodo|incidencia, as Data.events) of the incidents of the cause families."""
+    df = read_table(spark, CAUSES_TABLE, ["distribuidora_id", "periodo_id", "id", "causa"])
+    if df is None:
+        raise RuntimeError(f"{CAUSES_TABLE} is required for --causas")
+    pdf = df.where(F.col("causa").isin(causes)).toPandas()
+    return set(pdf["distribuidora_id"].astype(str) + "|" + pdf["periodo_id"].astype(str) + "|" + pdf["id"].astype(str))
+
+
+def yearly_events(data: Data, keep: set = None) -> pd.DataFrame:
     ev = data.events[data.events["variante"] == "principal"]
+    if keep is not None:
+        ev = ev[ev["incidente"].isin(keep)]
     return ev.groupby(["distribuidora_id", "ct_id", "anio"]).agg(
         kva_h=("kva_h", "sum"), interrupciones=("ct_id", "size"), horas=("dur_h", "sum")).reset_index()
 
@@ -172,7 +196,7 @@ def climate_features(spark, cfg: dict) -> pd.DataFrame:
     return per_year[per_year["horas"] >= 0.9 * 8760]
 
 
-def build_table(data: Data, cfg: dict, last_year: int) -> pd.DataFrame:
+def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.DataFrame:
     spark = data.spark
     dim = data.dim.copy()
     dim["municipio_id"] = dim["municipio_id"].astype(str)
@@ -197,7 +221,7 @@ def build_table(data: Data, cfg: dict, last_year: int) -> pd.DataFrame:
         rows.append(valid.assign(anio=year))
     grid = pd.concat(rows, ignore_index=True)
 
-    per_ct = yearly_events(data)
+    per_ct = yearly_events(data, keep)
     labels = per_ct.rename(columns={"kva_h": "y_kva_h", "interrupciones": "y_interrupciones", "horas": "y_horas"})
     grid = grid.merge(labels, on=["distribuidora_id", "ct_id", "anio"], how="left")
     grid[["y_kva_h", "y_interrupciones", "y_horas"]] = grid[["y_kva_h", "y_interrupciones", "y_horas"]].fillna(0.0)
@@ -241,7 +265,7 @@ def build_table(data: Data, cfg: dict, last_year: int) -> pd.DataFrame:
     context = read_table(spark, CONTEXT_TABLE)
     if context is not None:
         ctx = context.select("distribuidora_id", "ct_id", "anio",
-                             *[c for c in PUBLIC + WORKS if c in context.columns]).toPandas()
+                             *[c for c in PUBLIC + WORKS + NATURE if c in context.columns]).toPandas()
         ctx["ct_id"] = ctx["ct_id"].astype(str)
         grid = grid.merge(ctx, on=["distribuidora_id", "ct_id", "anio"], how="left")
 
@@ -262,7 +286,7 @@ def build_table(data: Data, cfg: dict, last_year: int) -> pd.DataFrame:
             means = pd.concat(rows).rename(columns={"horas_racha": "clima_horas_racha", "dias_lluvia": "clima_dias_lluvia"})
             grid = grid.merge(means, on=["celda_id", "anio"], how="left")
 
-    for column in STRUCTURE + PUBLIC + WORKS + CLIMATE:
+    for column in STRUCTURE + PUBLIC + WORKS + CLIMATE + NATURE:
         if column not in grid.columns:
             grid[column] = np.nan
     grid["tiene_telemetria"] = grid["tiene_telemetria"].astype(float)
@@ -274,7 +298,7 @@ def block_columns(grid: pd.DataFrame) -> dict:
             and not c.startswith(("horas_racha",))] + ["anios_desde_ultima"]
     scada = [c for c in grid.columns if c.startswith(("microcortes_", "cortes_scada_", "episodios_scada_"))]
     return {"historia": hist, "estructura": STRUCTURE, "scada": scada, "publicos": PUBLIC, "obras": WORKS,
-            "clima": CLIMATE}
+            "clima": CLIMATE, "naturaleza": NATURE}
 
 
 def features_of(name: str, blocks: dict) -> list:
@@ -392,9 +416,12 @@ def main(argv=None):
 
     data = Data(spark, settings(config))
     last_year = int(data.events.loc[data.events["variante"] == "principal", "anio"].max())
-    logger.info("Risk per CT and year %s: history up to %s", args.run_id, last_year)
+    causes = [c.strip() for c in args.causas.split(",") if c.strip()] if args.causas else None
+    keep = cause_incidents(spark, causes) if causes else None
+    logger.info("Risk per CT and year %s: history up to %s%s", args.run_id, last_year,
+                f", causes {causes} ({len(keep)} incidents)" if causes else "")
 
-    grid = build_table(data, cfg, last_year)
+    grid = build_table(data, cfg, last_year, keep)
     logger.info("Table CT x year: %s rows, %s columns, years %s - %s", len(grid), grid.shape[1],
                 grid["anio"].min(), grid["anio"].max())
 

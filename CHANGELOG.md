@@ -2,6 +2,21 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.9.0] - sin publicar
+
+Causas de todas las incidencias de Calser de las tres distribuidoras, qué datos podrían anticipar cada una y fuentes públicas nuevas para las que faltaban.
+
+### Añadido
+
+- Tablas del módulo de Extremadura de Calser en Bronze (`incidencias_ex`, `incidencias_metodos_recogida_ex`, `interrupciones_ex` de las tres bases): el código de causa que se declara a la Junta, la instalación donde empezó cada incidencia, la cabecera que la despejó, cómo se detectó y los motivos y trabajos de los cortes programados.
+- `job_silver_f_incidencia_ex.py` (`l2_silver.f_incidencia_ex`) y `job_silver_f_incidencia_causa.py` (`l2_silver.f_incidencia_causa`) en `dag_silver`, con las reglas en `causas_incidencia.py`: causa, subcausa, componente y origen de cada incidencia leídos de los textos, el código oficial y el factor, con la regla que decidió para poder revisarla.
+- `etl/jobs/04_ml/job_causas_incidencias.py` (`causas_incidencias` en `config_ml.json`): qué guarda Calser de cada incidencia, todas las causas y subcausas con su peso en el TIEPI, origen y componentes, código oficial frente al texto, cuándo pasa cada causa, lugares que se repiten, meteorología por causa (racha, lluvia, helada, calor, primera lluvia tras sequía y CAPE) y datos públicos frente a cada causa. Lista completa clasificada en `incidencias_causa.csv` y tabla `l3_gold.analisis_causas`.
+- Meteorología: la historia de Open-Meteo empieza en 2017 (antes en 12.2020) y la Landing vuelve a pedir un año cuyo fichero no lo cubre entero (`_ventanas.json`). Fuente nueva `openmeteo_convectivo`: CAPE e índice de levantamiento de los modelos GFS archivados (Historical Forecast API, desde el 23.03.2021), en `l1_bronze.meteo_openmeteo_convectivo_hora`, en `f_meteo_hora` (`cape_jkg`, `indice_levantamiento`) y en Gold (`met_cape_1h`, `met_cape_max_6h`, `met_cape_max_24h`, `met_li_min_6h`).
+- Datos públicos `aves` (GBIF, registros de cigüeña blanca y de todas las aves por celda, año y mes, sin clave) e `incendios` (EFFIS, áreas quemadas de 30 ha o más por su WFS abierto): Landing, Bronze (`gbif_conteo_celda`, `effis_area_quemada`), Silver (`f_aves_celda_anio`, `f_aves_celda_mes`, `f_area_quemada`) y Gold (`celda_ciguena_5a`, `celda_aves_5a`, `celda_ciguena_parte_aves_5a`, `celda_incendios_5a`, `celda_area_quemada_5a_ha` en `contexto_ct_anio`).
+- `job_ml_riesgo_ct.py`: bloque `naturaleza` (aves e incendios) y `--causas` para evaluar el riesgo de una familia de causas (fauna, meteorología...).
+- `docs/causas-incidencias.md`.
+- Tests: `tests/02_silver/test_causas_incidencia.py`, las tablas nuevas en `test_silver_smoke.py`, `tests/03_gold/test_meteo_cape.py`, aves e incendios en `test_datos_publicos.py` y `test_contexto_ct.py`, la fuente convectiva en `test_meteo_openmeteo.py` y `tests/04_ml/test_causas_incidencias.py`.
+
 ## [0.8.0] - sin publicar
 
 Análisis de la red con la historia de Calser, TedisNet y la meteorología, riesgo anual por CT y cabecera, curva de aprendizaje y datos públicos. Responde a dónde fallará la red, qué hacer y cuánto vale.

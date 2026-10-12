@@ -314,3 +314,77 @@ def test_ieex_projections_are_copied_to_landing():
     jerte = projection[projection["ame_codigo"] == "1012"].set_index("anio")["poblacion"]
     assert jerte[2039] / jerte[2024] - 1 == pytest.approx(0.010, abs=0.001)
     assert fs.exists("memory://landing/publicos/proyecciones/peticion.json")
+
+
+def test_gbif_query_and_counts():
+    cfg = landing.load_config()["publicos"]["aves"]
+    params = landing.gbif_params({"scientificName": "Ciconia ciconia"}, 39.4, -6.3, 0.05, cfg)
+    assert params["decimalLatitude"] == "39.3500,39.4500" and params["limit"] == "0"
+    assert params["facet"] == ["year", "month"] and params["scientificName"] == "Ciconia ciconia"
+
+    payload = {
+        "taxones": {
+            "ciguena_blanca": {"count": 12, "facets": [
+                {"field": "YEAR", "counts": [{"name": "2019", "count": 5}, {"name": "2021", "count": 7}]},
+                {"field": "MONTH", "counts": [{"name": "3", "count": 9}, {"name": "6", "count": 3}]}]},
+            "aves": {"count": 300, "facets": [{"field": "YEAR", "counts": [{"name": "2021", "count": 300}]}]},
+        },
+        "_peticion": {"celda_id": "39.40_-6.30", "descargado_utc": "2026-10-12T03:00:00+00:00"},
+    }
+    rows = bronze.parse_gbif(payload)
+    by_key = {(r["taxon"], r["tipo"], r["clave"]): r["registros"] for r in rows}
+    assert by_key[("ciguena_blanca", "total", None)] == 12
+    assert by_key[("ciguena_blanca", "anio", 2021)] == 7 and by_key[("ciguena_blanca", "mes", 3)] == 9
+    assert by_key[("aves", "anio", 2021)] == 300
+    assert {r["celda_id"] for r in rows} == {"39.40_-6.30"}
+
+
+GML3 = """<?xml version="1.0" encoding="UTF-8"?>
+<wfs:FeatureCollection xmlns:ms="http://mapserver.gis.umn.edu/mapserver" xmlns:gml="http://www.opengis.net/gml"
+    xmlns:wfs="http://www.opengis.net/wfs">
+  <gml:featureMember>
+    <ms:modis.ba.poly gml:id="modis.ba.poly.101">
+      <ms:id>101</ms:id><ms:FIREDATE>2022-05-25</ms:FIREDATE><ms:LASTUPDATE>2022-06-01 10:00:00</ms:LASTUPDATE>
+      <ms:COUNTRY>ES</ms:COUNTRY><ms:PROVINCE>Caceres</ms:PROVINCE><ms:COMMUNE>Tornavacas</ms:COMMUNE>
+      <ms:AREA_HA>512</ms:AREA_HA>
+      <ms:msGeometry><gml:Polygon><gml:exterior><gml:LinearRing>
+        <gml:posList>40.25 -5.70 40.27 -5.70 40.27 -5.66 40.25 -5.66 40.25 -5.70</gml:posList>
+      </gml:LinearRing></gml:exterior></gml:Polygon></ms:msGeometry>
+    </ms:modis.ba.poly>
+  </gml:featureMember>
+</wfs:FeatureCollection>"""
+
+GML2 = """<wfs:FeatureCollection xmlns:ms="http://mapserver.gis.umn.edu/mapserver" xmlns:gml="http://www.opengis.net/gml"
+    xmlns:wfs="http://www.opengis.net/wfs">
+  <gml:featureMember>
+    <ms:modis.ba.poly fid="modis.ba.poly.7">
+      <ms:id>7</ms:id><ms:FIREDATE>2020-08-06</ms:FIREDATE><ms:AREA_HA>40.5</ms:AREA_HA>
+      <ms:msGeometry><gml:Polygon><gml:outerBoundaryIs><gml:LinearRing>
+        <gml:coordinates>-6.52,39.81 -6.50,39.81 -6.50,39.83 -6.52,39.81</gml:coordinates>
+      </gml:LinearRing></gml:outerBoundaryIs></gml:Polygon></ms:msGeometry>
+    </ms:modis.ba.poly>
+  </gml:featureMember>
+</wfs:FeatureCollection>"""
+
+
+def test_parse_effis_in_both_axis_orders():
+    first = bronze.parse_effis(GML3)[0]
+    assert (first["id"], first["fecha_incendio"], first["municipio"]) == ("101", "2022-05-25", "Tornavacas")
+    assert first["area_ha"] == 512.0 and first["n_vertices"] == 5
+    assert first["latitud"] == pytest.approx(40.258, abs=1e-3) and first["longitud"] == pytest.approx(-5.684, abs=1e-3)
+
+    second = bronze.parse_effis(GML2.encode("utf-8"))[0]
+    assert second["latitud"] == pytest.approx(39.815, abs=1e-3) and second["longitud"] == pytest.approx(-6.51, abs=1e-3)
+    assert second["fecha_incendio"] == "2020-08-06" and second["area_ha"] == 40.5
+
+
+def test_effis_request_variants_and_area_check():
+    cfg = landing.load_config()["publicos"]["incendios"]
+    box = (-7.0, 39.0, -5.5, 40.5)
+    urls = landing.effis_requests(cfg, box)
+    assert len(urls) == len(cfg["variantes"])
+    assert "bbox=39.0000,-7.0000,40.5000,-5.5000,urn:ogc:def:crs:EPSG::4326" in urls[0]
+    assert "bbox=-7.0000,39.0000,-5.5000,40.5000" in urls[1] and "request=GetFeature" in urls[1]
+    assert landing.in_area(landing.first_points(GML3), box)
+    assert landing.in_area(landing.first_points(GML2), box)
+    assert not landing.in_area([(2.1, 41.4), (2.2, 41.5)], box)

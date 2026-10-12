@@ -39,6 +39,15 @@ OpenStreetMap), cleaned and taken to the units Gold uses.
 - f_proyeccion_ame and d_ame_municipio: population projected by the IEEX for
   every group of municipalities (AME) and year, and the AME of every
   municipality (one per INE code).
+- f_aves_celda_anio and f_aves_celda_mes: records of GBIF of the white stork
+  and of all the birds in every cell, by year and by month. The records
+  depend on how many people look, so the share of storks among the birds is
+  a better measure of their presence than the count alone (Gold uses both).
+- f_area_quemada: one row per burnt area of EFFIS (30 ha or more), with the
+  fire date, the area, the province and municipality the EFFIS gives, the
+  centre of the polygon and its weather cell (the grid of 0.1 degrees of
+  the weather). A repeated identifier keeps the last update; rows without
+  date (NULL_KEY) or without position (NO_GEOMETRY) are rejected.
 
     docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/02_silver/job_silver_contexto_publico.py
 """
@@ -80,6 +89,12 @@ PLACSP_DELETED_TABLE = "l1_bronze.placsp_entrada_borrada"
 CATASTRO_TABLE = "l1_bronze.catastro_edificio"
 IEEX_TABLE = "l1_bronze.ieex_proyeccion_ame"
 IEEX_AME_TABLE = "l1_bronze.ieex_ame_municipio"
+GBIF_TABLE = "l1_bronze.gbif_conteo_celda"
+EFFIS_TABLE = "l1_bronze.effis_area_quemada"
+BIRDS_YEAR = "f_aves_celda_anio"
+BIRDS_MONTH = "f_aves_celda_mes"
+FIRES = "f_area_quemada"
+CELL_DEGREES = 0.1
 
 WORKS = {
     "nuts": ["ES43"],
@@ -447,6 +462,53 @@ def ame_towns(members):
     return kept.withColumn("audit_loaded_at", F.current_timestamp()), union_rejects([rejected, duplicated])
 
 
+def birds(gbif, kind: str, key: str):
+    """(rows of f_aves_celda_anio or f_aves_celda_mes, rejected) from the GBIF counts."""
+    df = gbif.where(F.col("tipo") == F.lit(kind)).select(
+        F.trim(F.col("celda_id")).alias("celda_id"), F.trim(F.col("taxon")).alias("taxon"),
+        F.col("clave").cast("int").alias(key), F.col("registros").cast("long").alias("registros"))
+    kept, rejected = split_rejects(df, [
+        ("NULL_KEY", F.col("celda_id").isNull() | F.col("taxon").isNull() | F.col(key).isNull()),
+        ("INVALID_VALUE", F.col("registros").isNull() | (F.col("registros") < 0)),
+    ])
+    kept, duplicated = keep_first(kept, ["celda_id", "taxon", key], [F.col("registros").desc()], "DUPLICATE_ID")
+    return kept.withColumn("audit_loaded_at", F.current_timestamp()), union_rejects([rejected, duplicated])
+
+
+def cell_id(lat, lon, size: float = CELL_DEGREES):
+    """Weather cell of a position, the same id as job_landing_meteo_openmeteo.cell_of."""
+    return F.format_string("%.2f_%.2f", F.round(F.round(lat / F.lit(size)) * F.lit(size), 4),
+                           F.round(F.round(lon / F.lit(size)) * F.lit(size), 4))
+
+
+def burnt_areas(effis):
+    """(rows of f_area_quemada, rejected)."""
+    date_text = F.substring(F.trim(F.col("fecha_incendio")), 1, 10)
+    df = effis.select(
+        F.trim(F.col("id").cast("string")).alias("id"),
+        F.coalesce(F.try_to_timestamp(date_text, F.lit("yyyy-MM-dd")),
+                   F.try_to_timestamp(date_text, F.lit("yyyy/MM/dd")),
+                   F.try_to_timestamp(date_text, F.lit("dd/MM/yyyy"))).cast("date").alias("fecha"),
+        F.try_to_timestamp(F.substring(F.trim(F.col("ultima_actualizacion")), 1, 19),
+                           F.lit("yyyy-MM-dd HH:mm:ss")).alias("ultima_actualizacion"),
+        F.col("area_ha").cast("double").alias("area_ha"),
+        F.trim(F.col("pais")).alias("pais"), F.trim(F.col("provincia")).alias("provincia"),
+        F.trim(F.col("municipio")).alias("municipio"),
+        F.col("latitud").cast("double").alias("latitud"), F.col("longitud").cast("double").alias("longitud"),
+    )
+    kept, rejected = split_rejects(df, [
+        ("NULL_KEY", F.col("id").isNull() | F.col("fecha").isNull()),
+        ("NO_GEOMETRY", F.col("latitud").isNull() | F.col("longitud").isNull()),
+    ])
+    kept, duplicated = keep_first(kept, ["id"], [F.col("ultima_actualizacion").desc_nulls_last()], "DUPLICATE_ID")
+    out = (
+        kept.withColumn("anio", F.year("fecha"))
+        .withColumn("celda_id", cell_id(F.col("latitud"), F.col("longitud")))
+        .withColumn("audit_loaded_at", F.current_timestamp())
+    )
+    return out, union_rejects([rejected, duplicated])
+
+
 def optional(spark, table):
     if spark.catalog.tableExists(table):
         return spark.table(table)
@@ -536,6 +598,31 @@ def main():
         write_table(out, silver_table(entity))
         write_rejected(rejected, entity, args.run_id)
         dq.add(entity, "filas", spark.table(silver_table(entity)).count())
+
+    gbif = optional(spark, GBIF_TABLE)
+    if gbif is not None:
+        for entity, kind, key in ((BIRDS_YEAR, "anio", "anio"), (BIRDS_MONTH, "mes", "mes")):
+            out, rejected = birds(gbif, kind, key)
+            write_table(out, silver_table(entity))
+            write_rejected(rejected, entity, args.run_id)
+            written = spark.table(silver_table(entity))
+            dq.add(entity, "filas", written.count())
+            dq.add(entity, "celdas", written.select("celda_id").distinct().count())
+
+    effis = optional(spark, EFFIS_TABLE)
+    if effis is not None:
+        total = effis.count()
+        out, rejected = burnt_areas(effis)
+        write_table(out, silver_table(FIRES))
+        write_rejected(rejected, FIRES, args.run_id)
+        written = spark.table(silver_table(FIRES))
+        dq.add(FIRES, "areas_entrada", total)
+        dq.add(FIRES, "areas", written.count(), total)
+        span = written.agg(F.min("fecha"), F.max("fecha")).first()
+        dq.add(FIRES, "rango_fechas", written.count(), detalle=f"{span[0]} - {span[1]}")
+        if rejected is not None:
+            for row in rejected.groupBy("_motivo").count().collect():
+                dq.add(FIRES, f"rechazo:{row['_motivo']}", row["count"], total, umbral_pct=10.0)
 
     dq.flush()
     logger.info("Silver completed: public data")

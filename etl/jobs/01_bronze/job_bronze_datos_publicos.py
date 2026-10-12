@@ -36,6 +36,13 @@ cleaning and the aggregates are in Silver.
 - ieex_proyeccion_ame: population projected by the IEEX for every group of
   municipalities (AME) and year, 2024-2039, and ieex_ame_municipio: the AME
   of every municipality, from the CSV files of Landing.
+- gbif_conteo_celda: records of GBIF by cell and taxon (white stork, all
+  the birds): the total and the counts by year and by month (tipo total,
+  anio or mes, clave the year or the month).
+- effis_area_quemada: one row per burnt area of EFFIS: identifier, fire
+  date, last update, country, province, municipality, area (ha), the centre
+  and the box of its polygon in latitude and longitude (whatever the axis
+  order of the answer) and all the attributes as they come (atributos, JSON).
 
 The tables are rebuilt whole in every run (a few thousand rows, the
 buildings about a hundred thousand).
@@ -582,6 +589,84 @@ def parse_catastro(raw: bytes, record: dict) -> list:
 # Main
 # ---------------------------------------------------------------------------
 
+# GBIF and EFFIS --------------------------------------------------------------
+
+def parse_gbif(payload: dict) -> list:
+    """Rows (celda_id, taxon, tipo, clave, registros) of the counts of one cell."""
+    cell = payload.get("_peticion", {}).get("celda_id")
+    stamp = payload.get("_peticion", {}).get("descargado_utc")
+    rows = []
+    for taxon, answer in (payload.get("taxones") or {}).items():
+        base = {"celda_id": cell, "taxon": taxon, "descargado_utc": stamp}
+        rows.append({**base, "tipo": "total", "clave": None, "registros": int(answer.get("count") or 0)})
+        for facet in answer.get("facets") or []:
+            kind = {"YEAR": "anio", "MONTH": "mes"}.get(str(facet.get("field", "")).upper())
+            if kind is None:
+                continue
+            for item in facet.get("counts") or []:
+                key = integer(item.get("name"))
+                if key is not None:
+                    rows.append({**base, "tipo": kind, "clave": key, "registros": int(item.get("count") or 0)})
+    return rows
+
+
+# Lat and lon of the study area, to tell the axis order of a GML answer.
+AREA_LAT = (36.0, 43.0)
+AREA_LON = (-9.5, -3.0)
+
+
+def coordinate_pairs(text: str) -> list:
+    numbers = [float(x) for x in re.split(r"[\s,]+", text.strip()) if x]
+    return list(zip(numbers[0::2], numbers[1::2]))
+
+
+def lat_lon(pairs: list) -> list:
+    """The pairs as (lat, lon): the order of the answer is told by the ranges of the study area."""
+    if not pairs:
+        return []
+    a, b = pairs[0]
+    if AREA_LAT[0] <= a <= AREA_LAT[1] and AREA_LON[0] <= b <= AREA_LON[1]:
+        return pairs
+    return [(y, x) for x, y in pairs]
+
+
+def parse_effis(text: str) -> list:
+    """Burnt areas of a GML answer of the EFFIS WFS (GML 2 or 3, any prefix)."""
+    root = ET.fromstring(text.encode("utf-8") if isinstance(text, str) else text)
+    rows = []
+    for member in root.iter():
+        if not member.tag.endswith("featureMember") or len(member) == 0:
+            continue
+        feature = member[0]
+        attributes, points = {}, []
+        for element in feature.iter():
+            local = element.tag.split("}")[-1]
+            if local in ("posList", "coordinates", "pos") and element.text:
+                points += coordinate_pairs(element.text)
+            elif element is not feature and len(element) == 0 and element.text and element.text.strip():
+                attributes[local.lower()] = element.text.strip()
+        points = lat_lon(points)
+        lats = [p[0] for p in points]
+        lons = [p[1] for p in points]
+        fid = feature.get("{http://www.opengis.net/gml}id") or feature.get("fid") or attributes.get("id")
+        rows.append({
+            "id": attributes.get("id") or fid,
+            "fecha_incendio": attributes.get("firedate"),
+            "ultima_actualizacion": attributes.get("lastupdate"),
+            "pais": attributes.get("country"),
+            "provincia": attributes.get("province"),
+            "municipio": attributes.get("commune"),
+            "area_ha": number(attributes.get("area_ha")),
+            "latitud": sum(lats) / len(lats) if lats else None,
+            "longitud": sum(lons) / len(lons) if lons else None,
+            "lat_min": min(lats) if lats else None, "lat_max": max(lats) if lats else None,
+            "lon_min": min(lons) if lons else None, "lon_max": max(lons) if lons else None,
+            "n_vertices": len(points),
+            "atributos": json.dumps(attributes, ensure_ascii=False),
+        })
+    return rows
+
+
 def read_json(fs, path):
     with fs.open(path, "r") as file:
         return json.load(file)
@@ -680,6 +765,22 @@ def main():
             with fs.open(path, "rb") as file:
                 rows = pd.read_csv(file, dtype=str).assign(descargado_utc=stamp_utc).to_dict("records")
         write(rows, table, label)
+
+    birds = []
+    for path in sorted(fs.glob(f"{landing}/aves/*.json")):
+        birds += parse_gbif(read_json(fs, path))
+    write(birds, tables["aves"], "GBIF counts")
+
+    fires_path = f"{landing}/incendios/effis_area_quemada.gml"
+    fires = []
+    if fs.exists(fires_path):
+        with fs.open(fires_path, "rb") as file:
+            fires = parse_effis(file.read())
+        stamp_path = f"{landing}/incendios/peticion.json"
+        stamp_utc = read_json(fs, stamp_path).get("descargado_utc") if fs.exists(stamp_path) else None
+        for row in fires:
+            row["descargado_utc"] = stamp_utc
+    write(fires, tables["incendios"], "EFFIS burnt areas")
 
     logger.info("Bronze of the public data completed")
 
