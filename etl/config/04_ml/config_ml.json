@@ -291,6 +291,7 @@
     "presupuestos_horas_dia": [1, 2, 4, 6],
     "bootstrap_reps": 500,
     "busqueda": {
+      "logistica": [{"C": 0.001}, {"C": 0.003}, {"C": 0.01}, {"C": 0.03}],
       "xgboost": [
         {"max_depth": 3, "min_child_weight": 20, "learning_rate": 0.05, "subsample": 0.8, "colsample_bytree": 0.6,
          "n_estimators": 1500, "early_stopping_rounds": 100},
@@ -342,7 +343,8 @@
       ["avisos__logistica", "avisos__naif_aviso_aemet"],
       ["avisos__naif_aviso_aemet", "larga__naif_racha"],
       ["larga__logistica_regla", "larga__logistica"],
-      ["larga__logistica_regla", "larga__naif_racha"]
+      ["larga__logistica_regla", "larga__naif_racha"],
+      ["larga__rango", "larga__logistica"], ["larga__rango", "larga__media"], ["avisos__rango", "larga__rango"]
     ]
   }
 }

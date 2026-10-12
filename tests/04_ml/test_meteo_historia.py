@@ -298,6 +298,7 @@ def test_models_beat_the_base_rate(result):
     # The mean of the logistic regression and XGBoost of every variant, and the model with the gust rule.
     assert ((table["variante"] == "larga") & (table["modelo"] == "media")).any()
     assert ((table["variante"] == "larga") & (table["modelo"] == "logistica_regla")).any()
+    assert ((table["variante"] == "larga") & (table["modelo"] == "rango")).any()
     diffs = read(folder, "diferencias.csv")
     assert len(diffs) == 4
 

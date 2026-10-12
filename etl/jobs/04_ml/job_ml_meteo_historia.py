@@ -39,7 +39,10 @@ Steps:
    features and label used to train. Every variant runs the rolling
    evaluation of job_ml_horas_riesgo: each year Y is scored by models chosen
    and fitted only on the hours before Y, with the strongest gust in the area
-   as reference.
+   as reference. Three combinations of every variant: media (mean of the
+   probabilities of the logistic regression and XGBoost), rango (mean of
+   their percentiles in the year) and logistica_regla (the logistic
+   regression and the gust rule by their percentiles).
 3. Comparison on the years every variant scored, always against y_principal
    (what the operator needs, whatever the label of training): PR-AUC, lift
    and alerts under a budget of hours per distribuidora and day, by year,
@@ -617,6 +620,12 @@ def main(argv=None):
         if all(c in scored.columns for c in rule):
             ranks = scored.groupby("anio")[rule].rank(pct=True)
             scored[f"p_{variant}__logistica_regla"] = ranks.mean(axis=1, skipna=False)
+        # The same two models by their percentiles in the year: the probabilities
+        # of XGBoost have a long tail that takes over the plain mean, the
+        # percentiles weigh both rankings the same.
+        if all(c in scored.columns for c in pair):
+            ranks = scored.groupby("anio")[pair].rank(pct=True)
+            scored[f"p_{variant}__rango"] = ranks.mean(axis=1, skipna=False)
     columns = [c for c in scored.columns if c.startswith("p_")]
     segment_map = {"distribuidora": "distribuidora_id", "estacion": SEASON_FEATURE}
     years = sorted(scored["anio"].unique().tolist())
