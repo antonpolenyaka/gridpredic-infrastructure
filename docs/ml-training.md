@@ -2,7 +2,7 @@
 
 Este documento explica cómo entrenamos y evaluamos el modelo de predicción de interrupciones sobre el dataset de Gold, qué decisiones hemos tomado y dónde quedan los resultados. Los requisitos y las métricas de aceptación están en la [model card](model_card.md); aquí está el cómo.
 
-El código está en `etl/jobs/04_ml/` y los parámetros en `etl/config/04_ml/config_ml.json`.
+El código está en `etl/jobs/04_ml/` y los parámetros en `etl/config/04_ml/config_ml.json`. Los modelos con la historia meteorológica desde 2017, los avisos de AEMET, el riesgo del día siguiente y las fuentes públicas que los alimentan están en [causas-incidencias.md](causas-incidencias.md), apartado 8.
 
 | Fichero | Qué hace |
 | --- | --- |
