@@ -226,7 +226,22 @@
           "write_mode": "OVERWRITE"
         },
         {
+          "name": "incidencias_ex",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "incidencias_metodos_recogida_ex",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
           "name": "interrupciones",
+          "extract_mode": "FULL",
+          "write_mode": "OVERWRITE"
+        },
+        {
+          "name": "interrupciones_ex",
           "extract_mode": "FULL",
           "write_mode": "OVERWRITE"
         },

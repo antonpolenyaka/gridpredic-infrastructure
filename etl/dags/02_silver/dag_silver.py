@@ -13,6 +13,7 @@ JOBS_DIR = "/app/jobs/02_silver"
 PY_FILES = ",".join([
     f"{JOBS_DIR}/silver_common.py",
     f"{JOBS_DIR}/job_silver_f_tag_value_change.py",
+    f"{JOBS_DIR}/causas_incidencia.py",
 ])
 
 
