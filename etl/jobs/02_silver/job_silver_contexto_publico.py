@@ -48,6 +48,14 @@ OpenStreetMap), cleaned and taken to the units Gold uses.
   centre of the polygon and its weather cell (the grid of 0.1 degrees of
   the weather). A repeated identifier keeps the last update; rows without
   date (NULL_KEY) or without position (NO_GEOMETRY) are rejected.
+- f_aviso_meteo: one row per warning message of AEMET and weather cell
+  whose centre falls inside the polygon of the warning zone: times in the
+  wall clock of Madrid (sent, onset, expiry), phenomenon (VI wind, PR rain,
+  TO thunderstorms, NE snow, TA and TI temperatures...), level and its
+  number (verde 0, amarillo 1, naranja 2, rojo 3), probability, zone and
+  the cell. Rows without identifier or times (NULL_KEY) or without polygon
+  (NO_GEOMETRY) are rejected; the zones that hold no cell of the study are
+  left out.
 
     docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/02_silver/job_silver_contexto_publico.py
 """
@@ -91,6 +99,10 @@ IEEX_TABLE = "l1_bronze.ieex_proyeccion_ame"
 IEEX_AME_TABLE = "l1_bronze.ieex_ame_municipio"
 GBIF_TABLE = "l1_bronze.gbif_conteo_celda"
 EFFIS_TABLE = "l1_bronze.effis_area_quemada"
+AEMET_TABLE = "l1_bronze.aemet_aviso"
+WEATHER_CELLS_TABLE = "l2_silver.d_meteo_celda"
+WARNINGS = "f_aviso_meteo"
+WARNING_LEVELS = {"verde": 0, "amarillo": 1, "naranja": 2, "rojo": 3}
 BIRDS_YEAR = "f_aves_celda_anio"
 BIRDS_MONTH = "f_aves_celda_mes"
 FIRES = "f_area_quemada"
@@ -509,6 +521,77 @@ def burnt_areas(effis):
     return out, union_rejects([rejected, duplicated])
 
 
+def inside(lat: float, lon: float, points: list) -> bool:
+    """Point in polygon (ray casting) for (lat, lon) points."""
+    hit = False
+    j = len(points) - 1
+    for i in range(len(points)):
+        lat_i, lon_i = points[i]
+        lat_j, lon_j = points[j]
+        if (lon_i > lon) != (lon_j > lon):
+            crossing = lat_i + (lon - lon_i) / (lon_j - lon_i) * (lat_j - lat_i)
+            if lat < crossing:
+                hit = not hit
+        j = i
+    return hit
+
+
+def local_wall_clock(values):
+    """CAP times with their offset -> naive wall clock of Madrid, as the rest of the lakehouse."""
+    import pandas as pd
+
+    stamps = pd.to_datetime(values, utc=True, errors="coerce", format="ISO8601")
+    return stamps.dt.tz_convert("Europe/Madrid").dt.tz_localize(None)
+
+
+def weather_warnings(spark, aemet, cells: list):
+    """
+    (rows of f_aviso_meteo, rejected rows as a list of dicts) from the
+    warnings of Bronze and the cells (celda_id, lat, lon) of the study.
+    """
+    import pandas as pd
+
+    pdf = aemet.select("identificador", "tipo_mensaje", "enviado", "inicio", "fin", "fenomeno", "nivel",
+                       "probabilidad", "parametro", "zona", "zona_nombre", "poligono").toPandas()
+    rows, rejected = [], []
+    for record in pdf.to_dict("records"):
+        if not record["identificador"] or not record["inicio"] or not record["fin"]:
+            rejected.append({**record, "_motivo": "NULL_KEY"})
+            continue
+        points = []
+        for pair in str(record["poligono"] or "").split():
+            parts = pair.split(",")
+            if len(parts) == 2:
+                points.append((float(parts[0]), float(parts[1])))
+        if len(points) < 3:
+            rejected.append({**record, "_motivo": "NO_GEOMETRY"})
+            continue
+        for cell, lat, lon in cells:
+            if inside(lat, lon, points):
+                rows.append({**{k: v for k, v in record.items() if k != "poligono"}, "celda_id": cell})
+
+    out = pd.DataFrame(rows, columns=[c for c in pdf.columns if c != "poligono"] + ["celda_id"])
+    for column, source in (("enviado_ts", "enviado"), ("inicio_ts", "inicio"), ("fin_ts", "fin")):
+        out[column] = local_wall_clock(out[source]) if len(out) else pd.Series(dtype="datetime64[ns]")
+    code = out["fenomeno"].fillna("").astype(str)
+    out["fenomeno_codigo"] = code.str.split(";").str[0].str.strip().str.upper().replace("", None)
+    out["fenomeno_nombre"] = code.str.split(";").str[1].str.strip() if len(out) else None
+    out["nivel"] = out["nivel"].fillna("").astype(str).str.strip().str.lower().replace("", None)
+    out["nivel_num"] = out["nivel"].map(WARNING_LEVELS)
+    out["aviso_id"] = out["identificador"].astype(str) + "|" + out["zona"].fillna("").astype(str)
+    out = out.drop(columns=["enviado", "inicio", "fin", "fenomeno"]).drop_duplicates(["aviso_id", "celda_id"])
+    out = out[out["inicio_ts"].notna() & out["fin_ts"].notna()]
+    for column in out.columns:
+        if out[column].dtype == object:
+            out[column] = out[column].astype("string")
+    df = (
+        spark.createDataFrame(out) if len(out) else None
+    )
+    if df is not None:
+        df = df.withColumn("anio", F.year("inicio_ts")).withColumn("audit_loaded_at", F.current_timestamp())
+    return df, rejected
+
+
 def optional(spark, table):
     if spark.catalog.tableExists(table):
         return spark.table(table)
@@ -623,6 +706,29 @@ def main():
         if rejected is not None:
             for row in rejected.groupBy("_motivo").count().collect():
                 dq.add(FIRES, f"rechazo:{row['_motivo']}", row["count"], total, umbral_pct=10.0)
+
+    aemet = optional(spark, AEMET_TABLE)
+    if aemet is not None and spark.catalog.tableExists(WEATHER_CELLS_TABLE):
+        study = [
+            (r["celda_id"], float(r["celda_id"].split("_")[0]), float(r["celda_id"].split("_")[1]))
+            for r in spark.table(WEATHER_CELLS_TABLE).select("celda_id").distinct().collect() if r["celda_id"]
+        ]
+        total = aemet.count()
+        out, rejected = weather_warnings(spark, aemet, study)
+        if out is not None:
+            write_table(out, silver_table(WARNINGS))
+            written = spark.table(silver_table(WARNINGS))
+            dq.add(WARNINGS, "mensajes_zona_entrada", total)
+            dq.add(WARNINGS, "filas", written.count())
+            dq.add(WARNINGS, "avisos", written.select("aviso_id").distinct().count())
+            dq.add(WARNINGS, "celdas", written.select("celda_id").distinct().count(), len(study))
+            span = written.agg(F.min("inicio_ts"), F.max("inicio_ts")).first()
+            dq.add(WARNINGS, "rango_fechas", written.count(), detalle=f"{span[0]} - {span[1]}")
+        for reason in sorted({r["_motivo"] for r in rejected}):
+            dq.add(WARNINGS, f"rechazo:{reason}", sum(r["_motivo"] == reason for r in rejected), total,
+                   umbral_pct=5.0)
+    elif aemet is not None:
+        logger.warning("%s needs %s for the cells of the study", WARNINGS, WEATHER_CELLS_TABLE)
 
     dq.flush()
     logger.info("Silver completed: public data")

@@ -388,3 +388,88 @@ def test_effis_request_variants_and_area_check():
     assert landing.in_area(landing.first_points(GML3), box)
     assert landing.in_area(landing.first_points(GML2), box)
     assert not landing.in_area([(2.1, 41.4), (2.2, 41.5)], box)
+
+
+CAP_ALERT = """<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>2.49.0.0.724.0.ES.20240110063000.761001VI</identifier>
+  <sender>http://www.aemet.es</sender>
+  <sent>2024-01-10T06:30:00-00:00</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-GB</language>
+    <event>Moderate wind warning</event>
+  </info>
+  <info>
+    <language>es-ES</language>
+    <category>Met</category>
+    <event>Aviso de vientos de nivel naranja</event>
+    <severity>Severe</severity>
+    <certainty>Likely</certainty>
+    <eventCode><valueName>AEMET-Meteoalerta fenomeno</valueName><value>VI;Vientos</value></eventCode>
+    <effective>2024-01-10T07:30:00+01:00</effective>
+    <onset>2024-01-10T12:00:00+01:00</onset>
+    <expires>2024-01-10T23:59:59+01:00</expires>
+    <parameter><valueName>AEMET-Meteoalerta nivel</valueName><value>naranja</value></parameter>
+    <parameter><valueName>AEMET-Meteoalerta parametro</valueName><value>VI; Rachas máximas; 90 km/h</value></parameter>
+    <parameter><valueName>AEMET-Meteoalerta probabilidad</valueName><value>40%-70%</value></parameter>
+    <area>
+      <areaDesc>Norte de Cáceres</areaDesc>
+      <polygon>40.0,-6.5 40.6,-6.5 40.6,-5.5 40.0,-5.5 40.0,-6.5</polygon>
+      <geocode><valueName>AEMET-Meteoalerta zona</valueName><value>761001</value></geocode>
+    </area>
+    <area>
+      <areaDesc>Litoral de Almería</areaDesc>
+      <polygon>36.6,-2.6 36.9,-2.6 36.9,-1.9 36.6,-1.9 36.6,-2.6</polygon>
+      <geocode><valueName>AEMET-Meteoalerta zona</valueName><value>610402</value></geocode>
+    </area>
+  </info>
+</alert>
+"""
+
+
+def test_parse_cap_keeps_spanish_and_the_study_area():
+    box = (38.0, -7.5, 40.8, -5.0)
+    rows = bronze.parse_cap(CAP_ALERT.encode("utf-8"), box)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["zona"] == "761001" and row["zona_nombre"] == "Norte de Cáceres"
+    assert row["evento"] == "Aviso de vientos de nivel naranja"
+    assert row["fenomeno"] == "VI;Vientos" and row["nivel"] == "naranja" and row["probabilidad"] == "40%-70%"
+    assert row["inicio"] == "2024-01-10T12:00:00+01:00" and row["tipo_mensaje"] == "Alert"
+    assert row["lat_min"] == 40.0 and row["lon_max"] == -5.5
+    # Without a box every area comes out.
+    assert len(bronze.parse_cap(CAP_ALERT.encode("utf-8"))) == 2
+    assert bronze.parse_cap(b"<html>not a cap</html>") == []
+
+
+def test_parse_aemet_archive_reads_nested_packages():
+    import gzip
+    import io
+    import tarfile
+
+    def tar_of(name: str, payload: bytes) -> bytes:
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as archive:
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+        return buffer.getvalue()
+
+    inner = gzip.compress(tar_of("Z_CAP_C_LEMM_20240110063000_AFAZ761001VI.xml", CAP_ALERT.encode("utf-8")))
+    outer = tar_of("20240110.tar.gz", inner)
+    rows = bronze.parse_aemet_archive(outer, (38.0, -7.5, 40.8, -5.0))
+    assert [r["zona"] for r in rows] == ["761001"]
+    assert bronze.parse_aemet_archive(b"") == []
+
+
+def test_aemet_requests_by_pieces():
+    chunks = landing.warning_chunks("2018-06-18", "2018-08-31", 31)
+    assert [(str(a), str(b)) for a, b in chunks] == [
+        ("2018-06-18", "2018-07-18"), ("2018-07-19", "2018-08-18"), ("2018-08-19", "2018-08-31")]
+    cfg = landing.load_config()["publicos"]["avisos"]
+    url = landing.aemet_url(cfg, *chunks[0])
+    assert url.endswith("/fechaini/2018-06-18T00:00:00UTC/fechafin/2018-07-18T23:59:59UTC")
+    assert "api_key" not in url

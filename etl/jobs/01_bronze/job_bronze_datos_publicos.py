@@ -43,6 +43,12 @@ cleaning and the aggregates are in Silver.
   date, last update, country, province, municipality, area (ha), the centre
   and the box of its polygon in latitude and longitude (whatever the axis
   order of the answer) and all the attributes as they come (atributos, JSON).
+- aemet_aviso: one row per warning message of AEMET and zone whose polygon
+  touches the study area: identifier, kind of message (Alert, Update,
+  Cancel), sent, effective, onset and expiry as they come (with their
+  offset), phenomenon code and name, level, threshold, probability, zone
+  code and name, polygon (lat lon pairs) and its box. The archive comes as
+  tar files that may hold other tar or gzip files; every XML inside is read.
 
 The tables are rebuilt whole in every run (a few thousand rows, the
 buildings about a hundred thousand).
@@ -58,6 +64,7 @@ import math
 import os
 import re
 import sys
+import tarfile
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -667,6 +674,116 @@ def parse_effis(text: str) -> list:
     return rows
 
 
+# AEMET ----------------------------------------------------------------------
+
+CAP = "{urn:oasis:names:tc:emergency:cap:1.2}"
+
+
+def cap_value(parent, tag: str, name: str):
+    """Value of the <tag><valueName>name</valueName><value>...</value></tag> child of parent."""
+    for element in parent.findall(f"{CAP}{tag}"):
+        if (element.findtext(f"{CAP}valueName") or "").strip() == name:
+            return (element.findtext(f"{CAP}value") or "").strip() or None
+    return None
+
+
+def polygon_points(text: str) -> list:
+    """(lat, lon) pairs of a CAP polygon ("lat,lon lat,lon ...")."""
+    points = []
+    for pair in (text or "").split():
+        parts = pair.split(",")
+        if len(parts) == 2:
+            lat, lon = number(parts[0]), number(parts[1])
+            if lat is not None and lon is not None:
+                points.append((lat, lon))
+    return points
+
+
+def parse_cap(raw: bytes, box: tuple = None) -> list:
+    """
+    Rows of one CAP message of AEMET, one per area, in Spanish when the
+    message comes in two languages. box (lat0, lon0, lat1, lon1) keeps only
+    the areas whose polygon box touches it.
+    """
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return []
+    if not root.tag.endswith("alert"):
+        return []
+
+    infos = root.findall(f"{CAP}info")
+    info = next((i for i in infos if (i.findtext(f"{CAP}language") or "").lower().startswith("es")),
+                infos[0] if infos else None)
+    if info is None:
+        return []
+
+    head = {
+        "identificador": root.findtext(f"{CAP}identifier"),
+        "tipo_mensaje": root.findtext(f"{CAP}msgType"),
+        "enviado": root.findtext(f"{CAP}sent"),
+        "referencias": root.findtext(f"{CAP}references"),
+        "evento": info.findtext(f"{CAP}event"),
+        "severidad": info.findtext(f"{CAP}severity"),
+        "certeza": info.findtext(f"{CAP}certainty"),
+        "efectivo": info.findtext(f"{CAP}effective"),
+        "inicio": info.findtext(f"{CAP}onset"),
+        "fin": info.findtext(f"{CAP}expires"),
+        "fenomeno": cap_value(info, "eventCode", "AEMET-Meteoalerta fenomeno"),
+        "nivel": cap_value(info, "parameter", "AEMET-Meteoalerta nivel"),
+        "parametro": cap_value(info, "parameter", "AEMET-Meteoalerta parametro"),
+        "probabilidad": cap_value(info, "parameter", "AEMET-Meteoalerta probabilidad"),
+    }
+
+    rows = []
+    for area in info.findall(f"{CAP}area"):
+        points = []
+        for polygon in area.findall(f"{CAP}polygon"):
+            points += polygon_points(polygon.text)
+        lats = [p[0] for p in points]
+        lons = [p[1] for p in points]
+        if box and points:
+            lat0, lon0, lat1, lon1 = box
+            if max(lats) < lat0 or min(lats) > lat1 or max(lons) < lon0 or min(lons) > lon1:
+                continue
+        rows.append({
+            **head,
+            "zona": cap_value(area, "geocode", "AEMET-Meteoalerta zona"),
+            "zona_nombre": area.findtext(f"{CAP}areaDesc"),
+            "poligono": " ".join(f"{lat},{lon}" for lat, lon in points) or None,
+            "lat_min": min(lats) if lats else None, "lat_max": max(lats) if lats else None,
+            "lon_min": min(lons) if lons else None, "lon_max": max(lons) if lons else None,
+        })
+    return rows
+
+
+def parse_aemet_archive(raw: bytes, box: tuple = None, depth: int = 0) -> list:
+    """Rows of every CAP message inside an archive of AEMET (tar, tar.gz, gzip or a bare XML), recursively."""
+    if depth > 4 or not raw:
+        return []
+    if raw[:2] == b"\x1f\x8b":
+        try:
+            return parse_aemet_archive(gzip.decompress(raw), box, depth + 1)
+        except OSError:
+            return []
+    stripped = raw.lstrip()
+    if stripped.startswith(b"<") or stripped.startswith(b"\xef\xbb\xbf<"):
+        return parse_cap(raw, box)
+    try:
+        archive = tarfile.open(fileobj=io.BytesIO(raw), mode="r:*")
+    except tarfile.TarError:
+        return []
+    rows = []
+    with archive:
+        for member in archive.getmembers():
+            if not member.isfile():
+                continue
+            handle = archive.extractfile(member)
+            if handle is not None:
+                rows += parse_aemet_archive(handle.read(), box, depth + 1)
+    return rows
+
+
 def read_json(fs, path):
     with fs.open(path, "r") as file:
         return json.load(file)
@@ -781,6 +898,26 @@ def main():
         for row in fires:
             row["descargado_utc"] = stamp_utc
     write(fires, tables["incendios"], "EFFIS burnt areas")
+
+    # The warnings that touch the study area: the cells with the margin of the configuration.
+    cells_path = f"{landing}/celdas.json"
+    warnings, box = [], None
+    if "avisos" in tables and fs.glob(f"{landing}/avisos/*.tar"):
+        margin = float(cfg.get("avisos", {}).get("margen_grados", 0.3))
+        if fs.exists(cells_path):
+            cells = read_json(fs, cells_path)
+            lats = [c["latitud"] for c in cells]
+            lons = [c["longitud"] for c in cells]
+            box = (min(lats) - margin, min(lons) - margin, max(lats) + margin, max(lons) + margin)
+        else:
+            box = (AREA_LAT[0], AREA_LON[0], AREA_LAT[1], AREA_LON[1])
+        for path in sorted(fs.glob(f"{landing}/avisos/*.tar")):
+            with fs.open(path, "rb") as file:
+                rows = parse_aemet_archive(file.read(), box)
+            warnings += rows
+            logger.info("AEMET %s: %s messages and zones in the area", path.rsplit("/", 1)[-1], len(rows))
+    if "avisos" in tables:
+        write(warnings, tables["avisos"], "AEMET warnings")
 
     logger.info("Bronze of the public data completed")
 

@@ -30,6 +30,12 @@ Gold weather: the features of every cell and hour and the cell of every CT.
     insulators); highest vapour pressure deficit of 24 h and
     evapotranspiration of 7 days (dryness, fires); low clouds of 6 h; and
     the highest weather code of 6 h with a flag for thunderstorm codes.
+  - met_aviso_*, when Silver has the warnings of AEMET (f_aviso_meteo, from
+    18.06.2018): the highest level (1 yellow, 2 orange, 3 red) of the
+    warnings in force at hora that had been issued by then, in total and for
+    wind, rain, thunderstorms and snow, and the highest level of the
+    warnings that start in the next aviso_prevision_h hours. 0 without
+    warning, null before the archive starts.
 
 Both tables are small and are rebuilt whole. They are not joined into
 features_ct_hora: the training step joins them by (celda_id, hora), so the
@@ -62,9 +68,14 @@ EXTRA_COLUMNS = {
     "humedad_suelo_28_100_m3m3": "hs28", "punto_rocio_c": "rocio", "deficit_presion_vapor_kpa": "dpv",
     "nubes_bajas_pct": "nubes", "evapotranspiracion_mm": "et0", "codigo_tiempo": "codigo",
 }
-# Features that only exist for part of the history (CAPE from 2021) or while the extra grid loads.
+# Features that only exist for part of the history (CAPE from 2021, warnings from 2018) or while the
+# extra grid loads.
 PARTIAL_FEATURES = ("met_cape_", "met_li_", "met_dir_viento_", "met_viento_100m_", "met_humedad_suelo_",
-                    "met_rocio_", "met_dpv_", "met_nubes_bajas_", "met_et0_", "met_codigo_", "met_tormenta_")
+                    "met_rocio_", "met_dpv_", "met_nubes_bajas_", "met_et0_", "met_codigo_", "met_tormenta_",
+                    "met_aviso_")
+WARNINGS_TABLE = "l2_silver.f_aviso_meteo"
+# Groups of phenomena of AEMET for the warning features.
+WARNING_GROUPS = {"viento": ["VI"], "lluvia": ["PR"], "tormenta": ["TO"], "nieve": ["NE"]}
 
 
 def normalized_name(column):
@@ -213,6 +224,65 @@ def weather_features(hourly, lead: int, region: bool):
     return features.select("celda_id", "hora", *names), names
 
 
+def ceil_hour(column):
+    """The first whole hour at or after a timestamp."""
+    floor = F.date_trunc("hour", column)
+    return F.when(floor == column, floor).otherwise(floor + F.expr("INTERVAL 1 HOUR"))
+
+
+def warning_features(warnings, lead: int = 6):
+    """
+    (features by (celda_id, hora), names, first hour of the archive) from
+    l2_silver.f_aviso_meteo. A warning counts at hora when hora falls in
+    (onset, expiry] (the hour that ends at hora overlaps it) and it had been
+    sent by then; the upcoming ones, when it starts in the next lead hours.
+    Cancellations and green levels do not count.
+    """
+    w = warnings.where((F.col("nivel_num") >= 1) & (F.coalesce(F.col("tipo_mensaje"), F.lit("Alert")) != "Cancel"))
+    w = w.select("celda_id", "fenomeno_codigo", "nivel_num", "enviado_ts", "inicio_ts", "fin_ts")
+
+    def hours(first, last):
+        return F.explode(F.sequence(first, last, F.expr("INTERVAL 1 HOUR")))
+
+    in_force = (
+        w.withColumn("_desde", ceil_hour(F.greatest(F.col("inicio_ts") + F.expr("INTERVAL 1 SECOND"),
+                                                    F.col("enviado_ts"))))
+        .withColumn("_hasta", ceil_hour(F.col("fin_ts")))
+        .where(F.col("_desde") <= F.col("_hasta"))
+        .select("celda_id", "fenomeno_codigo", "nivel_num", hours(F.col("_desde"), F.col("_hasta")).alias("hora"))
+    )
+    upcoming = (
+        w.withColumn("_desde", ceil_hour(F.greatest(F.col("enviado_ts"),
+                                                    F.col("inicio_ts") - F.expr(f"INTERVAL {int(lead)} HOURS"))))
+        .withColumn("_hasta", F.date_trunc("hour", F.col("inicio_ts") - F.expr("INTERVAL 1 SECOND")))
+        .where(F.col("_desde") <= F.col("_hasta"))
+        .select("celda_id", "nivel_num", hours(F.col("_desde"), F.col("_hasta")).alias("hora"))
+    )
+
+    level = F.col("nivel_num").cast("double")
+    aggs = [F.max(level).alias("met_aviso_max_nivel")]
+    aggs += [F.max(F.when(F.col("fenomeno_codigo").isin(codes), level)).alias(f"met_aviso_{name}_nivel")
+             for name, codes in WARNING_GROUPS.items()]
+    current = in_force.groupBy("celda_id", "hora").agg(*aggs)
+    ahead = upcoming.groupBy("celda_id", "hora").agg(F.max(level).alias(f"met_aviso_prox{int(lead)}h_max_nivel"))
+    features = current.join(ahead, ["celda_id", "hora"], "full")
+    names = [c for c in features.columns if c.startswith("met_aviso_")]
+    start = warnings.agg(F.min("enviado_ts")).first()[0]
+    return features, names, start
+
+
+def add_warnings(features, names: list, warnings, lead: int):
+    """The warning features joined to the weather: 0 without warning, null before the archive starts."""
+    table, warning_names, start = warning_features(warnings, lead)
+    if start is None:
+        return features, names
+    out = features.join(table, ["celda_id", "hora"], "left")
+    known = F.col("hora") >= F.lit(start)
+    for name in warning_names:
+        out = out.withColumn(name, F.when(known, F.coalesce(F.col(name), F.lit(0.0))))
+    return out, names + warning_names
+
+
 def main():
     args = parse_args()
     params = load_params(args)
@@ -238,6 +308,11 @@ def main():
     start = time.time()
     features, names = weather_features(spark.table(hourly_table), int(cfg.get("prevision_h", 3)),
                                        bool(cfg.get("region", True)))
+    if spark.catalog.tableExists(WARNINGS_TABLE):
+        features, names = add_warnings(features, names, spark.table(WARNINGS_TABLE),
+                                       int(cfg.get("aviso_prevision_h", 6)))
+    else:
+        logger.info("%s not found: no warnings of AEMET in Gold", WARNINGS_TABLE)
     write_table(
         features.withColumn("anio", F.year("hora")).withColumn("audit_loaded_at", F.current_timestamp()),
         WEATHER_TABLE, partition_by=["anio"],
