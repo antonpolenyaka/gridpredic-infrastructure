@@ -465,6 +465,15 @@ def test_parse_aemet_archive_reads_nested_packages():
     assert bronze.parse_aemet_archive(b"") == []
 
 
+def test_parse_cap_leaves_out_the_green_messages():
+    green = CAP_ALERT.replace("<value>naranja</value>", "<value>verde</value>")
+    assert bronze.parse_cap(green.encode("utf-8"), (38.0, -7.5, 40.8, -5.0)) == []
+    assert len(bronze.parse_cap(green.encode("utf-8"), (38.0, -7.5, 40.8, -5.0), green=True)) == 1
+    # A cancellation is kept whatever its level says.
+    cancel = green.replace("<msgType>Alert</msgType>", "<msgType>Cancel</msgType>")
+    assert [r["tipo_mensaje"] for r in bronze.parse_cap(cancel.encode("utf-8"), (38.0, -7.5, 40.8, -5.0))] == ["Cancel"]
+
+
 def test_aemet_requests_by_pieces():
     chunks = landing.warning_chunks("2018-06-18", "2018-08-31", 31)
     assert [(str(a), str(b)) for a, b in chunks] == [

@@ -49,6 +49,8 @@ cleaning and the aggregates are in Silver.
   offset), phenomenon code and name, level, threshold, probability, zone
   code and name, polygon (lat lon pairs) and its box. The archive comes as
   tar files that may hold other tar or gzip files; every XML inside is read.
+  The green messages (no warning) are left out and a message repeated in
+  several packages is kept once.
 - firms_foco: one row per active fire of FIRMS in the box of the study:
   latitude, longitude, date and UTC time of the pass, satellite, instrument,
   confidence (l, n, h for VIIRS; 0 - 100 for MODIS), fire radiative power,
@@ -710,11 +712,14 @@ def polygon_points(text: str) -> list:
     return points
 
 
-def parse_cap(raw: bytes, box: tuple = None) -> list:
+def parse_cap(raw: bytes, box: tuple = None, green: bool = False) -> list:
     """
     Rows of one CAP message of AEMET, one per area, in Spanish when the
     message comes in two languages. box (lat0, lon0, lat1, lon1) keeps only
-    the areas whose polygon box touches it.
+    the areas whose polygon box touches it. The green messages (no warning,
+    almost all of the archive: every zone and phenomenon is sent green
+    several times a day) are left out unless green is set; a cancellation
+    is always kept.
     """
     try:
         root = ET.fromstring(raw)
@@ -745,6 +750,8 @@ def parse_cap(raw: bytes, box: tuple = None) -> list:
         "parametro": cap_value(info, "parameter", "AEMET-Meteoalerta parametro"),
         "probabilidad": cap_value(info, "parameter", "AEMET-Meteoalerta probabilidad"),
     }
+    if not green and (head["nivel"] or "").strip().lower() == "verde" and head["tipo_mensaje"] != "Cancel":
+        return []
 
     rows = []
     for area in info.findall(f"{CAP}area"):
@@ -1000,11 +1007,15 @@ def main():
             box = (min(lats) - margin, min(lons) - margin, max(lats) + margin, max(lons) + margin)
         else:
             box = (AREA_LAT[0], AREA_LON[0], AREA_LAT[1], AREA_LON[1])
+        # The packages of a piece repeat the messages in force: one row per message and zone.
+        unique = {}
         for path in sorted(fs.glob(f"{landing}/avisos/*.tar")):
             with fs.open(path, "rb") as file:
                 rows = parse_aemet_archive(file.read(), box)
-            warnings += rows
+            for row in rows:
+                unique.setdefault((row.get("identificador"), row.get("zona")), row)
             logger.info("AEMET %s: %s messages and zones in the area", path.rsplit("/", 1)[-1], len(rows))
+        warnings = list(unique.values())
     if "avisos" in tables:
         write(warnings, tables["avisos"], "AEMET warnings")
 
