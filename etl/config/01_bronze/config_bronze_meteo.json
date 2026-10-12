@@ -13,7 +13,7 @@
       "pressure_msl"
     ],
     "celda_grados": 0.1,
-    "desde": "2020-12-01",
+    "desde": "2017-01-01",
     "hasta": "2026-08-31",
     "pausa_s": 22,
     "reintentos": 5,
@@ -21,5 +21,26 @@
     "zona_horaria": "Europe/Madrid",
     "tabla_horas": "l1_bronze.meteo_openmeteo_hora",
     "tabla_celdas": "l1_bronze.meteo_openmeteo_celdas"
+  },
+  "openmeteo_convectivo": {
+    "api": "https://historical-forecast-api.open-meteo.com/v1/forecast",
+    "referencia_municipios": "s3://datalake/00_landing/reference_data/municipios.xlsx",
+    "landing": "s3://datalake/00_landing/meteo/openmeteo_convectivo",
+    "modelos": [
+      "gfs_seamless",
+      "gfs_global"
+    ],
+    "variables": [
+      "cape",
+      "lifted_index"
+    ],
+    "celda_grados": 0.25,
+    "desde": "2021-03-23",
+    "hasta": "2026-08-31",
+    "pausa_s": 22,
+    "reintentos": 5,
+    "espera_reintento_s": 60,
+    "zona_horaria": "Europe/Madrid",
+    "tabla_horas": "l1_bronze.meteo_openmeteo_convectivo_hora"
   }
 }
