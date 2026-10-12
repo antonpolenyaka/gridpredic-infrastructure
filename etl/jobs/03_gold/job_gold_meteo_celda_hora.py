@@ -9,9 +9,10 @@ Gold weather: the features of every cell and hour and the cell of every CT.
   describes the hour that ends then, so it is known at hora, like the rest
   of the features of Gold.
   - met_*: the last hours. Gust and wind of the hour; maximum gust of 3, 6
-    and 24 h; rain of 1, 3, 6 and 24 h; snow of 24 h; temperature and its
-    minimum and maximum of 24 h; humidity; pressure and its change in 3 and
-    24 h (the passing fronts).
+    and 24 h; rain of 1, 3, 6, 24 and 72 h and of the 29 days before the
+    last 24 h (first rain after a dry spell); snow of 24 h; temperature and
+    its minimum and maximum of 24 h; humidity and its maximum of 6 h;
+    pressure and its change in 3 and 24 h (the passing fronts).
   - metprev_*: the next meteo.prevision_h hours (maximum gust, rain, snow).
     The reanalysis stands for a perfect forecast of the next hours: in
     operation it would be the forecast of AEMET or ECMWF, good at 1 - 3 h
@@ -114,17 +115,26 @@ def weather_features(hourly, lead: int, region: bool):
     def at(hours):
         return ordered.rangeBetween(-hours * 3600, -hours * 3600)
 
+    def before(start, end):
+        """From start hours ago (excluded) to end hours ago (included)."""
+        return ordered.rangeBetween(-(start * 3600 - 1), -end * 3600)
+
     columns = [
         F.col("racha").alias("met_racha_1h"),
         *[F.max("racha").over(past(h)).alias(f"met_racha_max_{h}h") for h in (3, 6, 24)],
         F.col("viento").alias("met_viento_1h"),
         F.col("lluvia").alias("met_lluvia_1h"),
-        *[F.sum("lluvia").over(past(h)).alias(f"met_lluvia_{h}h") for h in (3, 6, 24)],
+        *[F.sum("lluvia").over(past(h)).alias(f"met_lluvia_{h}h") for h in (3, 6, 24, 72)],
+        # Rain of the 29 days before the last 24 h: the first rain after a dry
+        # spell washes the dirt of the insulators onto them, and soaked ground
+        # lets the wind bring the trees down.
+        F.coalesce(F.sum("lluvia").over(before(30 * 24, 24)), F.lit(0.0)).alias("met_lluvia_previa_30d"),
         F.sum("nieve").over(past(24)).alias("met_nieve_24h"),
         F.col("temp").alias("met_temp_1h"),
         F.min("temp").over(past(24)).alias("met_temp_min_24h"),
         F.max("temp").over(past(24)).alias("met_temp_max_24h"),
         F.col("humedad").alias("met_humedad_1h"),
+        F.max("humedad").over(past(6)).alias("met_humedad_max_6h"),
         F.col("presion").alias("met_presion_1h"),
         (F.col("presion") - F.first("presion").over(at(3))).alias("met_presion_delta_3h"),
         (F.col("presion") - F.first("presion").over(at(24))).alias("met_presion_delta_24h"),
