@@ -320,7 +320,11 @@
       {"nombre": "avisos", "desde": "2018-06-25", "bloques": ["meteo", "antecedente", "avisos", "calendario", "historia"],
        "etiqueta": "principal"},
       {"nombre": "larga_fuego", "desde": "2017-01-08", "bloques": ["meteo", "antecedente", "fuego", "calendario", "historia"],
-       "etiqueta": "principal"}
+       "etiqueta": "principal"},
+      {"nombre": "avisos_fuego", "desde": "2018-06-25",
+       "bloques": ["meteo", "antecedente", "avisos", "fuego", "calendario", "historia"], "etiqueta": "principal"},
+      {"nombre": "avisos_clima", "desde": "2018-06-25",
+       "bloques": ["meteo", "antecedente", "avisos", "clima", "calendario", "historia"], "etiqueta": "principal"}
     ],
     "comparaciones": [
       ["larga__xgboost", "corta__xgboost"],
@@ -348,7 +352,9 @@
       ["larga__logistica_regla", "larga__naif_racha"],
       ["larga__rango", "larga__logistica"], ["larga__rango", "larga__media"], ["avisos__rango", "larga__rango"],
       ["larga_fuego__xgboost", "larga_antecedente__xgboost"], ["larga_fuego__logistica", "larga_antecedente__logistica"],
-      ["larga_fuego__rango", "larga_antecedente__rango"]
+      ["larga_fuego__rango", "larga_antecedente__rango"],
+      ["avisos_fuego__rango", "avisos__rango"], ["avisos_fuego__logistica", "avisos__logistica"],
+      ["avisos_clima__rango", "avisos__rango"], ["avisos_clima__logistica", "avisos__logistica"]
     ]
   },
   "meteo_dia": {
