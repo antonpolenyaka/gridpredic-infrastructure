@@ -19,13 +19,16 @@ Causas de todas las incidencias de Calser de las tres distribuidoras, qué datos
 - `etl/jobs/04_ml/calendario.py`: festivos de Extremadura y día laborable para los jobs de ML, los mismos de `gold_common.holidays`.
 - Meteorología de Gold: lluvia de 72 h y de los 29 días anteriores a las últimas 24 h (`met_lluvia_72h`, `met_lluvia_previa_30d`) y humedad máxima de 6 h (`met_humedad_max_6h`).
 - Fuente `openmeteo_extra`: dirección del viento, viento a 100 m, humedad del suelo a 0 - 7 y 28 - 100 cm, punto de rocío, déficit de presión de vapor, nubes bajas, evapotranspiración, código de tiempo y radiación del mismo reanálisis, en celdas de 0,25 grados para que la historia quepa en el plan gratuito: `l1_bronze.meteo_openmeteo_extra_hora`, columnas nuevas de `f_meteo_hora` y features de Gold (`met_dir_viento_sin`, `met_dir_viento_cos`, `met_viento_100m_1h`, `met_humedad_suelo_0_7`, `met_humedad_suelo_28_100`, `met_rocio_dif_1h`, `met_dpv_max_24h`, `met_nubes_bajas_6h`, `met_et0_7d`, `met_codigo_max_6h`, `met_tormenta_6h`).
+- Datos públicos `avisos`: archivo de avisos de fenómenos adversos de AEMET OpenData (mensajes CAP desde el 18.06.2018, CC BY 4.0, con la clave gratuita en `AEMET_API_KEY`): Landing por trozos de días, Bronze (`l1_bronze.aemet_aviso`, con los tar anidados), Silver (`l2_silver.f_aviso_meteo`, una fila por aviso y celda dentro del polígono de la zona, en hora de Madrid) y Gold (`met_aviso_max_nivel`, el nivel de viento, lluvia, tormentas y nieve en vigor ya emitido y `met_aviso_prox6h_max_nivel`). Variante `avisos` y referencia `naif_aviso_aemet` en `meteo_historia`.
 - `docs/causas-incidencias.md`.
-- Tests: `tests/02_silver/test_causas_incidencia.py`, las tablas nuevas en `test_silver_smoke.py`, `tests/03_gold/test_meteo_cape.py` (CAPE, lluvia de los días anteriores y variables extra), aves e incendios en `test_datos_publicos.py` y `test_contexto_ct.py`, la fuente convectiva en `test_meteo_openmeteo.py`, `tests/04_ml/test_causas_incidencias.py`, `tests/04_ml/test_meteo_historia.py`, `tests/04_ml/test_combinar_horas.py` y el modelo por familias en `test_riesgo_ct.py`.
+- Tests: `tests/02_silver/test_causas_incidencia.py`, las tablas nuevas en `test_silver_smoke.py`, `tests/03_gold/test_meteo_cape.py` (CAPE, lluvia de los días anteriores y variables extra), aves e incendios en `test_datos_publicos.py` y `test_contexto_ct.py`, la fuente convectiva en `test_meteo_openmeteo.py`, `tests/04_ml/test_causas_incidencias.py`, `tests/04_ml/test_meteo_historia.py`, `tests/04_ml/test_combinar_horas.py`, el modelo por familias en `test_riesgo_ct.py` y los avisos de AEMET en `test_datos_publicos.py` y `tests/03_gold/test_avisos_aemet.py`.
 
 ### Cambiado
 
 - Análisis de causas: el día laborable sale del calendario y no del tipo de día de Calser, que marca como laborables muchas incidencias de fin de semana.
 - Gold de meteorología: sin umbral de nulos para las features que solo existen en parte de la historia (CAPE desde 2021) o mientras se carga la rejilla extra.
+- Evaluación por años de las horas de riesgo (`rolling_evaluation`): purga de 3 horas antes de cada año y antes del corte de la validación interna (`purga_horas`), porque la etiqueta mira hasta 3 horas adelante.
+- Silver de meteorología: una celda solo toma los valores de la celda gruesa más cercana si está a un paso de rejilla como mucho; con la descarga a medias queda nula en vez de copiar una celda lejana.
 
 ## [0.8.0] - sin publicar
 
