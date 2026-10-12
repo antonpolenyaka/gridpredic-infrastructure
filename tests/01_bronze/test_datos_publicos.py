@@ -473,3 +473,7 @@ def test_aemet_requests_by_pieces():
     url = landing.aemet_url(cfg, *chunks[0])
     assert url.endswith("/fechaini/2018-06-18T00:00:00UTC/fechafin/2018-07-18T23:59:59UTC")
     assert "api_key" not in url
+    # AEMET answers 400 to more than 2 days per request.
+    assert int(cfg["dias_por_peticion"]) <= 2
+    lo, hi = landing.warning_chunks("2024-01-01", "2024-01-31", int(cfg["dias_por_peticion"]))[0]
+    assert (hi - lo).days + 1 <= 2
