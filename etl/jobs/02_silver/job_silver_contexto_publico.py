@@ -64,6 +64,13 @@ OpenStreetMap), cleaned and taken to the units Gold uses.
   with its distance (null cell for the fires farther away, which stay for
   the alerts around the network). Rows without position or time are
   rejected (NULL_KEY) and a repeated pass keeps one row (DUPLICATE_KEY).
+- f_fwi_celda_dia: the fire danger indices of CEMS of every cell of the
+  study and day, from the nearest point of their grid of 0.25 degrees (at
+  most max_paso_fwi away): Fire Weather Index and its parts (FFMC, DMC, DC,
+  ISI, BUI), the distance to the point and the dataset (consolidated or
+  intermediate). A day and point that come twice keep the consolidated
+  dataset and then the newest piece (DUPLICATE_KEY); rows without date or
+  position are rejected (NULL_KEY).
 
     docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/02_silver/job_silver_contexto_publico.py
 """
@@ -110,6 +117,9 @@ EFFIS_TABLE = "l1_bronze.effis_area_quemada"
 AEMET_TABLE = "l1_bronze.aemet_aviso"
 FIRMS_TABLE = "l1_bronze.firms_foco"
 HOTSPOTS = "f_foco_incendio"
+FWI_TABLE = "l1_bronze.cems_fwi_dia"
+FIRE_DANGER = "f_fwi_celda_dia"
+FWI_COLUMNS = ["fwi", "ffmc", "dmc", "dc", "isi", "bui"]
 WEATHER_CELLS_TABLE = "l2_silver.d_meteo_celda"
 WARNINGS = "f_aviso_meteo"
 WARNING_LEVELS = {"verde": 0, "amarillo": 1, "naranja": 2, "rojo": 3}
@@ -666,6 +676,59 @@ def hotspots(spark, firms, cells: list, max_step: float = 1.5 * CELL_DEGREES):
     return df, rejected
 
 
+def fire_danger(spark, bronze, cells: list, max_step: float = 0.2):
+    """(rows of f_fwi_celda_dia, rejected rows as a list of dicts) from the indices of Bronze and the cells."""
+    import numpy as np
+    import pandas as pd
+
+    pdf = bronze.toPandas()
+    for column in ["fecha", "latitud", "longitud", "pieza"] + FWI_COLUMNS:
+        if column not in pdf.columns:
+            pdf[column] = None
+    for column in ["latitud", "longitud"] + FWI_COLUMNS:
+        pdf[column] = pd.to_numeric(pdf[column], errors="coerce")
+    pdf["fecha"] = pd.to_datetime(pdf["fecha"], errors="coerce")
+    bad = pdf["fecha"].isna() | pdf["latitud"].isna() | pdf["longitud"].isna()
+    rejected = [{**r, "_motivo": "NULL_KEY"} for r in pdf[bad].astype(str).to_dict("records")]
+    pdf = pdf[~bad].copy()
+    pdf["conjunto"] = np.where(pdf["pieza"].fillna("").str.contains("intermediate"), "intermediate", "consolidated")
+    # The consolidated dataset first, then the newest piece (the one with more months of the year).
+    pdf = pdf.sort_values(["fecha", "latitud", "longitud", "conjunto", "pieza"], ascending=[True, True, True, True,
+                                                                                            False])
+    duplicated = pdf.duplicated(["fecha", "latitud", "longitud"])
+    rejected += [{**r, "_motivo": "DUPLICATE_KEY"} for r in pdf[duplicated].astype(str).to_dict("records")]
+    pdf = pdf[~duplicated]
+    if not len(pdf) or not cells:
+        return None, rejected
+
+    points = pdf[["latitud", "longitud"]].drop_duplicates().to_numpy()
+    nearest = []
+    for cell_id, lat, lon in cells:
+        dlat = points[:, 0] - lat
+        dlon = (points[:, 1] - lon) * np.cos(np.radians(lat))
+        best = int(np.argmin(dlat ** 2 + dlon ** 2))
+        if abs(points[best, 0] - lat) <= max_step + 1e-9 and abs(points[best, 1] - lon) <= max_step + 1e-9:
+            nearest.append((cell_id, points[best, 0], points[best, 1],
+                            float(111.2 * np.sqrt(dlat[best] ** 2 + dlon[best] ** 2))))
+        else:
+            logger.warning("Cell %s without a point of the fire danger grid within %s degrees", cell_id, max_step)
+    if not nearest:
+        return None, rejected
+    match = pd.DataFrame(nearest, columns=["celda_id", "latitud", "longitud", "distancia_punto_km"])
+    out = match.merge(pdf, on=["latitud", "longitud"], how="inner")
+    out = out.rename(columns={"latitud": "latitud_punto", "longitud": "longitud_punto"})
+    out["fecha"] = out["fecha"].dt.date
+    out = out[["celda_id", "fecha"] + FWI_COLUMNS + ["latitud_punto", "longitud_punto", "distancia_punto_km",
+                                                     "conjunto"]]
+    out["celda_id"] = out["celda_id"].astype("string")
+    out["conjunto"] = out["conjunto"].astype("string")
+    df = spark.createDataFrame(out)
+    for column in FWI_COLUMNS:
+        df = df.withColumn(column, F.when(F.isnan(column), F.lit(None).cast("double")).otherwise(F.col(column)))
+    df = df.withColumn("anio", F.year("fecha")).withColumn("audit_loaded_at", F.current_timestamp())
+    return df, rejected
+
+
 def optional(spark, table):
     if spark.catalog.tableExists(table):
         return spark.table(table)
@@ -824,6 +887,29 @@ def main():
         for reason in sorted({r["_motivo"] for r in rejected}):
             dq.add(HOTSPOTS, f"rechazo:{reason}", sum(r["_motivo"] == reason for r in rejected), total,
                    umbral_pct=5.0)
+
+    fwi = optional(spark, FWI_TABLE)
+    if fwi is not None and spark.catalog.tableExists(WEATHER_CELLS_TABLE):
+        study = [
+            (r["celda_id"], float(r["celda_id"].split("_")[0]), float(r["celda_id"].split("_")[1]))
+            for r in spark.table(WEATHER_CELLS_TABLE).select("celda_id").distinct().collect() if r["celda_id"]
+        ]
+        total = fwi.count()
+        out, rejected = fire_danger(spark, fwi, study)
+        if out is not None:
+            write_table(out, silver_table(FIRE_DANGER), partition_by=["anio"])
+            written = spark.table(silver_table(FIRE_DANGER))
+            rows = written.count()
+            dq.add(FIRE_DANGER, "puntos_dia_entrada", total)
+            dq.add(FIRE_DANGER, "filas", rows)
+            dq.add(FIRE_DANGER, "celdas", written.select("celda_id").distinct().count(), len(study))
+            dq.add(FIRE_DANGER, "sin_fwi", written.where(F.col("fwi").isNull()).count(), rows, umbral_pct=2.0)
+            span = written.agg(F.min("fecha"), F.max("fecha")).first()
+            dq.add(FIRE_DANGER, "rango_fechas", rows, detalle=f"{span[0]} - {span[1]}")
+        # A day and point repeated by two pieces is expected (consolidated and intermediate): no threshold.
+        for reason in sorted({r["_motivo"] for r in rejected}):
+            dq.add(FIRE_DANGER, f"rechazo:{reason}", sum(r["_motivo"] == reason for r in rejected), total,
+                   umbral_pct=5.0 if reason == "NULL_KEY" else None)
 
     dq.flush()
     logger.info("Silver completed: public data")

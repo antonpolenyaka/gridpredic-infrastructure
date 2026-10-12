@@ -54,6 +54,11 @@ cleaning and the aggregates are in Silver.
   confidence (l, n, h for VIIRS; 0 - 100 for MODIS), fire radiative power,
   day or night, brightness, the pixel size and the source (sensor and
   processing), as text, as FIRMS gives them.
+- cems_fwi_dia: one row per day and point of the grid of the fire danger
+  indices of CEMS: date, latitude, longitude (from -180 to 180), the Fire
+  Weather Index (fwi) and its parts (ffmc, dmc, dc, isi, bui) and the piece
+  of Landing (year and dataset type, consolidated or intermediate). The
+  NetCDF4 files are read with h5py.
 
 The tables are rebuilt whole in every run (a few thousand rows, the
 buildings about a hundred thousand).
@@ -812,6 +817,62 @@ def parse_aemet_archive(raw: bytes, box: tuple = None, depth: int = 0) -> list:
     return rows
 
 
+# Short names of the variables of the EWDS (GRIB shortName kept by the NetCDF) -> Bronze column.
+FWI_VARIABLES = {"fwinx": "fwi", "ffmcode": "ffmc", "dufmcode": "dmc", "drtcode": "dc", "infsinx": "isi",
+                 "fbupinx": "bui", "buinfx": "bui"}
+TIME_UNITS = re.compile(r"\s*(seconds|minutes|hours|days)\s+since\s+(\d{4}-\d{1,2}-\d{1,2})(?:[ T](\d{1,2}:\d{2}(?::\d{2})?))?")
+
+
+def nc_dates(values, units: str) -> list:
+    """ISO dates of the values of a CF time axis ("seconds since 1970-01-01" and the like)."""
+    match = TIME_UNITS.match(units or "")
+    if not match:
+        raise ValueError(f"Unknown time units: {units}")
+    step = {"seconds": "s", "minutes": "min", "hours": "h", "days": "D"}[match.group(1)]
+    base = pd.Timestamp(match.group(2) + (" " + match.group(3) if match.group(3) else ""))
+    return [(base + pd.to_timedelta(float(v), unit=step)).date().isoformat() for v in values]
+
+
+def text_attribute(value) -> str:
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    if isinstance(value, list):
+        value = value[0] if value else ""
+    return value.decode("utf-8", "replace") if isinstance(value, bytes) else str(value)
+
+
+def parse_fwi(raw: bytes, piece: str) -> list:
+    """Rows of a NetCDF4 of the fire danger indices: one per day and point, the indices as numbers."""
+    import h5py
+    import numpy as np
+
+    with h5py.File(io.BytesIO(raw), "r") as nc:
+        axis = "valid_time" if "valid_time" in nc else "time"
+        dates = nc_dates(nc[axis][:], text_attribute(nc[axis].attrs.get("units", b"")))
+        lats = np.asarray(nc["latitude"][:], dtype="float64")
+        lons = np.asarray(nc["longitude"][:], dtype="float64")
+        lons = np.where(lons > 180.0, lons - 360.0, lons)
+        values = {}
+        for name, column in FWI_VARIABLES.items():
+            if name in nc and nc[name].ndim == 3 and column not in values:
+                data = np.asarray(nc[name][:], dtype="float64")
+                fill = nc[name].attrs.get("_FillValue")
+                if fill is not None and not np.all(np.isnan(np.atleast_1d(fill))):
+                    data[np.isclose(data, float(np.atleast_1d(fill)[0]))] = np.nan
+                data[np.abs(data) > 1e20] = np.nan
+                values[column] = data
+
+    t, y, x = np.meshgrid(np.arange(len(dates)), np.arange(len(lats)), np.arange(len(lons)), indexing="ij")
+    frame = pd.DataFrame({"fecha": np.asarray(dates)[t.ravel()], "latitud": np.round(lats[y.ravel()], 4),
+                          "longitud": np.round(lons[x.ravel()], 4)})
+    for column, data in values.items():
+        frame[column] = data.reshape(-1)
+    frame = frame.dropna(subset=list(values), how="all")
+    frame["pieza"] = piece
+    return [{k: (None if isinstance(v, float) and v != v else v) for k, v in row.items()}
+            for row in frame.to_dict("records")]
+
+
 def read_json(fs, path):
     with fs.open(path, "r") as file:
         return json.load(file)
@@ -953,6 +1014,15 @@ def main():
             with fs.open(path, "r") as file:
                 hotspots += parse_firms(file.read(), path.rsplit("/", 2)[-2])
         write(hotspots, tables["focos"], "FIRMS active fires")
+
+    danger = []
+    if "fwi" in tables:
+        for path in sorted(fs.glob(f"{landing}/fwi/*.nc")):
+            with fs.open(path, "rb") as file:
+                rows = parse_fwi(file.read(), path.rsplit("/", 1)[-1][:-3])
+            danger += rows
+            logger.info("EWDS %s: %s days and points", path.rsplit("/", 1)[-1], len(rows))
+        write(danger, tables["fwi"], "CEMS fire danger indices")
 
     logger.info("Bronze of the public data completed")
 
