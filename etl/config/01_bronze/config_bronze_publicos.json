@@ -77,8 +77,8 @@
       "clave_env": "AEMET_API_KEY",
       "desde": "2018-06-18",
       "hasta": "2026-08-31",
-      "dias_por_peticion": 31,
-      "pausa_s": 3,
+      "dias_por_peticion": 2,
+      "pausa_s": 4,
       "timeout_s": 300,
       "margen_grados": 0.3
     },
