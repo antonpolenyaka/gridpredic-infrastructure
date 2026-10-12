@@ -366,10 +366,12 @@
       {"nombre": "perfecta", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer", "dia"]},
       {"nombre": "perfecta_avisos", "desde": "2018-06-25", "bloques": ["calendario", "historia", "ayer", "dia", "avisos"]},
       {"nombre": "perfecta_comun", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer", "dia_comun"]},
+      {"nombre": "comun_avisos", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun"]},
       {"nombre": "perfecta_extremos", "desde": "2017-01-08",
        "bloques": ["calendario", "historia", "ayer", "dia", "extremos"]}
     ],
-    "variante_prevision": "perfecta_comun",
+    "variante_prevision": ["perfecta_comun", "comun_avisos"],
     "anios_prevision": [2024, 2025],
     "comparaciones": [
       ["ayer__logistica", "calendario_historia__logistica"],
