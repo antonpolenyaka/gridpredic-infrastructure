@@ -18,6 +18,11 @@ Bronze of the hourly weather downloaded by job_landing_meteo_openmeteo.py.
 - With --fuente openmeteo_convectivo, meteo_openmeteo_convectivo_hora: CAPE
   and lifted index of the archived GFS runs by cell of 0.25 degrees
   (celda_id of that grid), same hour convention.
+- With --fuente openmeteo_extra, meteo_openmeteo_extra_hora: the other
+  variables of the reanalysis (wind direction, wind at 100 m, soil moisture,
+  dew point, vapour pressure deficit, low clouds, evapotranspiration, weather
+  code and radiation) by cell of 0.25 degrees: they change slowly in space,
+  and with the coarser grid the whole history fits in the free plan.
 
 The whole table is rebuilt in every run (a few million rows).
 
@@ -43,7 +48,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("meteo")
 
 SUM_VARIABLES = {"precipitation", "rain", "snowfall"}
-MAX_VARIABLES = {"wind_speed_10m", "wind_gusts_10m", "cape"}
+MAX_VARIABLES = {"wind_speed_10m", "wind_gusts_10m", "cape", "weather_code", "wind_speed_100m"}
 
 
 def payload_frame(payload: dict, variables: list, zone: str) -> pd.DataFrame:

@@ -42,5 +42,30 @@
     "espera_reintento_s": 60,
     "zona_horaria": "Europe/Madrid",
     "tabla_horas": "l1_bronze.meteo_openmeteo_convectivo_hora"
+  },
+  "openmeteo_extra": {
+    "referencia_municipios": "s3://datalake/00_landing/reference_data/municipios.xlsx",
+    "landing": "s3://datalake/00_landing/meteo/openmeteo_extra",
+    "modelo": "ecmwf_ifs",
+    "variables": [
+      "wind_direction_10m",
+      "wind_speed_100m",
+      "soil_moisture_0_to_7cm",
+      "soil_moisture_28_to_100cm",
+      "dew_point_2m",
+      "vapour_pressure_deficit",
+      "cloud_cover_low",
+      "et0_fao_evapotranspiration",
+      "weather_code",
+      "shortwave_radiation"
+    ],
+    "celda_grados": 0.25,
+    "desde": "2017-01-01",
+    "hasta": "2026-08-31",
+    "pausa_s": 22,
+    "reintentos": 5,
+    "espera_reintento_s": 60,
+    "zona_horaria": "Europe/Madrid",
+    "tabla_horas": "l1_bronze.meteo_openmeteo_extra_hora"
   }
 }

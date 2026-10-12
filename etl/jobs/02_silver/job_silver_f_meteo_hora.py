@@ -19,6 +19,11 @@ hour), with the same rules as the rest of the layer:
   degrees), every cell takes the values of the nearest convective cell:
   cape_jkg and indice_levantamiento (null before that date). Out of range
   values are set to null as the rest.
+- The same with l1_bronze.meteo_openmeteo_extra_hora (the other variables
+  of the reanalysis in cells of 0.25 degrees, EXTRA): wind direction and
+  wind at 100 m, soil moisture at 0 - 7 and 28 - 100 cm, dew point, vapour
+  pressure deficit, low clouds, evapotranspiration, weather code and
+  radiation.
 
 The table is small (a few million rows) and is rebuilt whole in every run.
 """
@@ -44,11 +49,26 @@ ENTITY = "f_meteo_hora"
 TARGET_TABLE = silver_table(ENTITY)
 SOURCE_TABLE = "l1_bronze.meteo_openmeteo_hora"
 CONVECTIVE_TABLE = "l1_bronze.meteo_openmeteo_convectivo_hora"
+EXTRA_TABLE = "l1_bronze.meteo_openmeteo_extra_hora"
 
 # Convective variables: Bronze name -> Silver name, physical range.
 CONVECTIVE = {
     "cape": ("cape_jkg", 0.0, 10000.0),
     "lifted_index": ("indice_levantamiento", -20.0, 40.0),
+}
+
+# Other variables of the reanalysis, in cells of 0.25 degrees.
+EXTRA = {
+    "wind_direction_10m": ("direccion_viento_grados", 0.0, 360.0),
+    "wind_speed_100m": ("viento_100m_kmh", 0.0, 300.0),
+    "soil_moisture_0_to_7cm": ("humedad_suelo_0_7_m3m3", 0.0, 1.0),
+    "soil_moisture_28_to_100cm": ("humedad_suelo_28_100_m3m3", 0.0, 1.0),
+    "dew_point_2m": ("punto_rocio_c", -50.0, 40.0),
+    "vapour_pressure_deficit": ("deficit_presion_vapor_kpa", 0.0, 15.0),
+    "cloud_cover_low": ("nubes_bajas_pct", 0.0, 100.0),
+    "et0_fao_evapotranspiration": ("evapotranspiracion_mm", 0.0, 5.0),
+    "weather_code": ("codigo_tiempo", 0.0, 99.0),
+    "shortwave_radiation": ("radiacion_wm2", 0.0, 1500.0),
 }
 
 # Bronze name -> Silver name, physical range (min, max).
@@ -112,7 +132,17 @@ def cell_center(column):
 
 def add_convective(out: DataFrame, conv: DataFrame) -> DataFrame:
     """CAPE and lifted index of the nearest convective cell, by (cell, hour)."""
-    present = {k: v for k, v in CONVECTIVE.items() if k in conv.columns}
+    return add_coarse(out, conv, CONVECTIVE)
+
+
+def add_extra(out: DataFrame, extra: DataFrame) -> DataFrame:
+    """The other variables of the reanalysis from the nearest cell of 0.25 degrees, by (cell, hour)."""
+    return add_coarse(out, extra, EXTRA)
+
+
+def add_coarse(out: DataFrame, conv: DataFrame, variables: dict) -> DataFrame:
+    """The variables of the nearest cell of a coarser grid, by (cell, hour)."""
+    present = {k: v for k, v in variables.items() if k in conv.columns}
     if not present:
         return out
 
@@ -183,6 +213,11 @@ def main():
     else:
         logger.info("%s not found: no CAPE in Silver", CONVECTIVE_TABLE)
 
+    if spark.catalog.tableExists(EXTRA_TABLE):
+        out = add_extra(out, spark.table(EXTRA_TABLE))
+    else:
+        logger.info("%s not found: no extra variables in Silver", EXTRA_TABLE)
+
     out = out.localCheckpoint(eager=True)
 
     write_table(out, TARGET_TABLE, partition_by=["anio"])
@@ -201,16 +236,18 @@ def main():
         *([F.sum(F.col("racha_menor_viento").cast("long")).alias("racha_menor_viento")]
           if "racha_menor_viento" in out.columns else []),
         *[F.sum(F.col(name).isNull().cast("long")).alias(f"nulos:{name}")
-          for name, _, _ in list(VARIABLES.values()) + list(CONVECTIVE.values()) if name in out.columns],
+          for name, _, _ in list(VARIABLES.values()) + list(CONVECTIVE.values()) + list(EXTRA.values())
+          if name in out.columns],
     ).first().asDict()
 
     dq.add(ENTITY, "flag:fuera_rango", sums.pop("fuera_rango") or 0, total_out, umbral_pct=0.5)
     if "racha_menor_viento" in sums:
         dq.add(ENTITY, "flag:racha_menor_viento", sums.pop("racha_menor_viento") or 0, total_out, umbral_pct=5.0)
     for metric, value in sums.items():
-        # CAPE only exists from 23.03.2021: its nulls are information, not a problem.
-        convective = any(metric.endswith(name) for name, _, _ in CONVECTIVE.values())
-        dq.add(ENTITY, metric, value or 0, total_out, umbral_pct=None if convective else 1.0)
+        # CAPE only exists from 23.03.2021 and the extra grid can still be loading:
+        # their nulls are information, not a problem.
+        partial = any(metric.endswith(name) for name, _, _ in list(CONVECTIVE.values()) + list(EXTRA.values()))
+        dq.add(ENTITY, metric, value or 0, total_out, umbral_pct=None if partial else 1.0)
 
     dq.add(ENTITY, "huecos_horas", count_gaps(out), total_out, umbral_pct=0.5,
            detalle="missing hours inside the range of each cell, summer time jump excluded")
