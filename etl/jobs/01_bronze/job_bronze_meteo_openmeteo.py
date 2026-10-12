@@ -23,6 +23,13 @@ Bronze of the hourly weather downloaded by job_landing_meteo_openmeteo.py.
   dew point, vapour pressure deficit, low clouds, evapotranspiration, weather
   code and radiation) by cell of 0.25 degrees: they change slowly in space,
   and with the coarser grid the whole history fits in the free plan.
+- With --fuente openmeteo_previo, meteo_openmeteo_previo_hora: the forecasts
+  that ICON-EU gave for every hour one and two days before
+  (<variable>_previous_day1 and _previous_day2 of the Previous Runs API,
+  archived from January 2024) and the run of the same day, by cell of 0.1
+  degrees. It is the weather the operator could know the day before, to
+  measure how much of what the reanalysis gives survives with a real
+  forecast. A suffixed variable is merged like the variable it forecasts.
 
 The whole table is rebuilt in every run (a few million rows).
 
@@ -35,6 +42,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 
 import numpy as np
@@ -64,19 +72,24 @@ def payload_frame(payload: dict, variables: list, zone: str) -> pd.DataFrame:
     return df
 
 
+def forecast_of(variable: str) -> str:
+    """The variable a forecast of the Previous Runs API is about (wind_gusts_10m_previous_day1 -> wind_gusts_10m)."""
+    return re.sub(r"_previous_day\d+$", "", variable)
+
+
 def merge_local_hours(df: pd.DataFrame, variables: list) -> pd.DataFrame:
     """
     One row per (celda_id, hora) after the change to winter time. Directions
     are averaged as vectors (350 and 10 degrees give 0, not 180).
     """
     df = df.copy()
-    circular = [v for v in variables if v in CIRCULAR_VARIABLES]
+    circular = [v for v in variables if forecast_of(v) in CIRCULAR_VARIABLES]
     for v in circular:
         radians = np.radians(df[v])
         df[f"_{v}_sin"], df[f"_{v}_cos"] = np.sin(radians), np.cos(radians)
 
-    how = {v: ("sum" if v in SUM_VARIABLES else "max" if v in MAX_VARIABLES else "mean")
-           for v in variables if v not in CIRCULAR_VARIABLES}
+    how = {v: ("sum" if forecast_of(v) in SUM_VARIABLES else "max" if forecast_of(v) in MAX_VARIABLES else "mean")
+           for v in variables if v not in circular}
     how.update({f"_{v}_{part}": "mean" for v in circular for part in ("sin", "cos")})
     out = df.groupby(["celda_id", "hora"], as_index=False).agg(how)
 

@@ -67,5 +67,31 @@
     "espera_reintento_s": 60,
     "zona_horaria": "Europe/Madrid",
     "tabla_horas": "l1_bronze.meteo_openmeteo_extra_hora"
+  },
+  "openmeteo_previo": {
+    "api": "https://previous-runs-api.open-meteo.com/v1/forecast",
+    "referencia_municipios": "s3://datalake/00_landing/reference_data/municipios.xlsx",
+    "landing": "s3://datalake/00_landing/meteo/openmeteo_previo",
+    "modelo": "icon_eu",
+    "variables": [
+      "wind_gusts_10m_previous_day1",
+      "wind_speed_10m_previous_day1",
+      "precipitation_previous_day1",
+      "snowfall_previous_day1",
+      "temperature_2m_previous_day1",
+      "relative_humidity_2m_previous_day1",
+      "wind_gusts_10m_previous_day2",
+      "precipitation_previous_day2",
+      "wind_gusts_10m",
+      "precipitation"
+    ],
+    "celda_grados": 0.1,
+    "desde": "2024-01-01",
+    "hasta": "2026-08-31",
+    "pausa_s": 22,
+    "reintentos": 5,
+    "espera_reintento_s": 60,
+    "zona_horaria": "Europe/Madrid",
+    "tabla_horas": "l1_bronze.meteo_openmeteo_previo_hora"
   }
 }

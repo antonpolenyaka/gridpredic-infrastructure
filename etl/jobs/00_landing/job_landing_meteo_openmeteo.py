@@ -34,6 +34,10 @@ plan for non commercial use).
   thunderstorms we can have for free, since the lightning data of AEMET are
   not open. CAPE is smooth, so its cells are of 0.25 degrees (the GFS grid)
   and the whole window fits in the daily limit together with the history.
+- --fuente openmeteo_previo asks the Previous Runs API for the forecasts of
+  ICON-EU made one and two days before every hour (archived from January
+  2024): what the operator could know the day before. The same request,
+  only the API and the suffixed variables change.
 
 Run from the Spark master container (it has pandas, s3fs and the MinIO
 credentials; no Spark is needed):
