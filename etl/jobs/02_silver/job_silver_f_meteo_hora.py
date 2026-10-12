@@ -14,6 +14,11 @@ hour), with the same rules as the rest of the layer:
   racha_menor_viento (it happens with the interpolation of the model).
 - Hours missing in a cell are counted (huecos). When the clock goes forward
   in March the local hour 02:00 does not exist, so that jump is not a gap.
+- When l1_bronze.meteo_openmeteo_convectivo_hora exists (CAPE and lifted
+  index of the archived GFS runs, from 23.03.2021, in cells of 0.25
+  degrees), every cell takes the values of the nearest convective cell:
+  cape_jkg and indice_levantamiento (null before that date). Out of range
+  values are set to null as the rest.
 
 The table is small (a few million rows) and is rebuilt whole in every run.
 """
@@ -38,6 +43,13 @@ from silver_common import (
 ENTITY = "f_meteo_hora"
 TARGET_TABLE = silver_table(ENTITY)
 SOURCE_TABLE = "l1_bronze.meteo_openmeteo_hora"
+CONVECTIVE_TABLE = "l1_bronze.meteo_openmeteo_convectivo_hora"
+
+# Convective variables: Bronze name -> Silver name, physical range.
+CONVECTIVE = {
+    "cape": ("cape_jkg", 0.0, 10000.0),
+    "lifted_index": ("indice_levantamiento", -20.0, 40.0),
+}
 
 # Bronze name -> Silver name, physical range (min, max).
 VARIABLES = {
@@ -92,6 +104,48 @@ def transform(df_in: DataFrame):
     return out, union_rejects([rejected.drop("_cargado"), duplicated.drop("_cargado")])
 
 
+def cell_center(column):
+    """(latitude, longitude) of a cell id "39.40_-6.30"."""
+    parts = F.split(column, "_")
+    return parts.getItem(0).try_cast("double"), parts.getItem(1).try_cast("double")
+
+
+def add_convective(out: DataFrame, conv: DataFrame) -> DataFrame:
+    """CAPE and lifted index of the nearest convective cell, by (cell, hour)."""
+    present = {k: v for k, v in CONVECTIVE.items() if k in conv.columns}
+    if not present:
+        return out
+
+    cells = out.select("celda_id").distinct()
+    lat, lon = cell_center(F.col("celda_id"))
+    cells = cells.select("celda_id", lat.alias("_lat"), lon.alias("_lon"))
+    conv_cells = conv.select(F.col("celda_id").alias("celda_conv")).distinct()
+    clat, clon = cell_center(F.col("celda_conv"))
+    conv_cells = conv_cells.select("celda_conv", clat.alias("_clat"), clon.alias("_clon"))
+
+    distance = (F.col("_lat") - F.col("_clat")) ** 2 + (F.col("_lon") - F.col("_clon")) ** 2
+    nearest = (
+        cells.crossJoin(F.broadcast(conv_cells)).withColumn("_d", distance)
+        .withColumn("_r", F.row_number().over(Window.partitionBy("celda_id").orderBy("_d", "celda_conv")))
+        .where(F.col("_r") == 1).select("celda_id", "celda_conv")
+    )
+
+    hourly = conv.select(
+        F.trim(F.col("celda_id")).alias("celda_conv"), F.col("hora").cast("timestamp").alias("hora"),
+        *[F.col(k).cast("double").alias(name) for k, (name, _, _) in present.items()],
+    ).dropDuplicates(["celda_conv", "hora"])
+
+    for name, low, high in present.values():
+        bad = (F.col(name) < F.lit(low)) | (F.col(name) > F.lit(high))
+        hourly = hourly.withColumn(name, F.when(F.coalesce(bad, F.lit(False)), F.lit(None)).otherwise(F.col(name)))
+
+    return (
+        out.join(F.broadcast(nearest), "celda_id", "left")
+        .join(hourly, ["celda_conv", "hora"], "left")
+        .drop("celda_conv")
+    )
+
+
 def count_gaps(out: DataFrame) -> int:
     """
     Missing hours inside the range of every cell. The jump of the change to
@@ -123,6 +177,12 @@ def main():
     total_in = df_in.count()
 
     out, rejected = transform(df_in)
+
+    if spark.catalog.tableExists(CONVECTIVE_TABLE):
+        out = add_convective(out, spark.table(CONVECTIVE_TABLE))
+    else:
+        logger.info("%s not found: no CAPE in Silver", CONVECTIVE_TABLE)
+
     out = out.localCheckpoint(eager=True)
 
     write_table(out, TARGET_TABLE, partition_by=["anio"])
@@ -141,14 +201,16 @@ def main():
         *([F.sum(F.col("racha_menor_viento").cast("long")).alias("racha_menor_viento")]
           if "racha_menor_viento" in out.columns else []),
         *[F.sum(F.col(name).isNull().cast("long")).alias(f"nulos:{name}")
-          for name, _, _ in VARIABLES.values() if name in out.columns],
+          for name, _, _ in list(VARIABLES.values()) + list(CONVECTIVE.values()) if name in out.columns],
     ).first().asDict()
 
     dq.add(ENTITY, "flag:fuera_rango", sums.pop("fuera_rango") or 0, total_out, umbral_pct=0.5)
     if "racha_menor_viento" in sums:
         dq.add(ENTITY, "flag:racha_menor_viento", sums.pop("racha_menor_viento") or 0, total_out, umbral_pct=5.0)
     for metric, value in sums.items():
-        dq.add(ENTITY, metric, value or 0, total_out, umbral_pct=1.0)
+        # CAPE only exists from 23.03.2021: its nulls are information, not a problem.
+        convective = any(metric.endswith(name) for name, _, _ in CONVECTIVE.values())
+        dq.add(ENTITY, metric, value or 0, total_out, umbral_pct=None if convective else 1.0)
 
     dq.add(ENTITY, "huecos_horas", count_gaps(out), total_out, umbral_pct=0.5,
            detalle="missing hours inside the range of each cell, summer time jump excluded")

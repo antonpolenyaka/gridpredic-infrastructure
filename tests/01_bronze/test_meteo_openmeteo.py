@@ -78,3 +78,23 @@ def test_local_time_and_change_to_winter_time():
     assert merged.loc["2025-10-26 02:00", "precipitation"] == pytest.approx(3.0)
     assert merged.loc["2025-10-26 02:00", "wind_gusts_10m"] == pytest.approx(50.0)
     assert merged.loc["2025-10-26 02:00", "temperature_2m"] == pytest.approx(8.5)
+
+
+def test_convective_source_url_and_model_list():
+    cfg = landing.load_config()["openmeteo_convectivo"]
+    assert landing.models_of(cfg)[0] == "gfs_seamless"
+    url = landing.request_url(39.5, -6.25, date(2022, 6, 1), date(2022, 6, 30), cfg, "gfs_seamless")
+    assert url.startswith("https://historical-forecast-api.open-meteo.com/v1/forecast?")
+    assert "hourly=cape,lifted_index" in url and "models=gfs_seamless" in url
+    # The reanalysis keeps its single model and its API.
+    archive = landing.load_config()["openmeteo"]
+    assert landing.models_of(archive) == ["ecmwf_ifs"]
+    assert landing.request_url(40.3, -6.0, date(2017, 1, 1), date(2017, 1, 2), archive).startswith(landing.API)
+
+
+def test_stored_window_must_cover_the_year():
+    # A first run from 01.12.2020 left a 2020 file with one month: it is asked again for the whole year.
+    assert not landing.covers(["2020-12-01", "2020-12-31"], date(2020, 1, 1), date(2020, 12, 31))
+    assert landing.covers(["2021-01-01", "2021-12-31"], date(2021, 1, 1), date(2021, 12, 31))
+    assert landing.covers(["2026-01-01", "2026-08-31"], date(2026, 1, 1), date(2026, 8, 31))
+    assert not landing.covers(None, date(2021, 1, 1), date(2021, 12, 31))

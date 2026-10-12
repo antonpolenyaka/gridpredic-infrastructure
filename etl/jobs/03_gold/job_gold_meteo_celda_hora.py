@@ -19,6 +19,9 @@ Gold weather: the features of every cell and hour and the cell of every CT.
     these columns out (meteo.prevision false in config_ml.json).
   - met_region_* / metprev_region_*: the maximum over all the cells, the
     size of the storm.
+  - met_cape_* and met_li_min_6h, when Silver has CAPE (from 23.03.2021):
+    the instability of the air of the hour and its maximum of 6 and 24 h,
+    and the lowest lifted index of 6 h, the conditions of a thunderstorm.
 
 Both tables are small and are rebuilt whole. They are not joined into
 features_ct_hora: the training step joins them by (celda_id, hora), so the
@@ -88,12 +91,16 @@ def ct_cells(dim, cells):
 
 def weather_features(hourly, lead: int, region: bool):
     """(features DataFrame, feature names) from l2_silver.f_meteo_hora."""
+    convective = "cape_jkg" in hourly.columns
     w = hourly.select(
         "celda_id", "hora",
         F.col("racha_kmh").alias("racha"), F.col("viento_kmh").alias("viento"),
         F.col("precipitacion_mm").alias("lluvia"), F.col("nieve_cm").alias("nieve"),
         F.col("temperatura_c").alias("temp"), F.col("humedad_pct").alias("humedad"),
         F.col("presion_hpa").alias("presion"),
+        *([F.col("cape_jkg").alias("cape"),
+           (F.col("indice_levantamiento") if "indice_levantamiento" in hourly.columns
+            else F.lit(None).cast("double")).alias("li")] if convective else []),
     ).withColumn("_t", F.unix_timestamp("hora"))
 
     ordered = Window.partitionBy("celda_id").orderBy("_t")
@@ -122,6 +129,13 @@ def weather_features(hourly, lead: int, region: bool):
         (F.col("presion") - F.first("presion").over(at(3))).alias("met_presion_delta_3h"),
         (F.col("presion") - F.first("presion").over(at(24))).alias("met_presion_delta_24h"),
     ]
+
+    if convective:
+        columns += [
+            F.col("cape").alias("met_cape_1h"),
+            *[F.max("cape").over(past(h)).alias(f"met_cape_max_{h}h") for h in (6, 24)],
+            F.min("li").over(past(6)).alias("met_li_min_6h"),
+        ]
 
     if lead > 0:
         columns += [
