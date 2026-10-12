@@ -24,6 +24,13 @@ hour), with the same rules as the rest of the layer:
   wind at 100 m, soil moisture at 0 - 7 and 28 - 100 cm, dew point, vapour
   pressure deficit, low clouds, evapotranspiration, weather code and
   radiation.
+- And with l1_bronze.meteo_openmeteo_previo_hora (Previous Runs API, from
+  January 2024, cells of 0.1 degrees like the reanalysis, FORECAST): what
+  ICON-EU forecast for the hour one day before (racha_prev1_kmh,
+  viento_prev1_kmh, precipitacion_prev1_mm, nieve_prev1_cm,
+  temperatura_prev1_c, humedad_prev1_pct) and two days before
+  (racha_prev2_kmh, precipitacion_prev2_mm), and its run of the same day
+  (racha_icon_kmh, precipitacion_icon_mm). Null before the archive starts.
 
 The table is small (a few million rows) and is rebuilt whole in every run.
 """
@@ -50,6 +57,7 @@ TARGET_TABLE = silver_table(ENTITY)
 SOURCE_TABLE = "l1_bronze.meteo_openmeteo_hora"
 CONVECTIVE_TABLE = "l1_bronze.meteo_openmeteo_convectivo_hora"
 EXTRA_TABLE = "l1_bronze.meteo_openmeteo_extra_hora"
+FORECAST_TABLE = "l1_bronze.meteo_openmeteo_previo_hora"
 
 # Convective variables: Bronze name -> Silver name, physical range.
 CONVECTIVE = {
@@ -69,6 +77,21 @@ EXTRA = {
     "et0_fao_evapotranspiration": ("evapotranspiracion_mm", 0.0, 5.0),
     "weather_code": ("codigo_tiempo", 0.0, 99.0),
     "shortwave_radiation": ("radiacion_wm2", 0.0, 1500.0),
+}
+
+# Forecasts of ICON-EU made one and two days before the hour and its run of
+# the same day (Previous Runs API), in the cells of the reanalysis.
+FORECAST = {
+    "wind_gusts_10m_previous_day1": ("racha_prev1_kmh", 0.0, 300.0),
+    "wind_speed_10m_previous_day1": ("viento_prev1_kmh", 0.0, 250.0),
+    "precipitation_previous_day1": ("precipitacion_prev1_mm", 0.0, 200.0),
+    "snowfall_previous_day1": ("nieve_prev1_cm", 0.0, 100.0),
+    "temperature_2m_previous_day1": ("temperatura_prev1_c", -30.0, 55.0),
+    "relative_humidity_2m_previous_day1": ("humedad_prev1_pct", 0.0, 100.0),
+    "wind_gusts_10m_previous_day2": ("racha_prev2_kmh", 0.0, 300.0),
+    "precipitation_previous_day2": ("precipitacion_prev2_mm", 0.0, 200.0),
+    "wind_gusts_10m": ("racha_icon_kmh", 0.0, 300.0),
+    "precipitation": ("precipitacion_icon_mm", 0.0, 200.0),
 }
 
 # Bronze name -> Silver name, physical range (min, max).
@@ -138,6 +161,11 @@ def add_convective(out: DataFrame, conv: DataFrame) -> DataFrame:
 def add_extra(out: DataFrame, extra: DataFrame) -> DataFrame:
     """The other variables of the reanalysis from the nearest cell of 0.25 degrees, by (cell, hour)."""
     return add_coarse(out, extra, EXTRA)
+
+
+def add_forecast(out: DataFrame, forecast: DataFrame) -> DataFrame:
+    """The forecasts of ICON-EU of the same cell (the same grid of 0.1 degrees), by (cell, hour)."""
+    return add_coarse(out, forecast, FORECAST, max_step=0.05)
 
 
 # Farthest a cell of the coarse grid (0.25 degrees) can be from a cell to
@@ -227,6 +255,11 @@ def main():
     else:
         logger.info("%s not found: no extra variables in Silver", EXTRA_TABLE)
 
+    if spark.catalog.tableExists(FORECAST_TABLE):
+        out = add_forecast(out, spark.table(FORECAST_TABLE))
+    else:
+        logger.info("%s not found: no forecasts of ICON-EU in Silver", FORECAST_TABLE)
+
     out = out.localCheckpoint(eager=True)
 
     write_table(out, TARGET_TABLE, partition_by=["anio"])
@@ -246,16 +279,18 @@ def main():
           if "racha_menor_viento" in out.columns else []),
         *[F.sum(F.col(name).isNull().cast("long")).alias(f"nulos:{name}")
           for name, _, _ in list(VARIABLES.values()) + list(CONVECTIVE.values()) + list(EXTRA.values())
-          if name in out.columns],
+          + list(FORECAST.values()) if name in out.columns],
     ).first().asDict()
 
     dq.add(ENTITY, "flag:fuera_rango", sums.pop("fuera_rango") or 0, total_out, umbral_pct=0.5)
     if "racha_menor_viento" in sums:
         dq.add(ENTITY, "flag:racha_menor_viento", sums.pop("racha_menor_viento") or 0, total_out, umbral_pct=5.0)
     for metric, value in sums.items():
-        # CAPE only exists from 23.03.2021 and the extra grid can still be loading:
-        # their nulls are information, not a problem.
-        partial = any(metric.endswith(name) for name, _, _ in list(CONVECTIVE.values()) + list(EXTRA.values()))
+        # CAPE only exists from 23.03.2021, the forecasts of ICON-EU from 2024 and
+        # the extra grid can still be loading: their nulls are information, not a
+        # problem.
+        partial = any(metric.endswith(name) for name, _, _ in
+                      list(CONVECTIVE.values()) + list(EXTRA.values()) + list(FORECAST.values()))
         dq.add(ENTITY, metric, value or 0, total_out, umbral_pct=None if partial else 1.0)
 
     dq.add(ENTITY, "huecos_horas", count_gaps(out), total_out, umbral_pct=0.5,
