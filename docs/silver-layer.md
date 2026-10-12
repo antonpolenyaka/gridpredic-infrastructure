@@ -54,6 +54,7 @@ Otras reglas de la capa:
 | `f_area_quemada` | EFFIS (`l1_bronze.effis_area_quemada`) | área quemada |
 | `f_aviso_meteo` | AEMET (`l1_bronze.aemet_aviso`) | aviso y celda |
 | `f_foco_incendio` | NASA FIRMS (`l1_bronze.firms_foco`) | foco de incendio |
+| `f_fwi_celda_dia` | Índice de peligro de incendio de CEMS, EWDS de Copernicus (`l1_bronze.cems_fwi_dia`), del punto de su rejilla de 0,25 grados más cercano a cada celda | celda, día |
 | `f_proyeccion_ame`, `d_ame_municipio` | Proyecciones de población 2024-2039 del IEEX (`l1_bronze.ieex_proyeccion_ame`, `ieex_ame_municipio`) | agrupación de municipios y año; municipio |
 | `dq_metrics` | todos los jobs | ejecución, entidad, métrica |
 

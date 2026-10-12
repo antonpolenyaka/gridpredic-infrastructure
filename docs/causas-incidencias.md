@@ -107,7 +107,7 @@ El límite más duro es el número de casos. Con unas 45 incidencias imprevistas
 | [GBIF](https://www.gbif.org/developer/occurrence) | Observaciones de cigüeña blanca y de aves por celda | API libre, sin clave | Integrada (`l2_silver.f_aves_celda_anio`). Sale al revés de lo esperado (más observaciones, menos averías por fauna): mide dónde observa la gente, no dónde anidan |
 | [EFFIS](https://forest-fire.emergency.copernicus.eu/), áreas quemadas | Incendios de 30 ha o más con fecha y perímetro | WFS libre | Integrada: 507 áreas quemadas alrededor de nuestras celdas. Los CT sin incendios cerca en cinco años no tuvieron ninguna incidencia por incendio |
 | [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) | Focos de incendio activos de MODIS y VIIRS, con archivo desde 2000 (MODIS) y 2012 (VIIRS) | Clave gratuita (MAP_KEY), peticiones de 5 días como mucho | Integrada de Landing a Gold (`focos` en `config_bronze_publicos.json`, `l1_bronze.firms_foco`, `l2_silver.f_foco_incendio`, `met_focos_24h` y `met_focos_frp_max_24h` por celda, contados cuando FIRMS los habría publicado). En 7 de los 8 episodios de corte por incendio (2017 - 2026) había focos a menos de 10 km de las celdas de la distribuidora en las 48 horas anteriores, y en el que falta (03.10.2022) no hubo ninguno. Anuncia los cortes preventivos con horas de antelación |
-| [Copernicus CEMS](https://ewds.climate.copernicus.eu/datasets/cems-fire-historical-v1), índice de peligro de incendio | FWI diario desde 1940 (CC BY) | Cuenta gratuita | Propuesta para los cortes preventivos, junto con FIRMS |
+| [Copernicus CEMS](https://ewds.climate.copernicus.eu/datasets/cems-fire-historical-v1), índice de peligro de incendio | FWI diario desde 1940 y sus partes (FFMC, DMC, DC, ISI, BUI) en una rejilla de 0,25 grados (CC BY 4.0) | Cuenta gratuita del EWDS, token personal y licencia del conjunto aceptada en su página | Integrada de Landing a Gold (`fwi` en `config_bronze_publicos.json`, `l1_bronze.cems_fwi_dia`, `l2_silver.f_fwi_celda_dia`, `met_fwi_ayer` y el resto de partes del día anterior por celda). Una petición por año, que espera unos minutos en la cola del EWDS. El 12.08.2025 el FWI de las celdas de EOSA llegó a 66 - 68, peligro extremo (más de 50), la víspera del corte por incendio. ERA5 no hace falta: los rayos se añadieron al modelo de ECMWF en el ciclo 45r1 y ERA5 usa el 41r2 |
 | [EGIF](https://servicio.mapa.gob.es/incendios/) del Ministerio | Estadística de incendios forestales | Buscador con descarga manual | Descartada para automatizar; EFFIS cubre lo que necesitamos |
 | [Zonas de protección de la avifauna](https://doe.juntaex.es/pdfs/doe/2014/1560o/14061643.pdf) (Resolución de 14.07.2014) | Zonas donde las líneas deben estar protegidas | Shapefile en la web de la Junta, sin dirección estable | Pendiente de descarga manual: diría qué líneas están en zona protegida |
 | Líneas que no cumplen el RD 1432/2008 en Extremadura (Resolución de 15.11.2021) | Relación de líneas peligrosas para la avifauna | PDF en el DOE | Pendiente: habría que pasarlo a tabla a mano |
@@ -125,7 +125,7 @@ Las fuentes del apartado 9 de [network-analysis.md](network-analysis.md) (padró
 | Equipos | CT | 20,5 % | 30,2 % | historia y estructura |
 | Equipos | Cabecera | 48,6 % | 61,2 % | historia, estructura y clima |
 
-En fauna gana la lista naif (los nidos están donde estaban) y en meteorología y equipos el modelo saca entre 10 y 15 puntos a la lista naif. El mejor bloque está elegido entre ocho mirando los mismos años, así que esas cifras son algo optimistas. Al sumar un modelo por familia, con una familia más para el resto de incidencias, el ranking de CT mejora con todos los bloques: el 10 % de CT con más riesgo recoge entre el 29 % y el 34 % de los kVA·h del año siguiente, frente al 25 - 28 % del modelo único y el 28 % de la lista naif. Por cabecera no mejora (66 % frente a 71 %): ahí la historia de la línea ya lo dice todo. Lo hemos integrado en `job_ml_riesgo_ct.py` como `por_causa:<bloque>`, y el ranking del año siguiente añade lo que espera cada familia en cada CT y cabecera (`esperado_meteo`, `esperado_fauna`, `esperado_equipo`, `esperado_resto`), que es lo que dice qué actuación toca: proteger apoyos, revisar equipos o podar.
+En fauna gana la lista naif (los nidos están donde estaban) y en meteorología y equipos el modelo saca entre 10 y 15 puntos a la lista naif. El mejor bloque está elegido entre ocho mirando los mismos años, así que esas cifras son algo optimistas. Al sumar un modelo por familia, con una familia más para el resto de incidencias, el ranking de CT mejora con todos los bloques. En la ejecución completa de la segunda ronda (`rct_r2_20261012_0907`), el 10 % de CT con más riesgo recoge entre el 33,3 % y el 35,5 % de los kVA·h imprevistos del año siguiente, frente al 23 - 29 % del modelo único y el 27,8 % de la lista naif, y el 20 % de CT recoge entre el 50 % y el 55 % frente al 47 %. Por cabecera no mejora (66 % frente a 71 %): ahí la historia de la línea ya lo dice todo. Lo hemos integrado en `job_ml_riesgo_ct.py` como `por_causa:<bloque>`, y el ranking del año siguiente añade lo que espera cada familia en cada CT y cabecera (`esperado_meteo`, `esperado_fauna`, `esperado_equipo`, `esperado_resto`), que es lo que dice qué actuación toca: proteger apoyos, revisar equipos o podar.
 
 **Horas de riesgo con la historia desde 2017.** El modelo por horas de [ml-training.md](ml-training.md) solo aprende desde 2021 porque TedisNet empieza entonces. Con la meteorología desde 2017 y las interrupciones de Calser, que se registran igual desde 2016, `job_ml_meteo_historia.py` entrena con meteorología, calendario e historia de Calser desde 2017: el año 2023 aprende de 220 episodios en lugar de 70. Resultado de `mh_20261012_0744` en 2022 - 2025 (141 episodios, tasa base 0,0031):
 
@@ -154,6 +154,20 @@ Dos avisos al leer estas cifras. Por distribuidora, en Pitarch la regla de la ra
 | Con interacciones por distribuidora | 0,0174 | 0,0155 | 0,0182 |
 
 La lluvia de los días anteriores ayuda a XGBoost (mejor en el 88 % de las réplicas) y deja igual a la logística. Las variables extra no añaden nada a la lluvia previa (19 % y 57 % de las réplicas) y las interacciones por distribuidora empeoran un poco. XGBoost con todo es el primer modelo que supera a la regla de la racha con el intervalo entero por encima de cero (+0,0076, de 0,0006 a 0,0172).
+
+**TedisNet y la historia juntos.** El modelo por horas de [ml-training.md](ml-training.md) usa las 448 variables de TedisNet (red, SCADA, cortes y tiempo) y solo puede aprender desde 2021. En 2023 - 2025 (`hr_r2_20261012_0907`) XGBoost llega a una PR-AUC de 0,0105, la regla de la racha a 0,0094 y la logística a 0,0083. Las variables que más pesan son la lluvia, los reenganches aguas arriba, los microcortes del SCADA y las faltas a tierra del grupo. `job_ml_combinar_horas.py` junta esta ejecución con la de la historia larga en las 78.011 horas que puntúan las dos (`cmb_r2_20261012_0907`):
+
+| Modelo | PR-AUC por horas | PR-AUC de los días | Días con avería en el 10 % de días de más riesgo | En el 20 % |
+| --- | --- | --- | --- | --- |
+| Historia larga, regresión logística | 0,0169 | 0,145 | 37 % | 58 % |
+| Historia larga, XGBoost | 0,0159 | 0,125 | 37 % | 59 % |
+| TedisNet, XGBoost | 0,0106 | 0,134 | 41 % | 54 % |
+| TedisNet, regresión logística | 0,0083 | 0,121 | 44 % | 54 % |
+| Logística de TedisNet y XGBoost de la historia, por percentiles | 0,0166 | 0,159 | 39 % | 55 % |
+| XGBoost de TedisNet y logística de la historia, por percentiles | 0,0162 | 0,154 | 37 % | 61 % |
+| Regla de la racha | 0,0094 | 0,098 | 35 % | 47 % |
+
+Por horas, la historia larga gana a TedisNet (la logística de TedisNet queda por debajo en el 99,6 % de las réplicas) y juntar las dos no mejora a la historia sola: por percentiles queda igual (entre el 44 % y el 58 % de las réplicas) y la media de probabilidades con la logística de TedisNet empeora. Sí mejora a TedisNet solo, con el intervalo entero por encima de cero: +0,0053 (de 0,0013 a 0,0117) frente a su XGBoost. Por días, la combinación es la que mejor ordena (0,159 frente a 0,145 de la historia sola), pero con 103 días con avería no se distingue de la historia. Estos días hay que leerlos con cuidado, porque el modelo de TedisNet usa lo que pasa en la red durante el propio día (los microcortes y reenganches de la mañana): es una alerta del mismo día y no sirve para planificar la víspera. Lo que sí muestra es que las señales de la red llevan información que el tiempo no da, y por eso medimos los precursores del apartado 9.
 
 **Lo que hemos probado fuera de Spark.** Exportamos la tabla horaria del modelo con la historia larga (236.088 horas de 2017 a 2025) y probamos una docena de cambios con la misma evaluación por años. Como cada año lo puntúa un modelo distinto y el nivel de sus probabilidades cambia de un año a otro, además de la PR-AUC de todos los años juntos miramos la de los percentiles de cada año juntos, que solo depende de cómo ordena cada modelo sus horas.
 
@@ -186,6 +200,30 @@ La monotonía de XGBoost parecía la mejor opción con la PR-AUC de todos los a�
 
 Saber qué tiempo hará duplica la PR-AUC de los días (+0,061, de 0,026 a 0,114, mejor en todas las réplicas) y lo hace todos los años: entre 0,137 y 0,170 cada año con la previsión perfecta, frente a 0,061 - 0,076 con el tiempo de ayer. Para comprobar cuánto queda con una previsión de verdad descargamos lo que ICON-EU preveía el día anterior. A falta de completar la descarga (el cupo diario del plan gratuito se acabó a mitad), con las celdas de Pitarch y Valle de Santa Ana en 2024 - 2025 (27 días con avería) la previsión real da una PR-AUC de 0,080 - 0,131 frente a 0,075 - 0,079 con el reanálisis del propio día y 0,058 sin el tiempo del día. Son pocos días para separar las dos primeras cifras, pero la previsión del día anterior conserva lo que aporta el tiempo del día. El job entrena con el reanálisis y puntúa los años con previsión dos veces más, con la previsión tal cual y llevada por cuantiles a la escala del reanálisis, porque ICON-EU da rachas más fuertes que ECMWF IFS (45 frente a 39 km/h de media en la racha máxima del día).
 
+**Más variables para el día siguiente.** Con la tabla diaria fuera de Spark probamos cuatro grupos de variables sobre la previsión perfecta en 2022 - 2025: las horas del día por encima de 40, 50, 60 y 70 km/h; la racha del día frente al percentil 98 de las rachas de cada distribuidora en 2017 - 2021, como cociente y como índice de pérdidas por temporal de Klawa y Ulbrich (la suma de las horas de (racha / p98 - 1)³), que usan las aseguradoras europeas para los daños por viento; la lluvia de los 3 y 30 días anteriores con los días secos previos; y los días seguidos con 35 °C o más. Fuera de Spark las variables del día no son exactamente las del job, por eso la base da 0,118 y no 0,125:
+
+| Grupo añadido a la previsión perfecta | Regresión logística | XGBoost | Rango | Rango mejor que sin el grupo |
+| --- | --- | --- | --- | --- |
+| Ninguno | 0,118 | 0,099 | 0,115 | - |
+| Horas por encima de 40 - 70 km/h | 0,119 | 0,101 | 0,119 | 70 % |
+| Racha frente al clima de la distribuidora | 0,137 | 0,110 | 0,121 | 70 % |
+| Lluvia de los días anteriores | 0,118 | 0,098 | 0,114 | 56 % |
+| Días seguidos de calor | 0,118 | 0,105 | 0,126 | 97 % |
+| Todo junto | 0,121 | 0,110 | 0,128 | 91 % |
+
+Contar horas por encima de un umbral, que es como lo hacen en Connecticut, no añade nada a la racha máxima, y la lluvia de los días anteriores tampoco. La racha frente al clima de cada distribuidora es lo que más sube la logística (de 0,118 a 0,137), sobre todo en Pitarch y Valle de Santa Ana, aunque el bootstrap todavía no lo separa del ruido (74 %). Los días de calor ayudan a la combinación por percentiles (97 %) y, con todo junto, XGBoost mejora con el intervalo entero por encima de cero (+0,013, de 0,001 a 0,034). Hemos llevado la racha frente al clima y los días de calor al job como bloque `extremos` (variante `perfecta_extremos`) para medirlos con los datos del Lakehouse, y el FWI del día anterior entra en el tiempo de la víspera y del día.
+
+**Los días con varias averías se ven mejor.** Para las brigadas no pesa igual un día con una avería que uno con cinco. Con la misma tabla diaria y la previsión perfecta, en 2022 - 2025 hubo 137 días con alguna interrupción, 46 con dos o más, 26 con tres o más y 10 con cinco o más (casi todos en EOSA y Pitarch). Cuanto más grave es el día, más se concentra en los días que el modelo marca:
+
+| Días con | Días | En el 10 % de días de más riesgo | En el 20 % | Detectados con un 3 % de falsas alarmas |
+| --- | --- | --- | --- | --- |
+| Alguna interrupción | 137 | 37 % | 54 % | 19 % |
+| Dos o más | 46 | 52 % | 70 % | 35 % |
+| Tres o más | 26 | 46 % | 65 % | 31 % |
+| Cinco o más | 10 | 60 % | 70 % | 40 % |
+
+Son los modelos de la regresión logística entrenados con cada etiqueta, y con 10 o 26 días las cifras se mueven mucho de una réplica a otra. El trabajo de Valencia y Albacete detecta el 73 % de los días extremos con un 3 % de falsas alarmas, pero define el día extremo por el número de averías de una provincia entera, así que las cifras no se comparan directamente. El job mide ya los días con dos incidencias o más (`y_dia_varias`) con los mismos modelos del día siguiente.
+
 ## 9. Lo que hacen otras distribuidoras y los fabricantes
 
 Revisamos lo publicado por centros de investigación, distribuidoras y fabricantes de aparamenta de otros países para ver qué variables pesan y qué secuencias de eventos anuncian una avería.
@@ -198,11 +236,11 @@ Revisamos lo publicado por centros de investigación, distribuidoras y fabricant
 
 1. Recurrencia por CT y por posición en TedisNet: faltas a tierra, reenganches, disparos y microcortes en los últimos 7, 30 y 60 días, el tiempo desde el último y una marca de falta que se repite en el mismo sitio. Antes conviene medir en Calser y TedisNet con cuánta antelación aparece el primer precursor en la posición de cada avería.
 2. Precursores cruzados con la previsión: faltas a tierra recientes con lluvia prevista (terminales y nidos mojados) y faltas entre fases con viento previsto (conductores que se tocan, ramas).
-3. Viento como horas por encima de 50, 60 y 80 km/h y viento medio además de la racha, con la humedad del suelo que ya tenemos.
+3. Viento como horas por encima de un umbral y como exceso sobre el clima de cada zona. Lo primero no aporta y lo segundo está en el bloque `extremos` del día siguiente (apartado 8).
 4. Rayos medidos por el satélite (EUMETSAT) para ver qué incidencias de causa desconocida tuvieron rayos cerca.
 5. Evaluación por día y zona con detección y falsas alarmas, comparable con la de Valencia y Albacete: es lo que da el modelo del día siguiente.
 6. Para cables y terminales, la duración de las olas de calor, la humedad del suelo profundo y las oscilaciones de carga, y pedir a las distribuidoras que activen en los relés que lo permitan los contadores de faltas intermitentes.
-7. Para las cigüeñas, la época de cría y la lluvia después de días secos; para los incendios, los focos de FIRMS y el índice de peligro de Copernicus.
+7. Para las cigüeñas, la época de cría y la lluvia después de días secos; para los incendios, los focos de FIRMS y el índice de peligro de Copernicus, que ya están integrados.
 
 Datos públicos de otros países que podrían servir de comparación: [EAGLE-I](https://pmc.ncbi.nlm.nih.gov/articles/PMC10915145) (clientes sin suministro por condado cada 15 minutos en EE. UU., 2014 - 2022, sin causa), las interrupciones activas de [E-REDES](https://opennetzero.org/dataset/active-energy-interruptions) en Portugal (el Alentejo linda con Extremadura) y los índices TIEPI y NIEPI por provincia del [MITECO](https://www.miteco.gob.es/es/energia/energia-electrica/electricidad/calidad-servicio/indices.html).
 
@@ -226,9 +264,10 @@ docker compose exec -T spark-master python3 /app/jobs/00_landing/job_landing_met
 docker compose exec -T spark-master python3 /app/jobs/00_landing/job_landing_meteo_openmeteo.py --fuente openmeteo_previo
 docker compose exec -T spark-master /opt/spark/bin/spark-submit /app/jobs/01_bronze/job_bronze_meteo_openmeteo.py --fuente openmeteo_previo
 
-# Avisos de AEMET y focos de FIRMS con las claves de .env (lo que falta se pide en la siguiente ejecución)
+# Avisos de AEMET, focos de FIRMS e índice de peligro de incendio de CEMS con las claves de .env (lo que falta se pide en la siguiente ejecución)
 docker compose exec -T -e AEMET_API_KEY=<clave> spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py --fuentes avisos
 docker compose exec -T -e MAP_KEY=<clave> spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py --fuentes focos
+docker compose exec -T -e COPERNICUS_EWDS_KEY=<clave> spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py --fuentes fwi
 
 # Análisis de causas, riesgo anual con el modelo por familias y horas de riesgo con la historia larga
 docker compose exec -T spark-master /opt/spark/bin/spark-submit --driver-memory 6g --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py,/app/jobs/04_ml/job_analisis_red.py,/app/jobs/04_ml/job_ml_horas_riesgo.py /app/jobs/04_ml/job_causas_incidencias.py --config /app/config/04_ml/config_ml.json
@@ -238,4 +277,4 @@ docker compose exec -T spark-master /opt/spark/bin/spark-submit --driver-memory 
 docker compose exec -T spark-master /opt/spark/bin/spark-submit --driver-memory 4g --py-files <los mismos> /app/jobs/04_ml/job_ml_riesgo_dia.py --config /app/config/04_ml/config_ml.json
 ```
 
-Los parámetros están en `config_ml.json` (`causas_incidencias`, `meteo_historia`, `meteo_dia`, `combinar`), en `config_bronze_meteo.json` (`openmeteo`, `openmeteo_convectivo`, `openmeteo_extra`, `openmeteo_previo`) y en `config_bronze_publicos.json` (`aves`, `incendios`, `avisos`, `focos`). Los resultados quedan en `exportar_dir/<run_id>/` y en las tablas `l3_gold.analisis_causas`, `ml_metricas`, `ml_runs` y `ml_predicciones_meteo_historia`.
+Los parámetros están en `config_ml.json` (`causas_incidencias`, `meteo_historia`, `meteo_dia`, `combinar`), en `config_bronze_meteo.json` (`openmeteo`, `openmeteo_convectivo`, `openmeteo_extra`, `openmeteo_previo`) y en `config_bronze_publicos.json` (`aves`, `incendios`, `avisos`, `focos`, `fwi`). Los resultados quedan en `exportar_dir/<run_id>/` y en las tablas `l3_gold.analisis_causas`, `ml_metricas`, `ml_runs` y `ml_predicciones_meteo_historia`.
