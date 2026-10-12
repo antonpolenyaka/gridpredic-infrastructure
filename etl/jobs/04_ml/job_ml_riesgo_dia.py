@@ -39,13 +39,13 @@ Features, every one known before D starts except the block dia:
   (18.06.2018). It is the only real forecast with a long archive.
 - dia_*: the same daily weather as ayer_* for D itself, the perfect
   forecast.
-- ext_*: how far the gusts of D go above the climate of the distribuidora,
-  the 98th percentile of its hourly gusts before climatologia_hasta (years
-  never evaluated): the highest ratio of the day and the sum over the hours
-  of max(0, ratio - 1)^3, the storm loss index of Klawa and Ulbrich, for the
-  worst cell and for the mean of the cells; and the days in a row up to D
-  with the hottest hour of the worst cell at calor_umbral_c or more. Like
-  dia_*, they come from the reanalysis of D.
+- ext_*: how far the gusts of D go above the climate of each cell (the 98th
+  percentile of its hourly gusts before meteo.climatologia_hasta of Gold,
+  met_racha_clima_1h): the highest ratio of the worst cell and of the mean
+  of the cells weighted by their CT, and the sum over the hours of the CT
+  weighted max(0, ratio - 1)^3, the storm loss index of Klawa and Ulbrich;
+  and the days in a row up to D with the hottest hour of the worst cell at
+  calor_umbral_c or more. Like dia_*, they come from the reanalysis of D.
 - prev_*: the same daily weather for D from what ICON-EU forecast the day
   before (metp1_* of Gold, Previous Runs API, from January 2024). It has no
   history to train with, so it is never a block: the models of the variant
@@ -152,8 +152,12 @@ FORECAST_DAILY = {
     "humedad_media": ("metd_media_metp1_humedad_1h", "mean"),
 }
 
-# Gusts of the extreme features: name -> hourly column of distributor_weather.
-EXTREME_GUSTS = {"racha_max": "metd_max_met_racha_1h", "racha_media": "metd_media_met_racha_1h"}
+# Gusts against the climate of each cell (Gold): name -> (hourly column of distributor_weather, aggregation).
+EXTREME_DAILY = {
+    "ext_racha_clima_max": ("metd_max_met_racha_clima_1h", "max"),
+    "ext_racha_clima_media": ("metd_media_met_racha_clima_1h", "max"),
+    "ext_racha_ku": ("metd_media_met_racha_ku_1h", "sum"),
+}
 
 DEFAULTS = {
     "desde": "2017-01-08",
@@ -166,7 +170,6 @@ DEFAULTS = {
     "horas_minimas_dia": 20,
     "aviso_corte_h": 20,
     "incidencias_dia_varias": 2,
-    "climatologia_hasta": None,
     "calor_umbral_c": 35.0,
     "modelos": ["tasa_base", "logistica", "xgboost"],
     "referencias": {"naif_racha_ayer": "ayer_racha_max", "naif_racha_dia": "dia_racha_max",
@@ -240,30 +243,15 @@ def daily_weather(hourly: pd.DataFrame, min_hours: int, mapping: dict = None) ->
     return days.drop(columns="_horas")
 
 
-def extremes(hourly: pd.DataFrame, daily: pd.DataFrame, until, heat_c: float, min_hours: int) -> pd.DataFrame:
+def extremes(hourly: pd.DataFrame, daily: pd.DataFrame, heat_c: float, min_hours: int) -> pd.DataFrame:
     """
-    (distribuidora_id, fecha, ext_*): the gusts of every day against the 98th
-    percentile of the hourly gusts of the distribuidora before until (highest
-    ratio and Klawa-Ulbrich index of the day) and the days in a row with
-    temp_max of daily at heat_c or more, up to the day. A day with fewer than
-    min_hours hours of gusts is left null.
+    (distribuidora_id, fecha, ext_*): the gusts of every day against the
+    climate of each cell (EXTREME_DAILY, from met_racha_clima_1h and
+    met_racha_ku_1h of Gold) and the days in a row with temp_max of daily at
+    heat_c or more, up to the day. A day with fewer than min_hours hours of
+    gusts is left null.
     """
-    d = hourly.assign(fecha=hourly["hora"].dt.floor("D"))
-    out = d[["distribuidora_id", "fecha"]].drop_duplicates().set_index(["distribuidora_id", "fecha"]).sort_index()
-    past = d[d["hora"] < pd.Timestamp(until)]
-    for name, column in EXTREME_GUSTS.items():
-        if column not in d.columns:
-            continue
-        p98 = past.groupby("distribuidora_id")[column].quantile(0.98)
-        ratio = d[column] / d["distribuidora_id"].map(p98)
-        parts = pd.DataFrame({"distribuidora_id": d["distribuidora_id"], "fecha": d["fecha"], "ratio": ratio,
-                              "ku": np.clip(ratio - 1.0, 0.0, None) ** 3})
-        day = parts.groupby(["distribuidora_id", "fecha"]).agg(p98=("ratio", "max"), ku=("ku", "sum"),
-                                                               n=("ratio", "count"))
-        short = day["n"] < int(min_hours)
-        out[f"ext_{name}_p98"] = day["p98"].where(~short)
-        out[f"ext_{name}_ku"] = day["ku"].where(~short)
-
+    out = daily_weather(hourly, min_hours, EXTREME_DAILY).set_index(["distribuidora_id", "fecha"]).sort_index()
     if "temp_max" in daily.columns:
         def run(values: pd.Series) -> pd.Series:
             count, counts = 0.0, []
@@ -273,7 +261,8 @@ def extremes(hourly: pd.DataFrame, daily: pd.DataFrame, until, heat_c: float, mi
             return pd.Series(counts, index=values.index)
 
         heat = daily.sort_values(["distribuidora_id", "fecha"]).set_index(["distribuidora_id", "fecha"])["temp_max"]
-        out["ext_dias_calor"] = heat.groupby(level="distribuidora_id", group_keys=False).apply(run)
+        out = out.join(heat.groupby(level="distribuidora_id", group_keys=False).apply(run).rename("ext_dias_calor"),
+                       how="outer")
     return out.reset_index()
 
 
@@ -373,7 +362,8 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     if weather is None:
         raise ValueError("No weather in Gold (meteo_celda_hora and map_ct_celda): nothing to learn from")
 
-    wanted = [c for c in {spec[0] for spec in list(DAILY.values()) + list(FORECAST_DAILY.values())} if c in names]
+    sources = list(DAILY.values()) + list(FORECAST_DAILY.values()) + list(EXTREME_DAILY.values())
+    wanted = [c for c in {spec[0] for spec in sources} if c in names]
     # The day before the first day needs its weather too.
     hourly = weather.where((F.col("hora") >= F.lit(start - pd.Timedelta(days=1))) & (F.col("hora") < F.lit(end)))
     hourly = hourly.select("distribuidora_id", "hora", *wanted).toPandas()
@@ -394,8 +384,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     pdf = pdf[~pdf["fecha"].isin(pd.to_datetime(cfg["dias_excluidos"]))].reset_index(drop=True)
     pdf = pdf.merge(today, on=["distribuidora_id", "fecha"], how="left")
     pdf = pdf.merge(yesterday, on=["distribuidora_id", "fecha"], how="left")
-    until = cfg.get("climatologia_hasta") or f"{min(cfg['anios_evaluacion'])}-01-01"
-    extreme = extremes(hourly, daily, until, float(cfg["calor_umbral_c"]), int(cfg["horas_minimas_dia"]))
+    extreme = extremes(hourly, daily, float(cfg["calor_umbral_c"]), int(cfg["horas_minimas_dia"]))
     extreme_names = [c for c in extreme.columns if c.startswith("ext_")]
     pdf = pdf.merge(extreme, on=["distribuidora_id", "fecha"], how="left")
     if forecast_names:
