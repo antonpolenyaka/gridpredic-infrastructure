@@ -477,3 +477,39 @@ def test_aemet_requests_by_pieces():
     assert int(cfg["dias_por_peticion"]) <= 2
     lo, hi = landing.warning_chunks("2024-01-01", "2024-01-31", int(cfg["dias_por_peticion"]))[0]
     assert (hi - lo).days + 1 <= 2
+
+
+VIIRS_CSV = """latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight
+40.21,-5.95,330.5,0.39,0.36,2025-08-12,1342,N,VIIRS,n,2.0NRT,296.1,12.4,D
+40.22,-5.94,340.1,0.39,0.36,2025-08-12,1342,N,VIIRS,h,2.0NRT,297.0,25.0,D
+"""
+MODIS_CSV = """latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_t31,frp,daynight
+39.5,-6.3,318.2,1.1,1.0,2017-08-14,1050,Terra,MODIS,74,6.1,300.0,18.9,D
+"""
+
+
+def test_firms_rows_of_viirs_and_modis():
+    rows = bronze.parse_firms(VIIRS_CSV, "VIIRS_SNPP_NRT") + bronze.parse_firms(MODIS_CSV, "MODIS_SP")
+    assert len(rows) == 3
+    assert rows[0]["latitud"] == "40.21" and rows[0]["hora_utc"] == "1342" and rows[0]["confianza"] == "n"
+    assert rows[1]["brillo"] == "340.1" and rows[2]["brillo"] == "318.2" and rows[2]["fuente"] == "MODIS_SP"
+    # An empty answer has only the header.
+    assert bronze.parse_firms(VIIRS_CSV.splitlines()[0] + "\n", "VIIRS_SNPP_SP") == []
+
+
+def test_firms_pieces_from_the_archive_and_the_near_real_time():
+    availability = ("data_id,min_date,max_date\nVIIRS_SNPP_SP,2012-01-20,2026-06-30\n"
+                    "VIIRS_SNPP_NRT,2026-06-29,2026-10-12\nMODIS_SP,2000-11-01,2026-07-31\n")
+    plan = landing.firms_plan(availability, ["VIIRS_SNPP", "MODIS"], "2026-06-25", "2026-07-06", 5)
+    viirs = [(s, str(d), n) for s, d, n in plan if s.startswith("VIIRS")]
+    # 25.06 - 29.06 from the archive; from 30.06 the near real time covers whole pieces.
+    assert viirs == [("VIIRS_SNPP_SP", "2026-06-25", 5), ("VIIRS_SNPP_NRT", "2026-06-30", 5),
+                     ("VIIRS_SNPP_NRT", "2026-07-05", 2)]
+    assert all(s == "MODIS_SP" for s, _, _ in plan if s.startswith("MODIS"))
+    # A gap between the end of the archive and the near real time: the piece goes day by day, without the gap.
+    gap = "data_id,min_date,max_date\nVIIRS_SNPP_SP,2012-01-20,2026-06-30\nVIIRS_SNPP_NRT,2026-07-02,2026-10-12\n"
+    plan = [(s, str(d), n) for s, d, n in landing.firms_plan(gap, ["VIIRS_SNPP"], "2026-06-30", "2026-07-04", 5)]
+    assert plan == [("VIIRS_SNPP_SP", "2026-06-30", 1), ("VIIRS_SNPP_NRT", "2026-07-02", 1),
+                    ("VIIRS_SNPP_NRT", "2026-07-03", 1), ("VIIRS_SNPP_NRT", "2026-07-04", 1)]
+    cfg = landing.load_config()["publicos"]["focos"]
+    assert int(cfg["dias_por_peticion"]) <= 5 and cfg["clave_env"] == "MAP_KEY"

@@ -61,6 +61,12 @@ the APIs return them:
   and a forecast made in advance, not the reanalysis. It needs the free key
   of opendata.aemet.es in AEMET_API_KEY. One tar per piece of days, as AEMET
   gives it (.../avisos/<desde>_<hasta>.tar).
+- NASA FIRMS, the active fires seen by MODIS (from 2000) and VIIRS (from
+  2012 on Suomi NPP and 2018 on NOAA-20) in the box of the study, by pieces of
+  at most 5 days, the archive of standard processing and the near real time
+  for the last months. It needs the free MAP_KEY of FIRMS in the environment
+  (it goes in the URL, so the URL is never written to the log). One CSV per
+  sensor and piece (.../focos/<sensor>/<desde>.csv), as FIRMS gives it.
 
 The places are the municipalities of data/reference_data/municipios.xlsx and
 their cells, the same as the weather (job_landing_meteo_openmeteo).
@@ -107,7 +113,8 @@ CONFIG_CANDIDATES = [
     os.path.join(HERE, "..", "..", "config", "01_bronze", "config_bronze_publicos.json"),
 ]
 
-SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones", "aves", "incendios", "avisos"]
+SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones", "aves", "incendios", "avisos",
+           "focos"]
 PARTIAL_EXIT = 4
 
 
@@ -121,9 +128,14 @@ def load_config(path: str = None) -> dict:
 
 
 def fetch(url: str, data: bytes = None, headers: dict = None, retries: int = 4, wait_s: float = 30,
-          timeout: float = 300) -> bytes:
-    """GET (or POST with data) with retries on 429, 5xx and network errors."""
+          timeout: float = 300, label: str = None) -> bytes:
+    """
+    GET (or POST with data) with retries on 429, 5xx and network errors. With
+    label, the messages name the request by it instead of by its URL (a URL
+    that carries a key).
+    """
     headers = {"User-Agent": "GridPredict-TFM/1.0", **(headers or {})}
+    shown = label or url[:80]
 
     for attempt in range(1, retries + 1):
         request = urllib.request.Request(url, data=data, headers=headers)
@@ -134,19 +146,21 @@ def fetch(url: str, data: bytes = None, headers: dict = None, retries: int = 4, 
             body = error.read().decode("utf-8", "replace")[:200]
             if error.code in (429, 500, 502, 503, 504) and attempt < retries:
                 logger.warning("HTTP %s from %s (%s), waiting %.0f s, attempt %s of %s",
-                               error.code, url[:80], body, wait_s * attempt, attempt, retries)
+                               error.code, shown, body, wait_s * attempt, attempt, retries)
                 time.sleep(wait_s * attempt)
                 continue
-            raise RuntimeError(f"HTTP {error.code} for {url[:120]}: {body}") from error
+            raise RuntimeError(f"HTTP {error.code} for {label or url[:120]}: {body}") from error
         except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
             if attempt < retries:
-                logger.warning("%s for %s, waiting %.0f s, attempt %s of %s", error, url[:80], wait_s * attempt,
+                logger.warning("%s for %s, waiting %.0f s, attempt %s of %s", error, shown, wait_s * attempt,
                                attempt, retries)
                 time.sleep(wait_s * attempt)
                 continue
+            if label:
+                raise RuntimeError(f"{type(error).__name__} for {label}") from None
             raise
 
-    raise RuntimeError(f"No answer for {url[:120]}")
+    raise RuntimeError(f"No answer for {label or url[:120]}")
 
 
 def save_json(fs, path: str, payload):
@@ -887,6 +901,97 @@ def land_warnings(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tupl
     return done, failed
 
 
+# NASA FIRMS -----------------------------------------------------------------
+
+def firms_plan(availability: str, sensors: list, first: str, last: str, days: int) -> list:
+    """
+    [(source, start date, number of days)]: the pieces of every sensor between
+    first and last, from the archive of standard processing (<sensor>_SP)
+    while it covers them and from the near real time (<sensor>_NRT) after.
+    availability is the CSV of data_availability (data_id,min_date,max_date).
+    """
+    from datetime import date, timedelta
+
+    ranges = {}
+    for line in availability.strip().splitlines()[1:]:
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 3 and parts[1] and parts[2]:
+            ranges[parts[0]] = (date.fromisoformat(parts[1]), date.fromisoformat(parts[2]))
+
+    plan = []
+    lo, hi = date.fromisoformat(first), date.fromisoformat(last)
+    for sensor in sensors:
+        day = lo
+        while day <= hi:
+            end = min(hi, day + timedelta(days=days - 1))
+            for kind in ("SP", "NRT"):
+                span = ranges.get(f"{sensor}_{kind}")
+                if span and span[0] <= day and end <= span[1]:
+                    plan.append((f"{sensor}_{kind}", day, (end - day).days + 1))
+                    break
+            else:
+                # A piece across the end of the archive: each day from the source that has it.
+                for k in range((end - day).days + 1):
+                    one = day + timedelta(days=k)
+                    for kind in ("SP", "NRT"):
+                        span = ranges.get(f"{sensor}_{kind}")
+                        if span and span[0] <= one <= span[1]:
+                            plan.append((f"{sensor}_{kind}", one, 1))
+                            break
+            day = end + timedelta(days=1)
+    return plan
+
+
+def land_hotspots(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    """Active fires of FIRMS in the box of the study, one CSV per sensor and piece of days."""
+    hotspots = cfg["focos"]
+    key = os.environ.get(hotspots.get("clave_env", "MAP_KEY"), "").strip()
+    if not key:
+        logger.error("No %s in the environment: FIRMS needs its free MAP_KEY", hotspots.get("clave_env", "MAP_KEY"))
+        return 0, 1
+
+    margin = float(hotspots.get("margen_grados", 0.3)) + float(cfg["celda_grados"]) / 2.0
+    lats = [c[0] for c in cells.values()]
+    lons = [c[1] for c in cells.values()]
+    area = f"{min(lons) - margin:.2f},{min(lats) - margin:.2f},{max(lons) + margin:.2f},{max(lats) + margin:.2f}"
+
+    def get(url: str, label: str) -> str:
+        # The key goes in the URL: the messages name the request by its label.
+        try:
+            return fetch(url, retries=int(hotspots.get("reintentos", 4)), wait_s=30,
+                         timeout=float(hotspots.get("timeout_s", 180)), label=label).decode("utf-8", "replace")
+        except Exception as error:  # noqa: BLE001
+            raise RuntimeError(str(error).replace(key, "<MAP_KEY>")[:200]) from None
+
+    availability = get(hotspots["disponibilidad"].format(clave=key), "FIRMS data_availability")
+    save_json(fs, f"{landing}/focos/disponibilidad.json", stamp("firms", csv=availability, area=area))
+    plan = firms_plan(availability, hotspots["sensores"], hotspots["desde"], hotspots["hasta"],
+                      int(hotspots.get("dias_por_peticion", 5)))
+    done = failed = 0
+    for source, day, days in plan:
+        target = f"{landing}/focos/{source}/{day:%Y%m%d}_{days}d.csv"
+        if fs.exists(target) and not force:
+            continue
+        url = hotspots["api"].format(clave=key, fuente=source, area=area, dias=days, fecha=day.isoformat())
+        try:
+            text = get(url, f"FIRMS {source} {day} ({days} days)")
+        except RuntimeError as error:
+            failed += 1
+            logger.error("FIRMS %s %s (%s days) not downloaded: %s", source, day, days, error)
+            continue
+        if not text.startswith(("latitude", "country_id")):
+            failed += 1
+            logger.error("FIRMS %s %s: unexpected answer %s", source, day, text[:120].replace(key, "<MAP_KEY>"))
+            continue
+        with fs.open(target, "w") as file:
+            file.write(text)
+        done += 1
+        time.sleep(float(hotspots.get("pausa_s", 1)))
+
+    logger.info("FIRMS: %s pieces downloaded now, %s missing, area %s", done, failed, area)
+    return done, failed
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
@@ -925,13 +1030,14 @@ def main(argv=None):
         "aves": lambda: land_birds(fs, cfg, landing, cells, args.forzar),
         "incendios": lambda: land_fires(fs, cfg, landing, cells, args.forzar),
         "avisos": lambda: land_warnings(fs, cfg, landing, cells, args.forzar),
+        "focos": lambda: land_hotspots(fs, cfg, landing, cells, args.forzar),
     }
     for source in SOURCES:
         if source not in sources:
             continue
         try:
             result = steps[source]()
-            if source in ("osm", "obras", "catastro", "aves", "incendios", "avisos") and result[1]:
+            if source in ("osm", "obras", "catastro", "aves", "incendios", "avisos", "focos") and result[1]:
                 logger.error("%s pieces of %s are missing: launch again to ask only those", result[1], source)
                 missing.append(source)
         except Exception as error:  # noqa: BLE001
