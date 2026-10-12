@@ -22,8 +22,10 @@ Steps:
 3. PR-AUC, lift and alerts under a budget of hours per distribuidora and day,
    pooled and by year, and the block bootstrap by days of the differences of
    every combination against its two parts and against the gust rule.
-4. Outputs: ml_metricas with run_id cmb_*, and resumen.md, metricas.csv,
-   comparacion.csv and diferencias.csv in exportar_dir/<run_id>/.
+4. The same at the level of the day (job_ml_meteo_historia.day_level): the
+   score of a distribuidora-day is the highest of its hours.
+5. Outputs: ml_metricas with run_id cmb_*, and resumen.md, metricas.csv,
+   comparacion.csv, diferencias.csv and dias.csv in exportar_dir/<run_id>/.
 
     docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \\
         --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py,/app/jobs/04_ml/job_ml_horas_riesgo.py \\
@@ -47,6 +49,7 @@ if HERE not in sys.path:
 
 import ml_metrics  # noqa: E402
 from job_ml_horas_riesgo import KEYS, PREDICTIONS_HR, export  # noqa: E402
+from job_ml_meteo_historia import day_level  # noqa: E402
 from job_ml_train import METRICS_TABLE, SEASON_FEATURE, add_context, get_spark, load_config, logger, save_frame  # noqa: E402
 
 PREDICTIONS_MH = "l3_gold.ml_predicciones_meteo_historia"
@@ -153,6 +156,7 @@ def main(argv=None):
     comparison = comparison.reset_index()
     per_year = metrics[(metrics["segmento"] == "total") & (metrics["metrica"] == "pr_auc")].pivot_table(
         index="modelo", columns="split", values="valor").reset_index()
+    days = day_level(rows, scores, label)
 
     reference = next((n for n in names_hr if n.endswith(f"__{cfg['referencia']}")), None)
     pairs = []
@@ -178,13 +182,16 @@ def main(argv=None):
         f"percentiles del año. Presupuesto de {budget} horas por distribuidora y día.",
         "## Los años juntos\n\n" + ml_metrics.markdown_table(comparison, digits=4),
         "## PR-AUC por año\n\n" + ml_metrics.markdown_table(per_year, digits=4),
+        "## Días de riesgo\n\nUn día de una distribuidora es positivo si alguna de sus horas lo es, con la "
+        "puntuación más alta de sus horas; dias_positivos_en_top_k es la parte de los días con avería en el k % de "
+        "días con más riesgo de cada año.\n\n" + ml_metrics.markdown_table(days, digits=4),
         f"## PR-AUC con intervalo del 95 % (bootstrap por días, {reps} réplicas)\n\n"
         + ml_metrics.markdown_table(intervals.sort_values("pr_auc", ascending=False), digits=4),
         "## Diferencias emparejadas (a - b)\n\nSi el intervalo cruza el cero, los datos no distinguen a de b.\n\n"
         + ml_metrics.markdown_table(differences, digits=4),
     ]) + "\n"
     export(config, args.run_id, report, {"metricas": metrics, "comparacion": comparison, "intervalos": intervals,
-                                         "diferencias": differences})
+                                         "diferencias": differences, "dias": days})
     logger.info("Combination %s completed", args.run_id)
     return 0
 

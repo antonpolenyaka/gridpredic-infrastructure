@@ -62,7 +62,7 @@ import json
 import os
 import sys
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -73,6 +73,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import ml_metrics  # noqa: E402
+from calendario import easter, holiday_flags, holidays, season, working_days  # noqa: E402,F401
 from job_ml_horas_riesgo import KEYS, distributor_weather, export, rolling_evaluation  # noqa: E402
 from job_ml_train import (  # noqa: E402
     IMPORTANCE_TABLE,
@@ -132,11 +133,6 @@ DEFAULTS = {
     "comparaciones": [["larga__xgboost", "corta__xgboost"], ["larga__logistica", "corta__logistica"]],
 }
 
-# Fixed national holidays of Spain and the Día de Extremadura (8 September),
-# the calendar of gold_common.holidays (calendario of config_gold.json).
-FIXED_HOLIDAYS = [(1, 1), (1, 6), (5, 1), (8, 15), (9, 8), (10, 12), (11, 1), (12, 6), (12, 8), (12, 25)]
-
-
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", default=None)
@@ -165,46 +161,12 @@ def settings(config: dict) -> dict:
 # Calendar
 # ---------------------------------------------------------------------------
 
-def easter(year: int) -> date:
-    """Easter Sunday of the Gregorian calendar (anonymous algorithm)."""
-    a = year % 19
-    b, c = divmod(year, 100)
-    d, e = divmod(b, 4)
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = divmod(c, 4)
-    weekday = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * weekday) // 451
-    month, day = divmod(h + weekday - 7 * m + 114, 31)
-    return date(year, month, day + 1)
-
-
-def holidays(years) -> set:
-    """Holidays common to the whole of Extremadura: national, Maundy Thursday, Good Friday and 8 September."""
-    out = set()
-
-    for year in years:
-        out |= {date(year, month, day) for month, day in FIXED_HOLIDAYS}
-        sunday = easter(year)
-        out |= {sunday - timedelta(days=3), sunday - timedelta(days=2)}
-
-    return out
-
-
-def season(month: pd.Series) -> pd.Series:
-    """1 winter (December to February), 2 spring, 3 summer, 4 autumn, as add_season of job_ml_train."""
-    return month.map(lambda m: 1.0 if m in (12, 1, 2) else 2.0 if m in (3, 4, 5) else 3.0 if m in (6, 7, 8) else 4.0)
-
-
 def calendar(hours: pd.Series, working_hours: list) -> pd.DataFrame:
     """Calendar features of the local hour (the hours of the lakehouse are local time)."""
     hour = hours.dt.hour.to_numpy()
     day_of_year = hours.dt.dayofyear.to_numpy()
-    days = hours.dt.normalize()
-    known = holidays(range(int(hours.dt.year.min()), int(hours.dt.year.max()) + 1))
-    is_holiday = days.isin(pd.to_datetime(sorted(known))).to_numpy()
-    working = (hours.dt.dayofweek.to_numpy() < 5) & ~is_holiday
+    is_holiday = holiday_flags(hours)
+    working = working_days(hours)
     lo, hi = int(working_hours[0]), int(working_hours[1])
 
     return pd.DataFrame({
@@ -498,6 +460,38 @@ def comparison_table(metrics: pd.DataFrame, budget: int) -> pd.DataFrame:
     return table.sort_values("pr_auc", ascending=False).reset_index(drop=True)
 
 
+def day_level(scored: pd.DataFrame, columns: list, label: str, shares: tuple = (0.05, 0.1, 0.2)) -> pd.DataFrame:
+    """
+    The risk of the day: a distribuidora-day is positive when some hour of it
+    is, and its score is the highest of its hours. PR-AUC of the days and the
+    part of the positive days that falls in the top k % of the days of each
+    year (an alert that keeps a crew ready that day). The operator plans the
+    day; inside a stormy day the models hardly know which hour comes first.
+    """
+    days = scored.assign(dia=scored["hora"].dt.floor("D"))
+    agg = {label: "max", **{c: "max" for c in columns}}
+    per_day = days.groupby(["distribuidora_id", "dia"], as_index=False).agg(agg)
+    per_day["anio"] = per_day["dia"].dt.year
+    y = per_day[label].to_numpy()
+    rows = []
+
+    for column in columns:
+        row = {"modelo": column[2:], "dias": len(per_day), "dias_positivos": int(y.sum()),
+               "pr_auc_dia": ml_metrics.average_precision(y, per_day[column].to_numpy()),
+               "roc_auc_dia": ml_metrics.roc_auc(y, per_day[column].to_numpy())}
+        for share in shares:
+            caught, total = 0, 0
+            for _, year in per_day.groupby("anio"):
+                k = max(1, int(np.ceil(share * len(year))))
+                top = year.sort_values(column, ascending=False, kind="stable").head(k)
+                caught += int(top[label].sum())
+                total += int(year[label].sum())
+            row[f"dias_positivos_en_top_{int(round(100 * share))}pct"] = caught / total if total else float("nan")
+        rows.append(row)
+
+    return pd.DataFrame(rows).sort_values("pr_auc_dia", ascending=False).reset_index(drop=True)
+
+
 def save_predictions(spark, scored: pd.DataFrame, columns: list, run_id: str):
     """
     Scores of every variant and model for every hour it scored, in long
@@ -601,6 +595,7 @@ def main(argv=None):
         all_metrics.append(add_context(metrics, args.run_id, version, "cv_comun"))
     metrics = pd.concat(all_metrics, ignore_index=True)
     comparison = comparison_table(metrics[metrics["split"] == "cv_comun"], budget) if common else pd.DataFrame()
+    days = day_level(pooled, columns, MAIN_LABEL) if common else pd.DataFrame()
 
     reps = int(cfg["bootstrap_reps"])
     pairs = [(f"p_{a}", f"p_{b}") for a, b in cfg["comparaciones"] if f"p_{a}" in columns and f"p_{b}" in columns]
@@ -646,6 +641,9 @@ def main(argv=None):
         "## Variantes\n\n" + ml_metrics.markdown_table(variant_rows, digits=0),
         "## Datos de entrenamiento de cada año\n\n" + ml_metrics.markdown_table(trained, digits=0),
         "## Comparación en los años comunes\n\n" + ml_metrics.markdown_table(comparison, digits=4),
+        "## Días de riesgo\n\nUn día de una distribuidora cuenta como positivo si alguna de sus horas lo es, con la "
+        "puntuación más alta de sus horas. dias_positivos_en_top_k es la parte de los días con avería que caen en el "
+        "k % de días con más riesgo de cada año.\n\n" + ml_metrics.markdown_table(days, digits=4),
         "## PR-AUC por año\n\n" + ml_metrics.markdown_table(by_year(metrics), digits=4),
         f"## PR-AUC con intervalo del 95 % (bootstrap por días, {reps} réplicas)\n\n"
         + ml_metrics.markdown_table(intervals, digits=4),
@@ -655,7 +653,7 @@ def main(argv=None):
         "absoluto)\n\n" + ml_metrics.markdown_table(
             shap.sort_values("valor", ascending=False).head(15)[["feature", "valor"]], digits=5),
     ]) + "\n"
-    export(config, args.run_id, report, {"metricas": metrics, "comparacion": comparison,
+    export(config, args.run_id, report, {"metricas": metrics, "comparacion": comparison, "dias": days,
                                          "intervalos": intervals, "diferencias": differences,
                                          "importancia": importance, "filas": sizes, "entreno": trained})
 
