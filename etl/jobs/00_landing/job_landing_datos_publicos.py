@@ -839,8 +839,10 @@ def aemet_url(warnings: dict, lo, hi) -> str:
 def land_warnings(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
     """
     Archive of the warnings of adverse weather of AEMET (CAP, from
-    18.06.2018, CC BY 4.0) by pieces of dias_por_peticion days, saved as AEMET
-    gives them (a tar with the CAP messages) in avisos/<desde>_<hasta>.tar.
+    18.06.2018, CC BY 4.0) by pieces of dias_por_peticion days (AEMET refuses
+    more than 2 days per request and limits the requests per minute, hence
+    pausa_s), saved as AEMET gives them (a tar with the CAP messages) in
+    avisos/<desde>_<hasta>.tar.
     AEMET OpenData answers first with a JSON that points to the data. Needs the
     free key of opendata.aemet.es in the environment variable clave_env.
     """
