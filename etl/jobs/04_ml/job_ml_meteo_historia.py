@@ -472,7 +472,8 @@ def comparison_table(metrics: pd.DataFrame, budget: int) -> pd.DataFrame:
     return table.sort_values("pr_auc", ascending=False).reset_index(drop=True)
 
 
-def day_level(scored: pd.DataFrame, columns: list, label: str, shares: tuple = (0.05, 0.1, 0.2)) -> pd.DataFrame:
+def day_level(scored: pd.DataFrame, columns: list, label: str, shares: tuple = (0.05, 0.1, 0.2),
+              seed: int = 0) -> pd.DataFrame:
     """
     The risk of the day: a distribuidora-day is positive when some hour of it
     is, and its score is the highest of its hours. PR-AUC of the days and the
@@ -495,8 +496,10 @@ def day_level(scored: pd.DataFrame, columns: list, label: str, shares: tuple = (
             caught, total = 0, 0
             for _, year in per_day.groupby("anio"):
                 k = max(1, int(np.ceil(share * len(year))))
-                top = year.sort_values(column, ascending=False, kind="stable").head(k)
-                caught += int(top[label].sum())
+                # Ties (the constant base rate) are broken at random, not by date.
+                tiebreak = np.random.default_rng(seed).random(len(year))
+                order = np.lexsort((tiebreak, -year[column].to_numpy(dtype=np.float64)))
+                caught += int(year[label].to_numpy()[order[:k]].sum())
                 total += int(year[label].sum())
             row[f"dias_positivos_en_top_{int(round(100 * share))}pct"] = caught / total if total else float("nan")
         rows.append(row)

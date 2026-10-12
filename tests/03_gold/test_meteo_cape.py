@@ -101,7 +101,10 @@ def test_antecedent_rain_and_humidity(spark):
     assert row["met_lluvia_previa_30d"] == 8.0
     assert row["met_humedad_max_6h"] == 98.0
     first = features.where(features.hora == hours[0].to_pydatetime()).first()
-    assert first["met_lluvia_previa_30d"] == 0.0
+    assert first["met_lluvia_previa_30d"] is None
+    # On 20.01 the window holds 18 of the 29 days: not enough to say it was dry.
+    short = features.where(features.hora == pd.Timestamp("2022-01-20 00:00").to_pydatetime()).first()
+    assert short["met_lluvia_previa_30d"] is None
 
 
 def test_extra_variables_reach_silver_and_gold(spark):
@@ -124,11 +127,17 @@ def test_extra_variables_reach_silver_and_gold(spark):
     # A far cell of the coarse grid: never the nearest one.
     far = extra.assign(celda_id="40.25_-5.75", wind_direction_10m=270.0)
 
-    out, _ = silver.transform(spark.createDataFrame(reanalysis))
+    # A cell of the study with no coarse cell within one step (its own still loading): nulls.
+    lonely = reanalysis.assign(celda_id="41.20_-7.40")
+    out, _ = silver.transform(spark.createDataFrame(pd.concat([reanalysis, lonely], ignore_index=True)))
     out = silver.add_extra(out, spark.createDataFrame(pd.concat([extra, far], ignore_index=True)))
-    row = out.where(out.hora == pd.Timestamp("2022-06-05 15:00").to_pydatetime()).first()
+    when = pd.Timestamp("2022-06-05 15:00").to_pydatetime()
+    row = out.where((out.hora == when) & (out.celda_id == "39.40_-6.30")).first()
     assert row["direccion_viento_grados"] == 90.0 and row["humedad_suelo_0_7_m3m3"] == 0.31
     assert row["codigo_tiempo"] == 3.0
+    alone = out.where((out.hora == when) & (out.celda_id == "41.20_-7.40")).first()
+    assert alone["direccion_viento_grados"] is None and alone["punto_rocio_c"] is None
+    out = out.where(out.celda_id == "39.40_-6.30")
 
     features, names = gold.weather_features(out, 0, False)
     expected = {"met_dir_viento_sin", "met_dir_viento_cos", "met_viento_100m_1h", "met_humedad_suelo_0_7",

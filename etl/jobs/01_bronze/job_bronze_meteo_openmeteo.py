@@ -37,6 +37,7 @@ import logging
 import os
 import sys
 
+import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -47,8 +48,9 @@ from job_landing_meteo_openmeteo import filesystem, load_config  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("meteo")
 
-SUM_VARIABLES = {"precipitation", "rain", "snowfall"}
+SUM_VARIABLES = {"precipitation", "rain", "snowfall", "et0_fao_evapotranspiration"}
 MAX_VARIABLES = {"wind_speed_10m", "wind_gusts_10m", "cape", "weather_code", "wind_speed_100m"}
+CIRCULAR_VARIABLES = {"wind_direction_10m", "wind_direction_100m"}
 
 
 def payload_frame(payload: dict, variables: list, zone: str) -> pd.DataFrame:
@@ -63,9 +65,24 @@ def payload_frame(payload: dict, variables: list, zone: str) -> pd.DataFrame:
 
 
 def merge_local_hours(df: pd.DataFrame, variables: list) -> pd.DataFrame:
-    """One row per (celda_id, hora) after the change to winter time."""
-    how = {v: ("sum" if v in SUM_VARIABLES else "max" if v in MAX_VARIABLES else "mean") for v in variables}
-    return df.groupby(["celda_id", "hora"], as_index=False).agg(how)
+    """
+    One row per (celda_id, hora) after the change to winter time. Directions
+    are averaged as vectors (350 and 10 degrees give 0, not 180).
+    """
+    df = df.copy()
+    circular = [v for v in variables if v in CIRCULAR_VARIABLES]
+    for v in circular:
+        radians = np.radians(df[v])
+        df[f"_{v}_sin"], df[f"_{v}_cos"] = np.sin(radians), np.cos(radians)
+
+    how = {v: ("sum" if v in SUM_VARIABLES else "max" if v in MAX_VARIABLES else "mean")
+           for v in variables if v not in CIRCULAR_VARIABLES}
+    how.update({f"_{v}_{part}": "mean" for v in circular for part in ("sin", "cos")})
+    out = df.groupby(["celda_id", "hora"], as_index=False).agg(how)
+
+    for v in circular:
+        out[v] = np.degrees(np.arctan2(out.pop(f"_{v}_sin"), out.pop(f"_{v}_cos"))) % 360
+    return out[["celda_id", "hora", *variables]]
 
 
 def main(argv=None):

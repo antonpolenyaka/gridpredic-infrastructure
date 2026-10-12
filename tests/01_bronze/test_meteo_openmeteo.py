@@ -80,6 +80,38 @@ def test_local_time_and_change_to_winter_time():
     assert merged.loc["2025-10-26 02:00", "temperature_2m"] == pytest.approx(8.5)
 
 
+def test_extra_variables_merge_directions_as_vectors():
+    utc = pd.date_range("2025-10-25 23:00", periods=4, freq="h", tz="UTC")
+    variables = ["wind_direction_10m", "et0_fao_evapotranspiration", "weather_code"]
+    payload = {
+        "hourly": {
+            "time": [int(t.timestamp()) for t in utc],
+            "wind_direction_10m": [90.0, 350.0, 10.0, 180.0],
+            "et0_fao_evapotranspiration": [0.0, 0.1, 0.2, 0.0],
+            "weather_code": [3, 61, 95, 3],
+        },
+        "_peticion": {"celda_id": "39.50_-6.25"},
+    }
+    merged = bronze.merge_local_hours(bronze.payload_frame(payload, variables, "Europe/Madrid"), variables)
+    merged = merged.set_index("hora")
+    assert list(merged.columns) == ["celda_id", *variables]
+    # 350 and 10 degrees fold into north, not into south.
+    folded = merged.loc["2025-10-26 02:00", "wind_direction_10m"]
+    assert min(folded, 360 - folded) == pytest.approx(0.0, abs=1e-6)
+    assert merged.loc["2025-10-26 01:00", "wind_direction_10m"] == pytest.approx(90.0)
+    assert merged.loc["2025-10-26 02:00", "et0_fao_evapotranspiration"] == pytest.approx(0.3)
+    assert merged.loc["2025-10-26 02:00", "weather_code"] == 95
+
+
+def test_extra_source_config():
+    cfg = landing.load_config()["openmeteo_extra"]
+    assert cfg["celda_grados"] == 0.25 and len(cfg["variables"]) <= 10
+    url = landing.request_url(39.5, -6.25, date(2017, 1, 1), date(2017, 12, 31), cfg)
+    assert url.startswith(landing.API) and "wind_direction_10m" in url and "models=ecmwf_ifs" in url
+    # Up to 10 variables cost the same as one in the free plan.
+    assert landing.call_weight(365, len(cfg["variables"])) == landing.call_weight(365, 1)
+
+
 def test_convective_source_url_and_model_list():
     cfg = landing.load_config()["openmeteo_convectivo"]
     assert landing.models_of(cfg)[0] == "gfs_seamless"

@@ -446,6 +446,10 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
     n_jobs = int(config.get("n_jobs", -1))
     share = float(cfg.get("fraccion_validacion_interna", 0.25))
     names = names or cfg.get("modelos", config["modelos"])
+    # The label of an hour looks up to 3 hours ahead: the last hours before
+    # the year (and before the inner cut) would share starts with the first
+    # hours after it.
+    purge = pd.Timedelta(hours=float(cfg.get("purga_horas", 3)))
     pool = pdf[pdf["split"].isin(["train", "valid"])]
 
     if test_until:
@@ -457,7 +461,7 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
 
     for year in years:
         start = pd.Timestamp(f"{year}-01-01")
-        before = pool[pool["hora"] < start]
+        before = pool[pool["hora"] < start - purge]
         target = pool[(pool["hora"] >= start) & (pool["hora"] < pd.Timestamp(f"{year + 1}-01-01"))].copy()
 
         if before.empty or target.empty:
@@ -466,7 +470,7 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
 
         hours = np.sort(before["hora"].unique())
         cut = hours[int(len(hours) * (1 - share))]
-        fit_part, check_part = before[before["hora"] < cut], before[before["hora"] >= cut]
+        fit_part, check_part = before[before["hora"] < cut - purge], before[before["hora"] >= cut]
         fit_part = sample_negatives(fit_part, label, negative_share, seed + year)
 
         X, y = to_arrays(fit_part, features, label)
