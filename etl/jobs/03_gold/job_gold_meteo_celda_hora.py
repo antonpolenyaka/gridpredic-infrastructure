@@ -36,6 +36,13 @@ Gold weather: the features of every cell and hour and the cell of every CT.
     before (gust and rain). They are passed as they come, with their own
     prefix, so the models of the next hours never take them by mistake: the
     model of the next day uses them in place of the weather of the day.
+  - met_focos_24h and met_focos_frp_max_24h, when Silver has the active fires
+    of FIRMS (f_foco_incendio): the fires of nominal or high confidence
+    within meteo.focos_radio_km of the centre of the cell in the last 24 h
+    and their highest radiative power, counted from the first whole hour
+    after the pass plus meteo.focos_latencia_h (the time FIRMS takes to
+    publish them). The firefighters ask for the preventive cuts when a fire
+    gets near a line.
   - met_aviso_*, when Silver has the warnings of AEMET (f_aviso_meteo, from
     18.06.2018): the highest level (1 yellow, 2 orange, 3 red) of the
     warnings in force at hora that had been issued by then, in total and for
@@ -78,7 +85,7 @@ EXTRA_COLUMNS = {
 # extra grid loads.
 PARTIAL_FEATURES = ("met_cape_", "met_li_", "met_dir_viento_", "met_viento_100m_", "met_humedad_suelo_",
                     "met_rocio_", "met_dpv_", "met_nubes_bajas_", "met_et0_", "met_codigo_", "met_tormenta_",
-                    "met_aviso_", "metp1_", "metp2_")
+                    "met_aviso_", "met_focos_", "metp1_", "metp2_")
 
 # Forecasts of ICON-EU in Silver -> hourly column of Gold (one and two days before).
 FORECAST_COLUMNS = {
@@ -88,6 +95,7 @@ FORECAST_COLUMNS = {
     "racha_prev2_kmh": "metp2_racha_1h", "precipitacion_prev2_mm": "metp2_lluvia_1h",
 }
 WARNINGS_TABLE = "l2_silver.f_aviso_meteo"
+HOTSPOTS_TABLE = "l2_silver.f_foco_incendio"
 # Groups of phenomena of AEMET for the warning features.
 WARNING_GROUPS = {"viento": ["VI"], "lluvia": ["PR"], "tormenta": ["TO"], "nieve": ["NE"]}
 
@@ -300,6 +308,38 @@ def add_warnings(features, names: list, warnings, lead: int):
     return out, names + warning_names
 
 
+def add_hotspots(features, names: list, hotspots, radius_km: float = 15.0, latency_h: int = 3):
+    """
+    The active fires of FIRMS near every cell joined to the weather: number of
+    fires and highest radiative power of the last 24 h. 0 without fires once
+    the archive starts, null before it.
+    """
+    start = hotspots.agg(F.min("ts")).first()[0]
+    if start is None:
+        return features, names
+
+    cells = features.select("celda_id").distinct()
+    lat, lon = (F.split("celda_id", "_").getItem(0).try_cast("double"),
+                F.split("celda_id", "_").getItem(1).try_cast("double"))
+    cells = cells.select("celda_id", lat.alias("_clat"), lon.alias("_clon"))
+    fires = hotspots.where(F.col("confianza_nivel") >= 2).select("ts", "latitud", "longitud", "frp")
+    dx = (F.col("longitud") - F.col("_clon")) * F.cos(F.radians("_clat")) * F.lit(111.2)
+    dy = (F.col("latitud") - F.col("_clat")) * F.lit(111.2)
+    near = fires.crossJoin(F.broadcast(cells)).where(F.sqrt(dx * dx + dy * dy) <= F.lit(float(radius_km)))
+    known = ceil_hour(F.col("ts") + F.expr(f"INTERVAL {int(latency_h)} HOURS"))
+    hourly = near.groupBy("celda_id", known.alias("hora")).agg(F.count(F.lit(1)).cast("double").alias("_focos"),
+                                                               F.max("frp").alias("_frp"))
+
+    ordered = Window.partitionBy("celda_id").orderBy(F.unix_timestamp("hora")).rangeBetween(-(24 * 3600 - 1), 0)
+    before = F.col("hora") < F.lit(start)
+    out = features.join(hourly, ["celda_id", "hora"], "left")
+    out = out.withColumn("met_focos_24h", F.when(before, F.lit(None).cast("double"))
+                         .otherwise(F.coalesce(F.sum("_focos").over(ordered), F.lit(0.0))))
+    out = out.withColumn("met_focos_frp_max_24h", F.when(before, F.lit(None).cast("double"))
+                         .otherwise(F.coalesce(F.max("_frp").over(ordered), F.lit(0.0))))
+    return out.drop("_focos", "_frp"), names + ["met_focos_24h", "met_focos_frp_max_24h"]
+
+
 def main():
     args = parse_args()
     params = load_params(args)
@@ -330,6 +370,11 @@ def main():
                                        int(cfg.get("aviso_prevision_h", 6)))
     else:
         logger.info("%s not found: no warnings of AEMET in Gold", WARNINGS_TABLE)
+    if spark.catalog.tableExists(HOTSPOTS_TABLE):
+        features, names = add_hotspots(features, names, spark.table(HOTSPOTS_TABLE),
+                                       float(cfg.get("focos_radio_km", 15)), int(cfg.get("focos_latencia_h", 3)))
+    else:
+        logger.info("%s not found: no active fires of FIRMS in Gold", HOTSPOTS_TABLE)
     write_table(
         features.withColumn("anio", F.year("hora")).withColumn("audit_loaded_at", F.current_timestamp()),
         WEATHER_TABLE, partition_by=["anio"],

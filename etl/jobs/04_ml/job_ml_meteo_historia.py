@@ -110,7 +110,7 @@ WEATHER_BLOCKS = {
     "suelo": ("_humedad_suelo",),
     "extra": ("_dir_viento", "_viento_100m", "_rocio_dif", "_dpv_", "_nubes_bajas", "_et0_", "_codigo_max",
               "_tormenta_"),
-    "fuego": ("_fwi", "_ffmc", "_dmc", "_dc_", "_isi", "_bui"),
+    "fuego": ("_fwi", "_ffmc", "_dmc", "_dc_", "_isi", "_bui", "_focos"),
 }
 
 DEFAULTS = {
