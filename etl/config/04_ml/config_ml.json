@@ -357,7 +357,6 @@
     "anios_evaluacion": [2022, 2023, 2024, 2025],
     "aviso_corte_h": 20,
     "incidencias_dia_varias": 2,
-    "climatologia_hasta": "2022-01-01",
     "calor_umbral_c": 35,
     "variantes": [
       {"nombre": "calendario_historia", "desde": "2017-01-08", "bloques": ["calendario", "historia"]},

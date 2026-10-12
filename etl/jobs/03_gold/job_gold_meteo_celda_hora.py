@@ -49,6 +49,12 @@ Gold weather: the features of every cell and hour and the cell of every CT.
     before, for every hour of the day. They are computed with the weather of
     noon, so the value of a day is only known that afternoon; the one of the
     day before is known all day.
+  - met_racha_clima_1h and met_racha_ku_1h: the gust of the hour over the
+    98th percentile of the hourly gusts of the cell before
+    meteo.climatologia_hasta (years never evaluated), the climate the lines
+    of that cell are used to: a mountain cell with strong winds every winter
+    and a plain one only compare like this. ku is max(0, ratio - 1)^3, the
+    hourly term of the storm loss index of Klawa and Ulbrich.
   - met_aviso_*, when Silver has the warnings of AEMET (f_aviso_meteo, from
     18.06.2018): the highest level (1 yellow, 2 orange, 3 red) of the
     warnings in force at hora that had been issued by then, in total and for
@@ -349,6 +355,24 @@ def add_hotspots(features, names: list, hotspots, radius_km: float = 15.0, laten
     return out.drop("_focos", "_frp"), names + ["met_focos_24h", "met_focos_frp_max_24h"]
 
 
+def add_gust_climate(features, names: list, until: str):
+    """
+    met_racha_clima_1h (gust of the hour / p98 of the hourly gusts of the cell
+    before until) and met_racha_ku_1h (max(0, ratio - 1)^3). Null where the
+    gust is null or the cell has no climate.
+    """
+    if "met_racha_1h" not in features.columns:
+        return features, names
+    p98 = (features.where(F.col("hora") < F.lit(until)).where(F.col("met_racha_1h").isNotNull())
+           .groupBy("celda_id").agg(F.percentile_approx("met_racha_1h", 0.98, 10000).alias("_p98")))
+    ratio = F.col("met_racha_1h") / F.when(F.col("_p98") > 0, F.col("_p98"))
+    out = (features.join(F.broadcast(p98), "celda_id", "left")
+           .withColumn("met_racha_clima_1h", ratio)
+           .withColumn("met_racha_ku_1h", F.pow(F.greatest(F.col("met_racha_clima_1h") - F.lit(1.0), F.lit(0.0)), 3))
+           .drop("_p98"))
+    return out, names + ["met_racha_clima_1h", "met_racha_ku_1h"]
+
+
 def add_fire_danger(features, names: list, danger):
     """
     The fire danger indices of CEMS of the day before joined to every hour of
@@ -390,6 +414,7 @@ def main():
     start = time.time()
     features, names = weather_features(spark.table(hourly_table), int(cfg.get("prevision_h", 3)),
                                        bool(cfg.get("region", True)))
+    features, names = add_gust_climate(features, names, str(cfg.get("climatologia_hasta", "2022-01-01")))
     if spark.catalog.tableExists(WARNINGS_TABLE):
         features, names = add_warnings(features, names, spark.table(WARNINGS_TABLE),
                                        int(cfg.get("aviso_prevision_h", 6)))
