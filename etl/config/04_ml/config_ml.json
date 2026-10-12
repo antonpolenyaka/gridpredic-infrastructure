@@ -318,6 +318,8 @@
       {"nombre": "larga_interacciones", "desde": "2017-01-08",
        "bloques": ["meteo", "antecedente", "calendario", "historia", "interacciones"], "etiqueta": "principal"},
       {"nombre": "avisos", "desde": "2018-06-25", "bloques": ["meteo", "antecedente", "avisos", "calendario", "historia"],
+       "etiqueta": "principal"},
+      {"nombre": "larga_fuego", "desde": "2017-01-08", "bloques": ["meteo", "antecedente", "fuego", "calendario", "historia"],
        "etiqueta": "principal"}
     ],
     "comparaciones": [
@@ -344,7 +346,9 @@
       ["avisos__naif_aviso_aemet", "larga__naif_racha"],
       ["larga__logistica_regla", "larga__logistica"],
       ["larga__logistica_regla", "larga__naif_racha"],
-      ["larga__rango", "larga__logistica"], ["larga__rango", "larga__media"], ["avisos__rango", "larga__rango"]
+      ["larga__rango", "larga__logistica"], ["larga__rango", "larga__media"], ["avisos__rango", "larga__rango"],
+      ["larga_fuego__xgboost", "larga_antecedente__xgboost"], ["larga_fuego__logistica", "larga_antecedente__logistica"],
+      ["larga_fuego__rango", "larga_antecedente__rango"]
     ]
   },
   "meteo_dia": {
@@ -352,13 +356,18 @@
     "hasta": "2026-01-01",
     "anios_evaluacion": [2022, 2023, 2024, 2025],
     "aviso_corte_h": 20,
+    "incidencias_dia_varias": 2,
+    "climatologia_hasta": "2022-01-01",
+    "calor_umbral_c": 35,
     "variantes": [
       {"nombre": "calendario_historia", "desde": "2017-01-08", "bloques": ["calendario", "historia"]},
       {"nombre": "ayer", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer"]},
       {"nombre": "avisos", "desde": "2018-06-25", "bloques": ["calendario", "historia", "ayer", "avisos"]},
       {"nombre": "perfecta", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer", "dia"]},
       {"nombre": "perfecta_avisos", "desde": "2018-06-25", "bloques": ["calendario", "historia", "ayer", "dia", "avisos"]},
-      {"nombre": "perfecta_comun", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer", "dia_comun"]}
+      {"nombre": "perfecta_comun", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer", "dia_comun"]},
+      {"nombre": "perfecta_extremos", "desde": "2017-01-08",
+       "bloques": ["calendario", "historia", "ayer", "dia", "extremos"]}
     ],
     "variante_prevision": "perfecta_comun",
     "anios_prevision": [2024, 2025],
@@ -370,7 +379,10 @@
       ["perfecta__logistica", "ayer__logistica"],
       ["perfecta__logistica", "avisos__logistica"],
       ["perfecta__logistica", "perfecta__naif_racha_dia"],
-      ["perfecta_avisos__logistica", "perfecta__logistica"]
+      ["perfecta_avisos__logistica", "perfecta__logistica"],
+      ["perfecta_extremos__logistica", "perfecta__logistica"],
+      ["perfecta_extremos__xgboost", "perfecta__xgboost"],
+      ["perfecta_extremos__rango", "perfecta__rango"]
     ]
   }
 }

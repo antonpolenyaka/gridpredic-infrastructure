@@ -94,6 +94,25 @@
       "pausa_s": 1,
       "timeout_s": 180
     },
+    "fwi": {
+      "api": "https://ewds.climate.copernicus.eu/api",
+      "url_env": "COPERNICUS_EWDS_URL",
+      "clave_env": "COPERNICUS_EWDS_KEY",
+      "conjunto": "cems-fire-historical-v1",
+      "producto": "reanalysis",
+      "version": "4_1",
+      "variables": ["fire_weather_index", "fine_fuel_moisture_code", "duff_moisture_code", "drought_code",
+                    "initial_fire_spread_index", "build_up_index"],
+      "desde": "2017-01-01",
+      "hasta": "2026-08-31",
+      "rejilla": "0.25/0.25",
+      "formato": "netcdf",
+      "margen_grados": 0.3,
+      "peticiones_simultaneas": 2,
+      "pausa_s": 20,
+      "espera_max_s": 14400,
+      "timeout_s": 300
+    },
     "tablas": {
       "padron": "l1_bronze.ine_padron_municipio",
       "wikidata": "l1_bronze.wikidata_municipio",
@@ -109,7 +128,8 @@
       "aves": "l1_bronze.gbif_conteo_celda",
       "incendios": "l1_bronze.effis_area_quemada",
       "avisos": "l1_bronze.aemet_aviso",
-      "focos": "l1_bronze.firms_foco"
+      "focos": "l1_bronze.firms_foco",
+      "fwi": "l1_bronze.cems_fwi_dia"
     }
   }
 }

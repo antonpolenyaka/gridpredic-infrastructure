@@ -43,6 +43,12 @@ Gold weather: the features of every cell and hour and the cell of every CT.
     after the pass plus meteo.focos_latencia_h (the time FIRMS takes to
     publish them). The firefighters ask for the preventive cuts when a fire
     gets near a line.
+  - met_fwi_ayer, met_ffmc_ayer, met_dmc_ayer, met_dc_ayer, met_isi_ayer and
+    met_bui_ayer, when Silver has the fire danger indices of CEMS
+    (f_fwi_celda_dia): the Fire Weather Index and its parts of the day
+    before, for every hour of the day. They are computed with the weather of
+    noon, so the value of a day is only known that afternoon; the one of the
+    day before is known all day.
   - met_aviso_*, when Silver has the warnings of AEMET (f_aviso_meteo, from
     18.06.2018): the highest level (1 yellow, 2 orange, 3 red) of the
     warnings in force at hora that had been issued by then, in total and for
@@ -85,7 +91,8 @@ EXTRA_COLUMNS = {
 # extra grid loads.
 PARTIAL_FEATURES = ("met_cape_", "met_li_", "met_dir_viento_", "met_viento_100m_", "met_humedad_suelo_",
                     "met_rocio_", "met_dpv_", "met_nubes_bajas_", "met_et0_", "met_codigo_", "met_tormenta_",
-                    "met_aviso_", "met_focos_", "metp1_", "metp2_")
+                    "met_aviso_", "met_focos_", "met_fwi_", "met_ffmc_", "met_dmc_", "met_dc_", "met_isi_",
+                    "met_bui_", "metp1_", "metp2_")
 
 # Forecasts of ICON-EU in Silver -> hourly column of Gold (one and two days before).
 FORECAST_COLUMNS = {
@@ -96,6 +103,8 @@ FORECAST_COLUMNS = {
 }
 WARNINGS_TABLE = "l2_silver.f_aviso_meteo"
 HOTSPOTS_TABLE = "l2_silver.f_foco_incendio"
+FIRE_DANGER_TABLE = "l2_silver.f_fwi_celda_dia"
+FIRE_DANGER_COLUMNS = ["fwi", "ffmc", "dmc", "dc", "isi", "bui"]
 # Groups of phenomena of AEMET for the warning features.
 WARNING_GROUPS = {"viento": ["VI"], "lluvia": ["PR"], "tormenta": ["TO"], "nieve": ["NE"]}
 
@@ -340,6 +349,22 @@ def add_hotspots(features, names: list, hotspots, radius_km: float = 15.0, laten
     return out.drop("_focos", "_frp"), names + ["met_focos_24h", "met_focos_frp_max_24h"]
 
 
+def add_fire_danger(features, names: list, danger):
+    """
+    The fire danger indices of CEMS of the day before joined to every hour of
+    the day (met_<indice>_ayer); null where the cell or the day has none.
+    """
+    present = [c for c in FIRE_DANGER_COLUMNS if c in danger.columns]
+    if not present:
+        return features, names
+    daily = danger.select("celda_id", F.date_add(F.col("fecha"), 1).alias("_fecha"),
+                          *[F.col(c).cast("double").alias(f"met_{c}_ayer") for c in present])
+    out = (features.withColumn("_fecha", F.to_date("hora"))
+           .join(daily, ["celda_id", "_fecha"], "left")
+           .drop("_fecha"))
+    return out, names + [f"met_{c}_ayer" for c in present]
+
+
 def main():
     args = parse_args()
     params = load_params(args)
@@ -375,6 +400,10 @@ def main():
                                        float(cfg.get("focos_radio_km", 15)), int(cfg.get("focos_latencia_h", 3)))
     else:
         logger.info("%s not found: no active fires of FIRMS in Gold", HOTSPOTS_TABLE)
+    if spark.catalog.tableExists(FIRE_DANGER_TABLE):
+        features, names = add_fire_danger(features, names, spark.table(FIRE_DANGER_TABLE))
+    else:
+        logger.info("%s not found: no fire danger indices of CEMS in Gold", FIRE_DANGER_TABLE)
     write_table(
         features.withColumn("anio", F.year("hora")).withColumn("audit_loaded_at", F.current_timestamp()),
         WEATHER_TABLE, partition_by=["anio"],

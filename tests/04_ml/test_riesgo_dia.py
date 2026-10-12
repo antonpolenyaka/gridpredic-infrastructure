@@ -63,6 +63,15 @@ def test_day_labels_and_calendar():
     out = rd.day_labels(grid, events, ["aguas_arriba"])
     assert out["y_dia"].tolist() == [1, 0, 1, 1]
     assert out["y_dia_meteo"].tolist() == [1, 0, 0, 1]
+    assert out["y_dia_varias"].tolist() == [0, 0, 0, 0]
+    # Two incidents on 30.03 (one of them with two CT) make a busy day; one incident with two CT does not.
+    busy = pd.DataFrame({"distribuidora_id": [1, 1, 1, 2, 2], "periodo_id": [2024] * 5,
+                         "incidencia_id": [7, 8, 8, 9, 9],
+                         "inicio_ts": pd.to_datetime(["2024-03-30 08:00", "2024-03-30 17:00", "2024-03-30 17:05",
+                                                      "2024-03-29 10:00", "2024-03-29 10:30"]),
+                         "causa": ["meteorologia"] * 5})
+    out = rd.day_labels(grid, busy, ["aguas_arriba"], several=2)
+    assert out["y_dia_varias"].tolist() == [0, 0, 1, 0]
 
     cal = rd.day_calendar(grid["fecha"])
     # Good Friday 2024 is a holiday; 30.03.2024 is a Saturday.
@@ -114,6 +123,39 @@ def test_top_share_counts_the_positive_days_of_the_top_of_each_year():
     # The top 20 % is one day per year: 2024 holds its first positive, 2025 does not.
     assert rd.top_share(y, score, year, 0.2) == pytest.approx(1 / 3)
     assert rd.top_share(y, score, year, 0.4) == pytest.approx(2 / 3)
+
+
+def test_extremes_against_the_climate_of_each_distribuidora():
+    hours = pd.date_range("2020-01-01", "2022-01-05 23:00", freq="h")
+    gusts = {1: 40.0, 2: 80.0}
+    hourly = pd.concat([pd.DataFrame({"distribuidora_id": dist, "hora": hours, "metd_max_met_racha_1h": gust,
+                                      "metd_media_met_racha_1h": gust / 2}) for dist, gust in gusts.items()],
+                       ignore_index=True)
+    # A storm on 03.01.2022: twice the usual gust for six hours in both distribuidoras; a gap on 04.01 in 1.
+    storm = (hourly["hora"] >= "2022-01-03 10:00") & (hourly["hora"] < "2022-01-03 16:00")
+    hourly.loc[storm, ["metd_max_met_racha_1h", "metd_media_met_racha_1h"]] *= 2
+    gap = (hourly["distribuidora_id"] == 1) & (hourly["hora"] >= "2022-01-04 00:00") & (hourly["hora"] < "2022-01-04 06:00")
+    hourly.loc[gap, ["metd_max_met_racha_1h", "metd_media_met_racha_1h"]] = np.nan
+    days = pd.date_range("2021-12-28", "2022-01-05", freq="D")
+    heat = [30, 36, 37, 20, 36, 36, 36, np.nan, 38]
+    daily = pd.concat([pd.DataFrame({"distribuidora_id": dist, "fecha": days, "temp_max": heat}) for dist in gusts],
+                      ignore_index=True)
+    out = rd.extremes(hourly, daily, "2022-01-01", 35.0, 20).set_index(["distribuidora_id", "fecha"])
+
+    calm, stormy = out.loc[(2, pd.Timestamp("2022-01-02"))], out.loc[(2, pd.Timestamp("2022-01-03"))]
+    assert calm["ext_racha_max_p98"] == pytest.approx(1.0) and calm["ext_racha_max_ku"] == 0
+    # The ratio is the same for both distribuidoras: each one against its own climate.
+    assert stormy["ext_racha_max_p98"] == pytest.approx(2.0)
+    assert stormy["ext_racha_max_ku"] == pytest.approx(6.0)
+    assert out.loc[(1, pd.Timestamp("2022-01-03")), "ext_racha_media_ku"] == pytest.approx(6.0)
+    # 18 hours of gusts are not a day.
+    assert pd.isna(out.loc[(1, pd.Timestamp("2022-01-04")), "ext_racha_max_p98"])
+    assert out.loc[(2, pd.Timestamp("2022-01-04")), "ext_racha_max_p98"] == pytest.approx(1.0)
+    # Days in a row at 35 degrees or more, up to the day; an unknown day breaks the run.
+    runs = out.loc[1, "ext_dias_calor"].dropna()
+    assert runs.loc["2021-12-29":"2022-01-03"].tolist() == [1.0, 2.0, 0.0, 1.0, 2.0, 3.0]
+    assert pd.isna(out.loc[(1, pd.Timestamp("2022-01-04")), "ext_dias_calor"])
+    assert out.loc[(1, pd.Timestamp("2022-01-05")), "ext_dias_calor"] == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +287,8 @@ def config_path(workdir):
             {"nombre": "perfecta", "desde": "2019-01-08", "bloques": ["calendario", "historia", "ayer", "dia"]},
             {"nombre": "perfecta_comun", "desde": "2019-01-08",
              "bloques": ["calendario", "historia", "ayer", "dia_comun"]},
+            {"nombre": "perfecta_extremos", "desde": "2019-01-08",
+             "bloques": ["calendario", "historia", "ayer", "dia", "extremos"]},
         ],
         "anios_prevision": [2024, 2025],
         "comparaciones": [["perfecta__logistica", "ayer__logistica"], ["avisos__logistica", "ayer__logistica"]],
@@ -269,13 +313,15 @@ def test_report_files_and_days(result):
     code, folder = result
     assert code == 0
     text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
-    for title in ("## Variantes", "## Comparación en los años comunes", "## Diferencias emparejadas"):
+    for title in ("## Variantes", "## Comparación en los años comunes", "## Diferencias emparejadas",
+                  "## Días con 2 incidencias o más"):
         assert title in text
     rows = read(folder, "filas.csv")
     # Without the blackout day; 2024 is a leap year.
     assert rows.loc[rows["anio"] == 2025, "dias"].tolist() == [364, 364]
     assert rows.loc[rows["anio"] == 2024, "dias"].tolist() == [366, 366]
     assert (rows["dias_y_dia_meteo"] <= rows["dias_y_dia"]).all()
+    assert (rows["dias_y_dia_varias"] <= rows["dias_y_dia"]).all()
 
 
 def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
