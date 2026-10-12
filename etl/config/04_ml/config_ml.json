@@ -272,5 +272,49 @@
     "cape_jkg": 1000.0,
     "min_repeticiones": 2,
     "min_ct_anios": 50
+  },
+  "meteo_historia": {
+    "desde": "2017-01-08",
+    "hasta": "2026-01-01",
+    "horizonte_h": [1, 3],
+    "anios_evaluacion": [2020, 2021, 2022, 2023, 2024, 2025],
+    "dias_minimos_entreno": 180,
+    "causas_no_meteo": ["aguas_arriba", "apagon", "terceros", "programada", "maniobra", "cliente_bt", "red_bt"],
+    "retraso_conocido_dias": 7,
+    "ventanas_historia_dias": [7, 30, 365],
+    "horario_laboral": [8, 18],
+    "modelos": ["tasa_base", "logistica", "xgboost"],
+    "referencias": {"naif_racha": "metd_max_met_racha_max_3h"},
+    "fraccion_validacion_interna": 0.25,
+    "presupuestos_horas_dia": [1, 2, 4, 6],
+    "bootstrap_reps": 500,
+    "busqueda": {
+      "xgboost": [
+        {"max_depth": 3, "min_child_weight": 20, "learning_rate": 0.05, "subsample": 0.8, "colsample_bytree": 0.6,
+         "n_estimators": 1500, "early_stopping_rounds": 100},
+        {"max_depth": 5, "min_child_weight": 20, "learning_rate": 0.05, "subsample": 0.8, "colsample_bytree": 0.6,
+         "n_estimators": 1500, "early_stopping_rounds": 100}
+      ]
+    },
+    "variantes": [
+      {"nombre": "corta", "desde": "2021-01-08", "bloques": ["meteo", "calendario", "historia"], "etiqueta": "principal"},
+      {"nombre": "larga", "desde": "2017-01-08", "bloques": ["meteo", "calendario", "historia"], "etiqueta": "principal"},
+      {"nombre": "corta_meteo", "desde": "2021-01-08", "bloques": ["meteo"], "etiqueta": "principal"},
+      {"nombre": "larga_meteo", "desde": "2017-01-08", "bloques": ["meteo"], "etiqueta": "principal"},
+      {"nombre": "larga_etiqueta_meteo", "desde": "2017-01-08", "bloques": ["meteo", "calendario", "historia"],
+       "etiqueta": "meteo"},
+      {"nombre": "larga_conveccion", "desde": "2017-01-08", "bloques": ["meteo", "conveccion", "calendario", "historia"],
+       "etiqueta": "principal"}
+    ],
+    "comparaciones": [
+      ["larga__xgboost", "corta__xgboost"],
+      ["larga__logistica", "corta__logistica"],
+      ["larga_meteo__logistica", "corta_meteo__logistica"],
+      ["larga__xgboost", "larga__naif_racha"],
+      ["larga__logistica", "larga__naif_racha"],
+      ["larga__xgboost", "larga_meteo__xgboost"],
+      ["larga_etiqueta_meteo__xgboost", "larga__xgboost"],
+      ["larga_conveccion__xgboost", "larga__xgboost"]
+    ]
   }
 }

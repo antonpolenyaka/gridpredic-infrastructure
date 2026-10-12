@@ -196,8 +196,10 @@ def main():
     dq.add("meteo_celda_hora", "filas", rows, detalle=f"{len(names)} features, {time.time() - start:.0f} s")
     nulls = written.agg(*[F.sum(F.col(n).isNull().cast("long")).alias(n) for n in names]).first().asDict()
     for name, value in nulls.items():
-        # The first and last hours of the window have incomplete windows.
-        dq.add("meteo_celda_hora", f"nulos:{name}", value or 0, rows, umbral_pct=2.0)
+        # The first and last hours of the window have incomplete windows. The
+        # convective features only exist from 23.03.2021: no threshold.
+        partial = name.startswith(("met_cape_", "met_li_"))
+        dq.add("meteo_celda_hora", f"nulos:{name}", value or 0, rows, umbral_pct=None if partial else 2.0)
     dq.flush()
 
     logger.info("Gold completed: %s and %s", MAP_TABLE, WEATHER_TABLE)
