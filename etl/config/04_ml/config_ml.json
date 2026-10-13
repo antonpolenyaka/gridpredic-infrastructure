@@ -376,16 +376,26 @@
       {"nombre": "perfecta_extremos", "desde": "2017-01-08",
        "bloques": ["calendario", "historia", "ayer", "dia", "extremos"]},
       {"nombre": "comun_avisos_extremos", "desde": "2018-06-25",
-       "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun", "extremos"]}
+       "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun", "extremos"]},
+      {"nombre": "comun_avisos_detalle", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "ayer", "avisos", "avisos_detalle", "dia_comun"]},
+      {"nombre": "comun_avisos_detalle_extremos", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "ayer", "avisos", "avisos_detalle", "dia_comun", "extremos"]}
     ],
-    "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos"],
+    "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "comun_avisos_detalle",
+                           "comun_avisos_detalle_extremos"],
     "anios_prevision": [2024, 2025],
     "comparaciones_prevision": [
       ["comun_avisos_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
       ["comun_avisos_extremos__xgboost__prevision", "comun_avisos__xgboost__prevision"],
       ["comun_avisos_extremos__rango__prevision", "comun_avisos__rango__prevision"],
       ["comun_avisos_extremos__logistica__prevision_cuantiles", "comun_avisos__logistica__prevision_cuantiles"],
-      ["comun_avisos_extremos__rango__prevision_cuantiles", "comun_avisos__rango__prevision_cuantiles"]
+      ["comun_avisos_extremos__rango__prevision_cuantiles", "comun_avisos__rango__prevision_cuantiles"],
+      ["comun_avisos_detalle__logistica__prevision", "comun_avisos__logistica__prevision"],
+      ["comun_avisos_detalle__xgboost__prevision", "comun_avisos__xgboost__prevision"],
+      ["comun_avisos_detalle__rango__prevision", "comun_avisos__rango__prevision"],
+      ["comun_avisos_detalle_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
+      ["comun_avisos_detalle_extremos__rango__prevision", "comun_avisos__rango__prevision"]
     ],
     "comparaciones": [
       ["ayer__logistica", "calendario_historia__logistica"],
@@ -401,7 +411,12 @@
       ["perfecta_extremos__rango", "perfecta__rango"],
       ["comun_avisos_extremos__logistica", "comun_avisos__logistica"],
       ["comun_avisos_extremos__xgboost", "comun_avisos__xgboost"],
-      ["comun_avisos_extremos__rango", "comun_avisos__rango"]
+      ["comun_avisos_extremos__rango", "comun_avisos__rango"],
+      ["comun_avisos_detalle__logistica", "comun_avisos__logistica"],
+      ["comun_avisos_detalle__xgboost", "comun_avisos__xgboost"],
+      ["comun_avisos_detalle__rango", "comun_avisos__rango"],
+      ["comun_avisos_detalle_extremos__logistica", "comun_avisos__logistica"],
+      ["comun_avisos_detalle_extremos__rango", "comun_avisos__rango"]
     ]
   }
 }
