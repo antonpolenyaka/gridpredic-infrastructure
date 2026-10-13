@@ -157,6 +157,32 @@ def test_extremes_from_the_gusts_against_the_climate_of_each_cell():
     assert out.loc[(1, pd.Timestamp("2022-01-05")), "ext_dias_calor"] == 1.0
 
 
+def test_extremes_of_the_forecast_with_the_run_of_heat_known_the_evening_before():
+    hours = pd.date_range("2024-07-01", "2024-07-04 23:00", freq="h")
+    hourly = pd.DataFrame({"distribuidora_id": 1, "hora": hours, "metd_max_metp1_racha_clima_1h": 0.9,
+                           "metd_media_metp1_racha_clima_1h": 0.6, "metd_media_metp1_racha_ku_1h": 0.0})
+    storm = (hourly["hora"] >= "2024-07-02 14:00") & (hourly["hora"] < "2024-07-02 18:00")
+    hourly.loc[storm, ["metd_max_metp1_racha_clima_1h", "metd_media_metp1_racha_clima_1h",
+                       "metd_media_metp1_racha_ku_1h"]] = [1.8, 1.4, 0.064]
+    forecast = pd.DataFrame({"distribuidora_id": 1, "fecha": pd.date_range("2024-07-01", "2024-07-04", freq="D"),
+                             "temp_max": [36.0, 37.0, 30.0, np.nan]})
+    # The run of the reanalysis up to each day: unknown on 02.07.
+    extreme = pd.DataFrame({"distribuidora_id": 1, "fecha": pd.date_range("2024-06-30", "2024-07-03", freq="D"),
+                            "ext_dias_calor": [2.0, 3.0, np.nan, 0.0]})
+    out = rd.forecast_extremes(hourly, forecast, extreme, 35.0, 20).set_index("fecha")
+
+    assert out.loc["2024-07-02", "prev_ext_racha_clima_max"] == pytest.approx(1.8)
+    assert out.loc["2024-07-02", "prev_ext_racha_clima_media"] == pytest.approx(1.4)
+    assert out.loc["2024-07-02", "prev_ext_racha_ku"] == pytest.approx(4 * 0.064)
+    assert out.loc["2024-07-01", "prev_ext_racha_ku"] == 0
+    # The forecast hottest hour of the day on top of the run up to the day before; a cool day ends the run even
+    # when the day before is unknown, and a day without forecast has no run.
+    assert out.loc["2024-07-01", "prev_ext_dias_calor"] == 3.0
+    assert out.loc["2024-07-02", "prev_ext_dias_calor"] == 4.0
+    assert out.loc["2024-07-03", "prev_ext_dias_calor"] == 0.0
+    assert pd.isna(out.loc["2024-07-04", "prev_ext_dias_calor"])
+
+
 # ---------------------------------------------------------------------------
 # The whole job
 # ---------------------------------------------------------------------------
@@ -239,6 +265,12 @@ def synthetic():
     weather["metp1_lluvia_1h"] = np.where(archived, weather["met_lluvia_1h"] * noise.clip(0), np.nan)
     weather["metp1_temp_1h"] = np.where(archived, weather["met_temp_1h"] + 1.0, np.nan)
     weather["metp1_humedad_1h"] = np.where(archived, 60.0, np.nan)
+    # The gusts against the climate of each cell, as Gold computes them for the reanalysis and the forecast.
+    p98 = weather[weather["hora"] < "2022-01-01"].groupby("celda_id")["met_racha_1h"].quantile(0.98)
+    for prefix in ("met", "metp1"):
+        ratio = weather[f"{prefix}_racha_1h"] / weather["celda_id"].map(p98)
+        weather[f"{prefix}_racha_clima_1h"] = ratio
+        weather[f"{prefix}_racha_ku_1h"] = np.clip(ratio - 1.0, 0.0, None) ** 3
     # The archive of warnings starts in the middle of 2019, as the real one in 2018.
     warnings = pd.DataFrame(warnings)
     warnings = warnings[warnings["enviado_ts"] >= "2019-06-18"].reset_index(drop=True)
@@ -290,9 +322,13 @@ def config_path(workdir):
              "bloques": ["calendario", "historia", "ayer", "dia", "extremos"]},
             {"nombre": "comun_avisos", "desde": "2019-06-25",
              "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun"]},
+            {"nombre": "comun_avisos_extremos", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun", "extremos"]},
         ],
-        "variante_prevision": ["perfecta_comun", "comun_avisos"],
+        "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos"],
         "anios_prevision": [2024, 2025],
+        "comparaciones_prevision": [["comun_avisos_extremos__logistica__prevision",
+                                     "comun_avisos__logistica__prevision"]],
         "comparaciones": [["perfecta__logistica", "ayer__logistica"], ["avisos__logistica", "ayer__logistica"]],
     }
     path = os.path.join(workdir, "config.json")
@@ -347,8 +383,8 @@ def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
 def test_the_real_forecast_scores_the_years_it_covers(result):
     _, folder = result
     full = read(folder, "prevision.csv")
-    # Both variants of the forecast, with the models of yesterday once.
-    assert set(full["variante"]) == {"perfecta_comun", "comun_avisos", "ayer"}
+    # The variants of the forecast, with the models of yesterday once.
+    assert set(full["variante"]) == {"perfecta_comun", "comun_avisos", "comun_avisos_extremos", "ayer"}
     table = full[full["variante"].isin(["perfecta_comun", "ayer"])].set_index(["tiempo_del_dia", "modelo"])
     assert {"reanalisis", "prevision", "prevision_cuantiles", "solo_ayer"} <= set(table.index.get_level_values(0))
     warned = full[full["variante"] == "comun_avisos"].set_index(["tiempo_del_dia", "modelo"])
@@ -362,6 +398,10 @@ def test_the_real_forecast_scores_the_years_it_covers(result):
     assert mapped > 0.6 * perfect
     differences = read(folder, "prevision_diferencias.csv")
     assert len(differences) >= 4 and differences["a"].str.startswith("comun_avisos__").any()
+    # Between variants on the same forecast (comparaciones_prevision).
+    pair = differences[(differences["a"] == "comun_avisos_extremos__logistica__prevision")
+                       & (differences["b"] == "comun_avisos__logistica__prevision")]
+    assert len(pair) == 1
     text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
     assert "## Con la previsión real del día anterior (2024, 2025)" in text
 
@@ -370,6 +410,19 @@ def test_metrics_and_run_saved(result, spark):
     assert spark.table("l3_gold.ml_metricas").where(f"run_id = '{RUN_ID}'").count() > 100
     run = spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}'").first()
     assert run is not None and run["etiqueta"] == "meteo_dia:y_dia"
+
+
+def test_the_extremes_of_the_forecast_are_never_a_block(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    pdf, blocks, _ = rd.build_dataset(spark, config, rd.settings(config))
+    names = ["prev_ext_racha_clima_max", "prev_ext_racha_clima_media", "prev_ext_racha_ku", "prev_ext_dias_calor"]
+    assert set(names) <= set(blocks["prevision"])
+    assert not any(c.startswith("prev_") for c in blocks["extremos"])
+    # Only from 2024, when the forecast starts; the forecast gusts are stronger, so they go further over the climate.
+    known = pdf[pdf["prev_ext_racha_clima_max"].notna()]
+    assert known["fecha"].min() == pd.Timestamp("2024-01-01")
+    assert known["prev_ext_racha_clima_max"].mean() > known["ext_racha_clima_max"].mean()
 
 
 def test_the_models_of_the_hours_never_see_the_forecast_of_the_day_before(spark, tables):
