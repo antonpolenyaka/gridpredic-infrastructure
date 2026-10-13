@@ -195,11 +195,12 @@ Contra los criterios de aceptación de esta ficha: la PR-AUC supera con claridad
 
 **Riesgo del año siguiente por CT y cabecera** (`job_ml_riesgo_ct.py`, `rct_20261011T215018_d996ba`, años 2021 - 2025). XGBoost Tweedie sobre los kVA·h imprevistos de cada CT y año, con lo que se sabía al empezar el año. Por cabecera, el 10 % que señala el modelo con historia y estructura recoge el 70,9 % de los kVA·h del año siguiente, frente al 63,5 % de ordenar por los dos años anteriores y al 80,7 % del máximo posible, y gana en cuatro de los cinco años; con el 20 % y el SCADA llega al 82,9 % (74,3 % la lista naif). Por CT apenas mejora a la lista naif (30,9 % frente a 27,9 % con el clima). Ni los datos públicos ni el bloque de obras y edificación (PLACSP y Catastro) aportan a un año vista. Las obras públicas por municipio y año tampoco anticipan las averías de terceros: comparando cada municipio consigo mismo, la razón de tasas es 0,66 [0,51 - 1,08]. Ver [network-analysis.md](network-analysis.md).
 
-**Riesgo del día siguiente por distribuidora** (`job_ml_riesgo_dia.py`, `dia_ext_20261013_0332` y `dia_det_20261013_0353`). Con lo que se sabe la tarde anterior: calendario, historia de Calser, tiempo del día anterior, avisos de AEMET enviados antes de las 20:00 y la previsión de ICON-EU para el día siguiente con la racha frente al clima de cada celda. Cada año lo puntúa un modelo entrenado con el reanálisis de los años anteriores; 2024 y 2025 se puntúan también con la previsión real (58 días con avería, tasa base 0,028):
+**Riesgo del día siguiente por distribuidora** (`job_ml_riesgo_dia.py`, `dia_ext_20261013_0332`, `dia_det_20261013_0353` y `dia_operativa_20261013_1005`). Con lo que se sabe la tarde anterior: calendario, historia de Calser, tiempo del día anterior, avisos de AEMET enviados antes de las 20:00 y la previsión de ICON-EU para el día siguiente con la racha frente al clima de cada celda. Cada año lo puntúa un modelo entrenado con el reanálisis de los años anteriores; 2024 y 2025 se puntúan también con la previsión real (58 días con avería, tasa base 0,028):
 
 | Modelo | PR-AUC con la previsión real | Lift | Días con avería en el 10 % de días de más riesgo | En el 20 % |
 | --- | --- | --- | --- | --- |
 | Regresión logística con avisos y extremos | 0,191 | 7,0 | 52 % | 72 % |
+| La misma con solo la racha máxima y la lluvia de ayer (`operativa`, la que corre cada tarde) | 0,188 | 6,9 | 53 % | 67 % |
 | Logística y XGBoost por percentiles, con avisos y extremos | 0,198 | 7,3 | 47 % | 71 % |
 | Regresión logística con avisos, sin extremos | 0,170 | 6,2 | 52 % | 69 % |
 | Racha máxima prevista (referencia) | 0,105 | 3,9 | 41 % | 57 % |
