@@ -48,13 +48,18 @@ Features, every one known before D starts except the block dia:
   calor_umbral_c or more. Like dia_*, they come from the reanalysis of D.
 - prev_*: the same daily weather for D from what ICON-EU forecast the day
   before (metp1_* of Gold, Previous Runs API, from January 2024). It has no
-  history to train with, so it is never a block: the models of the variant
-  perfecta_comun (calendar, history, yesterday and the dia_* the forecast
-  also gives) are fitted on the reanalysis and then score the days of
-  anios_prevision twice, with dia_* as it was and with dia_* replaced by
-  prev_*, raw and mapped to the distribution of the reanalysis by quantiles
-  (fitted on the other years of the forecast, without the labels). The
-  difference is what is lost going from a perfect forecast to a real one.
+  history to train with, so it is never a block: the models of the variants
+  of variante_prevision (calendar, history, yesterday and the dia_* the
+  forecast also gives, with or without warnings and extremes) are fitted on
+  the reanalysis and then score the days of anios_prevision twice more, with
+  dia_* replaced by prev_*, raw and mapped to the distribution of the
+  reanalysis by quantiles (fitted on the other years of the forecast,
+  without the labels). The difference is what is lost going from a perfect
+  forecast to a real one. prev_ext_* are the extremes of the forecast (the
+  forecast gusts over the same climate of each cell, metp1_racha_clima_1h,
+  and the run of heat with the forecast hottest hour of D) and take the
+  place of ext_* the same way. meteo_dia.comparaciones_prevision compares
+  variants on the same weather of the day.
 
 Variants (meteo_dia.variantes): blocks and first day of training. Every year
 Y is scored by models chosen and fitted only on the days before Y
@@ -157,6 +162,12 @@ EXTREME_DAILY = {
     "ext_racha_clima_max": ("metd_max_met_racha_clima_1h", "max"),
     "ext_racha_clima_media": ("metd_media_met_racha_clima_1h", "max"),
     "ext_racha_ku": ("metd_media_met_racha_ku_1h", "sum"),
+}
+# The same from the forecast of ICON-EU of the day before (prev_ext_*).
+FORECAST_EXTREME_DAILY = {
+    "ext_racha_clima_max": ("metd_max_metp1_racha_clima_1h", "max"),
+    "ext_racha_clima_media": ("metd_media_metp1_racha_clima_1h", "max"),
+    "ext_racha_ku": ("metd_media_metp1_racha_ku_1h", "sum"),
 }
 
 DEFAULTS = {
@@ -266,6 +277,31 @@ def extremes(hourly: pd.DataFrame, daily: pd.DataFrame, heat_c: float, min_hours
     return out.reset_index()
 
 
+def forecast_extremes(hourly: pd.DataFrame, forecast: pd.DataFrame, extreme: pd.DataFrame, heat_c: float,
+                      min_hours: int) -> pd.DataFrame:
+    """
+    (distribuidora_id, fecha, prev_ext_*): the extremes of the day from the
+    forecast of ICON-EU of the day before (FORECAST_EXTREME_DAILY) and the
+    days in a row of heat with the forecast temp_max of the day (forecast)
+    on top of the run of the reanalysis up to the day before (ext_dias_calor
+    of extreme on D - 1), what is known the evening before.
+    """
+    out = daily_weather(hourly, min_hours, FORECAST_EXTREME_DAILY)
+    out = out.rename(columns={c: f"prev_{c}" for c in out.columns if c not in ("distribuidora_id", "fecha")})
+    if "temp_max" in forecast.columns and "ext_dias_calor" in extreme.columns:
+        before = extreme[["distribuidora_id", "fecha", "ext_dias_calor"]].assign(
+            fecha=extreme["fecha"] + pd.Timedelta(days=1))
+        heat = forecast[["distribuidora_id", "fecha", "temp_max"]].merge(before, on=["distribuidora_id", "fecha"],
+                                                                         how="left")
+        hot = (heat["temp_max"] >= heat_c).to_numpy()
+        run = np.where(hot, heat["ext_dias_calor"].to_numpy(dtype=np.float64) + 1.0, 0.0)
+        run[heat["temp_max"].isna().to_numpy() | (hot & heat["ext_dias_calor"].isna().to_numpy())] = np.nan
+        heat["prev_ext_dias_calor"] = run
+        out = out.merge(heat[["distribuidora_id", "fecha", "prev_ext_dias_calor"]], on=["distribuidora_id", "fecha"],
+                        how="outer")
+    return out
+
+
 def day_calendar(days: pd.Series) -> pd.DataFrame:
     """Calendar of the day: weekday, weekend, holiday, day of the year and season."""
     weekday = days.dt.dayofweek.to_numpy()
@@ -362,7 +398,8 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     if weather is None:
         raise ValueError("No weather in Gold (meteo_celda_hora and map_ct_celda): nothing to learn from")
 
-    sources = list(DAILY.values()) + list(FORECAST_DAILY.values()) + list(EXTREME_DAILY.values())
+    sources = (list(DAILY.values()) + list(FORECAST_DAILY.values()) + list(EXTREME_DAILY.values())
+               + list(FORECAST_EXTREME_DAILY.values()))
     wanted = [c for c in {spec[0] for spec in sources} if c in names]
     # The day before the first day needs its weather too.
     hourly = weather.where((F.col("hora") >= F.lit(start - pd.Timedelta(days=1))) & (F.col("hora") < F.lit(end)))
@@ -387,9 +424,15 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     extreme = extremes(hourly, daily, float(cfg["calor_umbral_c"]), int(cfg["horas_minimas_dia"]))
     extreme_names = [c for c in extreme.columns if c.startswith("ext_")]
     pdf = pdf.merge(extreme, on=["distribuidora_id", "fecha"], how="left")
+    forecast_extreme_names = []
     if forecast_names:
         pdf = pdf.merge(forecast.rename(columns={c: f"prev_{c}" for c in forecast_names}),
                         on=["distribuidora_id", "fecha"], how="left")
+        forecast_extreme = forecast_extremes(hourly, forecast, extreme, float(cfg["calor_umbral_c"]),
+                                             int(cfg["horas_minimas_dia"]))
+        forecast_extreme_names = [c for c in forecast_extreme.columns if c.startswith("prev_ext_")]
+        if forecast_extreme_names:
+            pdf = pdf.merge(forecast_extreme, on=["distribuidora_id", "fecha"], how="left")
 
     events, known = read_events(spark, cfg)
     pdf = day_labels(pdf, events, cfg["causas_no_meteo"], int(cfg["incidencias_dia_varias"]))
@@ -433,7 +476,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     blocks = {}
     features = ([f"dist_{d}" for d in dists] + list(cal.columns) + history + [f"ayer_{c}" for c in weather_names]
                 + [f"dia_{c}" for c in weather_names] + extreme_names + warning_names
-                + [f"prev_{c}" for c in forecast_names])
+                + [f"prev_{c}" for c in forecast_names] + forecast_extreme_names)
     for name in features:
         blocks.setdefault(block_of(name), []).append(name)
     # The weather of the day that the forecast also gives: the fair reference of the real forecast.
@@ -644,10 +687,14 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     each year, scoring the days of the year with the weather of the day from
     the reanalysis (p_<model>__reanalisis), from the forecast of ICON-EU of
     the day before (__prevision) and from that forecast mapped by quantiles
-    (__prevision_cuantiles). Only the days with a forecast.
+    (__prevision_cuantiles). The extremes of the variant (ext_*) go with the
+    forecast too when it has them (prev_ext_*). Only the days with a forecast
+    of the weather of the day.
     """
     features = variant_features(variant, blocks)
-    swap = [c[len("dia_"):] for c in blocks.get("dia_comun", [])]
+    common = [c[len("dia_"):] for c in blocks.get("dia_comun", [])]
+    swap = [(f"dia_{name}", f"prev_{name}") for name in common]
+    swap += [(c, f"prev_{c}") for c in features if c.startswith("ext_") and f"prev_{c}" in pdf.columns]
     rows = pdf[pdf["fecha"] >= pd.Timestamp(variant["desde"])]
     parts = []
 
@@ -659,22 +706,21 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
         fitting = others if len(others) else target
         raw, mapped = target.copy(), target.copy()
 
-        for name in swap:
-            raw[f"dia_{name}"] = target[f"prev_{name}"].to_numpy()
+        for column, source in swap:
+            raw[column] = target[source].to_numpy()
             values = np.full(len(target), np.nan)
             for dist in target["distribuidora_id"].unique():
                 mask = (target["distribuidora_id"] == dist).to_numpy()
                 fit = fitting[fitting["distribuidora_id"] == dist]
-                values[mask] = quantile_map(fit[f"prev_{name}"], fit[f"dia_{name}"],
-                                            target.loc[mask, f"prev_{name}"])
-            mapped[f"dia_{name}"] = values
+                values[mask] = quantile_map(fit[source], fit[column], target.loc[mask, source])
+            mapped[column] = values
 
         out = target[["distribuidora_id", "fecha", "anio"] + LABELS].copy()
         for source, frame in (("reanalisis", target), ("prevision", raw), ("prevision_cuantiles", mapped)):
             X = frame[features].to_numpy(dtype=np.float32, na_value=np.nan)
             for model, scorer in scorers.items():
                 out[f"p_{model}__{source}"] = scorer.score(X)
-        out["con_prevision"] = target[[f"prev_{n}" for n in swap]].notna().all(axis=1).to_numpy()
+        out["con_prevision"] = target[[f"prev_{n}" for n in common]].notna().all(axis=1).to_numpy()
         parts.append(out)
 
     if not parts:
@@ -808,6 +854,8 @@ def main(argv=None):
                     wanted += [(f"p_{name}__{m}__prevision_cuantiles", f"p_{name}__{m}__reanalisis"),
                                (f"p_{name}__{m}__prevision", f"p_{name}__{m}__reanalisis"),
                                (f"p_{name}__{m}__prevision_cuantiles", f"p_ayer__{m}")]
+            # Between variants with the same weather of the day (meteo_dia.comparaciones_prevision).
+            wanted += [(f"p_{a}", f"p_{b}") for a, b in cfg.get("comparaciones_prevision", [])]
             wanted = [(a, b) for a, b in wanted if a in found.columns and b in found.columns]
             if wanted:
                 named = sorted({name for pair in wanted for name in pair})
