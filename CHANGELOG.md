@@ -2,6 +2,23 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.10.0] - sin publicar
+
+El riesgo del día siguiente pasa a operación: un DAG de Airflow lo calcula cada tarde con la previsión y los avisos de ese momento.
+
+### Añadido
+
+- `etl/jobs/00_landing/job_landing_vivo.py`: Landing de cada tarde en `s3://datalake/00_landing/vivo/<día>/`, la previsión de ICON-EU de cada celda de la Forecast API de Open-Meteo (los 31 días anteriores y los 3 siguientes, sin clave) y los avisos de AEMET en vigor (`avisos_cap/ultimoelaborado`, con la clave en una cabecera que nunca se escribe en el log). La última petición del día sustituye a las anteriores.
+- `etl/jobs/04_ml/job_ml_riesgo_manana.py` (`riesgo_manana` en `config_ml.json`): entrena la variante `operativa` del día siguiente con todos los días etiquetados y puntúa el día siguiente con la previsión y los avisos de la Landing, con las mismas funciones que la evaluación. Deja una fila por distribuidora en `l3_gold.riesgo_dia_siguiente` (probabilidad, veces la tasa base, percentil, nivel, motivos, zonas con más racha prevista frente a su clima y lo que se prevé), una fila en `ml_runs` y `resumen.md` y `prediccion.csv` en `exportar_dir/<run_id>/`.
+- `etl/dags/04_ml/dag_riesgo_manana.py`: cada tarde a las 20:30 de Madrid, el día que se predice, las dos Landing en paralelo y la puntuación con Spark. Sin previsión falla; sin respuesta de AEMET se salta los avisos y puntúa sin ellos. Admite el parámetro `fecha` para otro día.
+- Variante `operativa` en `meteo_dia` (calendario, historia, avisos, el tiempo del día que también da la previsión, extremos y solo la racha máxima y la lluvia del día anterior) y sus comparaciones. Las variantes admiten variables sueltas de otros bloques (`variables`).
+- Tests: `tests/01_bronze/test_landing_vivo.py` y `tests/04_ml/test_riesgo_manana.py`.
+
+### Cambiado
+
+- El contenedor de Airflow recibe `AEMET_API_KEY` de `.env`, y su imagen se reconstruye con las librerías del modelo para que el driver de Spark del DAG pueda entrenar.
+- `.gitignore`: fuera las copias de `.env` (`.env.bak`), salvo la plantilla.
+
 ## [0.9.0] - sin publicar
 
 Causas de todas las incidencias de Calser de las tres distribuidoras, qué datos podrían anticipar cada una y fuentes públicas nuevas para las que faltaban.

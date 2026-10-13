@@ -29,7 +29,7 @@ metrics:
 
 Clasificadores binarios que estiman la probabilidad de que en las siguientes 1 a 3 horas empiece una interrupción imprevista de suministro. Hay dos unidades: cada centro de transformación (CT) de media tensión y hora, que es la unidad con la que empezamos, y cada distribuidora y hora (horas de riesgo), que es donde los resultados muestran que vive la señal. Se entrena sobre la telemetría histórica del SCADA TedisNet y las interrupciones registradas en Calser (ver la [dataset card](dataset_card.md)). Es una herramienta de apoyo a la decisión del operador de la distribuidora: no actúa sobre la red.
 
-Estado a 11.10.2026: pipeline hasta Gold cargado con la ventana completa (dataset `ds_20261010T045104_a5a2531cacbb`, 246 features, 1.287 CT), meteorología integrada, modelos entrenados y evaluados en `etl/jobs/04_ml` (ver [ml-training.md](ml-training.md)) y test usado una sola vez, con la configuración cerrada. Los requisitos y la metodología de evaluación se fijaron en esta ficha antes de entrenar; los resultados están en Results. Desde el 13.10.2026 Results recoge también el riesgo del día siguiente por distribuidora, con los avisos de AEMET y la previsión real de ICON-EU.
+Estado a 11.10.2026: pipeline hasta Gold cargado con la ventana completa (dataset `ds_20261010T045104_a5a2531cacbb`, 246 features, 1.287 CT), meteorología integrada, modelos entrenados y evaluados en `etl/jobs/04_ml` (ver [ml-training.md](ml-training.md)) y test usado una sola vez, con la configuración cerrada. Los requisitos y la metodología de evaluación se fijaron en esta ficha antes de entrenar; los resultados están en Results. Desde el 13.10.2026 Results recoge también el riesgo del día siguiente por distribuidora, con los avisos de AEMET y la previsión real de ICON-EU, y ese modelo corre cada tarde en Airflow (`dag_riesgo_manana`).
 
 ## Model Details
 
@@ -53,6 +53,7 @@ Estado a 11.10.2026: pipeline hasta Gold cargado con la ventana completa (datase
 
 ### Direct Use
 
+- Cada tarde, el riesgo del día siguiente de cada distribuidora (probabilidad, nivel, motivos y zonas con más racha prevista frente a su clima), para decidir la víspera cuántas brigadas dejar de guardia y dónde. Es el uso que está en marcha.
 - Generar, cada hora, una lista de CT ordenada por probabilidad de interrupción en las próximas 1 a 3 horas, para que el centro de control de la distribuidora decida si reposiciona operarios o revisa una instalación.
 - Explicar cada alerta con las variables que más pesan (SHAP): por ejemplo, intensidad homopolar creciente, defectos de tierra repetidos o errores de comunicaciones del equipo.
 - Evaluar, sobre el histórico, qué fracción de las interrupciones habría tenido aviso previo y con cuánta antelación.
@@ -77,6 +78,7 @@ Estado a 11.10.2026: pipeline hasta Gold cargado con la ventana completa (datase
 - **Etiquetas con retraso y huecos.** Entre un 26 y un 28 % de las interrupciones no tienen incidencia asociada, y la fecha de alta puede ser semanas posterior al evento. En producción habría una latencia de etiquetado similar, que afecta a la monitorización.
 - **Telemetría parcial y cambiante.** Solo unos 4.000 tags tienen serie regular; hay huecos por caídas de RabbitMQ y valores congelados por el muestreo sample-and-hold. Un CT sin telemetría no puede tener alerta, y el modelo no debe interpretarse como "ese CT es seguro".
 - **Metadatos actuales sobre eventos históricos.** La topología es la de hoy; el modelo puede aprender relaciones que ya no existen.
+- **El riesgo de cada tarde depende de que lleguen los datos.** Sin la previsión de ICON-EU no se calcula; sin los avisos de AEMET se calcula como si no hubiera ninguno y la fila lo marca. Mientras la copia de Calser del lakehouse no se cargue cada día, la historia de incidencias de las últimas semanas no se conoce: el modelo toma la mediana de los días de entrenamiento y la fila lo marca (`historia_al_dia`). El tiempo del día anterior sale de ICON-EU y no del reanálisis con el que se entrenó.
 - **Sesgo de cobertura.** Tres distribuidoras rurales de Extremadura con el mismo SCADA. No hay evidencia de que generalice a otras redes.
 - **Riesgo de uso.** Un exceso de falsas alarmas haría que el operador dejara de mirar las alertas; un exceso de confianza haría que dejara de vigilar los CT sin alerta. Ambos se tratan como requisitos (ver Evaluation).
 - **Regulación.** Un sistema de IA aplicado a infraestructura crítica es de alto riesgo según el Reglamento (UE) 2024/1689 (AI Act). Esta ficha, la trazabilidad de versiones de datos y modelo, la explicabilidad y la supervisión humana forman parte de las obligaciones que asumimos desde el diseño.
@@ -103,6 +105,15 @@ probabilidad = modelo.score(filas[features].to_numpy(dtype="float32", na_value=f
 ```
 
 Para entrenar, `l3_gold.dataset_train` trae la columna `split` y una muestra reproducible de negativos (`en_muestra_train`, `peso_muestra`). Cómo se lanza y qué tablas deja está en [ml-training.md](ml-training.md).
+
+El riesgo del día siguiente no hay que cargarlo a mano: `dag_riesgo_manana` lo calcula cada tarde a las 20:30 con la previsión de ICON-EU y los avisos de AEMET de ese momento, vuelve a entrenar la regresión logística con todos los días etiquetados y deja una fila por distribuidora y día en `l3_gold.riesgo_dia_siguiente` (ver [causas-incidencias.md](causas-incidencias.md), apartados 8 y 10):
+
+```sql
+SELECT fecha, distribuidora, nivel, ROUND(probabilidad, 3) AS probabilidad, ROUND(veces_tasa_base, 1) AS veces,
+       motivos, zonas, avisos_disponibles, historia_al_dia
+FROM lakehouse.l3_gold.riesgo_dia_siguiente
+ORDER BY fecha DESC, probabilidad DESC;
+```
 
 ## Training Details
 
@@ -200,7 +211,7 @@ Con el reanálisis en 2022 - 2025 (137 días con avería) la logística con avis
 
 **Test 2026 del riesgo del día siguiente** (01.01 - 01.07.2026, 24 días con avería, usado una sola vez, `dia_test2026_20261013_0428`). Con la previsión real, la logística con avisos y extremos da 0,132 (3,1 veces la tasa base de 0,044) y el 20 % de días de más riesgo recoge el 52 % de los días con avería, pero no se distingue del modelo que solo sabe el tiempo de ayer (0,164), que este año acierta más de lo habitual porque los temporales de enero llegaron seguidos. El modelo generaliza fuera de los años de la selección; con 24 días el test no separa las variantes. Ver [causas-incidencias.md](causas-incidencias.md), apartado 8.
 
-**Lectura.** El modelo sirve para señalar días y zonas de riesgo con unas horas de antelación, apoyado en la meteorología y en el estado de la red aguas arriba; no sirve para anunciar la hora exacta ni el CT concreto de la interrupción. No recomendamos pasarlo a serving como alerta horaria por CT. La víspera, en cambio, el riesgo del día siguiente con la previsión de ICON-EU y los avisos de AEMET sí sirve para planificar las brigadas, y es el que proponemos llevar a serving, con las cabeceras ordenadas por tamaño para decidir dónde mirar primero. A un año vista, la lista de cabeceras es útil para decidir dónde revisar, podar o poner telemando.
+**Lectura.** El modelo sirve para señalar días y zonas de riesgo con unas horas de antelación, apoyado en la meteorología y en el estado de la red aguas arriba; no sirve para anunciar la hora exacta ni el CT concreto de la interrupción. No recomendamos pasarlo a serving como alerta horaria por CT. La víspera, en cambio, el riesgo del día siguiente con la previsión de ICON-EU y los avisos de AEMET sí sirve para planificar las brigadas, y es el que hemos llevado a serving: `dag_riesgo_manana` lo calcula cada tarde, con los motivos de cada día y las zonas con más racha prevista frente a su clima; las cabeceras ordenadas por tamaño dicen dónde mirar primero. A un año vista, la lista de cabeceras es útil para decidir dónde revisar, podar o poner telemando.
 
 ## Model Examination [optional]
 
