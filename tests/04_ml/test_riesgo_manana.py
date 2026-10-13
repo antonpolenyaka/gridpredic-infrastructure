@@ -533,6 +533,10 @@ def test_the_zones_split_the_risk_of_the_day(first, spark, workdir):
     assert len(eosa["cts"]) == 4 and eosa["cts"][0]["probabilidad"] >= eosa["cts"][-1]["probabilidad"]
     assert payload["reglas"]["cascada"]["n"] > 0 and "pico de racha" in payload["reglas"]["texto"]
     assert os.path.exists(os.path.join(workdir, "dashboard", "riesgo_20260115.json"))
+    assert eosa["brigadas"]["posicionamiento"].startswith("brigadas en sus bases a las")
+    assert [c["n"] for c in eosa["brigadas"]["curva"]][:2] == [1, 2] and eosa["brigadas"]["bases"][0]["municipios"]
+    for name in ("parte_guardia.xlsx", "parte_guardia_20260115.xlsx"):
+        assert os.path.getsize(os.path.join(workdir, "dashboard", name)) > 5000
     text = open(os.path.join(workdir, "resultados", RUN_ID, "resumen.md"), encoding="utf-8").read()
     assert "## EOSA: dónde, cuándo, por qué y cuánto" in text and "### Brigadas" in text
 

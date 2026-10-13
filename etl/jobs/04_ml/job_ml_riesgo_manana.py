@@ -1088,7 +1088,11 @@ def report_text(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out: dict
 
 
 def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day: pd.Timestamp):
-    """riesgo.json for the dashboard (dashboard_dir, when the folder exists) and a copy in the export folder."""
+    """
+    riesgo.json for the dashboard (dashboard_dir, when the folder exists)
+    and a copy in the export folder, and parte_guardia.xlsx (the same
+    tables for the shift, to print or send) next to each of them.
+    """
     targets = []
     folder = config.get("exportar_dir")
     if folder:
@@ -1105,6 +1109,16 @@ def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day
             logger.info("Dashboard JSON written in %s", target)
         except OSError as error:
             logger.error("Dashboard JSON not written in %s: %s", target, error)
+            continue
+        sheet = os.path.join(os.path.dirname(target), os.path.basename(target).replace("riesgo", "parte_guardia", 1)
+                             .replace(".json", ".xlsx"))
+        try:
+            if rz.write_shift_sheet(payload, sheet):
+                logger.info("Shift sheet written in %s", sheet)
+            else:
+                logger.warning("openpyxl not installed: no shift sheet")
+        except Exception as error:  # noqa: BLE001
+            logger.error("Shift sheet not written in %s: %s", sheet, error)
 
 
 def main(argv=None):

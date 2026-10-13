@@ -587,3 +587,92 @@ def write_json(payload: dict, path: str):
 
 def now_text() -> str:
     return datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M UTC")
+
+
+def shift_sheets(payload: dict) -> dict:
+    """
+    The tables of the shift sheet (parte de guardia) from the payload of the
+    dashboard: one frame per sheet, in the order they are written.
+    """
+    dists = payload.get("distribuidoras", [])
+    summary, lines, munis, cts, crews, curve = [], [], [], [], [], []
+    for d in dists:
+        imp, fr, plan = d.get("impacto") or {}, d.get("franja") or {}, d.get("brigadas") or {}
+        summary.append({
+            "distribuidora": d.get("nombre"), "nivel": d.get("nivel"), "probabilidad": d.get("probabilidad"),
+            "veces la tasa base": d.get("veces_tasa_base"), "averías esperadas": d.get("esperadas"),
+            "CT esperados sin luz": imp.get("ct_esperados"), "clientes esperados sin luz": imp.get("clientes_esperados"),
+            "kVA esperados": imp.get("kva_esperados"), "franja de más riesgo": fr.get("texto"),
+            "hora pico": fr.get("pico"), "racha pico (km/h)": fr.get("racha_pico"),
+            "posicionamiento": plan.get("posicionamiento"),
+            "bases": "; ".join(b.get("municipio", "") for b in plan.get("bases", [])),
+            "llegada media (min)": plan.get("llegada_media_min"), "motivos": d.get("motivos"),
+            "causas (días como mañana)": ", ".join(f"{c['familia']} {round(100 * c['parte'])} %" for c in d.get("causas", [])),
+        })
+        for z in sorted(d.get("zonas", []), key=lambda z: -(z.get("probabilidad") or 0)):
+            lines.append({"distribuidora": d.get("nombre"), "línea": z.get("nombre"), "id línea": z.get("zona"),
+                          "nivel": z.get("nivel"), "probabilidad": z.get("probabilidad"), "parte del riesgo": z.get("parte"),
+                          "CT": z.get("n_ct"), "clientes": z.get("abonados"), "kVA": z.get("kva"),
+                          "clientes esperados sin luz": z.get("clientes_esperados"), "racha prevista (km/h)": z.get("racha_max"),
+                          "lluvia prevista (mm)": z.get("lluvia"), "incidencias último año": z.get("hist_365d"),
+                          "días desde la última": z.get("hist_dias_desde"), "municipios": ", ".join(z.get("municipios", []))})
+        for m in d.get("municipios", []):
+            munis.append({"distribuidora": d.get("nombre"), "municipio": m.get("nombre"), "código INE": m.get("codigo_ine"),
+                          "nivel": m.get("nivel"), "probabilidad": m.get("probabilidad"), "CT": m.get("n_ct"),
+                          "clientes": m.get("abonados"), "clientes esperados sin luz": m.get("clientes_esperados"),
+                          "racha prevista (km/h)": m.get("racha_max"), "líneas": ", ".join(m.get("zonas", []))})
+        for c in d.get("cts", []):
+            cts.append({"distribuidora": d.get("nombre"), "CT": c.get("ct_id"), "municipio": c.get("municipio"),
+                        "línea": c.get("zona"), "clientes": c.get("abonados"), "kVA": c.get("kva"),
+                        "probabilidad": c.get("probabilidad")})
+        for b in plan.get("bases", []):
+            crews.append({"distribuidora": d.get("nombre"), "base": b.get("municipio"), "cubre municipios": b.get("cubre_municipios"),
+                          "cubre CT": b.get("cubre_ct"), "parte del riesgo": b.get("parte_riesgo"),
+                          "llegada media (min)": b.get("llegada_media_min"), "llegada máxima (min)": b.get("llegada_max_min"),
+                          "municipios que cubre": ", ".join(b.get("municipios", [])), "tiempos": plan.get("tiempos")})
+        for c in plan.get("curva", []):
+            curve.append({"distribuidora": d.get("nombre"), "brigadas": c.get("n"), "llegada media (min)": c.get("llegada_media_min"),
+                          "parte del riesgo a menos de 30 min": c.get("riesgo_30min"), "llegada máxima (min)": c.get("llegada_max_min"),
+                          "bases": ", ".join(c.get("bases", []))})
+    rules = payload.get("reglas") or {}
+    notes = [{"nota": n} for n in (payload.get("notas") or [])]
+    if rules.get("texto"):
+        notes.insert(0, {"nota": rules["texto"]})
+    notes.insert(0, {"nota": f"Riesgo de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}, generado el "
+                             f"{payload.get('generado', '')} (ejecución {payload.get('run_id', '')})"})
+    return {"Resumen": pd.DataFrame(summary), "Lineas": pd.DataFrame(lines), "Municipios": pd.DataFrame(munis),
+            "CT": pd.DataFrame(cts), "Brigadas": pd.DataFrame(crews), "Brigadas por numero": pd.DataFrame(curve),
+            "Notas": pd.DataFrame(notes)}
+
+
+def write_shift_sheet(payload: dict, path: str) -> bool:
+    """parte_guardia.xlsx: the tables of shift_sheets with bold headers, frozen first row and percentages."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        return False
+    book = Workbook()
+    book.remove(book.active)
+    percent = {"probabilidad", "parte del riesgo", "parte del riesgo a menos de 30 min"}
+    for name, frame in shift_sheets(payload).items():
+        sheet = book.create_sheet(name[:31])
+        if frame.empty:
+            sheet.append(["sin datos"])
+            continue
+        columns = list(frame.columns)
+        sheet.append(columns)
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+        for row in frame.itertuples(index=False):
+            sheet.append([clean(v) for v in row])
+        for j, column in enumerate(columns, 1):
+            width = max([len(str(column))] + [len(str(v)) for v in frame[column].head(200).tolist()] + [8])
+            sheet.column_dimensions[get_column_letter(j)].width = min(60, width + 2)
+            if column in percent:
+                for i in range(2, len(frame) + 2):
+                    sheet.cell(row=i, column=j).number_format = "0.0%"
+        sheet.freeze_panes = "A2"
+    book.save(path)
+    return True
