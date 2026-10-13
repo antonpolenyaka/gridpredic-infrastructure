@@ -2,6 +2,17 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.11.0] - sin publicar
+
+El riesgo de mañana baja de la distribuidora a las líneas, los municipios y los CT, dice cuándo, por qué y cuánto, propone dónde dejar las brigadas y se ve en un cuadro de mando sobre un mapa.
+
+### Añadido
+
+- `etl/jobs/04_ml/riesgo_zonas.py`: el riesgo del día repartido entre las líneas (el grupo de red de TedisNet de `dim_ct`) con un modelo de línea y día (tamaño, historia a 30, 365 y 1.095 días, tiempo previsto de sus celdas y las features del día), reescalado en la escala de las razones de probabilidad para que la probabilidad de que falle alguna línea sea la del día de la distribuidora; el riesgo de cada municipio y de cada CT (la parte de las incidencias de la línea que lo cortan, encogida hacia la media de la línea); la franja horaria del pico de racha; el reparto de causas por tramo de racha prevista; las incidencias, CT, clientes, kVA y minutos de TIEPI esperados; las bases de las brigadas que minimizan la llegada (p-mediana sobre los municipios) y la regla de la cascada. Solo pandas, probado en `tests/04_ml/test_riesgo_zonas.py`.
+- `job_ml_riesgo_manana.py` deja además `l3_gold.riesgo_zona_siguiente` (una fila por línea y día), las columnas `incidencias_esperadas`, `ct_esperados`, `clientes_esperados`, `franja_inicio`, `franja_fin` y `hora_pico` en `riesgo_dia_siguiente`, `zonas.csv` y `riesgo.json` en la carpeta de exportación, el seguimiento de las últimas predicciones frente a lo que pasó, las secciones "dónde, cuándo, por qué y cuánto" de `resumen.md` y el JSON del cuadro de mando en `dashboard/data/` (`riesgo.json` y una copia por día). Bloque `riesgo_zonas` y `dashboard_dir` en `riesgo_manana` de `config_ml.json` (brigadas por distribuidora, velocidad y factor de carretera, bases fijas, franja).
+- `dashboard/`: cuadro de mando estático (Leaflet 1.9.4 sobre las teselas de OpenStreetMap, sin claves) con el mapa de los municipios por nivel, las bases de las brigadas, el perfil horario de racha con la franja, el reparto de causas, las líneas ordenadas por riesgo y el seguimiento. Lo sirve el contenedor `dashboard` (nginx) en http://localhost:8086; `./dashboard/data` se monta en Airflow y en Spark para que el job escriba el JSON.
+- Medido y documentado en `causas-incidencias.md` (apartado 8): dentro del día la línea que falla queda entre las tres de más riesgo en el 15 - 18 % de los casos (al azar el 9 %) y el tamaño de la línea lo hace igual de bien que cualquier modelo; el área que falla está entre las dos de más riesgo en el 62 % (79 % los días de viento); dos de cada tres incidencias por meteorología empiezan a menos de 3 horas del pico de racha; tras una incidencia otra empieza en 3 horas en el 13 - 15 % de los casos (45 % tras meteorología); y el aviso de las próximas 1 - 3 horas por línea y hora se queda en una precisión del 1 - 3 % en la línea alertada.
+
 ## [0.10.0] - sin publicar
 
 El riesgo del día siguiente pasa a operación: un DAG de Airflow lo calcula cada tarde con la previsión y los avisos de ese momento.

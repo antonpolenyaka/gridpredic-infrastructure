@@ -144,6 +144,8 @@ services:
       # launched by hand from this container (Airflow mounts it on its own).
       - ./etl/config:/app/config:ro
       - ./infra/spark/master:/scripts:ro
+      # The same folder as airflow, for the jobs launched by hand from this container.
+      - ./dashboard/data:/app/dashboard/data
 
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
 
@@ -276,12 +278,28 @@ services:
       - ./infra/spark/conf:/app/conf:ro
       - ./etl/jobs:/app/jobs:ro
       - ./infra/airflow/healthcheck.sh:/scripts/healthcheck.sh:ro
+      # The risk of tomorrow leaves the JSON of the dashboard here (dag_riesgo_manana).
+      - ./dashboard/data:/app/dashboard/data
 
     command: standalone
 
     healthcheck:
       test: ["CMD", "/bin/sh", "/scripts/healthcheck.sh"]
       start_period: 10m
+
+
+  dashboard:
+    # Static page with the risk of tomorrow on a map (dashboard/index.html, Leaflet over OpenStreetMap). It reads
+    # the JSON that dag_riesgo_manana writes every evening in dashboard/data.
+    image: nginx:1.27-alpine
+
+    restart: unless-stopped
+
+    ports:
+      - "8086:80"  # Dashboard del riesgo de manana
+
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
 
 
   kafka:
