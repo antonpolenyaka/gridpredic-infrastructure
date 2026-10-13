@@ -25,8 +25,9 @@ tested on small synthetic data.
   ct_risk): a CT has the probability of its line times the share of the
   incidents of the line that cut it (shrunk towards the mean of the line).
 - When: the hours of the day with the forecast gust near its peak
-  (risk_window). On the days of wind, two of three incidents of weather
-  start within three hours of the strongest gust of the day (lag_stats).
+  (risk_window). Three of five incidents of weather start within three
+  hours of the strongest gust of the day of their cell, more on the windy
+  days (lag_stats, computed again every evening).
 - Why: the mix of causes of the incidents of days like tomorrow (cause_mix),
   by the strongest forecast gust: with gusts of 70 km/h or more, half of
   the incidents are weather; below 40 km/h, equipment, animals and unknown
@@ -39,7 +40,7 @@ tested on small synthetic data.
   (osrm_table) and straight-line distances times a road factor otherwise;
   and the cascade rule
   (cascade_rule): after a first incident, another one follows within three
-  hours in 15 % of the cases, 45 % when the first one was weather.
+  hours in 11 % of the cases, 30 % when the first one was weather.
 """
 
 import json
