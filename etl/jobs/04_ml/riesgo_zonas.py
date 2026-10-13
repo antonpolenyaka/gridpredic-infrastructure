@@ -35,13 +35,16 @@ tested on small synthetic data.
   (impact), from what the incidents of each line usually cut.
 - Crews: the bases that minimise the expected arrival time to the risk of
   tomorrow (crew_plan), a p-median over the municipalities of the CTs with
-  straight-line distances times a road factor; and the cascade rule
+  the minutes by road of OSRM over OpenStreetMap when the job has them
+  (osrm_table) and straight-line distances times a road factor otherwise;
+  and the cascade rule
   (cascade_rule): after a first incident, another one follows within three
   hours in 15 % of the cases, 45 % when the first one was weather.
 """
 
 import json
 import math
+import urllib.request
 from datetime import datetime, timezone
 
 import numpy as np
@@ -447,15 +450,36 @@ def haversine_km(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return 2 * EARTH_KM * np.arcsin(np.sqrt(h))
 
 
+def osrm_table(points: list, api: str = "https://router.project-osrm.org", timeout: float = 60.0) -> np.ndarray:
+    """
+    Minutes by road between points [(lat, lon)], from the table service of
+    OSRM (driving profile over OpenStreetMap); NaN where there is no route.
+    One request per distribuidora and day, cached by the job.
+    """
+    coords = ";".join(f"{lon:.5f},{lat:.5f}" for lat, lon in points)
+    url = f"{api.rstrip('/')}/table/v1/driving/{coords}?annotations=duration"
+    request = urllib.request.Request(url, headers={"User-Agent": "GridPredict-TFM/1.0"})
+    with urllib.request.urlopen(request, timeout=timeout) as answer:
+        payload = json.loads(answer.read())
+    if payload.get("code") != "Ok" or "durations" not in payload:
+        raise RuntimeError(f"OSRM answered {str(payload)[:120]}")
+    seconds = np.array([[np.nan if v is None else float(v) for v in row] for row in payload["durations"]], dtype=float)
+    if seconds.shape != (len(points), len(points)):
+        raise RuntimeError(f"OSRM gave a table of {seconds.shape} for {len(points)} points")
+    return seconds / 60.0
+
+
 def crew_plan(municipalities: pd.DataFrame, crews: int, speed_kmh: float = 60.0, road_factor: float = 1.3,
-              fixed: list = None) -> dict:
+              fixed: list = None, road_minutes: pd.DataFrame = None) -> dict:
     """
     The crews bases that minimise the expected arrival time to the risk of
     tomorrow: a greedy p-median over the municipalities of the CTs (lat,
     lon), weighting each one by its expected customers out of service
-    (clientes_esperados, or its probability), with road distances taken as
-    straight lines times road_factor at speed_kmh. fixed: municipalities of
-    the bases the distribuidora already has, to compare.
+    (clientes_esperados, or its probability). The minutes between
+    municipalities are the ones by road of road_minutes (a frame indexed
+    by municipio in rows and columns, osrm_table) when it covers them, and
+    straight lines times road_factor at speed_kmh otherwise. fixed:
+    municipalities of the bases the distribuidora already has, to compare.
     """
     m = municipalities.dropna(subset=["lat", "lon"]).reset_index(drop=True)
     if m.empty or crews <= 0:
@@ -466,6 +490,13 @@ def crew_plan(municipalities: pd.DataFrame, crews: int, speed_kmh: float = 60.0,
     if weights.sum() <= 0:
         weights = m["n_ct"].to_numpy(dtype=float)
     minutes = haversine_km(pts, pts) * road_factor / speed_kmh * 60.0
+    source = f"línea recta por {road_factor:g} a {speed_kmh:g} km/h"
+    if road_minutes is not None and len(road_minutes):
+        by_road = road_minutes.reindex(index=m["municipio"], columns=m["municipio"]).to_numpy(dtype=float)
+        known = np.isfinite(by_road)
+        if known.mean() >= 0.9:
+            minutes = np.where(known, by_road, minutes)
+            source = "carretera (OSRM sobre OpenStreetMap)"
     chosen = []
     for _ in range(min(crews, len(m))):
         best = None
@@ -481,12 +512,15 @@ def crew_plan(municipalities: pd.DataFrame, crews: int, speed_kmh: float = 60.0,
     bases = []
     for k, j in enumerate(chosen):
         mine = nearest == k
+        order = np.argsort(-weights * mine)
+        covered = [str(m.loc[i, "municipio"]) for i in order if mine[i]]
         bases.append({"municipio": str(m.loc[j, "municipio"]), "lat": float(pts[j, 0]), "lon": float(pts[j, 1]),
                       "cubre_municipios": int(mine.sum()), "cubre_ct": int(m.loc[mine, "n_ct"].sum()),
-                      "parte_riesgo": float(weights[mine].sum() / weights.sum()),
-                      "llegada_media_min": float((arrival[mine, k] * weights[mine]).sum() / max(weights[mine].sum(), 1e-9))})
+                      "municipios": covered, "parte_riesgo": float(weights[mine].sum() / weights.sum()),
+                      "llegada_media_min": float((arrival[mine, k] * weights[mine]).sum() / max(weights[mine].sum(), 1e-9)),
+                      "llegada_max_min": float(arrival[mine, k].max())})
     best_arrival = arrival.min(axis=1)
-    plan = {"n": len(chosen), "velocidad_kmh": speed_kmh, "factor_carretera": road_factor, "bases": bases,
+    plan = {"n": len(chosen), "velocidad_kmh": speed_kmh, "factor_carretera": road_factor, "tiempos": source, "bases": bases,
             "llegada_media_min": float((best_arrival * weights).sum() / weights.sum()),
             "riesgo_30min": float(weights[best_arrival <= 30].sum() / weights.sum()),
             "riesgo_45min": float(weights[best_arrival <= 45].sum() / weights.sum()),
@@ -499,6 +533,29 @@ def crew_plan(municipalities: pd.DataFrame, crews: int, speed_kmh: float = 60.0,
                              "llegada_media_min": float((arr * weights).sum() / weights.sum()),
                              "riesgo_30min": float(weights[arr <= 30].sum() / weights.sum())}
     return plan
+
+
+def crew_curve(municipalities: pd.DataFrame, up_to: int = 4, **kwargs) -> list:
+    """What each extra crew buys: [{n, llegada_media_min, riesgo_30min, bases}] for 1 to up_to crews."""
+    out = []
+    for n in range(1, max(1, up_to) + 1):
+        plan = crew_plan(municipalities, n, **kwargs)
+        if not plan or plan["n"] < n:
+            break
+        out.append({"n": n, "llegada_media_min": plan["llegada_media_min"], "riesgo_30min": plan["riesgo_30min"],
+                    "llegada_max_min": plan["llegada_max_min"], "bases": [b["municipio"] for b in plan["bases"]]})
+    return out
+
+
+def positioning(window: dict, plan: dict, lead_min: int = 60) -> str:
+    """When the crews should be at their bases: an hour before the window of the day, if there is one."""
+    if not plan or not plan.get("bases"):
+        return ""
+    if window and window.get("inicio") is not None:
+        hour = max(0, int(window["inicio"]) - max(0, int(round(lead_min / 60.0))))
+        return (f"brigadas en sus bases a las {hour}:00 (una hora antes de la franja de más riesgo, "
+                f"de {int(window['inicio'])}:00 a {int(window['fin']) + 1}:00)")
+    return "sin franja de viento: guardia normal, con las bases propuestas si hay que elegir"
 
 
 # ---------------------------------------------------------------------------

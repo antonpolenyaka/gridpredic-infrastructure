@@ -270,6 +270,33 @@ def test_the_windiest_places_of_every_distribuidora():
     assert rm.windiest_places(hours, places, DAY + pd.Timedelta(days=1), 3) == {}
 
 
+def test_the_road_minutes_are_asked_once_and_kept(tmp_path, monkeypatch):
+    municipalities = pd.DataFrame({"municipio": ["Zafra", "Montánchez", "Torre"], "lat": [38.42, 39.22, 39.3],
+                                   "lon": [-6.42, -6.15, -6.1], "n_ct": [3, 2, 1], "probabilidad": [0.1, 0.2, 0.1]})
+    asked = []
+
+    def fake_osrm(points, api, timeout):
+        asked.append((points, api, timeout))
+        n = len(points)
+        return np.where(np.eye(n) == 1, 0.0, 33.0)
+
+    monkeypatch.setattr(rm.rz, "osrm_table", fake_osrm)
+    zcfg = {"rutas": {"activo": True, "api": "https://osrm.example", "timeout_s": 7, "cache": str(tmp_path / "rutas")}}
+    fs = rm.LocalFiles()
+    first = rm.road_minutes(fs, zcfg, municipalities, 3)
+    assert list(first.index) == ["Montánchez", "Torre", "Zafra"] and first.loc["Zafra", "Torre"] == 33.0
+    assert asked[0][1:] == ("https://osrm.example", 7.0) and asked[0][0][0] == (39.22, -6.15)
+    # The second time it comes from the cache, with the same values.
+    second = rm.road_minutes(fs, zcfg, municipalities, 3)
+    assert len(asked) == 1 and second.equals(first)
+    assert len(list((tmp_path / "rutas").glob("3_*.json"))) == 1
+    # Off, or a service that fails: None, and the crews use straight lines.
+    assert rm.road_minutes(fs, {"rutas": {"activo": False}}, municipalities, 3) is None
+    monkeypatch.setattr(rm.rz, "osrm_table", lambda *a: (_ for _ in ()).throw(RuntimeError("down")))
+    assert rm.road_minutes(fs, {"rutas": {**zcfg["rutas"], "cache": str(tmp_path / "otra")}}, municipalities, 3) is None
+    assert rm.road_minutes(None, zcfg, municipalities, 3) is None
+
+
 # ---------------------------------------------------------------------------
 # The whole job on a local Spark
 # ---------------------------------------------------------------------------

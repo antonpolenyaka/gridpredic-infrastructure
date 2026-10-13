@@ -52,6 +52,7 @@ resumen.md and prediccion.csv in exportar_dir/<run_id>/.
 
 import argparse
 import glob
+import hashlib
 import json
 import math
 import os
@@ -115,7 +116,9 @@ DEFAULTS = {
     "zonas": 3,
     "dashboard_dir": "/app/dashboard/data",
     "riesgo_zonas": {"brigadas": {}, "velocidad_kmh": 60.0, "factor_carretera": 1.3, "bases_fijas": {},
-                     "franja_parte_pico": 0.8, "franja_calma_kmh": 40.0},
+                     "franja_parte_pico": 0.8, "franja_calma_kmh": 40.0,
+                     "rutas": {"activo": False, "api": "https://router.project-osrm.org", "timeout_s": 60,
+                               "cache": "s3://datalake/00_landing/vivo/rutas"}},
 }
 
 # Variable of the forecast of Open-Meteo -> hourly column of Gold without its prefix, physical range of Silver.
@@ -228,6 +231,9 @@ class LocalFiles:
 
     def exists(self, path: str) -> bool:
         return os.path.exists(path)
+
+    def makedirs(self, path: str, exist_ok: bool = True):
+        os.makedirs(path, exist_ok=exist_ok)
 
 
 def live_filesystem(path: str):
@@ -541,9 +547,53 @@ def fit_zone_model(rows: pd.DataFrame, features: list, config: dict, cfg: dict):
     return refit("logistica", scorers["logistica"], full, seed, n_jobs), search, Xa
 
 
+def road_minutes(fs, zcfg: dict, municipalities: pd.DataFrame, dist: int):
+    """
+    The minutes by road between the municipalities of a distribuidora (OSRM
+    over OpenStreetMap, riesgo_zonas.rutas), kept in the cache folder by the
+    set of municipalities so the service is asked once. None when the routes
+    are off, the service fails or fs cannot keep the cache: the crews fall
+    back to straight lines.
+    """
+    rcfg = {**DEFAULTS["riesgo_zonas"]["rutas"], **(zcfg.get("rutas") or {})}
+    if not rcfg.get("activo") or fs is None:
+        return None
+    places = municipalities.dropna(subset=["lat", "lon"]).sort_values("municipio")
+    if places.empty:
+        return None
+    names = places["municipio"].astype(str).tolist()
+    points = [(round(float(a), 4), round(float(o), 4)) for a, o in zip(places["lat"], places["lon"])]
+    key = hashlib.sha1(json.dumps([names, points]).encode("utf-8")).hexdigest()[:12]
+    cache = f"{str(rcfg['cache']).rstrip('/')}/{int(dist)}_{key}.json"
+    try:
+        if fs.exists(cache):
+            payload = read_json(fs, cache)
+            return pd.DataFrame(payload["minutos"], index=payload["municipios"], columns=payload["municipios"], dtype=float)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Road minutes of %s not read from %s: %s", dist, cache, error)
+    try:
+        matrix = rz.osrm_table(points, rcfg["api"], float(rcfg.get("timeout_s", 60)))
+    except Exception as error:  # noqa: BLE001
+        logger.warning("OSRM did not give the road minutes of %s (%s): straight lines instead", dist, str(error)[:160])
+        return None
+    logger.info("Road minutes of %s: %s municipalities from OSRM (%s without route)", dist, len(names),
+                int(np.isnan(matrix).sum()))
+    try:
+        if hasattr(fs, "makedirs"):
+            fs.makedirs(os.path.dirname(cache), exist_ok=True)
+        with fs.open(cache, "w") as file:
+            json.dump({"municipios": names, "minutos": [[None if np.isnan(v) else round(float(v), 2) for v in row]
+                                                      for row in matrix], "api": rcfg["api"],
+                       "pedido_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}, file, ensure_ascii=False)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Road minutes of %s not cached in %s: %s", dist, cache, error)
+    return pd.DataFrame(matrix, index=names, columns=names, dtype=float)
+
+
 def zone_outputs(spark, config: dict, rcfg: dict, cfg: dict, variant: dict, pdf: pd.DataFrame, events: pd.DataFrame,
                  live: pd.DataFrame, probability: np.ndarray, cells_hours: pd.DataFrame, climate: pd.Series,
-                 hourly: pd.DataFrame, day: pd.Timestamp, end: pd.Timestamp, names: dict, levels: dict) -> dict:
+                 hourly: pd.DataFrame, day: pd.Timestamp, end: pd.Timestamp, names: dict, levels: dict,
+                 fs=None) -> dict:
     """
     {distribuidora_id: {...}} with the risk of tomorrow below the
     distribuidora: zones (lines), municipalities, CTs, the window of the day,
@@ -631,8 +681,13 @@ def zone_outputs(spark, config: dict, rcfg: dict, cfg: dict, variant: dict, pdf:
         bucket = rz.gust_bucket(float(profile["racha_max"].max()) if len(profile) else None)
         causes = mix[mix["bucket"] == bucket].sort_values("parte", ascending=False)
         crews = int(zcfg.get("brigadas", {}).get(str(int(dist)), 1))
+        roads = road_minutes(fs, zcfg, municipalities, dist)
         plan = rz.crew_plan(municipalities, crews, float(zcfg["velocidad_kmh"]), float(zcfg["factor_carretera"]),
-                            zcfg.get("bases_fijas", {}).get(str(int(dist))))
+                            zcfg.get("bases_fijas", {}).get(str(int(dist))), roads)
+        if plan:
+            plan["curva"] = rz.crew_curve(municipalities, max(4, crews), speed_kmh=float(zcfg["velocidad_kmh"]),
+                                          road_factor=float(zcfg["factor_carretera"]), road_minutes=roads)
+            plan["posicionamiento"] = rz.positioning(window, plan)
         zone_rows = part.sort_values("probabilidad", ascending=False)
         # The municipality with the strongest forecast gust against its climate names the zones' weather.
         racha_m = {}
@@ -966,11 +1021,15 @@ def zone_report(block: dict, name: str) -> str:
     if plan.get("bases"):
         bases = "; ".join(f"{b['municipio']} (cubre {b['cubre_ct']} CT, {number(100 * b['parte_riesgo'], 0)} % del riesgo, "
                           f"llegada media {number(b['llegada_media_min'], 0)} min)" for b in plan["bases"])
+        curve = "; ".join(f"{c['n']}: {number(c['llegada_media_min'], 0)} min ({', '.join(c['bases'])})" for c in plan.get("curva", []))
         parts.append(f"### Brigadas\n\nCon {plan['n']} brigada{'s' if plan['n'] > 1 else ''}, las bases que minimizan la llegada "
-                     f"al riesgo de mañana: {bases}. Llegada media ponderada por el riesgo: {number(plan['llegada_media_min'], 0)} min; "
+                     f"al riesgo de mañana (tiempos: {plan.get('tiempos', 'línea recta')}): {bases}. "
+                     f"Llegada media ponderada por el riesgo: {number(plan['llegada_media_min'], 0)} min; "
                      f"el {number(100 * plan['riesgo_30min'], 0)} % del riesgo a menos de 30 min."
                      + (f" Con las bases fijas ({', '.join(plan['fijas']['municipios'])}): {number(plan['fijas']['llegada_media_min'], 0)} min."
-                        if plan.get("fijas") else ""))
+                        if plan.get("fijas") else "")
+                     + (f" Posicionamiento: {plan['posicionamiento']}." if plan.get("posicionamiento") else "")
+                     + (f" Llegada media según el número de brigadas: {curve}." if curve else ""))
     return "\n\n".join(parts)
 
 
@@ -1144,7 +1203,7 @@ def main(argv=None):
     zone_out = {}
     if spark.catalog.tableExists(DIM_TABLE):
         zone_out = zone_outputs(spark, config, rcfg, cfg, variant, pdf, events, live, probability, cells_hours, climate,
-                                hourly, day, end, names, rcfg["niveles"])
+                                hourly, day, end, names, rcfg["niveles"], fs)
     else:
         logger.warning("%s not found: no risk by zones", DIM_TABLE)
 
