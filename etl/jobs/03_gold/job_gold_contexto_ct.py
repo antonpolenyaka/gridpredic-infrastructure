@@ -26,6 +26,14 @@ uses what was published before that year started:
   built in the three years that end two years before (the Catastro takes
   about a year to register a new building), the dwellings at that date and
   their yearly change in five years.
+- Birds (GBIF, l2_silver.f_aves_celda_anio): records of the white stork and
+  of all the birds in the cell of the CT in the five years before, and the
+  share of storks among them (celda_ciguena_5a, celda_aves_5a,
+  celda_ciguena_parte_aves_5a).
+- Fires (EFFIS, l2_silver.f_area_quemada): burnt areas of 30 ha or more
+  whose centre falls in the cell of the CT or in the eight around it (about
+  30 x 33 km) in the five years before: number and hectares
+  (celda_incendios_5a, celda_area_quemada_5a_ha).
 
 obras_municipio_anio is descriptive, not a feature table: for every
 municipality of the CTs and year, the works published, the works in
@@ -69,6 +77,10 @@ BUILDING_COLUMNS = ["edificios_nuevos", "viviendas_nuevas", "m2_nuevos", "edific
 CONTEXT_WORKS = ["obras_publicadas_1a", "obras_importe_1a", "obras_mov_tierras_1a", "obras_previstas_meses",
                  "obras_previstas_mov_tierras_meses"]
 CONTEXT_BUILDINGS = ["viviendas_nuevas_3a", "m2_nuevos_3a", "viviendas_parque_2a", "crec_viviendas_5a"]
+
+CONTEXT_BIRDS = ["celda_ciguena_5a", "celda_aves_5a", "celda_ciguena_parte_aves_5a"]
+CONTEXT_FIRES = ["celda_incendios_5a", "celda_area_quemada_5a_ha"]
+HISTORY_YEARS = 5
 
 CELL_COLUMNS = [
     "elev_media_m", "elev_std_m", "desnivel_m", "osm_disponible", "dens_linea_aerea_km_km2", "dens_apoyos_km2",
@@ -256,6 +268,63 @@ def add_activity(grid, works):
         - F.lit(1.0)).drop("_parque_7a")
 
 
+def cell_center(column):
+    parts = F.split(column, "_")
+    return parts.getItem(0).try_cast("double"), parts.getItem(1).try_cast("double")
+
+
+def years_before(spark, df, years: list, value_columns: list, keys: list):
+    """Sum of value_columns over the HISTORY_YEARS years before every year of years, by keys."""
+    targets = spark.createDataFrame([(y,) for y in years], "anio_obj int")
+    window = (F.col("anio") >= F.col("anio_obj") - F.lit(HISTORY_YEARS)) & (F.col("anio") <= F.col("anio_obj") - 1)
+    return (
+        df.crossJoin(F.broadcast(targets)).where(window)
+        .groupBy(*keys, "anio_obj").agg(*[F.sum(c).alias(c) for c in value_columns])
+        .withColumnRenamed("anio_obj", "anio")
+    )
+
+
+def bird_history(spark, birds, years: list):
+    """celda_ciguena_5a, celda_aves_5a and the share of storks, by (celda_id, anio)."""
+    if birds is None:
+        return None
+    per_year = birds.groupBy("celda_id", "anio").agg(
+        F.sum(F.when(F.col("taxon") == "ciguena_blanca", F.col("registros")).otherwise(0)).cast("double")
+        .alias("celda_ciguena_5a"),
+        F.sum(F.when(F.col("taxon") == "aves", F.col("registros")).otherwise(0)).cast("double").alias("celda_aves_5a"),
+    )
+    out = years_before(spark, per_year, years, ["celda_ciguena_5a", "celda_aves_5a"], ["celda_id"])
+    return out.withColumn("celda_ciguena_parte_aves_5a",
+                          F.try_divide(F.col("celda_ciguena_5a"), F.col("celda_aves_5a")))
+
+
+def fire_history(spark, fires, cells, years: list):
+    """celda_incendios_5a and celda_area_quemada_5a_ha of the cell and its neighbours, by (celda_id, anio)."""
+    if fires is None or cells is None:
+        return None
+    lat, lon = cell_center(F.col("celda_id"))
+    targets = cells.select("celda_id").distinct().select("celda_id", lat.alias("_lat"), lon.alias("_lon"))
+    burnt = fires.select("anio", F.col("latitud").alias("_flat"), F.col("longitud").alias("_flon"),
+                         F.lit(1.0).alias("celda_incendios_5a"),
+                         F.coalesce(F.col("area_ha"), F.lit(0.0)).alias("celda_area_quemada_5a_ha"))
+    near = (F.abs(F.col("_lat") - F.col("_flat")) <= 0.15) & (F.abs(F.col("_lon") - F.col("_flon")) <= 0.15)
+    per_year = targets.join(burnt, near).groupBy("celda_id", "anio").agg(
+        F.sum("celda_incendios_5a").alias("celda_incendios_5a"),
+        F.sum("celda_area_quemada_5a_ha").alias("celda_area_quemada_5a_ha"))
+    out = years_before(spark, per_year, years, CONTEXT_FIRES, ["celda_id"])
+    # A cell with no fire in the window has 0, not null, once EFFIS is loaded.
+    return targets.select("celda_id").crossJoin(spark.createDataFrame([(y,) for y in years], "anio int")).join(
+        out, ["celda_id", "anio"], "left").fillna(0.0, subset=CONTEXT_FIRES)
+
+
+def add_cell_history(grid, history, columns: list):
+    if history is None:
+        for name in columns:
+            grid = grid.withColumn(name, F.lit(None).cast("double"))
+        return grid
+    return grid.join(history.select("celda_id", "anio", *columns), ["celda_id", "anio"], "left")
+
+
 def build(spark, params: dict):
     cfg = params.get("contexto", {})
     years = list(range(int(cfg.get("anio_desde", 2016)), int(cfg.get("anio_hasta", 2027)) + 1))
@@ -330,6 +399,10 @@ def build(spark, params: dict):
         grid = grid.withColumn(f"celda_{name}", F.lit(None).cast(kind))
 
     grid = add_activity(grid, works)
+    grid = add_cell_history(grid, bird_history(spark, optional_table(spark, silver_table("f_aves_celda_anio")), years),
+                            CONTEXT_BIRDS)
+    grid = add_cell_history(grid, fire_history(spark, optional_table(spark, silver_table("f_area_quemada")), cells,
+                                               years), CONTEXT_FIRES)
     context = grid.drop("nombre_normalizado", "kva", "abonados").withColumn("audit_loaded_at", F.current_timestamp())
     return context, works
 
@@ -359,6 +432,8 @@ def main():
     dq.add("contexto_ct_anio", "sin_poblacion", written.where(F.col("pob_municipio").isNull()).count(), rows)
     dq.add("contexto_ct_anio", "sin_osm", written.where(~F.coalesce(F.col("celda_osm_disponible"), F.lit(False)))
            .count(), rows)
+    dq.add("contexto_ct_anio", "sin_aves", written.where(F.col("celda_aves_5a").isNull()).count(), rows)
+    dq.add("contexto_ct_anio", "con_incendios", written.where(F.col("celda_incendios_5a") > 0).count(), rows)
     dq.flush()
 
     logger.info("Gold completed: %s%s", TARGET_TABLE, f" and {WORKS_TABLE}" if works is not None else "")

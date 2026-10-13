@@ -314,3 +314,332 @@ def test_ieex_projections_are_copied_to_landing():
     jerte = projection[projection["ame_codigo"] == "1012"].set_index("anio")["poblacion"]
     assert jerte[2039] / jerte[2024] - 1 == pytest.approx(0.010, abs=0.001)
     assert fs.exists("memory://landing/publicos/proyecciones/peticion.json")
+
+
+def test_gbif_query_and_counts():
+    cfg = landing.load_config()["publicos"]["aves"]
+    params = landing.gbif_params({"scientificName": "Ciconia ciconia"}, 39.4, -6.3, 0.05, cfg)
+    assert params["decimalLatitude"] == "39.3500,39.4500" and params["limit"] == "0"
+    assert params["facet"] == ["year", "month"] and params["scientificName"] == "Ciconia ciconia"
+
+    payload = {
+        "taxones": {
+            "ciguena_blanca": {"count": 12, "facets": [
+                {"field": "YEAR", "counts": [{"name": "2019", "count": 5}, {"name": "2021", "count": 7}]},
+                {"field": "MONTH", "counts": [{"name": "3", "count": 9}, {"name": "6", "count": 3}]}]},
+            "aves": {"count": 300, "facets": [{"field": "YEAR", "counts": [{"name": "2021", "count": 300}]}]},
+        },
+        "_peticion": {"celda_id": "39.40_-6.30", "descargado_utc": "2026-10-12T03:00:00+00:00"},
+    }
+    rows = bronze.parse_gbif(payload)
+    by_key = {(r["taxon"], r["tipo"], r["clave"]): r["registros"] for r in rows}
+    assert by_key[("ciguena_blanca", "total", None)] == 12
+    assert by_key[("ciguena_blanca", "anio", 2021)] == 7 and by_key[("ciguena_blanca", "mes", 3)] == 9
+    assert by_key[("aves", "anio", 2021)] == 300
+    assert {r["celda_id"] for r in rows} == {"39.40_-6.30"}
+
+
+GML3 = """<?xml version="1.0" encoding="UTF-8"?>
+<wfs:FeatureCollection xmlns:ms="http://mapserver.gis.umn.edu/mapserver" xmlns:gml="http://www.opengis.net/gml"
+    xmlns:wfs="http://www.opengis.net/wfs">
+  <gml:featureMember>
+    <ms:modis.ba.poly gml:id="modis.ba.poly.101">
+      <ms:id>101</ms:id><ms:FIREDATE>2022-05-25</ms:FIREDATE><ms:LASTUPDATE>2022-06-01 10:00:00</ms:LASTUPDATE>
+      <ms:COUNTRY>ES</ms:COUNTRY><ms:PROVINCE>Caceres</ms:PROVINCE><ms:COMMUNE>Tornavacas</ms:COMMUNE>
+      <ms:AREA_HA>512</ms:AREA_HA>
+      <ms:msGeometry><gml:Polygon><gml:exterior><gml:LinearRing>
+        <gml:posList>40.25 -5.70 40.27 -5.70 40.27 -5.66 40.25 -5.66 40.25 -5.70</gml:posList>
+      </gml:LinearRing></gml:exterior></gml:Polygon></ms:msGeometry>
+    </ms:modis.ba.poly>
+  </gml:featureMember>
+</wfs:FeatureCollection>"""
+
+GML2 = """<wfs:FeatureCollection xmlns:ms="http://mapserver.gis.umn.edu/mapserver" xmlns:gml="http://www.opengis.net/gml"
+    xmlns:wfs="http://www.opengis.net/wfs">
+  <gml:featureMember>
+    <ms:modis.ba.poly fid="modis.ba.poly.7">
+      <ms:id>7</ms:id><ms:FIREDATE>2020-08-06</ms:FIREDATE><ms:AREA_HA>40.5</ms:AREA_HA>
+      <ms:msGeometry><gml:Polygon><gml:outerBoundaryIs><gml:LinearRing>
+        <gml:coordinates>-6.52,39.81 -6.50,39.81 -6.50,39.83 -6.52,39.81</gml:coordinates>
+      </gml:LinearRing></gml:outerBoundaryIs></gml:Polygon></ms:msGeometry>
+    </ms:modis.ba.poly>
+  </gml:featureMember>
+</wfs:FeatureCollection>"""
+
+
+def test_parse_effis_in_both_axis_orders():
+    first = bronze.parse_effis(GML3)[0]
+    assert (first["id"], first["fecha_incendio"], first["municipio"]) == ("101", "2022-05-25", "Tornavacas")
+    assert first["area_ha"] == 512.0 and first["n_vertices"] == 5
+    assert first["latitud"] == pytest.approx(40.258, abs=1e-3) and first["longitud"] == pytest.approx(-5.684, abs=1e-3)
+
+    second = bronze.parse_effis(GML2.encode("utf-8"))[0]
+    assert second["latitud"] == pytest.approx(39.815, abs=1e-3) and second["longitud"] == pytest.approx(-6.51, abs=1e-3)
+    assert second["fecha_incendio"] == "2020-08-06" and second["area_ha"] == 40.5
+
+
+def test_effis_request_variants_and_area_check():
+    cfg = landing.load_config()["publicos"]["incendios"]
+    box = (-7.0, 39.0, -5.5, 40.5)
+    urls = landing.effis_requests(cfg, box)
+    assert len(urls) == len(cfg["variantes"])
+    assert "bbox=39.0000,-7.0000,40.5000,-5.5000,urn:ogc:def:crs:EPSG::4326" in urls[0]
+    assert "bbox=-7.0000,39.0000,-5.5000,40.5000" in urls[1] and "request=GetFeature" in urls[1]
+    assert landing.in_area(landing.first_points(GML3), box)
+    assert landing.in_area(landing.first_points(GML2), box)
+    assert not landing.in_area([(2.1, 41.4), (2.2, 41.5)], box)
+
+
+CAP_ALERT = """<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>2.49.0.0.724.0.ES.20240110063000.761001VI</identifier>
+  <sender>http://www.aemet.es</sender>
+  <sent>2024-01-10T06:30:00-00:00</sent>
+  <status>Actual</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-GB</language>
+    <event>Moderate wind warning</event>
+  </info>
+  <info>
+    <language>es-ES</language>
+    <category>Met</category>
+    <event>Aviso de vientos de nivel naranja</event>
+    <severity>Severe</severity>
+    <certainty>Likely</certainty>
+    <eventCode><valueName>AEMET-Meteoalerta fenomeno</valueName><value>VI;Vientos</value></eventCode>
+    <effective>2024-01-10T07:30:00+01:00</effective>
+    <onset>2024-01-10T12:00:00+01:00</onset>
+    <expires>2024-01-10T23:59:59+01:00</expires>
+    <parameter><valueName>AEMET-Meteoalerta nivel</valueName><value>naranja</value></parameter>
+    <parameter><valueName>AEMET-Meteoalerta parametro</valueName><value>VI; Rachas máximas; 90 km/h</value></parameter>
+    <parameter><valueName>AEMET-Meteoalerta probabilidad</valueName><value>40%-70%</value></parameter>
+    <area>
+      <areaDesc>Norte de Cáceres</areaDesc>
+      <polygon>40.0,-6.5 40.6,-6.5 40.6,-5.5 40.0,-5.5 40.0,-6.5</polygon>
+      <geocode><valueName>AEMET-Meteoalerta zona</valueName><value>761001</value></geocode>
+    </area>
+    <area>
+      <areaDesc>Litoral de Almería</areaDesc>
+      <polygon>36.6,-2.6 36.9,-2.6 36.9,-1.9 36.6,-1.9 36.6,-2.6</polygon>
+      <geocode><valueName>AEMET-Meteoalerta zona</valueName><value>610402</value></geocode>
+    </area>
+  </info>
+</alert>
+"""
+
+
+def test_parse_cap_keeps_spanish_and_the_study_area():
+    box = (38.0, -7.5, 40.8, -5.0)
+    rows = bronze.parse_cap(CAP_ALERT.encode("utf-8"), box)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["zona"] == "761001" and row["zona_nombre"] == "Norte de Cáceres"
+    assert row["evento"] == "Aviso de vientos de nivel naranja"
+    assert row["fenomeno"] == "VI;Vientos" and row["nivel"] == "naranja" and row["probabilidad"] == "40%-70%"
+    assert row["inicio"] == "2024-01-10T12:00:00+01:00" and row["tipo_mensaje"] == "Alert"
+    assert row["lat_min"] == 40.0 and row["lon_max"] == -5.5
+    # Without a box every area comes out.
+    assert len(bronze.parse_cap(CAP_ALERT.encode("utf-8"))) == 2
+    assert bronze.parse_cap(b"<html>not a cap</html>") == []
+
+
+def test_parse_aemet_archive_reads_nested_packages():
+    import gzip
+    import io
+    import tarfile
+
+    def tar_of(name: str, payload: bytes) -> bytes:
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as archive:
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+        return buffer.getvalue()
+
+    inner = gzip.compress(tar_of("Z_CAP_C_LEMM_20240110063000_AFAZ761001VI.xml", CAP_ALERT.encode("utf-8")))
+    outer = tar_of("20240110.tar.gz", inner)
+    rows = bronze.parse_aemet_archive(outer, (38.0, -7.5, 40.8, -5.0))
+    assert [r["zona"] for r in rows] == ["761001"]
+    assert bronze.parse_aemet_archive(b"") == []
+
+
+def test_parse_cap_leaves_out_the_green_messages():
+    green = CAP_ALERT.replace("<value>naranja</value>", "<value>verde</value>")
+    assert bronze.parse_cap(green.encode("utf-8"), (38.0, -7.5, 40.8, -5.0)) == []
+    assert len(bronze.parse_cap(green.encode("utf-8"), (38.0, -7.5, 40.8, -5.0), green=True)) == 1
+    # A cancellation is kept whatever its level says.
+    cancel = green.replace("<msgType>Alert</msgType>", "<msgType>Cancel</msgType>")
+    assert [r["tipo_mensaje"] for r in bronze.parse_cap(cancel.encode("utf-8"), (38.0, -7.5, 40.8, -5.0))] == ["Cancel"]
+
+
+def test_aemet_requests_by_pieces():
+    chunks = landing.warning_chunks("2018-06-18", "2018-08-31", 31)
+    assert [(str(a), str(b)) for a, b in chunks] == [
+        ("2018-06-18", "2018-07-18"), ("2018-07-19", "2018-08-18"), ("2018-08-19", "2018-08-31")]
+    cfg = landing.load_config()["publicos"]["avisos"]
+    url = landing.aemet_url(cfg, *chunks[0])
+    assert url.endswith("/fechaini/2018-06-18T00:00:00UTC/fechafin/2018-07-18T23:59:59UTC")
+    assert "api_key" not in url
+    # AEMET answers 400 to more than 2 days per request.
+    assert int(cfg["dias_por_peticion"]) <= 2
+    lo, hi = landing.warning_chunks("2024-01-01", "2024-01-31", int(cfg["dias_por_peticion"]))[0]
+    assert (hi - lo).days + 1 <= 2
+
+
+VIIRS_CSV = """latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight
+40.21,-5.95,330.5,0.39,0.36,2025-08-12,1342,N,VIIRS,n,2.0NRT,296.1,12.4,D
+40.22,-5.94,340.1,0.39,0.36,2025-08-12,1342,N,VIIRS,h,2.0NRT,297.0,25.0,D
+"""
+MODIS_CSV = """latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_t31,frp,daynight
+39.5,-6.3,318.2,1.1,1.0,2017-08-14,1050,Terra,MODIS,74,6.1,300.0,18.9,D
+"""
+
+
+def test_firms_rows_of_viirs_and_modis():
+    rows = bronze.parse_firms(VIIRS_CSV, "VIIRS_SNPP_NRT") + bronze.parse_firms(MODIS_CSV, "MODIS_SP")
+    assert len(rows) == 3
+    assert rows[0]["latitud"] == "40.21" and rows[0]["hora_utc"] == "1342" and rows[0]["confianza"] == "n"
+    assert rows[1]["brillo"] == "340.1" and rows[2]["brillo"] == "318.2" and rows[2]["fuente"] == "MODIS_SP"
+    # An empty answer has only the header.
+    assert bronze.parse_firms(VIIRS_CSV.splitlines()[0] + "\n", "VIIRS_SNPP_SP") == []
+
+
+def test_firms_pieces_from_the_archive_and_the_near_real_time():
+    availability = ("data_id,min_date,max_date\nVIIRS_SNPP_SP,2012-01-20,2026-06-30\n"
+                    "VIIRS_SNPP_NRT,2026-06-29,2026-10-12\nMODIS_SP,2000-11-01,2026-07-31\n")
+    plan = landing.firms_plan(availability, ["VIIRS_SNPP", "MODIS"], "2026-06-25", "2026-07-06", 5)
+    viirs = [(s, str(d), n) for s, d, n in plan if s.startswith("VIIRS")]
+    # 25.06 - 29.06 from the archive; from 30.06 the near real time covers whole pieces.
+    assert viirs == [("VIIRS_SNPP_SP", "2026-06-25", 5), ("VIIRS_SNPP_NRT", "2026-06-30", 5),
+                     ("VIIRS_SNPP_NRT", "2026-07-05", 2)]
+    assert all(s == "MODIS_SP" for s, _, _ in plan if s.startswith("MODIS"))
+    # A gap between the end of the archive and the near real time: the piece goes day by day, without the gap.
+    gap = "data_id,min_date,max_date\nVIIRS_SNPP_SP,2012-01-20,2026-06-30\nVIIRS_SNPP_NRT,2026-07-02,2026-10-12\n"
+    plan = [(s, str(d), n) for s, d, n in landing.firms_plan(gap, ["VIIRS_SNPP"], "2026-06-30", "2026-07-04", 5)]
+    assert plan == [("VIIRS_SNPP_SP", "2026-06-30", 1), ("VIIRS_SNPP_NRT", "2026-07-02", 1),
+                    ("VIIRS_SNPP_NRT", "2026-07-03", 1), ("VIIRS_SNPP_NRT", "2026-07-04", 1)]
+    cfg = landing.load_config()["publicos"]["focos"]
+    assert int(cfg["dias_por_peticion"]) <= 5 and cfg["clave_env"] == "MAP_KEY"
+
+
+def ewds_constraints():
+    """Consolidated up to July 2026 and intermediate after it, October still incomplete; GRIB is another request."""
+    from calendar import monthrange
+
+    def entry(kind, year, month, days, data_format="netcdf", grid="0.25/0.25"):
+        return {"product_type": ["reanalysis"], "dataset_type": [kind], "data_format": [data_format], "grid": [grid],
+                "year": [str(year)], "month": [f"{month:02d}"], "day": [f"{d:02d}" for d in days]}
+
+    entries = [entry("consolidated_dataset", year, month, range(1, monthrange(year, month)[1] + 1))
+               for year, months in ((2025, range(1, 13)), (2026, range(1, 8))) for month in months]
+    entries += [entry("intermediate_dataset", 2026, 8, range(1, 32)), entry("intermediate_dataset", 2026, 9, range(1, 31)),
+                entry("intermediate_dataset", 2026, 10, range(1, 11)),
+                entry("consolidated_dataset", 2026, 8, [1], "grib", "original_grid")]
+    return entries
+
+
+def test_fwi_pieces_by_year_and_dataset():
+    plan = landing.fwi_plan(ewds_constraints(), "2025-11-01", "2026-09-15", grid="0.25/0.25")
+    assert plan == [("consolidated_dataset", 2025, [11, 12]),
+                    ("consolidated_dataset", 2026, [1, 2, 3, 4, 5, 6, 7]),
+                    ("intermediate_dataset", 2026, [8, 9])]
+    # A month without every day in any dataset is left for a later run.
+    plan = landing.fwi_plan(ewds_constraints(), "2026-07-01", "2026-10-31", grid="0.25/0.25")
+    assert plan == [("consolidated_dataset", 2026, [7]), ("intermediate_dataset", 2026, [8, 9])]
+    assert landing.fwi_piece("intermediate_dataset", 2026, [8, 9]) == "2026_intermediate_08-09"
+
+
+def test_fwi_request_and_area():
+    cfg = landing.load_config()["publicos"]
+    area = landing.fwi_area({"40.30_-5.70": (40.3, -5.7), "38.40_-6.90": (38.4, -6.9)}, 0.3, 0.1)
+    assert area == [40.65, -7.25, 38.05, -5.35]
+    request = landing.fwi_request(cfg["fwi"], "consolidated_dataset", 2025, [8], area)
+    assert request["month"] == ["08"] and len(request["day"]) == 31 and request["year"] == ["2025"]
+    assert request["data_format"] == "netcdf" and request["grid"] == "0.25/0.25" and request["area"] == area
+    assert "fire_weather_index" in request["variable"] and request["product_type"] == "reanalysis"
+    assert cfg["fwi"]["clave_env"] == "COPERNICUS_EWDS_KEY" and cfg["tablas"]["fwi"] == "l1_bronze.cems_fwi_dia"
+
+
+def test_fwi_needs_the_token(monkeypatch):
+    monkeypatch.delenv("COPERNICUS_EWDS_KEY", raising=False)
+    cfg = landing.load_config()["publicos"]
+    assert landing.land_fwi(None, cfg, "s3://x/00_landing/publicos", {"40.30_-5.70": (40.3, -5.7)}, False) == (0, 1)
+
+
+def test_parse_fwi_netcdf(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    import numpy as np
+
+    path = tmp_path / "fwi.nc"
+    with h5py.File(path, "w") as nc:
+        time = nc.create_dataset("valid_time", data=np.array([1754006400, 1754092800], dtype="int64"))
+        time.attrs["units"] = "seconds since 1970-01-01"
+        nc.create_dataset("latitude", data=np.array([40.30, 40.05]))
+        nc.create_dataset("longitude", data=np.array([353.75, 354.0]))
+        fwi = np.arange(8, dtype="float32").reshape(2, 2, 2) + 10
+        fwi[1, 1, 1] = np.nan
+        nc.create_dataset("fwinx", data=fwi).attrs["_FillValue"] = np.array([np.nan], dtype="float32")
+        nc.create_dataset("drtcode", data=np.full((2, 2, 2), 700.0, dtype="float32"))
+        nc.create_dataset("fbupinx", data=np.full((2, 2, 2), 300.0, dtype="float32"))
+    rows = bronze.parse_fwi(path.read_bytes(), "2025_consolidated_08-08")
+
+    assert len(rows) == 8
+    first = rows[0]
+    assert first["fecha"] == "2025-08-01" and first["latitud"] == 40.3 and first["longitud"] == -6.25
+    assert first["fwi"] == 10.0 and first["dc"] == 700.0 and first["bui"] == 300.0
+    assert first["pieza"] == "2025_consolidated_08-08"
+    last = rows[-1]
+    assert last["fecha"] == "2025-08-02" and last["longitud"] == -6.0 and last["fwi"] is None and last["dc"] == 700.0
+    assert bronze.nc_dates([0, 2], "days since 2017-01-01 00:00:00") == ["2017-01-01", "2017-01-03"]
+    with pytest.raises(ValueError):
+        bronze.nc_dates([0], "months since 2017-01-01")
+
+
+def test_fwi_landing_waits_in_the_queue_and_downloads(monkeypatch):
+    import json as js
+
+    import fsspec
+
+    fs = fsspec.filesystem("memory")
+    cfg = landing.load_config()["publicos"]
+    cfg = {**cfg, "fwi": {**cfg["fwi"], "desde": "2025-07-01", "hasta": "2026-08-31", "pausa_s": 0}}
+    monkeypatch.setenv("COPERNICUS_EWDS_KEY", "token-de-prueba")
+    monkeypatch.delenv("COPERNICUS_EWDS_URL", raising=False)
+    api = cfg["fwi"]["api"]
+    calls, polls = [], {}
+
+    def fake_fetch(url, data=None, headers=None, timeout=None, label=None, **kwargs):
+        calls.append((url, (headers or {}).get("PRIVATE-TOKEN")))
+        if url.endswith("/constraints.json"):
+            return js.dumps(ewds_constraints()).encode()
+        if url.endswith("/execution"):
+            request = js.loads(data)["inputs"]
+            job = f"{api}/retrieve/v1/jobs/{request['year'][0]}-{request['dataset_type']}"
+            return js.dumps({"jobID": job.rsplit("/", 1)[-1], "status": "accepted",
+                             "links": [{"href": job, "rel": "monitor"}]}).encode()
+        if url.endswith("/results"):
+            return js.dumps({"asset": {"value": {"href": "https://store.example/" + url.split("/")[-2] + ".nc",
+                                                 "type": "application/netcdf"}}}).encode()
+        if url.startswith("https://store.example/"):
+            return b"\x89HDF\r\n\x1a\n" + url.encode()
+        polls[url] = polls.get(url, 0) + 1
+        return js.dumps({"status": "running" if polls[url] < 2 else "successful"}).encode()
+
+    monkeypatch.setattr(landing, "fetch", fake_fetch)
+    monkeypatch.setattr(landing.time, "sleep", lambda s: None)
+    done, failed = landing.land_fwi(fs, cfg, "/publicos", {"40.30_-5.70": (40.3, -5.7)}, False)
+
+    assert (done, failed) == (3, 0)
+    assert sorted(p.rsplit("/", 1)[-1] for p in fs.glob("/publicos/fwi/*.nc")) == [
+        "2025_consolidated_07-12.nc", "2026_consolidated_01-07.nc", "2026_intermediate_08-08.nc"]
+    stamp_2026 = js.loads(fs.cat("/publicos/fwi/2026_intermediate_08-08.json"))
+    assert stamp_2026["peticion"]["dataset_type"] == "intermediate_dataset" and stamp_2026["peticion"]["month"] == ["08"]
+    # The token goes to the API and never to the store of the files.
+    assert all(token == "token-de-prueba" for url, token in calls if url.startswith(api) and "constraints" not in url)
+    assert all(token is None for url, token in calls if url.startswith("https://store.example/"))
+    # A second run asks nothing that is already in Landing.
+    calls.clear()
+    assert landing.land_fwi(fs, cfg, "/publicos", {"40.30_-5.70": (40.3, -5.7)}, False) == (0, 0)
+    assert [url for url, _ in calls if url.endswith("/execution")] == []

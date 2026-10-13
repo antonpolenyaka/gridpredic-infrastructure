@@ -40,6 +40,45 @@ the APIs return them:
   read (Excel 97 inside 7z, a PDF map), so extract_ieex_proyecciones.py turns
   them once into two CSV files of the configuration, which this source copies
   to Landing (.../proyecciones/).
+- GBIF (Global Biodiversity Information Facility), occurrence search API,
+  free and without key: the records of the white stork (Ciconia ciconia) and
+  of all the birds inside every weather cell, by year and month (only the
+  counts, limit=0 with facets). Stork nests on poles are the first cause of
+  the faults of the own overhead lines that the operators name; the share of
+  storks among the bird records of a cell corrects the effort of the
+  observers. One file per cell (.../aves/<celda_id>.json).
+- EFFIS (European Forest Fire Information System, Copernicus), burnt areas
+  of 30 ha or more mapped from MODIS, through its open WFS: the polygons of
+  the study area with the date, the municipality and the area
+  (.../incendios/effis_area_quemada.gml). The fires lead to cuts asked by the
+  emergency services and to damaged insulators. The axis order of the WFS
+  versions differs, so the request tries the variants of the configuration
+  and keeps the first one whose polygons fall in the study area.
+- AEMET OpenData, archive of the warnings of adverse weather (CAP messages,
+  from 18.06.2018, CC BY 4.0): wind, rain, thunderstorms, snow and heat by
+  warning zone, with the level (yellow, orange, red), the time it was issued
+  and the hours it covers. It is the forecast the operators already watch
+  and a forecast made in advance, not the reanalysis. It needs the free key
+  of opendata.aemet.es in AEMET_API_KEY. One tar per piece of days, as AEMET
+  gives it (.../avisos/<desde>_<hasta>.tar).
+- NASA FIRMS, the active fires seen by MODIS (from 2000) and VIIRS (from
+  2012 on Suomi NPP and 2018 on NOAA-20) in the box of the study, by pieces of
+  at most 5 days, the archive of standard processing and the near real time
+  for the last months. It needs the free MAP_KEY of FIRMS in the environment
+  (it goes in the URL, so the URL is never written to the log). One CSV per
+  sensor and piece (.../focos/<sensor>/<desde>.csv), as FIRMS gives it.
+- Copernicus EWDS (Early Warning Data Store of CEMS), fire danger indices
+  of the reanalysis (cems-fire-historical-v1, CC BY 4.0): the Fire Weather
+  Index of the Canadian system and its parts (FFMC, DMC, DC, ISI, BUI) every
+  day on the grid of 0.25 degrees in the box of the study, one request per
+  year, from the consolidated dataset while it covers the month and from the
+  intermediate one after. It needs the free Personal Access Token of the
+  EWDS in COPERNICUS_EWDS_KEY (and the URL of the API in COPERNICUS_EWDS_URL,
+  the one of the configuration by default), sent in a header, never written
+  to the log, and the licence of the dataset accepted on its page. The
+  requests wait in the queue of the EWDS; several go at once. One NetCDF per
+  piece (.../fwi/<anio>_<conjunto>_<mes>-<mes>.nc) with the request next to
+  it (.json).
 
 The places are the municipalities of data/reference_data/municipios.xlsx and
 their cells, the same as the weather (job_landing_meteo_openmeteo).
@@ -86,7 +125,8 @@ CONFIG_CANDIDATES = [
     os.path.join(HERE, "..", "..", "config", "01_bronze", "config_bronze_publicos.json"),
 ]
 
-SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones"]
+SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones", "aves", "incendios", "avisos",
+           "focos", "fwi"]
 PARTIAL_EXIT = 4
 
 
@@ -100,9 +140,14 @@ def load_config(path: str = None) -> dict:
 
 
 def fetch(url: str, data: bytes = None, headers: dict = None, retries: int = 4, wait_s: float = 30,
-          timeout: float = 300) -> bytes:
-    """GET (or POST with data) with retries on 429, 5xx and network errors."""
+          timeout: float = 300, label: str = None) -> bytes:
+    """
+    GET (or POST with data) with retries on 429, 5xx and network errors. With
+    label, the messages name the request by it instead of by its URL (a URL
+    that carries a key).
+    """
     headers = {"User-Agent": "GridPredict-TFM/1.0", **(headers or {})}
+    shown = label or url[:80]
 
     for attempt in range(1, retries + 1):
         request = urllib.request.Request(url, data=data, headers=headers)
@@ -113,19 +158,21 @@ def fetch(url: str, data: bytes = None, headers: dict = None, retries: int = 4, 
             body = error.read().decode("utf-8", "replace")[:200]
             if error.code in (429, 500, 502, 503, 504) and attempt < retries:
                 logger.warning("HTTP %s from %s (%s), waiting %.0f s, attempt %s of %s",
-                               error.code, url[:80], body, wait_s * attempt, attempt, retries)
+                               error.code, shown, body, wait_s * attempt, attempt, retries)
                 time.sleep(wait_s * attempt)
                 continue
-            raise RuntimeError(f"HTTP {error.code} for {url[:120]}: {body}") from error
+            raise RuntimeError(f"HTTP {error.code} for {label or url[:120]}: {body}") from error
         except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
             if attempt < retries:
-                logger.warning("%s for %s, waiting %.0f s, attempt %s of %s", error, url[:80], wait_s * attempt,
+                logger.warning("%s for %s, waiting %.0f s, attempt %s of %s", error, shown, wait_s * attempt,
                                attempt, retries)
                 time.sleep(wait_s * attempt)
                 continue
+            if label:
+                raise RuntimeError(f"{type(error).__name__} for {label}") from None
             raise
 
-    raise RuntimeError(f"No answer for {url[:120]}")
+    raise RuntimeError(f"No answer for {label or url[:120]}")
 
 
 def save_json(fs, path: str, payload):
@@ -674,6 +721,457 @@ def land_projections(fs, cfg: dict, landing: str) -> int:
     return done
 
 
+# GBIF ----------------------------------------------------------------------
+
+def gbif_params(taxon: dict, lat: float, lon: float, half: float, cfg: dict) -> dict:
+    """Query of the occurrence search API for the counts of a taxon inside a cell, by year and month."""
+    return {
+        **taxon,
+        "decimalLatitude": f"{lat - half:.4f},{lat + half:.4f}",
+        "decimalLongitude": f"{lon - half:.4f},{lon + half:.4f}",
+        "hasCoordinate": "true",
+        "occurrenceStatus": "PRESENT",
+        "year": f"{cfg['anio_desde']},{cfg['anio_hasta']}",
+        "limit": "0",
+        "facet": ["year", "month"],
+        "facetLimit": str(cfg.get("facet_limite", 60)),
+    }
+
+
+def land_birds(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    birds = cfg["aves"]
+    half = float(cfg["celda_grados"]) / 2.0
+    done = failed = 0
+
+    for cell, (lat, lon) in sorted(cells.items()):
+        target = f"{landing}/aves/{cell}.json"
+        if fs.exists(target) and not force:
+            continue
+
+        answers = {}
+        try:
+            for name, taxon in birds["taxones"].items():
+                query = urllib.parse.urlencode(gbif_params(taxon, lat, lon, half, birds), doseq=True, safe=",")
+                answers[name] = json.loads(fetch(f"{birds['api']}?{query}").decode("utf-8"))
+                time.sleep(float(birds.get("pausa_s", 1)))
+        except Exception as error:  # noqa: BLE001
+            failed += 1
+            logger.error("GBIF cell %s not downloaded: %s", cell, str(error)[:200])
+            continue
+
+        payload = {"taxones": answers, "_peticion": stamp("gbif", celda_id=cell, latitud=lat, longitud=lon,
+                                                          bbox=[lat - half, lon - half, lat + half, lon + half])}
+        save_json(fs, target, payload)
+        done += 1
+        logger.info("GBIF cell %s: %s", cell, {k: v.get("count") for k, v in answers.items()})
+
+    return done, failed
+
+
+# EFFIS ---------------------------------------------------------------------
+
+COORDINATE_PAIRS = re.compile(r"<(?:[\w-]+:)?(?:posList|coordinates|pos)\b[^>]*>([^<]+)<")
+
+
+def first_points(text: str, limit: int = 20) -> list:
+    """Some (a, b) pairs of the first geometries of a GML answer, whatever the axis order."""
+    points = []
+    for match in COORDINATE_PAIRS.finditer(text):
+        numbers = [float(x) for x in re.split(r"[\s,]+", match.group(1).strip()) if x]
+        points += list(zip(numbers[0::2], numbers[1::2]))[:3]
+        if len(points) >= limit:
+            break
+    return points
+
+
+def in_area(points: list, box: tuple) -> bool:
+    """True when most points fall in box (min lon, min lat, max lon, max lat) in either axis order."""
+    if not points:
+        return False
+    lon0, lat0, lon1, lat1 = box
+    inside = sum(1 for a, b in points if (lon0 <= a <= lon1 and lat0 <= b <= lat1)
+                 or (lat0 <= a <= lat1 and lon0 <= b <= lon1))
+    return inside >= 0.5 * len(points)
+
+
+def effis_requests(fires: dict, box: tuple) -> list:
+    """The variants of the GetFeature request, from the configuration."""
+    lon0, lat0, lon1, lat1 = box
+    values = {"lon0": f"{lon0:.4f}", "lat0": f"{lat0:.4f}", "lon1": f"{lon1:.4f}", "lat1": f"{lat1:.4f}"}
+    out = []
+    for variant in fires["variantes"]:
+        params = {key: str(value).format(**values) for key, value in variant.items()}
+        params.setdefault("service", "WFS")
+        params.setdefault("request", "GetFeature")
+        out.append(f"{fires['wfs']}?{urllib.parse.urlencode(params, safe=',:')}")
+    return out
+
+
+def land_fires(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    fires = cfg["incendios"]
+    target = f"{landing}/incendios/effis_area_quemada.gml"
+    if fs.exists(target) and not force:
+        return 0, 0
+
+    margin = float(fires.get("margen_grados", 0.2)) + float(cfg["celda_grados"]) / 2.0
+    lats = [c[0] for c in cells.values()]
+    lons = [c[1] for c in cells.values()]
+    box = (min(lons) - margin, min(lats) - margin, max(lons) + margin, max(lats) + margin)
+
+    for url in effis_requests(fires, box):
+        try:
+            raw = fetch(url, timeout=float(fires.get("timeout_s", 600)))
+        except Exception as error:  # noqa: BLE001
+            logger.warning("EFFIS request failed (%s): %s", url[:160], str(error)[:200])
+            continue
+        text = raw.decode("utf-8", "replace")
+        features = len(re.findall(r"<(?:[\w-]+:)?featureMember\b", text))
+        if "ExceptionReport" in text[:3000] or "ServiceException" in text[:3000]:
+            logger.warning("EFFIS refused %s: %s", url[:160], text[:300])
+            continue
+        if not features or not in_area(first_points(text), box):
+            logger.warning("EFFIS answer without polygons in the area (%s features): %s", features, url[:160])
+            continue
+        with fs.open(target, "wb") as file:
+            file.write(raw)
+        save_json(fs, f"{landing}/incendios/peticion.json",
+                  stamp("effis-wfs", url=url, bbox=list(box), poligonos=features, bytes=len(raw)))
+        logger.info("EFFIS: %s burnt areas (%s bytes)", features, len(raw))
+        return 1, 0
+
+    return 0, 1
+
+
+# AEMET ----------------------------------------------------------------------
+
+def warning_chunks(first: str, last: str, days: int) -> list:
+    """[(start, end)] dates covering [first, last] in pieces of days."""
+    from datetime import date, timedelta
+
+    lo, hi = date.fromisoformat(first), date.fromisoformat(last)
+    out = []
+    while lo <= hi:
+        end = min(hi, lo + timedelta(days=days - 1))
+        out.append((lo, end))
+        lo = end + timedelta(days=1)
+    return out
+
+
+def aemet_url(warnings: dict, lo, hi) -> str:
+    """URL of the archive of warnings between two dates (AEMET wants UTC times with the UTC suffix)."""
+    return warnings["api"].format(ini=f"{lo.isoformat()}T00:00:00UTC", fin=f"{hi.isoformat()}T23:59:59UTC")
+
+
+def land_warnings(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    """
+    Archive of the warnings of adverse weather of AEMET (CAP, from
+    18.06.2018, CC BY 4.0) by pieces of dias_por_peticion days (AEMET refuses
+    more than 2 days per request and limits the requests per minute, hence
+    pausa_s), saved as AEMET gives them (a tar with the CAP messages) in
+    avisos/<desde>_<hasta>.tar.
+    AEMET OpenData answers first with a JSON that points to the data. Needs the
+    free key of opendata.aemet.es in the environment variable clave_env.
+    """
+    warnings = cfg["avisos"]
+    key = os.environ.get(warnings.get("clave_env", "AEMET_API_KEY"), "").strip()
+    if not key:
+        logger.error("No %s in the environment: the warnings of AEMET need the free key of opendata.aemet.es",
+                     warnings.get("clave_env", "AEMET_API_KEY"))
+        return 0, 1
+
+    # The cells of the study, so Bronze keeps only the warning zones around them.
+    save_json(fs, f"{landing}/celdas.json",
+              [{"celda_id": c, "latitud": lat, "longitud": lon} for c, (lat, lon) in sorted(cells.items())])
+    headers = {"api_key": key, "Accept": "application/json"}
+    done = failed = 0
+    for lo, hi in warning_chunks(warnings["desde"], warnings["hasta"], int(warnings.get("dias_por_peticion", 31))):
+        target = f"{landing}/avisos/{lo:%Y%m%d}_{hi:%Y%m%d}.tar"
+        empty = f"{landing}/avisos/{lo:%Y%m%d}_{hi:%Y%m%d}.vacio.json"
+        if (fs.exists(target) or fs.exists(empty)) and not force:
+            continue
+        try:
+            answer = json.loads(fetch(aemet_url(warnings, lo, hi), headers=headers,
+                                      timeout=float(warnings.get("timeout_s", 300))).decode("utf-8", "replace"))
+            if int(answer.get("estado", 0)) == 404:
+                save_json(fs, empty, stamp("aemet-avisos", desde=str(lo), hasta=str(hi), respuesta=answer))
+                logger.info("AEMET %s - %s: no warnings", lo, hi)
+                continue
+            if int(answer.get("estado", 0)) != 200 or not answer.get("datos"):
+                raise RuntimeError(f"unexpected answer {str(answer)[:200]}")
+            raw = fetch(answer["datos"], headers={"api_key": key}, timeout=float(warnings.get("timeout_s", 300)))
+        except Exception as error:  # noqa: BLE001
+            failed += 1
+            logger.error("AEMET %s - %s not downloaded: %s", lo, hi, str(error)[:200])
+            time.sleep(float(warnings.get("pausa_s", 3)))
+            continue
+        with fs.open(target, "wb") as file:
+            file.write(raw)
+        done += 1
+        logger.info("AEMET %s - %s: %s bytes", lo, hi, len(raw))
+        time.sleep(float(warnings.get("pausa_s", 3)))
+
+    return done, failed
+
+
+# NASA FIRMS -----------------------------------------------------------------
+
+def firms_plan(availability: str, sensors: list, first: str, last: str, days: int) -> list:
+    """
+    [(source, start date, number of days)]: the pieces of every sensor between
+    first and last, from the archive of standard processing (<sensor>_SP)
+    while it covers them and from the near real time (<sensor>_NRT) after.
+    availability is the CSV of data_availability (data_id,min_date,max_date).
+    """
+    from datetime import date, timedelta
+
+    ranges = {}
+    for line in availability.strip().splitlines()[1:]:
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 3 and parts[1] and parts[2]:
+            ranges[parts[0]] = (date.fromisoformat(parts[1]), date.fromisoformat(parts[2]))
+
+    plan = []
+    lo, hi = date.fromisoformat(first), date.fromisoformat(last)
+    for sensor in sensors:
+        day = lo
+        while day <= hi:
+            end = min(hi, day + timedelta(days=days - 1))
+            for kind in ("SP", "NRT"):
+                span = ranges.get(f"{sensor}_{kind}")
+                if span and span[0] <= day and end <= span[1]:
+                    plan.append((f"{sensor}_{kind}", day, (end - day).days + 1))
+                    break
+            else:
+                # A piece across the end of the archive: each day from the source that has it.
+                for k in range((end - day).days + 1):
+                    one = day + timedelta(days=k)
+                    for kind in ("SP", "NRT"):
+                        span = ranges.get(f"{sensor}_{kind}")
+                        if span and span[0] <= one <= span[1]:
+                            plan.append((f"{sensor}_{kind}", one, 1))
+                            break
+            day = end + timedelta(days=1)
+    return plan
+
+
+def land_hotspots(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    """Active fires of FIRMS in the box of the study, one CSV per sensor and piece of days."""
+    hotspots = cfg["focos"]
+    key = os.environ.get(hotspots.get("clave_env", "MAP_KEY"), "").strip()
+    if not key:
+        logger.error("No %s in the environment: FIRMS needs its free MAP_KEY", hotspots.get("clave_env", "MAP_KEY"))
+        return 0, 1
+
+    margin = float(hotspots.get("margen_grados", 0.3)) + float(cfg["celda_grados"]) / 2.0
+    lats = [c[0] for c in cells.values()]
+    lons = [c[1] for c in cells.values()]
+    area = f"{min(lons) - margin:.2f},{min(lats) - margin:.2f},{max(lons) + margin:.2f},{max(lats) + margin:.2f}"
+
+    def get(url: str, label: str) -> str:
+        # The key goes in the URL: the messages name the request by its label.
+        try:
+            return fetch(url, retries=int(hotspots.get("reintentos", 4)), wait_s=30,
+                         timeout=float(hotspots.get("timeout_s", 180)), label=label).decode("utf-8", "replace")
+        except Exception as error:  # noqa: BLE001
+            raise RuntimeError(str(error).replace(key, "<MAP_KEY>")[:200]) from None
+
+    availability = get(hotspots["disponibilidad"].format(clave=key), "FIRMS data_availability")
+    save_json(fs, f"{landing}/focos/disponibilidad.json", stamp("firms", csv=availability, area=area))
+    plan = firms_plan(availability, hotspots["sensores"], hotspots["desde"], hotspots["hasta"],
+                      int(hotspots.get("dias_por_peticion", 5)))
+    done = failed = 0
+    for source, day, days in plan:
+        target = f"{landing}/focos/{source}/{day:%Y%m%d}_{days}d.csv"
+        if fs.exists(target) and not force:
+            continue
+        url = hotspots["api"].format(clave=key, fuente=source, area=area, dias=days, fecha=day.isoformat())
+        try:
+            text = get(url, f"FIRMS {source} {day} ({days} days)")
+        except RuntimeError as error:
+            failed += 1
+            logger.error("FIRMS %s %s (%s days) not downloaded: %s", source, day, days, error)
+            continue
+        if not text.startswith(("latitude", "country_id")):
+            failed += 1
+            logger.error("FIRMS %s %s: unexpected answer %s", source, day, text[:120].replace(key, "<MAP_KEY>"))
+            continue
+        with fs.open(target, "w") as file:
+            file.write(text)
+        done += 1
+        time.sleep(float(hotspots.get("pausa_s", 1)))
+
+    logger.info("FIRMS: %s pieces downloaded now, %s missing, area %s", done, failed, area)
+    return done, failed
+
+
+# Copernicus EWDS ---------------------------------------------------------------
+
+def fwi_plan(constraints: list, first: str, last: str, product: str = "reanalysis", data_format: str = "netcdf",
+             grid: str = None) -> list:
+    """
+    [(dataset_type, year, [months])]: the months between first and last by
+    year, from the consolidated dataset while it has every day of the month
+    and from the intermediate one after. constraints is the constraints.json
+    of the dataset (the valid combinations of the request).
+    """
+    from calendar import monthrange
+    from datetime import date
+
+    days = {}
+    for entry in constraints:
+        if product not in entry.get("product_type", [product]) or data_format not in entry.get("data_format",
+                                                                                                [data_format]):
+            continue
+        if grid and grid not in entry.get("grid", [grid]):
+            continue
+        for kind in entry.get("dataset_type", []):
+            seen = days.setdefault(kind, set())
+            for year in entry.get("year", []):
+                for month in entry.get("month", []):
+                    seen.update((int(year), int(month), int(day)) for day in entry.get("day", []))
+
+    lo, hi = date.fromisoformat(first), date.fromisoformat(last)
+    plan = {}
+    year, month = lo.year, lo.month
+    while (year, month) <= (hi.year, hi.month):
+        start = lo.day if (year, month) == (lo.year, lo.month) else 1
+        end = hi.day if (year, month) == (hi.year, hi.month) else monthrange(year, month)[1]
+        needed = {(year, month, day) for day in range(start, end + 1)}
+        for kind in ("consolidated_dataset", "intermediate_dataset"):
+            if needed <= days.get(kind, set()):
+                plan.setdefault((year, kind), []).append(month)
+                break
+        else:
+            logger.warning("EWDS has no complete data for %s-%02d yet", year, month)
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return [(kind, year, months) for (year, kind), months in sorted(plan.items())]
+
+
+def fwi_area(cells: dict, margin: float, size: float) -> list:
+    """[north, west, south, east] of the cells of the study with the margin (the order of the EWDS)."""
+    lats = [c[0] for c in cells.values()]
+    lons = [c[1] for c in cells.values()]
+    half = size / 2.0 + margin
+    return [round(max(lats) + half, 2), round(min(lons) - half, 2), round(min(lats) - half, 2),
+            round(max(lons) + half, 2)]
+
+
+def fwi_request(fwi: dict, kind: str, year: int, months: list, area: list) -> dict:
+    """Request of one piece; the days that a month does not have are ignored by the EWDS."""
+    return {
+        "product_type": fwi.get("producto", "reanalysis"),
+        "variable": list(fwi["variables"]),
+        "dataset_type": kind,
+        "system_version": [fwi.get("version", "4_1")],
+        "year": [str(year)],
+        "month": [f"{m:02d}" for m in months],
+        "day": [f"{d:02d}" for d in range(1, 32)],
+        "grid": fwi.get("rejilla", "0.25/0.25"),
+        "data_format": fwi.get("formato", "netcdf"),
+        "area": area,
+    }
+
+
+def fwi_piece(kind: str, year: int, months: list) -> str:
+    return f"{year}_{kind.split('_')[0]}_{months[0]:02d}-{months[-1]:02d}"
+
+
+def land_fwi(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tuple:
+    """
+    Fire danger indices of CEMS (Fire Weather Index and its parts) from the
+    EWDS, one NetCDF per year and dataset type. A request goes to the queue
+    of the EWDS and is downloaded when it is ready; peticiones_simultaneas
+    wait at once and espera_max_s bounds the whole run (what is left is asked
+    in the next one).
+    """
+    fwi = cfg["fwi"]
+    key = os.environ.get(fwi.get("clave_env", "COPERNICUS_EWDS_KEY"), "").strip()
+    if not key:
+        logger.error("No %s in the environment: the EWDS needs the free Personal Access Token of Copernicus",
+                     fwi.get("clave_env", "COPERNICUS_EWDS_KEY"))
+        return 0, 1
+    api = (os.environ.get(fwi.get("url_env", "COPERNICUS_EWDS_URL"), "").strip() or fwi["api"]).rstrip("/")
+    dataset = fwi["conjunto"]
+    timeout = float(fwi.get("timeout_s", 300))
+    # The token goes in a header; the object store of the files does not need it and never gets it.
+    auth = {"PRIVATE-TOKEN": key, "Accept": "application/json"}
+
+    constraints = json.loads(fetch(f"{api}/catalogue/v1/collections/{dataset}/constraints.json", timeout=timeout,
+                                   label="EWDS constraints").decode("utf-8"))
+    plan = fwi_plan(constraints, fwi["desde"], fwi["hasta"], fwi.get("producto", "reanalysis"),
+                    fwi.get("formato", "netcdf"), fwi.get("rejilla"))
+    area = fwi_area(cells, float(fwi.get("margen_grados", 0.3)), float(cfg["celda_grados"]))
+    queue = []
+    for kind, year, months in plan:
+        name = fwi_piece(kind, year, months)
+        target = f"{landing}/fwi/{name}.nc"
+        if fs.exists(target) and not force:
+            continue
+        queue.append((name, target, fwi_request(fwi, kind, year, months, area)))
+    logger.info("EWDS %s: %s pieces in the plan, %s to ask, area %s", dataset, len(plan), len(queue), area)
+
+    done = failed = 0
+    running = {}
+    deadline = time.time() + float(fwi.get("espera_max_s", 4 * 3600))
+    while (queue or running) and time.time() < deadline:
+        while queue and len(running) < int(fwi.get("peticiones_simultaneas", 2)):
+            name, target, request = queue.pop(0)
+            try:
+                answer = json.loads(fetch(f"{api}/retrieve/v1/processes/{dataset}/execution",
+                                          data=json.dumps({"inputs": request}).encode("utf-8"),
+                                          headers={**auth, "Content-Type": "application/json"}, timeout=timeout,
+                                          label=f"EWDS {name}").decode("utf-8"))
+            except Exception as error:  # noqa: BLE001
+                failed += 1
+                hint = " (accept the licence of the dataset on its page)" if "licence" in str(error) else ""
+                logger.error("EWDS %s not submitted: %s%s", name, str(error)[:300], hint)
+                continue
+            monitor = [link["href"] for link in answer.get("links", []) if link.get("rel") == "monitor"]
+            job = monitor[0] if monitor else f"{api}/retrieve/v1/jobs/{answer['jobID']}"
+            running[name] = (job, target, request)
+            logger.info("EWDS %s submitted: %s", name, answer.get("status"))
+
+        time.sleep(float(fwi.get("pausa_s", 20)))
+        for name in list(running):
+            job, target, request = running[name]
+            try:
+                status = json.loads(fetch(job, headers=auth, timeout=timeout,
+                                          label=f"EWDS job {name}").decode("utf-8")).get("status")
+            except Exception as error:  # noqa: BLE001
+                logger.warning("EWDS %s: no status (%s)", name, str(error)[:200])
+                continue
+            if status in ("accepted", "running"):
+                continue
+            del running[name]
+            try:
+                results = json.loads(fetch(f"{job}/results", headers=auth, timeout=timeout,
+                                           label=f"EWDS results {name}").decode("utf-8"))
+                if status != "successful":
+                    raise RuntimeError(f"state {status}: {str(results)[:300]}")
+                asset = results["asset"]["value"]
+                raw = fetch(urllib.parse.urljoin(job, asset["href"]), timeout=timeout, label=f"EWDS file {name}")
+            except Exception as error:  # noqa: BLE001
+                failed += 1
+                logger.error("EWDS %s not downloaded: %s", name, str(error)[:300])
+                continue
+            if not raw.startswith((b"\x89HDF", b"CDF")):
+                failed += 1
+                logger.error("EWDS %s: the answer is not a NetCDF (%s)", name, raw[:40])
+                continue
+            with fs.open(target, "wb") as file:
+                file.write(raw)
+            save_json(fs, target[:-3] + ".json", stamp("cems-fwi", conjunto=dataset, peticion=request,
+                                                       bytes=len(raw)))
+            done += 1
+            logger.info("EWDS %s: %s bytes", name, len(raw))
+
+    if queue or running:
+        failed += len(queue) + len(running)
+        logger.error("EWDS: %s pieces not finished in espera_max_s; launch again to ask them",
+                     len(queue) + len(running))
+    return done, failed
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
@@ -709,13 +1207,18 @@ def main(argv=None):
         "obras": lambda: land_obras(fs, cfg, landing, args.forzar, args.anios, args.procesos),
         "catastro": lambda: land_catastro(fs, cfg, landing, places, provinces, args.forzar),
         "proyecciones": lambda: land_projections(fs, cfg, landing),
+        "aves": lambda: land_birds(fs, cfg, landing, cells, args.forzar),
+        "incendios": lambda: land_fires(fs, cfg, landing, cells, args.forzar),
+        "avisos": lambda: land_warnings(fs, cfg, landing, cells, args.forzar),
+        "focos": lambda: land_hotspots(fs, cfg, landing, cells, args.forzar),
+        "fwi": lambda: land_fwi(fs, cfg, landing, cells, args.forzar),
     }
     for source in SOURCES:
         if source not in sources:
             continue
         try:
             result = steps[source]()
-            if source in ("osm", "obras", "catastro") and result[1]:
+            if source in ("osm", "obras", "catastro", "aves", "incendios", "avisos", "focos", "fwi") and result[1]:
                 logger.error("%s pieces of %s are missing: launch again to ask only those", result[1], source)
                 missing.append(source)
         except Exception as error:  # noqa: BLE001

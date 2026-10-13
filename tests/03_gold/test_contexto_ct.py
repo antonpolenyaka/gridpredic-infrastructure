@@ -205,6 +205,25 @@ def built(spark):
         {"codigo_ine": "6148", "municipio": "Valle", "ame_codigo": "611", "ame_nombre": "SIERRA SUROESTE"},
     ]), "l1_bronze.ieex_ame_municipio")
 
+    # GBIF: storks and birds of c1 by year and month.
+    gbif = [{"celda_id": "c1", "taxon": taxon, "tipo": "anio", "clave": year, "registros": value,
+             "descargado_utc": "2026-10-12"}
+            for taxon, year, value in (("ciguena_blanca", 2018, 10), ("ciguena_blanca", 2019, 20),
+                                       ("aves", 2018, 100), ("aves", 2019, 100))]
+    gbif += [{"celda_id": "c1", "taxon": "ciguena_blanca", "tipo": "mes", "clave": 3, "registros": 25,
+              "descargado_utc": "2026-10-12"},
+             {"celda_id": "c1", "taxon": "ciguena_blanca", "tipo": "total", "clave": None, "registros": 30,
+              "descargado_utc": "2026-10-12"}]
+    save(spark, pd.DataFrame(gbif), "l1_bronze.gbif_conteo_celda")
+    # EFFIS: a burnt area of 2021 near Uno and one without date.
+    fire = {"ultima_actualizacion": "2021-08-01 10:00:00", "pais": "ES", "provincia": "Caceres", "municipio": "Uno",
+            "lat_min": 39.99, "lat_max": 40.01, "lon_min": -6.01, "lon_max": -5.99, "n_vertices": 5, "atributos": "{}",
+            "descargado_utc": "2026-10-12"}
+    save(spark, pd.DataFrame([
+        {**fire, "id": "F1", "fecha_incendio": "2021-07-20", "area_ha": 100.0, "latitud": 40.0, "longitud": -6.0},
+        {**fire, "id": "F2", "fecha_incendio": None, "area_ha": 50.0, "latitud": 40.0, "longitud": -6.0},
+    ]), "l1_bronze.effis_area_quemada")
+
     run("job_silver_contexto_publico", [])
     run("job_gold_contexto_ct", ["--config", GOLD_CONFIG])
     return spark
@@ -328,3 +347,37 @@ def test_ieex_projection_in_silver(built):
     assert reasons == {"INVALID_VALUE": 1, "DUPLICATE_ID": 1}
     towns = built.table("l2_silver.d_ame_municipio").toPandas().set_index("codigo_ine")
     assert towns.loc["06148", "ame_codigo"] == "0611" and towns.loc["10001", "ame_codigo"] == "1012"
+
+
+def test_birds_and_burnt_areas_in_silver(built):
+    birds = built.table("l2_silver.f_aves_celda_anio").where("taxon = 'ciguena_blanca'").orderBy("anio").collect()
+    assert [(r["anio"], r["registros"]) for r in birds] == [(2018, 10), (2019, 20)]
+    assert built.table("l2_silver.f_aves_celda_mes").count() == 1
+    fires = built.table("l2_silver.f_area_quemada").collect()
+    assert len(fires) == 1
+    assert (fires[0]["celda_id"], fires[0]["anio"], fires[0]["area_ha"]) == ("40.00_-6.00", 2021, 100.0)
+    assert built.table("l2_silver.f_area_quemada_rejected").where("_motivo = 'NULL_KEY'").count() == 1
+
+
+def test_context_birds_of_the_five_years_before(built):
+    rows = {r["anio"]: r for r in built.table("l3_gold.contexto_ct_anio").where("ct_id = 'A1'").collect()}
+    assert rows[2020]["celda_ciguena_5a"] == 30 and rows[2020]["celda_aves_5a"] == 200
+    assert rows[2020]["celda_ciguena_parte_aves_5a"] == pytest.approx(0.15)
+    assert rows[2024]["celda_ciguena_5a"] == 20 and rows[2024]["celda_ciguena_parte_aves_5a"] == pytest.approx(0.2)
+    # The cells of the test have no coordinates in their id: no neighbours, no fires, but 0 and not null.
+    assert rows[2024]["celda_incendios_5a"] == 0
+
+
+def test_fire_history_counts_the_cell_and_its_neighbours(built):
+    import job_gold_contexto_ct as gold
+
+    spark = built
+    cells = spark.createDataFrame([("40.00_-6.00",), ("40.10_-6.00",), ("40.30_-6.00",)], "celda_id string")
+    fires = spark.createDataFrame([(2021, 40.0, -6.0, 100.0)], "anio int, latitud double, longitud double, area_ha double")
+    out = {(r["celda_id"], r["anio"]): r for r in gold.fire_history(spark, fires, cells, [2021, 2022, 2027]).collect()}
+    assert out[("40.00_-6.00", 2022)]["celda_incendios_5a"] == 1
+    assert out[("40.00_-6.00", 2022)]["celda_area_quemada_5a_ha"] == 100.0
+    assert out[("40.10_-6.00", 2022)]["celda_incendios_5a"] == 1
+    assert out[("40.30_-6.00", 2022)]["celda_incendios_5a"] == 0
+    assert out[("40.00_-6.00", 2021)]["celda_incendios_5a"] == 0
+    assert out[("40.00_-6.00", 2027)]["celda_incendios_5a"] == 0

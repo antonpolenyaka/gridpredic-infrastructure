@@ -48,6 +48,71 @@
       "ficheros": ["ieex_proyecciones_ame.csv", "ieex_ame_municipios.csv"],
       "origen": "https://www.juntaex.es/w/proyecciones-de-poblacion"
     },
+    "aves": {
+      "api": "https://api.gbif.org/v1/occurrence/search",
+      "taxones": {
+        "ciguena_blanca": {"scientificName": "Ciconia ciconia"},
+        "aves": {"classKey": "212"}
+      },
+      "anio_desde": 2000,
+      "anio_hasta": 2026,
+      "facet_limite": 60,
+      "pausa_s": 1
+    },
+    "incendios": {
+      "wfs": "https://maps.effis.emergency.copernicus.eu/effis",
+      "margen_grados": 0.2,
+      "timeout_s": 600,
+      "variantes": [
+        {"version": "1.1.0", "typename": "ms:modis.ba.poly", "srsName": "EPSG:4326",
+         "bbox": "{lat0},{lon0},{lat1},{lon1},urn:ogc:def:crs:EPSG::4326"},
+        {"version": "1.0.0", "typename": "ms:modis.ba.poly", "srsName": "EPSG:4326",
+         "bbox": "{lon0},{lat0},{lon1},{lat1}"},
+        {"version": "1.1.0", "typename": "ms:modis.ba.poly", "bbox": "{lon0},{lat0},{lon1},{lat1},EPSG:4326"},
+        {"version": "1.0.0", "typename": "modis.ba.poly", "bbox": "{lon0},{lat0},{lon1},{lat1}"}
+      ]
+    },
+    "avisos": {
+      "api": "https://opendata.aemet.es/opendata/api/avisos_cap/archivo/fechaini/{ini}/fechafin/{fin}",
+      "clave_env": "AEMET_API_KEY",
+      "desde": "2018-06-18",
+      "hasta": "2026-08-31",
+      "dias_por_peticion": 2,
+      "pausa_s": 4,
+      "timeout_s": 300,
+      "margen_grados": 0.3
+    },
+    "focos": {
+      "api": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{clave}/{fuente}/{area}/{dias}/{fecha}",
+      "disponibilidad": "https://firms.modaps.eosdis.nasa.gov/api/data_availability/csv/{clave}/all",
+      "clave_env": "MAP_KEY",
+      "sensores": ["VIIRS_SNPP", "VIIRS_NOAA20", "MODIS"],
+      "desde": "2017-01-01",
+      "hasta": "2026-08-31",
+      "dias_por_peticion": 5,
+      "margen_grados": 0.3,
+      "pausa_s": 0.3,
+      "timeout_s": 180
+    },
+    "fwi": {
+      "api": "https://ewds.climate.copernicus.eu/api",
+      "url_env": "COPERNICUS_EWDS_URL",
+      "clave_env": "COPERNICUS_EWDS_KEY",
+      "conjunto": "cems-fire-historical-v1",
+      "producto": "reanalysis",
+      "version": "4_1",
+      "variables": ["fire_weather_index", "fine_fuel_moisture_code", "duff_moisture_code", "drought_code",
+                    "initial_fire_spread_index", "build_up_index"],
+      "desde": "2017-01-01",
+      "hasta": "2026-08-31",
+      "rejilla": "0.25/0.25",
+      "formato": "netcdf",
+      "margen_grados": 0.3,
+      "peticiones_simultaneas": 2,
+      "pausa_s": 20,
+      "espera_max_s": 14400,
+      "timeout_s": 300
+    },
     "tablas": {
       "padron": "l1_bronze.ine_padron_municipio",
       "wikidata": "l1_bronze.wikidata_municipio",
@@ -59,7 +124,12 @@
       "catastro": "l1_bronze.catastro_edificio",
       "catastro_municipios": "l1_bronze.catastro_municipio",
       "proyecciones": "l1_bronze.ieex_proyeccion_ame",
-      "ame_municipios": "l1_bronze.ieex_ame_municipio"
+      "ame_municipios": "l1_bronze.ieex_ame_municipio",
+      "aves": "l1_bronze.gbif_conteo_celda",
+      "incendios": "l1_bronze.effis_area_quemada",
+      "avisos": "l1_bronze.aemet_aviso",
+      "focos": "l1_bronze.firms_foco",
+      "fwi": "l1_bronze.cems_fwi_dia"
     }
   }
 }
