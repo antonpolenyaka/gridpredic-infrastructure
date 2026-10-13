@@ -14,6 +14,23 @@ hour), with the same rules as the rest of the layer:
   racha_menor_viento (it happens with the interpolation of the model).
 - Hours missing in a cell are counted (huecos). When the clock goes forward
   in March the local hour 02:00 does not exist, so that jump is not a gap.
+- When l1_bronze.meteo_openmeteo_convectivo_hora exists (CAPE and lifted
+  index of the archived GFS runs, from 23.03.2021, in cells of 0.25
+  degrees), every cell takes the values of the nearest convective cell:
+  cape_jkg and indice_levantamiento (null before that date). Out of range
+  values are set to null as the rest.
+- The same with l1_bronze.meteo_openmeteo_extra_hora (the other variables
+  of the reanalysis in cells of 0.25 degrees, EXTRA): wind direction and
+  wind at 100 m, soil moisture at 0 - 7 and 28 - 100 cm, dew point, vapour
+  pressure deficit, low clouds, evapotranspiration, weather code and
+  radiation.
+- And with l1_bronze.meteo_openmeteo_previo_hora (Previous Runs API, from
+  January 2024, cells of 0.1 degrees like the reanalysis, FORECAST): what
+  ICON-EU forecast for the hour one day before (racha_prev1_kmh,
+  viento_prev1_kmh, precipitacion_prev1_mm, nieve_prev1_cm,
+  temperatura_prev1_c, humedad_prev1_pct) and two days before
+  (racha_prev2_kmh, precipitacion_prev2_mm), and its run of the same day
+  (racha_icon_kmh, precipitacion_icon_mm). Null before the archive starts.
 
 The table is small (a few million rows) and is rebuilt whole in every run.
 """
@@ -38,6 +55,44 @@ from silver_common import (
 ENTITY = "f_meteo_hora"
 TARGET_TABLE = silver_table(ENTITY)
 SOURCE_TABLE = "l1_bronze.meteo_openmeteo_hora"
+CONVECTIVE_TABLE = "l1_bronze.meteo_openmeteo_convectivo_hora"
+EXTRA_TABLE = "l1_bronze.meteo_openmeteo_extra_hora"
+FORECAST_TABLE = "l1_bronze.meteo_openmeteo_previo_hora"
+
+# Convective variables: Bronze name -> Silver name, physical range.
+CONVECTIVE = {
+    "cape": ("cape_jkg", 0.0, 10000.0),
+    "lifted_index": ("indice_levantamiento", -20.0, 40.0),
+}
+
+# Other variables of the reanalysis, in cells of 0.25 degrees.
+EXTRA = {
+    "wind_direction_10m": ("direccion_viento_grados", 0.0, 360.0),
+    "wind_speed_100m": ("viento_100m_kmh", 0.0, 300.0),
+    "soil_moisture_0_to_7cm": ("humedad_suelo_0_7_m3m3", 0.0, 1.0),
+    "soil_moisture_28_to_100cm": ("humedad_suelo_28_100_m3m3", 0.0, 1.0),
+    "dew_point_2m": ("punto_rocio_c", -50.0, 40.0),
+    "vapour_pressure_deficit": ("deficit_presion_vapor_kpa", 0.0, 15.0),
+    "cloud_cover_low": ("nubes_bajas_pct", 0.0, 100.0),
+    "et0_fao_evapotranspiration": ("evapotranspiracion_mm", 0.0, 5.0),
+    "weather_code": ("codigo_tiempo", 0.0, 99.0),
+    "shortwave_radiation": ("radiacion_wm2", 0.0, 1500.0),
+}
+
+# Forecasts of ICON-EU made one and two days before the hour and its run of
+# the same day (Previous Runs API), in the cells of the reanalysis.
+FORECAST = {
+    "wind_gusts_10m_previous_day1": ("racha_prev1_kmh", 0.0, 300.0),
+    "wind_speed_10m_previous_day1": ("viento_prev1_kmh", 0.0, 250.0),
+    "precipitation_previous_day1": ("precipitacion_prev1_mm", 0.0, 200.0),
+    "snowfall_previous_day1": ("nieve_prev1_cm", 0.0, 100.0),
+    "temperature_2m_previous_day1": ("temperatura_prev1_c", -30.0, 55.0),
+    "relative_humidity_2m_previous_day1": ("humedad_prev1_pct", 0.0, 100.0),
+    "wind_gusts_10m_previous_day2": ("racha_prev2_kmh", 0.0, 300.0),
+    "precipitation_previous_day2": ("precipitacion_prev2_mm", 0.0, 200.0),
+    "wind_gusts_10m": ("racha_icon_kmh", 0.0, 300.0),
+    "precipitation": ("precipitacion_icon_mm", 0.0, 200.0),
+}
 
 # Bronze name -> Silver name, physical range (min, max).
 VARIABLES = {
@@ -92,6 +147,72 @@ def transform(df_in: DataFrame):
     return out, union_rejects([rejected.drop("_cargado"), duplicated.drop("_cargado")])
 
 
+def cell_center(column):
+    """(latitude, longitude) of a cell id "39.40_-6.30"."""
+    parts = F.split(column, "_")
+    return parts.getItem(0).try_cast("double"), parts.getItem(1).try_cast("double")
+
+
+def add_convective(out: DataFrame, conv: DataFrame) -> DataFrame:
+    """CAPE and lifted index of the nearest convective cell, by (cell, hour)."""
+    return add_coarse(out, conv, CONVECTIVE)
+
+
+def add_extra(out: DataFrame, extra: DataFrame) -> DataFrame:
+    """The other variables of the reanalysis from the nearest cell of 0.25 degrees, by (cell, hour)."""
+    return add_coarse(out, extra, EXTRA)
+
+
+def add_forecast(out: DataFrame, forecast: DataFrame) -> DataFrame:
+    """The forecasts of ICON-EU of the same cell (the same grid of 0.1 degrees), by (cell, hour)."""
+    return add_coarse(out, forecast, FORECAST, max_step=0.05)
+
+
+# Farthest a cell of the coarse grid (0.25 degrees) can be from a cell to
+# give it its values, in latitude and in longitude: one step of the grid. A
+# coarse cell still missing (a Landing stopped by the daily limit) leaves
+# nulls, not the values of a cell 200 km away.
+MAX_COARSE_STEP = 0.25
+
+
+def add_coarse(out: DataFrame, conv: DataFrame, variables: dict, max_step: float = MAX_COARSE_STEP) -> DataFrame:
+    """The variables of the nearest cell of a coarser grid within max_step degrees, by (cell, hour)."""
+    present = {k: v for k, v in variables.items() if k in conv.columns}
+    if not present:
+        return out
+
+    cells = out.select("celda_id").distinct()
+    lat, lon = cell_center(F.col("celda_id"))
+    cells = cells.select("celda_id", lat.alias("_lat"), lon.alias("_lon"))
+    conv_cells = conv.select(F.col("celda_id").alias("celda_conv")).distinct()
+    clat, clon = cell_center(F.col("celda_conv"))
+    conv_cells = conv_cells.select("celda_conv", clat.alias("_clat"), clon.alias("_clon"))
+
+    distance = (F.col("_lat") - F.col("_clat")) ** 2 + (F.col("_lon") - F.col("_clon")) ** 2
+    close = (F.abs(F.col("_lat") - F.col("_clat")) <= F.lit(max_step + 1e-9)) & (
+        F.abs(F.col("_lon") - F.col("_clon")) <= F.lit(max_step + 1e-9))
+    nearest = (
+        cells.crossJoin(F.broadcast(conv_cells)).where(close).withColumn("_d", distance)
+        .withColumn("_r", F.row_number().over(Window.partitionBy("celda_id").orderBy("_d", "celda_conv")))
+        .where(F.col("_r") == 1).select("celda_id", "celda_conv")
+    )
+
+    hourly = conv.select(
+        F.trim(F.col("celda_id")).alias("celda_conv"), F.col("hora").cast("timestamp").alias("hora"),
+        *[F.col(k).cast("double").alias(name) for k, (name, _, _) in present.items()],
+    ).dropDuplicates(["celda_conv", "hora"])
+
+    for name, low, high in present.values():
+        bad = (F.col(name) < F.lit(low)) | (F.col(name) > F.lit(high))
+        hourly = hourly.withColumn(name, F.when(F.coalesce(bad, F.lit(False)), F.lit(None)).otherwise(F.col(name)))
+
+    return (
+        out.join(F.broadcast(nearest), "celda_id", "left")
+        .join(hourly, ["celda_conv", "hora"], "left")
+        .drop("celda_conv")
+    )
+
+
 def count_gaps(out: DataFrame) -> int:
     """
     Missing hours inside the range of every cell. The jump of the change to
@@ -123,6 +244,22 @@ def main():
     total_in = df_in.count()
 
     out, rejected = transform(df_in)
+
+    if spark.catalog.tableExists(CONVECTIVE_TABLE):
+        out = add_convective(out, spark.table(CONVECTIVE_TABLE))
+    else:
+        logger.info("%s not found: no CAPE in Silver", CONVECTIVE_TABLE)
+
+    if spark.catalog.tableExists(EXTRA_TABLE):
+        out = add_extra(out, spark.table(EXTRA_TABLE))
+    else:
+        logger.info("%s not found: no extra variables in Silver", EXTRA_TABLE)
+
+    if spark.catalog.tableExists(FORECAST_TABLE):
+        out = add_forecast(out, spark.table(FORECAST_TABLE))
+    else:
+        logger.info("%s not found: no forecasts of ICON-EU in Silver", FORECAST_TABLE)
+
     out = out.localCheckpoint(eager=True)
 
     write_table(out, TARGET_TABLE, partition_by=["anio"])
@@ -141,14 +278,20 @@ def main():
         *([F.sum(F.col("racha_menor_viento").cast("long")).alias("racha_menor_viento")]
           if "racha_menor_viento" in out.columns else []),
         *[F.sum(F.col(name).isNull().cast("long")).alias(f"nulos:{name}")
-          for name, _, _ in VARIABLES.values() if name in out.columns],
+          for name, _, _ in list(VARIABLES.values()) + list(CONVECTIVE.values()) + list(EXTRA.values())
+          + list(FORECAST.values()) if name in out.columns],
     ).first().asDict()
 
     dq.add(ENTITY, "flag:fuera_rango", sums.pop("fuera_rango") or 0, total_out, umbral_pct=0.5)
     if "racha_menor_viento" in sums:
         dq.add(ENTITY, "flag:racha_menor_viento", sums.pop("racha_menor_viento") or 0, total_out, umbral_pct=5.0)
     for metric, value in sums.items():
-        dq.add(ENTITY, metric, value or 0, total_out, umbral_pct=1.0)
+        # CAPE only exists from 23.03.2021, the forecasts of ICON-EU from 2024 and
+        # the extra grid can still be loading: their nulls are information, not a
+        # problem.
+        partial = any(metric.endswith(name) for name, _, _ in
+                      list(CONVECTIVE.values()) + list(EXTRA.values()) + list(FORECAST.values()))
+        dq.add(ENTITY, metric, value or 0, total_out, umbral_pct=None if partial else 1.0)
 
     dq.add(ENTITY, "huecos_horas", count_gaps(out), total_out, umbral_pct=0.5,
            detalle="missing hours inside the range of each cell, summer time jump excluded")

@@ -93,7 +93,8 @@ def tables(spark):
                 start = pd.Timestamp(year=year, month=1, day=1) + pd.Timedelta(hours=int(rng.integers(0, 8000)))
                 period = start.strftime("%Y%m")
                 incidents.append({"distribuidora_id": 1, "periodo_id": period, "id": f"I{n}", "descripcion": "Averia",
-                                  "observaciones": None, "resolucion": None, "tipo_equipo_id": "LAERE"})
+                                  "observaciones": None, "resolucion": None, "tipo_equipo_id": "LAERE",
+                                  "_feeder": f})
                 hit = rng.choice(CTS_PER_FEEDER, CTS_PER_FEEDER // 2, replace=False)
                 for c in hit:
                     minutes = int(rng.integers(20, 180))
@@ -108,6 +109,14 @@ def tables(spark):
                         scada.append({"distribuidora_id": 1, "ct_id": ct, "inicio_ts": start - pd.Timedelta(days=30),
                                       "es_microcorte": True, "es_maniobra": False, "es_corte_etiqueta": False})
 
+    # Causes by feeder: fauna in the first three, equipment in two, weather in the last; some upstream cuts.
+    family = {0: "fauna", 1: "fauna", 2: "fauna", 3: "equipo", 4: "equipo", 5: "meteorologia"}
+    causes = [{"distribuidora_id": 1, "periodo_id": inc["periodo_id"], "id": inc["id"],
+               "causa": "aguas_arriba" if k % 7 == 0 else family[int(inc["_feeder"])]}
+              for k, inc in enumerate(incidents)]
+    for inc in incidents:
+        inc.pop("_feeder")
+    save(spark, pd.DataFrame(causes), "l2_silver.f_incidencia_causa")
     save(spark, pd.DataFrame(dim), "l3_gold.dim_ct")
     save(spark, pd.DataFrame(upstream), "l3_gold.map_aguas_arriba")
     save(spark, pd.DataFrame(facts), "l3_gold.fact_interrupciones_mt")
@@ -131,7 +140,8 @@ def result(spark, tables, workdir):
     config["riesgo_ct"] = {"anios_evaluacion": [2023, 2024, 2025],
                            "xgboost": {"n_estimators": 60, "max_depth": 3, "learning_rate": 0.1,
                                        "objective": "reg:tweedie", "tweedie_variance_power": 1.3},
-                           "bloques": ["historia", "historia+estructura+scada", "todo"]}
+                           "bloques": ["historia", "historia+estructura+scada", "todo"],
+                           "bloques_por_causa": ["historia"]}
     path = os.path.join(workdir, "config.json")
     with open(path, "w", encoding="utf-8") as file:
         json.dump(config, file)
@@ -170,3 +180,22 @@ def test_ranking_for_next_year(result, spark):
     expected = feeders.set_index("cabecera")["kva_h_esperado"]
     assert expected[["CAB-3", "CAB-4", "CAB-5"]].mean() > expected[["CAB-0", "CAB-1", "CAB-2"]].mean()
     assert spark.table("l3_gold.ml_riesgo_ct_ranking").where(f"run_id = '{RUN_ID}'").count() == len(cts)
+
+
+def test_models_per_family_of_causes(result):
+    _, folder = result
+    metrics = pd.read_csv(os.path.join(folder, "captura.csv"))
+    family = metrics[metrics["modelo"] == "por_causa:historia"]
+    assert set(family["anio"]) == {2023, 2024, 2025}
+    assert family["captura"].between(0, 1).all()
+    feeder = family[(family["nivel"] == "cabecera") & (family["top"] == 0.2)]
+    assert feeder["captura"].mean() > 0.3
+    cts = pd.read_csv(os.path.join(folder, "prioridades_ct.csv"))
+    expected = {"esperado_meteo", "esperado_fauna", "esperado_equipo", "esperado_resto"}
+    assert expected <= set(cts.columns)
+    feeders = pd.read_csv(os.path.join(folder, "prioridades_cabecera.csv")).set_index("cabecera")
+    # Fauna is expected on the feeders where the fauna was, equipment where the equipment was.
+    assert feeders.loc[["CAB-1", "CAB-2"], "esperado_fauna"].mean() > feeders.loc[["CAB-3", "CAB-4"], "esperado_fauna"].mean()
+    assert feeders.loc[["CAB-3", "CAB-4"], "esperado_equipo"].mean() > feeders.loc[["CAB-1", "CAB-2"], "esperado_equipo"].mean()
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "por_causa:historia" in text

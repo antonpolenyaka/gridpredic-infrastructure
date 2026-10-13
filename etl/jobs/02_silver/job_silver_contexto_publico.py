@@ -39,6 +39,38 @@ OpenStreetMap), cleaned and taken to the units Gold uses.
 - f_proyeccion_ame and d_ame_municipio: population projected by the IEEX for
   every group of municipalities (AME) and year, and the AME of every
   municipality (one per INE code).
+- f_aves_celda_anio and f_aves_celda_mes: records of GBIF of the white stork
+  and of all the birds in every cell, by year and by month. The records
+  depend on how many people look, so the share of storks among the birds is
+  a better measure of their presence than the count alone (Gold uses both).
+- f_area_quemada: one row per burnt area of EFFIS (30 ha or more), with the
+  fire date, the area, the province and municipality the EFFIS gives, the
+  centre of the polygon and its weather cell (the grid of 0.1 degrees of
+  the weather). A repeated identifier keeps the last update; rows without
+  date (NULL_KEY) or without position (NO_GEOMETRY) are rejected.
+- f_aviso_meteo: one row per warning message of AEMET and weather cell
+  whose centre falls inside the polygon of the warning zone: times in the
+  wall clock of Madrid (sent, onset, expiry), phenomenon (VI wind, PR rain,
+  TO thunderstorms, NE snow, TA and TI temperatures...), level and its
+  number (verde 0, amarillo 1, naranja 2, rojo 3), probability, zone and
+  the cell. Rows without identifier or times (NULL_KEY) or without polygon
+  (NO_GEOMETRY) are rejected; the zones that hold no cell of the study are
+  left out.
+- f_foco_incendio: one row per active fire of FIRMS: time of the pass in UTC
+  and in the wall clock of Madrid, position, sensor and satellite, the
+  confidence as it comes and as a level (1 low, 2 nominal, 3 high; MODIS
+  below 30, from 30 to 80 and above), fire radiative power, day or night,
+  and the nearest cell of the study within one step and a half of the grid
+  with its distance (null cell for the fires farther away, which stay for
+  the alerts around the network). Rows without position or time are
+  rejected (NULL_KEY) and a repeated pass keeps one row (DUPLICATE_KEY).
+- f_fwi_celda_dia: the fire danger indices of CEMS of every cell of the
+  study and day, from the nearest point of their grid of 0.25 degrees (at
+  most max_paso_fwi away): Fire Weather Index and its parts (FFMC, DMC, DC,
+  ISI, BUI), the distance to the point and the dataset (consolidated or
+  intermediate). A day and point that come twice keep the consolidated
+  dataset and then the newest piece (DUPLICATE_KEY); rows without date or
+  position are rejected (NULL_KEY).
 
     docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/02_silver/job_silver_contexto_publico.py
 """
@@ -80,6 +112,21 @@ PLACSP_DELETED_TABLE = "l1_bronze.placsp_entrada_borrada"
 CATASTRO_TABLE = "l1_bronze.catastro_edificio"
 IEEX_TABLE = "l1_bronze.ieex_proyeccion_ame"
 IEEX_AME_TABLE = "l1_bronze.ieex_ame_municipio"
+GBIF_TABLE = "l1_bronze.gbif_conteo_celda"
+EFFIS_TABLE = "l1_bronze.effis_area_quemada"
+AEMET_TABLE = "l1_bronze.aemet_aviso"
+FIRMS_TABLE = "l1_bronze.firms_foco"
+HOTSPOTS = "f_foco_incendio"
+FWI_TABLE = "l1_bronze.cems_fwi_dia"
+FIRE_DANGER = "f_fwi_celda_dia"
+FWI_COLUMNS = ["fwi", "ffmc", "dmc", "dc", "isi", "bui"]
+WEATHER_CELLS_TABLE = "l2_silver.d_meteo_celda"
+WARNINGS = "f_aviso_meteo"
+WARNING_LEVELS = {"verde": 0, "amarillo": 1, "naranja": 2, "rojo": 3}
+BIRDS_YEAR = "f_aves_celda_anio"
+BIRDS_MONTH = "f_aves_celda_mes"
+FIRES = "f_area_quemada"
+CELL_DEGREES = 0.1
 
 WORKS = {
     "nuts": ["ES43"],
@@ -447,6 +494,241 @@ def ame_towns(members):
     return kept.withColumn("audit_loaded_at", F.current_timestamp()), union_rejects([rejected, duplicated])
 
 
+def birds(gbif, kind: str, key: str):
+    """(rows of f_aves_celda_anio or f_aves_celda_mes, rejected) from the GBIF counts."""
+    df = gbif.where(F.col("tipo") == F.lit(kind)).select(
+        F.trim(F.col("celda_id")).alias("celda_id"), F.trim(F.col("taxon")).alias("taxon"),
+        F.col("clave").cast("int").alias(key), F.col("registros").cast("long").alias("registros"))
+    kept, rejected = split_rejects(df, [
+        ("NULL_KEY", F.col("celda_id").isNull() | F.col("taxon").isNull() | F.col(key).isNull()),
+        ("INVALID_VALUE", F.col("registros").isNull() | (F.col("registros") < 0)),
+    ])
+    kept, duplicated = keep_first(kept, ["celda_id", "taxon", key], [F.col("registros").desc()], "DUPLICATE_ID")
+    return kept.withColumn("audit_loaded_at", F.current_timestamp()), union_rejects([rejected, duplicated])
+
+
+def cell_id(lat, lon, size: float = CELL_DEGREES):
+    """Weather cell of a position, the same id as job_landing_meteo_openmeteo.cell_of."""
+    return F.format_string("%.2f_%.2f", F.round(F.round(lat / F.lit(size)) * F.lit(size), 4),
+                           F.round(F.round(lon / F.lit(size)) * F.lit(size), 4))
+
+
+def burnt_areas(effis):
+    """(rows of f_area_quemada, rejected)."""
+    date_text = F.substring(F.trim(F.col("fecha_incendio")), 1, 10)
+    df = effis.select(
+        F.trim(F.col("id").cast("string")).alias("id"),
+        F.coalesce(F.try_to_timestamp(date_text, F.lit("yyyy-MM-dd")),
+                   F.try_to_timestamp(date_text, F.lit("yyyy/MM/dd")),
+                   F.try_to_timestamp(date_text, F.lit("dd/MM/yyyy"))).cast("date").alias("fecha"),
+        F.try_to_timestamp(F.substring(F.trim(F.col("ultima_actualizacion")), 1, 19),
+                           F.lit("yyyy-MM-dd HH:mm:ss")).alias("ultima_actualizacion"),
+        F.col("area_ha").cast("double").alias("area_ha"),
+        F.trim(F.col("pais")).alias("pais"), F.trim(F.col("provincia")).alias("provincia"),
+        F.trim(F.col("municipio")).alias("municipio"),
+        F.col("latitud").cast("double").alias("latitud"), F.col("longitud").cast("double").alias("longitud"),
+    )
+    kept, rejected = split_rejects(df, [
+        ("NULL_KEY", F.col("id").isNull() | F.col("fecha").isNull()),
+        ("NO_GEOMETRY", F.col("latitud").isNull() | F.col("longitud").isNull()),
+    ])
+    kept, duplicated = keep_first(kept, ["id"], [F.col("ultima_actualizacion").desc_nulls_last()], "DUPLICATE_ID")
+    out = (
+        kept.withColumn("anio", F.year("fecha"))
+        .withColumn("celda_id", cell_id(F.col("latitud"), F.col("longitud")))
+        .withColumn("audit_loaded_at", F.current_timestamp())
+    )
+    return out, union_rejects([rejected, duplicated])
+
+
+def inside(lat: float, lon: float, points: list) -> bool:
+    """Point in polygon (ray casting) for (lat, lon) points."""
+    hit = False
+    j = len(points) - 1
+    for i in range(len(points)):
+        lat_i, lon_i = points[i]
+        lat_j, lon_j = points[j]
+        if (lon_i > lon) != (lon_j > lon):
+            crossing = lat_i + (lon - lon_i) / (lon_j - lon_i) * (lat_j - lat_i)
+            if lat < crossing:
+                hit = not hit
+        j = i
+    return hit
+
+
+def local_wall_clock(values):
+    """CAP times with their offset -> naive wall clock of Madrid, as the rest of the lakehouse."""
+    import pandas as pd
+
+    stamps = pd.to_datetime(values, utc=True, errors="coerce", format="ISO8601")
+    return stamps.dt.tz_convert("Europe/Madrid").dt.tz_localize(None)
+
+
+def weather_warnings(spark, aemet, cells: list):
+    """
+    (rows of f_aviso_meteo, rejected rows as a list of dicts) from the
+    warnings of Bronze and the cells (celda_id, lat, lon) of the study.
+    """
+    import pandas as pd
+
+    pdf = aemet.select("identificador", "tipo_mensaje", "enviado", "inicio", "fin", "fenomeno", "nivel",
+                       "probabilidad", "parametro", "zona", "zona_nombre", "poligono").toPandas()
+    rows, rejected = [], []
+    for record in pdf.to_dict("records"):
+        if not record["identificador"] or not record["inicio"] or not record["fin"]:
+            rejected.append({**record, "_motivo": "NULL_KEY"})
+            continue
+        points = []
+        for pair in str(record["poligono"] or "").split():
+            parts = pair.split(",")
+            if len(parts) == 2:
+                points.append((float(parts[0]), float(parts[1])))
+        if len(points) < 3:
+            rejected.append({**record, "_motivo": "NO_GEOMETRY"})
+            continue
+        for cell, lat, lon in cells:
+            if inside(lat, lon, points):
+                rows.append({**{k: v for k, v in record.items() if k != "poligono"}, "celda_id": cell})
+
+    out = pd.DataFrame(rows, columns=[c for c in pdf.columns if c != "poligono"] + ["celda_id"])
+    for column, source in (("enviado_ts", "enviado"), ("inicio_ts", "inicio"), ("fin_ts", "fin")):
+        out[column] = local_wall_clock(out[source]) if len(out) else pd.Series(dtype="datetime64[ns]")
+    code = out["fenomeno"].fillna("").astype(str)
+    out["fenomeno_codigo"] = code.str.split(";").str[0].str.strip().str.upper().replace("", None)
+    out["fenomeno_nombre"] = code.str.split(";").str[1].str.strip() if len(out) else None
+    out["nivel"] = out["nivel"].fillna("").astype(str).str.strip().str.lower().replace("", None)
+    out["nivel_num"] = out["nivel"].map(WARNING_LEVELS)
+    out["aviso_id"] = out["identificador"].astype(str) + "|" + out["zona"].fillna("").astype(str)
+    out = out.drop(columns=["enviado", "inicio", "fin", "fenomeno"]).drop_duplicates(["aviso_id", "celda_id"])
+    out = out[out["inicio_ts"].notna() & out["fin_ts"].notna()]
+    for column in out.columns:
+        if out[column].dtype == object:
+            out[column] = out[column].astype("string")
+    df = (
+        spark.createDataFrame(out) if len(out) else None
+    )
+    if df is not None:
+        df = df.withColumn("anio", F.year("inicio_ts")).withColumn("audit_loaded_at", F.current_timestamp())
+    return df, rejected
+
+
+def confidence_level(values):
+    """Level of the confidence of FIRMS: l, n, h of VIIRS and 0 - 100 of MODIS -> 1 low, 2 nominal, 3 high."""
+    import numpy as np
+    import pandas as pd
+
+    text = pd.Series(values).fillna("").astype(str).str.strip().str.lower()
+    named = text.map({"l": 1.0, "low": 1.0, "n": 2.0, "nominal": 2.0, "h": 3.0, "high": 3.0})
+    number = pd.to_numeric(text, errors="coerce")
+    by_number = pd.Series(np.where(number < 30, 1.0, np.where(number < 80, 2.0, 3.0)), index=text.index)
+    return named.fillna(by_number.where(number.notna()))
+
+
+def hotspots(spark, firms, cells: list, max_step: float = 1.5 * CELL_DEGREES):
+    """(rows of f_foco_incendio, rejected rows as a list of dicts) from the fires of Bronze and the cells."""
+    import numpy as np
+    import pandas as pd
+
+    pdf = firms.toPandas()
+    for column in ("latitud", "longitud", "fecha", "hora_utc", "satelite", "instrumento", "confianza", "frp",
+                   "dia_noche", "fuente"):
+        if column not in pdf.columns:
+            pdf[column] = None
+    pdf["latitud"] = pd.to_numeric(pdf["latitud"], errors="coerce")
+    pdf["longitud"] = pd.to_numeric(pdf["longitud"], errors="coerce")
+    clock = pdf["hora_utc"].fillna("").astype(str).str.strip().str.zfill(4)
+    pdf["ts_utc"] = pd.to_datetime(pdf["fecha"].astype(str) + " " + clock, format="%Y-%m-%d %H%M", errors="coerce")
+    bad = pdf["latitud"].isna() | pdf["longitud"].isna() | pdf["ts_utc"].isna()
+    rejected = [{**r, "_motivo": "NULL_KEY"} for r in pdf[bad].astype(str).to_dict("records")]
+    pdf = pdf[~bad].copy()
+    duplicated = pdf.duplicated(["satelite", "ts_utc", "latitud", "longitud"])
+    rejected += [{**r, "_motivo": "DUPLICATE_KEY"} for r in pdf[duplicated].astype(str).to_dict("records")]
+    pdf = pdf[~duplicated].copy()
+
+    pdf["ts"] = pdf["ts_utc"].dt.tz_localize("UTC").dt.tz_convert("Europe/Madrid").dt.tz_localize(None)
+    pdf["sensor"] = np.where(pdf["instrumento"].fillna("").str.upper().str.contains("VIIRS"), "VIIRS", "MODIS")
+    pdf["confianza_nivel"] = confidence_level(pdf["confianza"]).to_numpy()
+    pdf["frp"] = pd.to_numeric(pdf["frp"], errors="coerce")
+    pdf["celda_id"], pdf["distancia_celda_km"] = None, np.nan
+    if len(pdf) and cells:
+        ids = np.array([c[0] for c in cells])
+        clat = np.array([c[1] for c in cells])
+        clon = np.array([c[2] for c in cells])
+        dlat = np.abs(pdf["latitud"].to_numpy()[:, None] - clat[None, :])
+        dlon = np.abs(pdf["longitud"].to_numpy()[:, None] - clon[None, :])
+        nearest = np.argmin(dlat ** 2 + dlon ** 2, axis=1)
+        rows = np.arange(len(pdf))
+        close = (dlat[rows, nearest] <= max_step + 1e-9) & (dlon[rows, nearest] <= max_step + 1e-9)
+        km = 111.2 * np.sqrt(dlat[rows, nearest] ** 2
+                             + (dlon[rows, nearest] * np.cos(np.radians(pdf["latitud"].to_numpy()))) ** 2)
+        pdf["celda_id"] = np.where(close, ids[nearest], None)
+        pdf["distancia_celda_km"] = np.where(close, km, np.nan)
+    pdf["foco_id"] = (pdf["satelite"].fillna("").astype(str) + "|" + pdf["ts_utc"].dt.strftime("%Y%m%d%H%M") + "|"
+                      + pdf["latitud"].round(5).astype(str) + "|" + pdf["longitud"].round(5).astype(str))
+    out = pdf[["foco_id", "fuente", "sensor", "satelite", "ts_utc", "ts", "latitud", "longitud", "confianza",
+               "confianza_nivel", "frp", "dia_noche", "celda_id", "distancia_celda_km"]].copy()
+    for column in ("foco_id", "fuente", "sensor", "satelite", "confianza", "dia_noche", "celda_id"):
+        out[column] = out[column].astype("string")
+    if not len(out):
+        return None, rejected
+    df = spark.createDataFrame(out).withColumn("anio", F.year("ts")).withColumn("audit_loaded_at",
+                                                                                F.current_timestamp())
+    return df, rejected
+
+
+def fire_danger(spark, bronze, cells: list, max_step: float = 0.2):
+    """(rows of f_fwi_celda_dia, rejected rows as a list of dicts) from the indices of Bronze and the cells."""
+    import numpy as np
+    import pandas as pd
+
+    pdf = bronze.toPandas()
+    for column in ["fecha", "latitud", "longitud", "pieza"] + FWI_COLUMNS:
+        if column not in pdf.columns:
+            pdf[column] = None
+    for column in ["latitud", "longitud"] + FWI_COLUMNS:
+        pdf[column] = pd.to_numeric(pdf[column], errors="coerce")
+    pdf["fecha"] = pd.to_datetime(pdf["fecha"], errors="coerce")
+    bad = pdf["fecha"].isna() | pdf["latitud"].isna() | pdf["longitud"].isna()
+    rejected = [{**r, "_motivo": "NULL_KEY"} for r in pdf[bad].astype(str).to_dict("records")]
+    pdf = pdf[~bad].copy()
+    pdf["conjunto"] = np.where(pdf["pieza"].fillna("").str.contains("intermediate"), "intermediate", "consolidated")
+    # The consolidated dataset first, then the newest piece (the one with more months of the year).
+    pdf = pdf.sort_values(["fecha", "latitud", "longitud", "conjunto", "pieza"], ascending=[True, True, True, True,
+                                                                                            False])
+    duplicated = pdf.duplicated(["fecha", "latitud", "longitud"])
+    rejected += [{**r, "_motivo": "DUPLICATE_KEY"} for r in pdf[duplicated].astype(str).to_dict("records")]
+    pdf = pdf[~duplicated]
+    if not len(pdf) or not cells:
+        return None, rejected
+
+    points = pdf[["latitud", "longitud"]].drop_duplicates().to_numpy()
+    nearest = []
+    for cell_id, lat, lon in cells:
+        dlat = points[:, 0] - lat
+        dlon = (points[:, 1] - lon) * np.cos(np.radians(lat))
+        best = int(np.argmin(dlat ** 2 + dlon ** 2))
+        if abs(points[best, 0] - lat) <= max_step + 1e-9 and abs(points[best, 1] - lon) <= max_step + 1e-9:
+            nearest.append((cell_id, points[best, 0], points[best, 1],
+                            float(111.2 * np.sqrt(dlat[best] ** 2 + dlon[best] ** 2))))
+        else:
+            logger.warning("Cell %s without a point of the fire danger grid within %s degrees", cell_id, max_step)
+    if not nearest:
+        return None, rejected
+    match = pd.DataFrame(nearest, columns=["celda_id", "latitud", "longitud", "distancia_punto_km"])
+    out = match.merge(pdf, on=["latitud", "longitud"], how="inner")
+    out = out.rename(columns={"latitud": "latitud_punto", "longitud": "longitud_punto"})
+    out["fecha"] = out["fecha"].dt.date
+    out = out[["celda_id", "fecha"] + FWI_COLUMNS + ["latitud_punto", "longitud_punto", "distancia_punto_km",
+                                                     "conjunto"]]
+    out["celda_id"] = out["celda_id"].astype("string")
+    out["conjunto"] = out["conjunto"].astype("string")
+    df = spark.createDataFrame(out)
+    for column in FWI_COLUMNS:
+        df = df.withColumn(column, F.when(F.isnan(column), F.lit(None).cast("double")).otherwise(F.col(column)))
+    df = df.withColumn("anio", F.year("fecha")).withColumn("audit_loaded_at", F.current_timestamp())
+    return df, rejected
+
+
 def optional(spark, table):
     if spark.catalog.tableExists(table):
         return spark.table(table)
@@ -536,6 +818,98 @@ def main():
         write_table(out, silver_table(entity))
         write_rejected(rejected, entity, args.run_id)
         dq.add(entity, "filas", spark.table(silver_table(entity)).count())
+
+    gbif = optional(spark, GBIF_TABLE)
+    if gbif is not None:
+        for entity, kind, key in ((BIRDS_YEAR, "anio", "anio"), (BIRDS_MONTH, "mes", "mes")):
+            out, rejected = birds(gbif, kind, key)
+            write_table(out, silver_table(entity))
+            write_rejected(rejected, entity, args.run_id)
+            written = spark.table(silver_table(entity))
+            dq.add(entity, "filas", written.count())
+            dq.add(entity, "celdas", written.select("celda_id").distinct().count())
+
+    effis = optional(spark, EFFIS_TABLE)
+    if effis is not None:
+        total = effis.count()
+        out, rejected = burnt_areas(effis)
+        write_table(out, silver_table(FIRES))
+        write_rejected(rejected, FIRES, args.run_id)
+        written = spark.table(silver_table(FIRES))
+        dq.add(FIRES, "areas_entrada", total)
+        dq.add(FIRES, "areas", written.count(), total)
+        span = written.agg(F.min("fecha"), F.max("fecha")).first()
+        dq.add(FIRES, "rango_fechas", written.count(), detalle=f"{span[0]} - {span[1]}")
+        if rejected is not None:
+            for row in rejected.groupBy("_motivo").count().collect():
+                dq.add(FIRES, f"rechazo:{row['_motivo']}", row["count"], total, umbral_pct=10.0)
+
+    aemet = optional(spark, AEMET_TABLE)
+    if aemet is not None and spark.catalog.tableExists(WEATHER_CELLS_TABLE):
+        study = [
+            (r["celda_id"], float(r["celda_id"].split("_")[0]), float(r["celda_id"].split("_")[1]))
+            for r in spark.table(WEATHER_CELLS_TABLE).select("celda_id").distinct().collect() if r["celda_id"]
+        ]
+        total = aemet.count()
+        out, rejected = weather_warnings(spark, aemet, study)
+        if out is not None:
+            write_table(out, silver_table(WARNINGS))
+            written = spark.table(silver_table(WARNINGS))
+            dq.add(WARNINGS, "mensajes_zona_entrada", total)
+            dq.add(WARNINGS, "filas", written.count())
+            dq.add(WARNINGS, "avisos", written.select("aviso_id").distinct().count())
+            dq.add(WARNINGS, "celdas", written.select("celda_id").distinct().count(), len(study))
+            span = written.agg(F.min("inicio_ts"), F.max("inicio_ts")).first()
+            dq.add(WARNINGS, "rango_fechas", written.count(), detalle=f"{span[0]} - {span[1]}")
+        for reason in sorted({r["_motivo"] for r in rejected}):
+            dq.add(WARNINGS, f"rechazo:{reason}", sum(r["_motivo"] == reason for r in rejected), total,
+                   umbral_pct=5.0)
+    elif aemet is not None:
+        logger.warning("%s needs %s for the cells of the study", WARNINGS, WEATHER_CELLS_TABLE)
+
+    firms = optional(spark, FIRMS_TABLE)
+    if firms is not None and spark.catalog.tableExists(WEATHER_CELLS_TABLE):
+        study = [
+            (r["celda_id"], float(r["celda_id"].split("_")[0]), float(r["celda_id"].split("_")[1]))
+            for r in spark.table(WEATHER_CELLS_TABLE).select("celda_id").distinct().collect() if r["celda_id"]
+        ]
+        total = firms.count()
+        out, rejected = hotspots(spark, firms, study)
+        if out is not None:
+            write_table(out, silver_table(HOTSPOTS), partition_by=["anio"])
+            written = spark.table(silver_table(HOTSPOTS))
+            rows = written.count()
+            dq.add(HOTSPOTS, "focos_entrada", total)
+            dq.add(HOTSPOTS, "filas", rows, total)
+            dq.add(HOTSPOTS, "con_celda", written.where(F.col("celda_id").isNotNull()).count(), rows)
+            span = written.agg(F.min("ts"), F.max("ts")).first()
+            dq.add(HOTSPOTS, "rango_fechas", rows, detalle=f"{span[0]} - {span[1]}")
+        for reason in sorted({r["_motivo"] for r in rejected}):
+            dq.add(HOTSPOTS, f"rechazo:{reason}", sum(r["_motivo"] == reason for r in rejected), total,
+                   umbral_pct=5.0)
+
+    fwi = optional(spark, FWI_TABLE)
+    if fwi is not None and spark.catalog.tableExists(WEATHER_CELLS_TABLE):
+        study = [
+            (r["celda_id"], float(r["celda_id"].split("_")[0]), float(r["celda_id"].split("_")[1]))
+            for r in spark.table(WEATHER_CELLS_TABLE).select("celda_id").distinct().collect() if r["celda_id"]
+        ]
+        total = fwi.count()
+        out, rejected = fire_danger(spark, fwi, study)
+        if out is not None:
+            write_table(out, silver_table(FIRE_DANGER), partition_by=["anio"])
+            written = spark.table(silver_table(FIRE_DANGER))
+            rows = written.count()
+            dq.add(FIRE_DANGER, "puntos_dia_entrada", total)
+            dq.add(FIRE_DANGER, "filas", rows)
+            dq.add(FIRE_DANGER, "celdas", written.select("celda_id").distinct().count(), len(study))
+            dq.add(FIRE_DANGER, "sin_fwi", written.where(F.col("fwi").isNull()).count(), rows, umbral_pct=2.0)
+            span = written.agg(F.min("fecha"), F.max("fecha")).first()
+            dq.add(FIRE_DANGER, "rango_fechas", rows, detalle=f"{span[0]} - {span[1]}")
+        # A day and point repeated by two pieces is expected (consolidated and intermediate): no threshold.
+        for reason in sorted({r["_motivo"] for r in rejected}):
+            dq.add(FIRE_DANGER, f"rechazo:{reason}", sum(r["_motivo"] == reason for r in rejected), total,
+                   umbral_pct=5.0 if reason == "NULL_KEY" else None)
 
     dq.flush()
     logger.info("Silver completed: public data")

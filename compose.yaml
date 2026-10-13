@@ -130,6 +130,9 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
 
+      # Free key of AEMET OpenData for the archive of weather warnings (optional).
+      AEMET_API_KEY: ${AEMET_API_KEY:-}
+
     volumes:
       # Ivy resolves spark.jars.packages and the Hive metastore jars under
       # $HOME/.ivy2.5.2. Without a volume the ~320 jars are downloaded again
