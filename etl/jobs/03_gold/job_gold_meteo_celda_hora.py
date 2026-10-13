@@ -54,7 +54,9 @@ Gold weather: the features of every cell and hour and the cell of every CT.
     meteo.climatologia_hasta (years never evaluated), the climate the lines
     of that cell are used to: a mountain cell with strong winds every winter
     and a plain one only compare like this. ku is max(0, ratio - 1)^3, the
-    hourly term of the storm loss index of Klawa and Ulbrich.
+    hourly term of the storm loss index of Klawa and Ulbrich. The forecast
+    of ICON-EU of the day before gets the same over the same climate
+    (metp1_racha_clima_1h and metp1_racha_ku_1h).
   - met_aviso_*, when Silver has the warnings of AEMET (f_aviso_meteo, from
     18.06.2018): the highest level (1 yellow, 2 orange, 3 red) of the
     warnings in force at hora that had been issued by then, in total and for
@@ -359,18 +361,26 @@ def add_gust_climate(features, names: list, until: str):
     """
     met_racha_clima_1h (gust of the hour / p98 of the hourly gusts of the cell
     before until) and met_racha_ku_1h (max(0, ratio - 1)^3). Null where the
-    gust is null or the cell has no climate.
+    gust is null or the cell has no climate. With the forecast of ICON-EU of
+    the day before, the same over the same climate (metp1_racha_clima_1h and
+    metp1_racha_ku_1h): the model of the next day takes them in place of the
+    ones of the reanalysis when it scores with the forecast.
     """
     if "met_racha_1h" not in features.columns:
         return features, names
     p98 = (features.where(F.col("hora") < F.lit(until)).where(F.col("met_racha_1h").isNotNull())
            .groupBy("celda_id").agg(F.percentile_approx("met_racha_1h", 0.98, 10000).alias("_p98")))
-    ratio = F.col("met_racha_1h") / F.when(F.col("_p98") > 0, F.col("_p98"))
-    out = (features.join(F.broadcast(p98), "celda_id", "left")
-           .withColumn("met_racha_clima_1h", ratio)
-           .withColumn("met_racha_ku_1h", F.pow(F.greatest(F.col("met_racha_clima_1h") - F.lit(1.0), F.lit(0.0)), 3))
-           .drop("_p98"))
-    return out, names + ["met_racha_clima_1h", "met_racha_ku_1h"]
+    out = features.join(F.broadcast(p98), "celda_id", "left")
+    added = []
+    for prefix in ("met", "metp1"):
+        if f"{prefix}_racha_1h" not in features.columns:
+            continue
+        ratio = F.col(f"{prefix}_racha_1h") / F.when(F.col("_p98") > 0, F.col("_p98"))
+        out = (out.withColumn(f"{prefix}_racha_clima_1h", ratio)
+               .withColumn(f"{prefix}_racha_ku_1h",
+                           F.pow(F.greatest(F.col(f"{prefix}_racha_clima_1h") - F.lit(1.0), F.lit(0.0)), 3)))
+        added += [f"{prefix}_racha_clima_1h", f"{prefix}_racha_ku_1h"]
+    return out.drop("_p98"), names + added
 
 
 def add_fire_danger(features, names: list, danger):
