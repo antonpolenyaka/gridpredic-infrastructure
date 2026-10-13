@@ -762,7 +762,7 @@ def main(argv=None):
     covered = weights[weights["celda_id"].isin(set(of_day["celda_id"]))]
     coverage = covered.groupby("distribuidora_id")["n_ct"].sum() / weights.groupby("distribuidora_id")["n_ct"].sum()
     places = windiest_places(hours, cell_places(spark), day, int(rcfg["zonas"]))
-    names = distributor_names(spark)
+    names = {**distributor_names(spark), **{int(k): str(v) for k, v in rcfg.get("nombres", {}).items()}}
 
     out_rows = []
     for i, dist in enumerate(live["distribuidora_id"].tolist()):
