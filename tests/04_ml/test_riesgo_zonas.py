@@ -283,6 +283,25 @@ def test_crew_plan_puts_the_bases_where_the_risk_is():
     assert two["fijas"]["municipios"] == ["Lejos"]
     assert two["fijas"]["llegada_media_min"] > two["llegada_media_min"]
     assert 0 <= two["riesgo_30min"] <= two["riesgo_45min"] <= 1
+    assert two["bases"][0]["municipios"][0] == two["bases"][0]["municipio"] or len(two["bases"][0]["municipios"]) >= 1
+    assert sum(len(b["municipios"]) for b in two["bases"]) == 4
+    curve = rz.crew_curve(municipalities, 3)
+    assert [c["n"] for c in curve] == [1, 2, 3] and curve[0]["bases"] == ["Centro"]
+    assert curve[0]["llegada_media_min"] >= curve[1]["llegada_media_min"] >= curve[2]["llegada_media_min"]
+    assert rz.positioning({"inicio": 10, "fin": 14}, two).startswith("brigadas en sus bases a las 9:00")
+    assert rz.positioning({"inicio": 0, "fin": 3}, two).startswith("brigadas en sus bases a las 0:00")
+    assert rz.positioning({"inicio": None}, two).startswith("sin franja")
+    assert rz.positioning({"inicio": 10}, {}) == ""
+    # With the minutes by road the plan says so and uses them; a table that misses many municipalities is ignored.
+    names = municipalities["municipio"].tolist()
+    road = pd.DataFrame(np.full((4, 4), 90.0), index=names, columns=names)
+    np.fill_diagonal(road.to_numpy(), 0.0)
+    road.loc["Norte", "Centro"] = road.loc["Centro", "Norte"] = 5.0
+    by_road = rz.crew_plan(municipalities, 1, road_minutes=road)
+    assert by_road["tiempos"].startswith("carretera") and one["tiempos"].startswith("línea recta")
+    assert by_road["bases"][0]["municipio"] == "Centro" and by_road["llegada_max_min"] == 90.0
+    partial = rz.crew_plan(municipalities, 1, road_minutes=road.iloc[:2, :2])
+    assert partial["tiempos"] == one["tiempos"] and partial["llegada_media_min"] == one["llegada_media_min"]
     # Without weights the CTs decide; without coordinates or crews nothing.
     assert rz.crew_plan(municipalities.assign(clientes_esperados=0.0), 1)["bases"][0]["municipio"] == "Centro"
     assert rz.crew_plan(municipalities, 0) == {}

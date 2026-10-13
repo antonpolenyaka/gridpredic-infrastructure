@@ -165,9 +165,12 @@
 
   function brigadas(b) {
     if (!b || !b.bases || !b.bases.length) return "";
-    const bases = b.bases.map((x) => `<li><b>${esc(x.municipio)}</b>: cubre ${num(x.cubre_ct)} CT (${pct(x.parte_riesgo, 0)} del riesgo), llegada media ${num(x.llegada_media_min)} min</li>`).join("");
-    return `<div class="brigada"><p class="texto">Con ${b.n} brigada${b.n > 1 ? "s" : ""}, las bases que minimizan la llegada al riesgo de mañana (carretera a ${b.velocidad_kmh} km/h):</p><ul>${bases}</ul>
-      <p class="texto">Llegada media ponderada por el riesgo: <b>${num(b.llegada_media_min)} min</b>; el ${pct(b.riesgo_30min, 0)} del riesgo a menos de 30 min y el ${pct(b.riesgo_45min, 0)} a menos de 45.${b.fijas ? " Con las bases fijas de la configuración: " + num(b.fijas.llegada_media_min) + " min." : ""}</p></div>`;
+    const bases = b.bases.map((x) => `<li><b>${esc(x.municipio)}</b>: cubre ${num(x.cubre_ct)} CT (${pct(x.parte_riesgo, 0)} del riesgo), llegada media ${num(x.llegada_media_min)} min, máxima ${num(x.llegada_max_min)}` + (x.municipios && x.municipios.length ? `<br><span class="notas">cubre ${esc(x.municipios.slice(0, 8).join(", "))}${x.municipios.length > 8 ? " y " + (x.municipios.length - 8) + " más" : ""}</span>` : "") + "</li>").join("");
+    const curve = (b.curva || []).map((c) => `${c.n}: ${num(c.llegada_media_min)} min`).join(" · ");
+    return `<div class="brigada"><p class="texto">Con ${b.n} brigada${b.n > 1 ? "s" : ""}, las bases que minimizan la llegada al riesgo de mañana (tiempos: ${esc(b.tiempos || ("carretera a " + b.velocidad_kmh + " km/h"))}):</p><ul>${bases}</ul>
+      <p class="texto">Llegada media ponderada por el riesgo: <b>${num(b.llegada_media_min)} min</b>; el ${pct(b.riesgo_30min, 0)} del riesgo a menos de 30 min y el ${pct(b.riesgo_45min, 0)} a menos de 45.${b.fijas ? " Con las bases fijas de la configuración: " + num(b.fijas.llegada_media_min) + " min." : ""}</p>
+      ${b.posicionamiento ? `<p class="texto"><b>Posicionamiento:</b> ${esc(b.posicionamiento)}.</p>` : ""}
+      ${curve ? `<p class="notas">Llegada media según el número de brigadas: ${esc(curve)}.</p>` : ""}</div>`;
   }
 
   function mapa(d, idx, el) {
