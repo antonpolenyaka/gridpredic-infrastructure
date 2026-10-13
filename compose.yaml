@@ -266,6 +266,10 @@ services:
       # Free key of AEMET OpenData for the warnings in force of dag_riesgo_manana (optional: without it the
       # risk of tomorrow is scored without warnings).
       AEMET_API_KEY: ${AEMET_API_KEY:-}
+      # Credentials of the EUMETSAT Data Store for the lightning of dag_rayos_vivo (optional: without them the
+      # DAG is skipped).
+      EUMETSAT_CONSUMER_KEY: ${EUMETSAT_CONSUMER_KEY:-}
+      EUMETSAT_CONSUMER_SECRET: ${EUMETSAT_CONSUMER_SECRET:-}
 
     volumes:
       - airflow-data:/opt/airflow

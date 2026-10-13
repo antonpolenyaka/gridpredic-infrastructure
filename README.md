@@ -589,6 +589,8 @@ FROM lakehouse.l3_gold.riesgo_zona_siguiente
 ORDER BY fecha DESC, probabilidad DESC;
 ```
 
+Con las credenciales del Data Store de EUMETSAT en `.env`, `dag_rayos_vivo` añade cada 15 minutos los rayos que ve el satélite MTG sobre la red (`dashboard/data/rayos.json`), que el cuadro de mando pinta sobre el mapa con una franja por distribuidora.
+
 Cómo se calcula, qué se puede predecir a cada escala y qué limitaciones tiene está en [docs/causas-incidencias.md](docs/causas-incidencias.md), apartado 8.
 
 ---

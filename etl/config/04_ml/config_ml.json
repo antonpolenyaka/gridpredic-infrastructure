@@ -465,6 +465,20 @@
       "areas": ["esp"],
       "clave_env": "AEMET_API_KEY",
       "timeout_s": 120
+    },
+    "rayos": {
+      "api": "https://api.eumetsat.int",
+      "coleccion": "EO:EUM:DAT:0691",
+      "caja": [38.1, -7.3, 40.6, -5.4],
+      "horario": "*/15 * * * *",
+      "ventana_min": 60,
+      "retraso_min": 30,
+      "max_productos": 12,
+      "radio_km": [10.0, 20.0],
+      "clave_env": "EUMETSAT_CONSUMER_KEY",
+      "secreto_env": "EUMETSAT_CONSUMER_SECRET",
+      "timeout_s": 120,
+      "pausa_s": 0.2
     }
   }
 }
