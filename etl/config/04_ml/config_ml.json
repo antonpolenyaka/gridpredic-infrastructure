@@ -437,6 +437,16 @@
     "motivos": 3,
     "zonas": 3,
     "nombres": {"3": "EOSA", "2": "Pitarch", "1366": "Valle de Santa Ana"},
+    "tabla_zonas": "l3_gold.riesgo_zona_siguiente",
+    "dashboard_dir": "/app/dashboard/data",
+    "riesgo_zonas": {
+      "brigadas": {"3": 2, "2": 2, "1366": 1},
+      "velocidad_kmh": 60.0,
+      "factor_carretera": 1.3,
+      "bases_fijas": {},
+      "franja_parte_pico": 0.8,
+      "franja_calma_kmh": 40.0
+    },
     "prevision": {
       "api": "https://api.open-meteo.com/v1/forecast",
       "modelo": "icon_eu",
