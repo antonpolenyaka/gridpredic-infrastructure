@@ -308,6 +308,52 @@ def test_crew_plan_puts_the_bases_where_the_risk_is():
     assert rz.crew_plan(municipalities.assign(lat=np.nan), 1) == {}
 
 
+def test_the_shift_sheet_has_one_sheet_per_table(tmp_path):
+    payload = {
+        "fecha": "2026-01-15", "fecha_texto": "15.01.2026", "generado": "14.01.2026 19:40 UTC", "run_id": "manana_x",
+        "reglas": {"texto": "Tras una avería, otra en 3 h en el 11 % de los casos."}, "notas": ["Calser hasta el 09.08.2026."],
+        "distribuidoras": [{
+            "id": 3, "nombre": "EOSA", "nivel": "alto", "probabilidad": 0.31, "veces_tasa_base": 4.1, "esperadas": 0.4,
+            "motivos": "racha prevista (x3)", "impacto": {"ct_esperados": 1.2, "clientes_esperados": 80.0, "kva_esperados": 300.0},
+            "franja": {"texto": "de 10:00 a 15:00", "pico": 12, "racha_pico": 85.0},
+            "causas": [{"familia": "meteorología y vegetación", "parte": 0.6}, {"familia": "equipos", "parte": 0.4}],
+            "brigadas": {"n": 2, "tiempos": "carretera (OSRM sobre OpenStreetMap)", "llegada_media_min": 16.0,
+                         "posicionamiento": "brigadas en sus bases a las 9:00",
+                         "bases": [{"municipio": "Montánchez", "cubre_municipios": 3, "cubre_ct": 40, "parte_riesgo": 0.6,
+                                    "llegada_media_min": 12.0, "llegada_max_min": 30.0, "municipios": ["Montánchez", "Torre"]}],
+                         "curva": [{"n": 1, "llegada_media_min": 40.0, "riesgo_30min": 0.5, "llegada_max_min": 90.0, "bases": ["Montánchez"]},
+                                   {"n": 2, "llegada_media_min": 16.0, "riesgo_30min": 0.9, "llegada_max_min": 40.0, "bases": ["Montánchez", "Hervás"]}]},
+            "zonas": [{"zona": "10", "nombre": "Montánchez / Torre", "nivel": "alto", "probabilidad": 0.2, "parte": 0.6, "n_ct": 30,
+                       "abonados": 900.0, "kva": 5000.0, "clientes_esperados": 60.0, "racha_max": 85.0, "lluvia": 2.0,
+                       "hist_365d": 4.0, "hist_dias_desde": 40.0, "municipios": ["Montánchez", "Torre"]},
+                      {"zona": "11", "nombre": "Hervás", "nivel": "medio", "probabilidad": 0.14, "parte": 0.4, "n_ct": 20,
+                       "abonados": 600.0, "kva": 3000.0, "clientes_esperados": 30.0, "racha_max": 70.0, "lluvia": 0.0,
+                       "hist_365d": 1.0, "hist_dias_desde": 200.0, "municipios": ["Hervás"]}],
+            "municipios": [{"nombre": "Montánchez", "codigo_ine": "10128", "nivel": "alto", "probabilidad": 0.18, "n_ct": 20,
+                            "abonados": 700.0, "clientes_esperados": 50.0, "racha_max": 85.0, "zonas": ["Montánchez / Torre"]}],
+            "cts": [{"ct_id": "a", "municipio": "Montánchez", "zona": "10", "abonados": 40.0, "kva": 100.0, "probabilidad": 0.15}],
+        }],
+    }
+    sheets = rz.shift_sheets(payload)
+    assert list(sheets) == ["Resumen", "Lineas", "Municipios", "CT", "Brigadas", "Brigadas por numero", "Notas"]
+    assert sheets["Resumen"].loc[0, "bases"] == "Montánchez" and sheets["Resumen"].loc[0, "causas (días como mañana)"].startswith("meteorología")
+    assert sheets["Lineas"]["línea"].tolist() == ["Montánchez / Torre", "Hervás"]
+    assert sheets["Brigadas por numero"]["brigadas"].tolist() == [1, 2]
+    assert sheets["Notas"]["nota"].iloc[0].startswith("Riesgo de mañana 15.01.2026")
+    path = tmp_path / "parte_guardia.xlsx"
+    assert rz.write_shift_sheet(payload, str(path)) and path.exists()
+    from openpyxl import load_workbook
+
+    book = load_workbook(str(path))
+    assert book.sheetnames == list(sheets)
+    assert book["Lineas"]["E2"].number_format == "0.0%" and book["Lineas"]["E2"].value == 0.2
+    assert book["Resumen"].freeze_panes == "A2"
+    # An empty table leaves a sheet that says so.
+    empty = {**payload, "distribuidoras": []}
+    assert rz.write_shift_sheet(empty, str(tmp_path / "vacio.xlsx"))
+    assert load_workbook(str(tmp_path / "vacio.xlsx"))["CT"]["A1"].value == "sin datos"
+
+
 def test_clean_makes_the_payload_json_friendly(tmp_path):
     payload = {"a": np.int64(3), "b": np.float32(1.5), "c": float("nan"), "d": pd.Timestamp("2026-01-15 20:30"),
                "e": [np.float64(2.0), pd.NaT], "f": {1: "x"}, "g": np.array([1, 2])}
