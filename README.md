@@ -559,6 +559,25 @@ ORDER BY metrica, valor DESC;
 
 Los modelos quedan en MinIO (`datalake/ml/modelos/<run_id>/`) y las puntuaciones de cada fila de valid y test en `l3_gold.ml_predicciones`, para analizarlas en los notebooks sin volver a entrenar.
 
+### Riesgo de mañana cada tarde
+
+El DAG `dag_riesgo_manana` corre solo todos los días a las 20:30 (hora de Madrid): baja la previsión de ICON-EU de cada celda y los avisos de AEMET en vigor, vuelve a entrenar el modelo del día siguiente con todos los días etiquetados y deja en `l3_gold.riesgo_dia_siguiente` el riesgo de mañana de cada distribuidora, con su nivel, sus motivos y las zonas con más racha prevista. Necesita la imagen de Airflow con las librerías del modelo y la clave de AEMET en `.env` (sin ella calcula el riesgo sin avisos):
+
+```bash
+docker compose build airflow
+docker compose up -d airflow
+docker compose exec airflow airflow dags unpause dag_riesgo_manana   # los DAG nuevos llegan pausados
+docker compose exec airflow airflow dags trigger dag_riesgo_manana   # una ejecución ahora, para mañana
+```
+
+```sql
+SELECT fecha, distribuidora, nivel, ROUND(probabilidad, 3) AS probabilidad, motivos, zonas
+FROM lakehouse.l3_gold.riesgo_dia_siguiente
+ORDER BY fecha DESC, probabilidad DESC;
+```
+
+Cómo se calcula y qué limitaciones tiene está en [docs/causas-incidencias.md](docs/causas-incidencias.md), apartado 8.
+
 ---
 
 ## 14. Desarrollo, pruebas e integración continua
