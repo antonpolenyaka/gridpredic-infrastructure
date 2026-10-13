@@ -67,8 +67,12 @@ Features, every one known before D starts except the block dia:
   place of ext_* the same way. meteo_dia.comparaciones_prevision compares
   variants on the same weather of the day.
 
-Variants (meteo_dia.variantes): blocks and first day of training. Every year
-Y is scored by models chosen and fitted only on the days before Y
+Variants (meteo_dia.variantes): blocks, single variables of other blocks
+(variables) and first day of training. The variant operativa is the one that
+job_ml_riesgo_manana fits and scores every evening: of the day before it
+only takes the strongest gust and the rain, which are known that same
+evening. Every year Y is scored by models chosen and fitted only on the days
+before Y
 (rolling_evaluation of job_ml_horas_riesgo), with the strongest gust of the
 day before, of the day itself and the highest warning as references.
 
@@ -542,9 +546,12 @@ def describe(pdf: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def variant_features(variant: dict, blocks: dict) -> list:
+    """The features of the blocks of the variant and its single variables (variables), without repeating."""
     chosen = list(blocks.get("distribuidora", []))
     for block in variant["bloques"]:
         chosen += blocks.get(block, [])
+    every = {name for names in blocks.values() for name in names}
+    chosen += [name for name in variant.get("variables", []) if name in every and name not in chosen]
     return chosen
 
 
