@@ -1,0 +1,3 @@
+# El JSON de cada tarde lo escribe el job; no se versiona.
+*.json
+!.gitkeep
