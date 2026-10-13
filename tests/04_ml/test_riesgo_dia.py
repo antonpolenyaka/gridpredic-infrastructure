@@ -106,6 +106,33 @@ def test_warnings_count_only_when_sent_the_evening_before():
     assert 2 not in rows.index.get_level_values(0)
 
 
+def test_what_the_warnings_announce_and_how_much_they_cover():
+    # Distribuidora 1 has 3 CT in c1 and 1 in c2.
+    cells = pd.DataFrame({"distribuidora_id": [1, 1], "celda_id": ["c1", "c2"], "n_ct": [3.0, 1.0]})
+    sent = "2024-01-09 12:00"
+    warnings = pd.DataFrame([
+        {"celda_id": "c1", "fenomeno_codigo": "VI", "nivel_num": 1, "tipo_mensaje": "Alert", "enviado_ts": sent,
+         "inicio_ts": "2024-01-10 06:00", "fin_ts": "2024-01-10 12:00", "parametro": "RM;Rachas máximas;70 km/h"},
+        {"celda_id": "c1", "fenomeno_codigo": "VI", "nivel_num": 2, "tipo_mensaje": "Alert", "enviado_ts": sent,
+         "inicio_ts": "2024-01-10 12:00", "fin_ts": "2024-01-11 00:00", "parametro": "RM;Rachas máximas;90 km/h"},
+        {"celda_id": "c2", "fenomeno_codigo": "PR", "nivel_num": 1, "tipo_mensaje": "Alert", "enviado_ts": sent,
+         "inicio_ts": "2024-01-10 00:00", "fin_ts": "2024-01-10 12:00",
+         "parametro": "P2;Precipitación acumulada en 12 horas;40 mm"},
+        # Heat counts in the level, not in the share under a warning of the weather that breaks lines.
+        {"celda_id": "c2", "fenomeno_codigo": "AT", "nivel_num": 1, "tipo_mensaje": "Alert", "enviado_ts": sent,
+         "inicio_ts": "2024-01-10 12:00", "fin_ts": "2024-01-10 20:00", "parametro": "TA;Temperatura máxima;38 ºC"},
+    ])
+    rows = rd.warning_days(warnings, cells, 20)[0].set_index(["distribuidora_id", "fecha"])
+    day = rows.loc[(1, pd.Timestamp("2024-01-10"))]
+    assert day["aviso_max_nivel"] == 2 and day["aviso_det_racha_kmh"] == 90
+    assert day["aviso_det_lluvia_12h_mm"] == 40 and pd.isna(day["aviso_det_lluvia_1h_mm"])
+    # The longest wind warning of the day, 12 hours.
+    assert day["aviso_det_viento_horas"] == pytest.approx(12.0)
+    assert day["aviso_det_viento_ct"] == pytest.approx(0.75)
+    assert day["aviso_det_tiempo_ct"] == pytest.approx(1.0)
+    assert pd.isna(day["aviso_det_tormenta_ct"])
+
+
 def test_quantile_map_takes_the_forecast_to_the_scale_of_the_reanalysis():
     rng = np.random.default_rng(0)
     reanalysis = rng.gamma(4.0, 8.0, 2000)
@@ -324,6 +351,8 @@ def config_path(workdir):
              "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun"]},
             {"nombre": "comun_avisos_extremos", "desde": "2019-06-25",
              "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun", "extremos"]},
+            {"nombre": "comun_avisos_detalle", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "ayer", "avisos", "avisos_detalle", "dia_comun"]},
         ],
         "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos"],
         "anios_prevision": [2024, 2025],
@@ -419,6 +448,11 @@ def test_the_extremes_of_the_forecast_are_never_a_block(spark, tables, config_pa
     names = ["prev_ext_racha_clima_max", "prev_ext_racha_clima_media", "prev_ext_racha_ku", "prev_ext_dias_calor"]
     assert set(names) <= set(blocks["prevision"])
     assert not any(c.startswith("prev_") for c in blocks["extremos"])
+    # The details of the warnings are a block of their own, 0 without warning once the archive exists.
+    assert set(rd.WARNING_DETAILS) == set(blocks["avisos_detalle"])
+    assert not any(c.startswith("aviso_det_") for c in blocks["avisos"])
+    archived = pdf[pdf["fecha"] >= "2019-06-20"]
+    assert archived["aviso_det_viento_ct"].notna().all() and archived["aviso_det_viento_ct"].max() == 1.0
     # Only from 2024, when the forecast starts; the forecast gusts are stronger, so they go further over the climate.
     known = pdf[pdf["prev_ext_racha_clima_max"].notna()]
     assert known["fecha"].min() == pd.Timestamp("2024-01-01")

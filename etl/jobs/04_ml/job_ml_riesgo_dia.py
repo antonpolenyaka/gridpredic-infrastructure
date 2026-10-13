@@ -37,6 +37,12 @@ Features, every one known before D starts except the block dia:
   in the cells of the distribuidora, in total and for wind, rain,
   thunderstorms and snow. 0 without warning, null before the archive starts
   (18.06.2018). It is the only real forecast with a long archive.
+- aviso_det_* (block avisos_detalle): what those warnings announce and how
+  much they cover: the strongest gust (km/h) and the most rain (mm in 12 h
+  and in one hour) of their parametro, the most hours of D under a wind
+  warning and the share of the CT of the distribuidora in cells under a
+  wind warning, under any warning of wind, rain, thunderstorms or snow and
+  under a thunderstorm warning.
 - dia_*: the same daily weather as ayer_* for D itself, the perfect
   forecast.
 - ext_*: how far the gusts of D go above the climate of each cell (the 98th
@@ -119,6 +125,11 @@ CELLS_TABLE = "l3_gold.map_ct_celda"
 LABELS = ["y_dia", "y_dia_meteo", "y_dia_varias"]
 MAIN_LABEL = "y_dia"
 WARNING_GROUPS = {"viento": ["VI"], "lluvia": ["PR"], "tormenta": ["TO"], "nieve": ["NE"]}
+# What the warnings announce (the value of parametro: "RM;Rachas máximas;80 km/h") and how much of the network and of
+# the day they cover.
+WARNING_VALUE = r";\s*([\d.,]+)\s*(?:km/h|mm|cm|ºC|°C)"
+WARNING_DETAILS = ["aviso_det_racha_kmh", "aviso_det_lluvia_12h_mm", "aviso_det_lluvia_1h_mm", "aviso_det_viento_horas",
+                   "aviso_det_viento_ct", "aviso_det_tiempo_ct", "aviso_det_tormenta_ct"]
 # Models with one score per variant (the references score the same in every variant that has their feature).
 TRAINED = ("logistica", "xgboost", "random_forest", "rango")
 
@@ -342,7 +353,13 @@ def warning_days(warnings: pd.DataFrame, cells: pd.DataFrame, cutoff_h: int) -> 
     (aviso_* by (distribuidora_id, fecha), first day of the archive): the
     highest level of the warnings that cover some hour of the day in a cell
     of the distribuidora and were sent before cutoff_h of the day before.
-    Cancellations and green levels do not count.
+    Cancellations and green levels do not count. Also the details of those
+    warnings (WARNING_DETAILS): the strongest gust and the most rain they
+    announce (in 12 h and in one hour), the most hours of the day under a
+    wind warning, and the share of the CT of the distribuidora (n_ct of
+    cells, 1 per cell without it) in cells under a wind warning, under any
+    warning of wind, rain, thunderstorms or snow, and under a thunderstorm
+    warning.
     """
     if warnings is None or warnings.empty:
         return pd.DataFrame(columns=["distribuidora_id", "fecha"]), None
@@ -356,35 +373,59 @@ def warning_days(warnings: pd.DataFrame, cells: pd.DataFrame, cutoff_h: int) -> 
     w["inicio_ts"] = pd.to_datetime(w["inicio_ts"])
     w["fin_ts"] = pd.to_datetime(w["fin_ts"])
     w["enviado_ts"] = pd.to_datetime(w["enviado_ts"])
+    text = w["parametro"].fillna("").astype(str) if "parametro" in w.columns else pd.Series("", index=w.index)
+    w["valor"] = pd.to_numeric(text.str.extract(WARNING_VALUE)[0].str.replace(",", ".", regex=False), errors="coerce")
+    w["clave"] = text.str.split(";").str[0].str.strip().str.upper()
     rows = []
-    for record in w[["celda_id", "fenomeno_codigo", "nivel_num", "enviado_ts", "inicio_ts", "fin_ts"]].itertuples(
-            index=False):
+    for record in w[["celda_id", "fenomeno_codigo", "nivel_num", "valor", "clave", "enviado_ts", "inicio_ts",
+                     "fin_ts"]].itertuples(index=False):
         first = record.inicio_ts.floor("D")
         # A warning that ends exactly at midnight does not cover the next day.
         last = (record.fin_ts - pd.Timedelta(seconds=1)).floor("D")
         for day in pd.date_range(first, max(first, last), freq="D"):
             # Known the evening before: sent before cutoff_h of D - 1.
             if record.enviado_ts <= day - pd.Timedelta(hours=24 - int(cutoff_h)):
-                rows.append((record.celda_id, day, record.fenomeno_codigo, float(record.nivel_num)))
+                hours = (min(record.fin_ts, day + pd.Timedelta(days=1)) - max(record.inicio_ts, day)) / pd.Timedelta(hours=1)
+                rows.append((record.celda_id, day, record.fenomeno_codigo, float(record.nivel_num), record.valor,
+                             record.clave, max(0.0, float(hours))))
 
     if not rows:
         return pd.DataFrame(columns=["distribuidora_id", "fecha"]), first_day
 
-    per_cell = pd.DataFrame(rows, columns=["celda_id", "fecha", "fenomeno_codigo", "nivel_num"])
-    joined = per_cell.merge(cells[["distribuidora_id", "celda_id"]].drop_duplicates(), on="celda_id")
-    out = joined.groupby(["distribuidora_id", "fecha"])["nivel_num"].max().rename("aviso_max_nivel").to_frame()
+    per_cell = pd.DataFrame(rows, columns=["celda_id", "fecha", "fenomeno_codigo", "nivel_num", "valor", "clave",
+                                           "horas"])
+    weights = cells.drop_duplicates(["distribuidora_id", "celda_id"]).copy()
+    if "n_ct" not in weights.columns:
+        weights["n_ct"] = 1.0
+    weights = weights[["distribuidora_id", "celda_id", "n_ct"]]
+    joined = per_cell.merge(weights, on="celda_id")
+    keys = ["distribuidora_id", "fecha"]
+    out = joined.groupby(keys)["nivel_num"].max().rename("aviso_max_nivel").to_frame()
 
     for name, codes in WARNING_GROUPS.items():
         part = joined[joined["fenomeno_codigo"].isin(codes)]
-        out[f"aviso_{name}_nivel"] = part.groupby(["distribuidora_id", "fecha"])["nivel_num"].max()
+        out[f"aviso_{name}_nivel"] = part.groupby(keys)["nivel_num"].max()
+
+    wind = joined[joined["fenomeno_codigo"].isin(WARNING_GROUPS["viento"])]
+    rain = joined[joined["fenomeno_codigo"].isin(WARNING_GROUPS["lluvia"])]
+    storm = joined[joined["fenomeno_codigo"].isin(WARNING_GROUPS["tormenta"])]
+    weather = joined[joined["fenomeno_codigo"].isin([c for codes in WARNING_GROUPS.values() for c in codes])]
+    out["aviso_det_racha_kmh"] = wind.groupby(keys)["valor"].max()
+    out["aviso_det_lluvia_12h_mm"] = rain[rain["clave"] == "P2"].groupby(keys)["valor"].max()
+    out["aviso_det_lluvia_1h_mm"] = rain[rain["clave"] == "P1"].groupby(keys)["valor"].max()
+    out["aviso_det_viento_horas"] = wind.groupby(keys)["horas"].max()
+    total = weights.groupby("distribuidora_id")["n_ct"].sum()
+    for name, part in (("viento", wind), ("tiempo", weather), ("tormenta", storm)):
+        covered = part.drop_duplicates(keys + ["celda_id"]).groupby(keys)["n_ct"].sum()
+        out[f"aviso_det_{name}_ct"] = covered / covered.index.get_level_values("distribuidora_id").map(total).to_numpy()
 
     return out.reset_index(), first_day
 
 
 def block_of(name: str) -> str:
     for prefix, block in (("cal_", "calendario"), ("hist_", "historia"), ("dist_", "distribuidora"),
-                          ("ayer_", "ayer"), ("dia_", "dia"), ("aviso_", "avisos"), ("prev_", "prevision"),
-                          ("ext_", "extremos")):
+                          ("ayer_", "ayer"), ("dia_", "dia"), ("aviso_det_", "avisos_detalle"), ("aviso_", "avisos"),
+                          ("prev_", "prevision"), ("ext_", "extremos")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -452,14 +493,16 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     warnings_first = None
     warning_names = []
     if spark.catalog.tableExists(WARNINGS_TABLE) and spark.catalog.tableExists(CELLS_TABLE):
-        warnings = spark.table(WARNINGS_TABLE).select(
-            "celda_id", "fenomeno_codigo", "nivel_num", "tipo_mensaje", "enviado_ts", "inicio_ts", "fin_ts").toPandas()
-        cells = spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull()).select(
-            F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id").distinct().toPandas()
+        source = spark.table(WARNINGS_TABLE)
+        columns = ["celda_id", "fenomeno_codigo", "nivel_num", "tipo_mensaje", "enviado_ts", "inicio_ts", "fin_ts"]
+        warnings = source.select(*columns, *[c for c in ("parametro",) if c in source.columns]).toPandas()
+        cells = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
+                 .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
+                 .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
         table, warnings_first = warning_days(warnings, cells, int(cfg["aviso_corte_h"]))
         if warnings_first is not None:
             pdf = pdf.merge(table, on=["distribuidora_id", "fecha"], how="left")
-            warning_names = ["aviso_max_nivel"] + [f"aviso_{name}_nivel" for name in WARNING_GROUPS]
+            warning_names = ["aviso_max_nivel"] + [f"aviso_{name}_nivel" for name in WARNING_GROUPS] + WARNING_DETAILS
             for name in warning_names:
                 if name not in pdf.columns:
                     pdf[name] = np.nan
