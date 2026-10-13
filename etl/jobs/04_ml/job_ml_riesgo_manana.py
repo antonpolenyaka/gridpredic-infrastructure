@@ -732,6 +732,8 @@ def main(argv=None):
     areas = rcfg.get("avisos", {}).get("areas", ["esp"])
     cap_rows, answered, warnings_asked = warning_rows(fs, folder, areas)
     warnings = warnings_in_cells(cap_rows, sorted(weights["celda_id"].unique()))
+    logger.info("Warnings of AEMET (answered for every area: %s): %s CAP rows, %s in the cells of the network, %s in "
+                "force on %s", answered, len(cap_rows), len(warnings), len(warnings_of_day(warnings, day)), day.date())
     live = live.merge(warning_features(warnings, weights, day, dists), on="distribuidora_id", how="left")
 
     live["hora"] = day
