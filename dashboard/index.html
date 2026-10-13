@@ -61,6 +61,10 @@
   details.cts { margin-top: 10px; }
   details.cts summary { cursor: pointer; color: var(--accent); font-size: 13px; }
   details.cts p.notas { max-width: 60ch; }
+  .rayos { margin: 8px 0 4px; padding: 8px 10px; border-radius: 6px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
+  .rayos.tormenta { border-color: #e3b53a; background: color-mix(in srgb, #e3b53a 18%, var(--panel)); }
+  .rayos.cerca { border-color: #e3b53a; }
+  .rayos b { font-weight: 600; }
   .brigada { font-size: 13px; }
   .brigada b { font-weight: 600; }
   .seguimiento .ok { color: var(--bajo); font-weight: 600; } .seguimiento .fallo { color: var(--muy-alto); font-weight: 600; }
@@ -182,11 +186,44 @@
       if (b.lat == null) continue;
       L.marker([b.lat, b.lon], { title: "Base de brigada: " + b.municipio }).addTo(map).bindTooltip("Brigada: " + esc(b.municipio));
     }
-    for (const r of (d.rayos || [])) {
-      L.circleMarker([r.lat, r.lon], { radius: 3, color: "#f1c40f", fillColor: "#f1c40f", fillOpacity: 0.9 }).addTo(map).bindTooltip("Rayo " + esc(r.hora));
-    }
     if (pts.length) map.fitBounds(pts, { padding: [16, 16], maxZoom: 11 }); else map.setView([39.5, -6.3], 8);
     return map;
+  }
+
+  // Lightning of the last hour (rayos.json, dag_rayos_vivo every 15 minutes): a banner per distribuidora and the
+  // flashes on its map, the older ones paler. Optional: without the file nothing is shown.
+  const maps = {};
+  function pintarRayos(data, r) {
+    const hora = r.generado ? r.generado.slice(11, 16) + " UTC" : "";
+    (data.distribuidoras || []).forEach((d, idx) => {
+      const block = (r.distribuidoras || []).find((b) => String(b.id) === String(d.id)) || null;
+      const sec = document.getElementById("dist-" + idx);
+      if (!sec) return;
+      const level = block ? block.nivel : "sin tormenta";
+      const klass = level === "tormenta sobre la red" ? "tormenta" : (level === "tormenta cerca" ? "cerca" : "");
+      const text = block ? block.texto : `sin rayos en la caja de estudio en la última hora (${r.n_rayos || 0} en total)`;
+      let banner = sec.querySelector(".rayos");
+      if (!banner) { banner = document.createElement("div"); banner.className = "rayos"; sec.querySelector("h2").insertAdjacentElement("afterend", banner); }
+      banner.className = "rayos " + klass;
+      banner.innerHTML = `<b>Rayos ahora</b> (satélite MTG, actualizado a las ${esc(hora)}): ${esc(text)}.` + (block && block.municipios && block.municipios.length ? ` Municipios bajo la tormenta: ${esc(block.municipios.slice(0, 6).join(", "))}${block.municipios.length > 6 ? ", ..." : ""}.` : "");
+      const map = maps[idx];
+      if (!map) return;
+      if (map._rayos) map._rayos.remove();
+      const layer = L.layerGroup();
+      for (const f of (r.rayos || [])) {
+        const age = Math.min(1, Math.max(0, (f.minutos || 0) / Math.max(1, r.ventana_min || 60)));
+        L.circleMarker([f.lat, f.lon], { radius: 4, color: "#8a6d00", weight: 0.5, fillColor: "#f1c40f", fillOpacity: 0.95 - 0.7 * age })
+          .bindTooltip(`Rayo hace ${f.minutos} min (${esc(f.ts)})`).addTo(layer);
+      }
+      layer.addTo(map); map._rayos = layer;
+    });
+    const pie = document.getElementById("pie");
+    if (r.regla && !pie.textContent.includes("rayos")) pie.textContent += " Rayos: " + r.fuente + ". " + r.regla;
+  }
+
+  function cargarRayos(data) {
+    fetch("data/rayos.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+      .then((r) => pintarRayos(data, r)).catch(() => {});
   }
 
   function seguimiento(s) {
@@ -205,6 +242,7 @@
     (data.distribuidoras || []).forEach((d, idx) => {
       const sec = document.createElement("section");
       sec.className = "dist";
+      sec.id = "dist-" + idx;
       const imp = d.impacto || {}, fr = d.franja || {};
       sec.innerHTML = `<h2>${esc(d.nombre)} ${nivelPill(d.nivel)} <span class="notas">${esc(d.motivos || "")}</span></h2>
         <div class="cols">
@@ -226,6 +264,7 @@
         </div>`;
       main.appendChild(sec);
       const map = mapa(d, idx, sec.querySelector("#map-" + idx));
+      maps[idx] = map;
       sec.querySelectorAll("tr.fila-zona").forEach((tr) => tr.addEventListener("click", () => {
         sec.querySelectorAll("tr.fila-zona").forEach((o) => o.classList.remove("zona-sel"));
         tr.classList.add("zona-sel");
@@ -237,6 +276,8 @@
     const seg = seguimiento(data.seguimiento);
     if (seg) main.insertAdjacentHTML("beforeend", seg);
     if (data.notas && data.notas.length) main.insertAdjacentHTML("beforeend", `<section class="dist"><h2>Notas</h2><ul class="notas">${data.notas.map((n) => "<li>" + esc(n) + "</li>").join("")}</ul></section>`);
+    cargarRayos(data);
+    setInterval(() => cargarRayos(data), 5 * 60 * 1000);
   }
 
   fetch("data/riesgo.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(render)
