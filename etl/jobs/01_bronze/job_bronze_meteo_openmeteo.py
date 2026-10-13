@@ -15,17 +15,37 @@ Bronze of the hourly weather downloaded by job_landing_meteo_openmeteo.py.
   does not exist and there is no row, as in the sources.
 - meteo_openmeteo_celdas: municipality (INE code, name, distribuidora of the
   reference file, coordinates) and the cell of its weather.
+- With --fuente openmeteo_convectivo, meteo_openmeteo_convectivo_hora: CAPE
+  and lifted index of the archived GFS runs by cell of 0.25 degrees
+  (celda_id of that grid), same hour convention.
+- With --fuente openmeteo_extra, meteo_openmeteo_extra_hora: the other
+  variables of the reanalysis (wind direction, wind at 100 m, soil moisture,
+  dew point, vapour pressure deficit, low clouds, evapotranspiration, weather
+  code and radiation) by cell of 0.25 degrees: they change slowly in space,
+  and with the coarser grid the whole history fits in the free plan.
+- With --fuente openmeteo_previo, meteo_openmeteo_previo_hora: the forecasts
+  that ICON-EU gave for every hour one and two days before
+  (<variable>_previous_day1 and _previous_day2 of the Previous Runs API,
+  archived from January 2024) and the run of the same day, by cell of 0.1
+  degrees. It is the weather the operator could know the day before, to
+  measure how much of what the reanalysis gives survives with a real
+  forecast. A suffixed variable is merged like the variable it forecasts.
 
 The whole table is rebuilt in every run (a few million rows).
 
     docker compose exec spark-master spark-submit /app/jobs/01_bronze/job_bronze_meteo_openmeteo.py
+    docker compose exec spark-master spark-submit /app/jobs/01_bronze/job_bronze_meteo_openmeteo.py \
+        --fuente openmeteo_convectivo
 """
 
+import argparse
 import json
 import logging
 import os
+import re
 import sys
 
+import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,8 +56,9 @@ from job_landing_meteo_openmeteo import filesystem, load_config  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("meteo")
 
-SUM_VARIABLES = {"precipitation", "rain", "snowfall"}
-MAX_VARIABLES = {"wind_speed_10m", "wind_gusts_10m"}
+SUM_VARIABLES = {"precipitation", "rain", "snowfall", "et0_fao_evapotranspiration"}
+MAX_VARIABLES = {"wind_speed_10m", "wind_gusts_10m", "cape", "weather_code", "wind_speed_100m"}
+CIRCULAR_VARIABLES = {"wind_direction_10m", "wind_direction_100m"}
 
 
 def payload_frame(payload: dict, variables: list, zone: str) -> pd.DataFrame:
@@ -51,17 +72,41 @@ def payload_frame(payload: dict, variables: list, zone: str) -> pd.DataFrame:
     return df
 
 
+def forecast_of(variable: str) -> str:
+    """The variable a forecast of the Previous Runs API is about (wind_gusts_10m_previous_day1 -> wind_gusts_10m)."""
+    return re.sub(r"_previous_day\d+$", "", variable)
+
+
 def merge_local_hours(df: pd.DataFrame, variables: list) -> pd.DataFrame:
-    """One row per (celda_id, hora) after the change to winter time."""
-    how = {v: ("sum" if v in SUM_VARIABLES else "max" if v in MAX_VARIABLES else "mean") for v in variables}
-    return df.groupby(["celda_id", "hora"], as_index=False).agg(how)
+    """
+    One row per (celda_id, hora) after the change to winter time. Directions
+    are averaged as vectors (350 and 10 degrees give 0, not 180).
+    """
+    df = df.copy()
+    circular = [v for v in variables if forecast_of(v) in CIRCULAR_VARIABLES]
+    for v in circular:
+        radians = np.radians(df[v])
+        df[f"_{v}_sin"], df[f"_{v}_cos"] = np.sin(radians), np.cos(radians)
+
+    how = {v: ("sum" if forecast_of(v) in SUM_VARIABLES else "max" if forecast_of(v) in MAX_VARIABLES else "mean")
+           for v in variables if v not in circular}
+    how.update({f"_{v}_{part}": "mean" for v in circular for part in ("sin", "cos")})
+    out = df.groupby(["celda_id", "hora"], as_index=False).agg(how)
+
+    for v in circular:
+        out[v] = np.degrees(np.arctan2(out.pop(f"_{v}_sin"), out.pop(f"_{v}_cos"))) % 360
+    return out[["celda_id", "hora", *variables]]
 
 
-def main():
+def main(argv=None):
     from pyspark.sql import SparkSession
     from pyspark.sql import functions as F
 
-    cfg = load_config()["openmeteo"]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--fuente", default="openmeteo")
+    args, _ = parser.parse_known_args(argv)
+
+    cfg = load_config()[args.fuente]
     variables = list(cfg["variables"])
     zone = cfg.get("zona_horaria", "Europe/Madrid")
     landing = cfg["landing"].rstrip("/")
@@ -88,7 +133,7 @@ def main():
 
     hourly = merge_local_hours(pd.concat(frames, ignore_index=True), variables)
     hourly["anio"] = hourly["hora"].dt.year.astype("int32")
-    hourly["modelo"] = cfg.get("modelo", "ecmwf_ifs")
+    hourly["modelo"] = cfg.get("modelo") or ",".join(cfg.get("modelos", []))
 
     logger.info("%s hourly rows, %s cells, %s to %s, nulls per variable: %s",
                 len(hourly), hourly["celda_id"].nunique(), hourly["hora"].min(), hourly["hora"].max(),
@@ -100,6 +145,10 @@ def main():
         .write.format("delta").mode("overwrite").option("overwriteSchema", "true")
         .partitionBy("anio").saveAsTable(cfg["tabla_horas"])
     )
+
+    if not cfg.get("tabla_celdas"):
+        logger.info("Bronze completed: %s", cfg["tabla_horas"])
+        return
 
     with fs.open(f"{landing}/municipios_celdas.json", "r") as file:
         places = pd.DataFrame(json.load(file))

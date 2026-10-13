@@ -78,3 +78,84 @@ def test_local_time_and_change_to_winter_time():
     assert merged.loc["2025-10-26 02:00", "precipitation"] == pytest.approx(3.0)
     assert merged.loc["2025-10-26 02:00", "wind_gusts_10m"] == pytest.approx(50.0)
     assert merged.loc["2025-10-26 02:00", "temperature_2m"] == pytest.approx(8.5)
+
+
+def test_extra_variables_merge_directions_as_vectors():
+    utc = pd.date_range("2025-10-25 23:00", periods=4, freq="h", tz="UTC")
+    variables = ["wind_direction_10m", "et0_fao_evapotranspiration", "weather_code"]
+    payload = {
+        "hourly": {
+            "time": [int(t.timestamp()) for t in utc],
+            "wind_direction_10m": [90.0, 350.0, 10.0, 180.0],
+            "et0_fao_evapotranspiration": [0.0, 0.1, 0.2, 0.0],
+            "weather_code": [3, 61, 95, 3],
+        },
+        "_peticion": {"celda_id": "39.50_-6.25"},
+    }
+    merged = bronze.merge_local_hours(bronze.payload_frame(payload, variables, "Europe/Madrid"), variables)
+    merged = merged.set_index("hora")
+    assert list(merged.columns) == ["celda_id", *variables]
+    # 350 and 10 degrees fold into north, not into south.
+    folded = merged.loc["2025-10-26 02:00", "wind_direction_10m"]
+    assert min(folded, 360 - folded) == pytest.approx(0.0, abs=1e-6)
+    assert merged.loc["2025-10-26 01:00", "wind_direction_10m"] == pytest.approx(90.0)
+    assert merged.loc["2025-10-26 02:00", "et0_fao_evapotranspiration"] == pytest.approx(0.3)
+    assert merged.loc["2025-10-26 02:00", "weather_code"] == 95
+
+
+def test_extra_source_config():
+    cfg = landing.load_config()["openmeteo_extra"]
+    assert cfg["celda_grados"] == 0.25 and len(cfg["variables"]) <= 10
+    url = landing.request_url(39.5, -6.25, date(2017, 1, 1), date(2017, 12, 31), cfg)
+    assert url.startswith(landing.API) and "wind_direction_10m" in url and "models=ecmwf_ifs" in url
+    # Up to 10 variables cost the same as one in the free plan.
+    assert landing.call_weight(365, len(cfg["variables"])) == landing.call_weight(365, 1)
+
+
+def test_convective_source_url_and_model_list():
+    cfg = landing.load_config()["openmeteo_convectivo"]
+    assert landing.models_of(cfg)[0] == "gfs_seamless"
+    url = landing.request_url(39.5, -6.25, date(2022, 6, 1), date(2022, 6, 30), cfg, "gfs_seamless")
+    assert url.startswith("https://historical-forecast-api.open-meteo.com/v1/forecast?")
+    assert "hourly=cape,lifted_index" in url and "models=gfs_seamless" in url
+    # The reanalysis keeps its single model and its API.
+    archive = landing.load_config()["openmeteo"]
+    assert landing.models_of(archive) == ["ecmwf_ifs"]
+    assert landing.request_url(40.3, -6.0, date(2017, 1, 1), date(2017, 1, 2), archive).startswith(landing.API)
+
+
+def test_stored_window_must_cover_the_year():
+    # A first run from 01.12.2020 left a 2020 file with one month: it is asked again for the whole year.
+    assert not landing.covers(["2020-12-01", "2020-12-31"], date(2020, 1, 1), date(2020, 12, 31))
+    assert landing.covers(["2021-01-01", "2021-12-31"], date(2021, 1, 1), date(2021, 12, 31))
+    assert landing.covers(["2026-01-01", "2026-08-31"], date(2026, 1, 1), date(2026, 8, 31))
+    assert not landing.covers(None, date(2021, 1, 1), date(2021, 12, 31))
+
+
+def test_forecast_source_url_and_merge_of_suffixed_variables():
+    cfg = landing.load_config()["openmeteo_previo"]
+    assert len(cfg["variables"]) <= 10 and cfg["celda_grados"] == 0.1
+    url = landing.request_url(40.3, -6.0, date(2024, 1, 1), date(2024, 12, 31), cfg)
+    assert url.startswith("https://previous-runs-api.open-meteo.com/v1/forecast?")
+    assert "wind_gusts_10m_previous_day1" in url and "models=icon_eu" in url
+    assert bronze.forecast_of("precipitation_previous_day2") == "precipitation"
+    assert bronze.forecast_of("wind_gusts_10m") == "wind_gusts_10m"
+
+    # The forecast of the hour that repeats when the clock goes back is merged like the variable it forecasts.
+    utc = pd.date_range("2025-10-25 23:00", periods=4, freq="h", tz="UTC")
+    variables = ["wind_gusts_10m_previous_day1", "precipitation_previous_day1", "temperature_2m_previous_day1"]
+    payload = {
+        "hourly": {
+            "time": [int(t.timestamp()) for t in utc],
+            "wind_gusts_10m_previous_day1": [30.0, 50.0, 40.0, None],
+            "precipitation_previous_day1": [0.5, 1.0, 2.0, 0.0],
+            "temperature_2m_previous_day1": [10.0, 9.0, 8.0, 7.0],
+        },
+        "_peticion": {"celda_id": "40.30_-6.00"},
+    }
+    merged = bronze.merge_local_hours(bronze.payload_frame(payload, variables, "Europe/Madrid"), variables)
+    merged = merged.set_index("hora")
+    assert merged.loc["2025-10-26 02:00", "wind_gusts_10m_previous_day1"] == pytest.approx(50.0)
+    assert merged.loc["2025-10-26 02:00", "precipitation_previous_day1"] == pytest.approx(3.0)
+    assert merged.loc["2025-10-26 02:00", "temperature_2m_previous_day1"] == pytest.approx(8.5)
+    assert pd.isna(merged.loc["2025-10-26 03:00", "wind_gusts_10m_previous_day1"])

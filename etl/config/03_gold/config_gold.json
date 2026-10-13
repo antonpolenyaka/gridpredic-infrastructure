@@ -92,7 +92,10 @@
     },
     "meteo": {
       "prevision_h": 3,
-      "region": true
+      "region": true,
+      "focos_radio_km": 15,
+      "focos_latencia_h": 3,
+      "climatologia_hasta": "2022-01-01"
     },
     "lotes": {
       "labels_meses": 12,

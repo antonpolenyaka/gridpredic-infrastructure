@@ -1,0 +1,984 @@
+"""
+Risk of the next day of every distribuidora: the crews of tomorrow.
+
+The hourly models (job_ml_horas_riesgo, job_ml_meteo_historia) look 1 - 3
+hours ahead with the weather already observed. The operator plans the crews
+the day before, with what is known that evening. This job asks how well the
+days with interruptions can be told apart with that, and how much a perfect
+forecast of the weather of the day would add (the reanalysis of the day
+itself, an upper bound of any real forecast).
+
+Unit: distribuidora and day D (local time), from meteo_dia.desde to
+meteo_dia.hasta, without the days of analisis_red.dias_excluidos.
+
+Labels (fact_interrupciones_mt, variante principal, with the cause of
+l2_silver.f_incidencia_causa): y_dia = 1 when an interruption starts in some
+CT of the distribuidora on D; y_dia_meteo, the same without the causes of
+causas_no_meteo (upstream, blackout, third parties...); y_dia_varias, when
+incidencias_dia_varias or more incidents start on D (the busy days that need
+more than one crew). The models learn y_dia; the other two only measure them.
+
+Features, every one known before D starts except the block dia:
+
+- cal_*: day of the week (sine and cosine), weekend, holiday (national or
+  Extremadura), day of the year (sine and cosine) and estacion.
+- hist_*: incidents of the distribuidora known in Calser (conocido_ts)
+  before D in the last 7, 30 and 365 days, and days since the last one.
+- ayer_*: the weather of D - 1 from the reanalysis, by day: strongest gust
+  and wind of the worst cell and of the mean of the cells weighted by their
+  CT, rain of the day (worst cell and mean), hottest hour, coldest mean
+  hour, mean humidity, lowest pressure and its biggest drop in 24 h, snow,
+  the strongest gust of the whole area (the size of the storm), the
+  active fires of FIRMS near the cells and the highest Fire Weather Index of
+  CEMS of the cells (when Gold has them; Gold gives every hour the index of
+  the day before, so dia_fwi_max is the one of D - 1, known that evening).
+- aviso_*: the warnings of AEMET for D (l2_silver.f_aviso_meteo) sent
+  before aviso_corte_h of D - 1: highest level (1 yellow, 2 orange, 3 red)
+  in the cells of the distribuidora, in total and for wind, rain,
+  thunderstorms and snow. 0 without warning, null before the archive starts
+  (18.06.2018). It is the only real forecast with a long archive.
+- aviso_det_* (block avisos_detalle): what those warnings announce and how
+  much they cover: the strongest gust (km/h) and the most rain (mm in 12 h
+  and in one hour) of their parametro, the most hours of D under a wind
+  warning and the share of the CT of the distribuidora in cells under a
+  wind warning, under any warning of wind, rain, thunderstorms or snow and
+  under a thunderstorm warning.
+- dia_*: the same daily weather as ayer_* for D itself, the perfect
+  forecast.
+- ext_*: how far the gusts of D go above the climate of each cell (the 98th
+  percentile of its hourly gusts before meteo.climatologia_hasta of Gold,
+  met_racha_clima_1h): the highest ratio of the worst cell and of the mean
+  of the cells weighted by their CT, and the sum over the hours of the CT
+  weighted max(0, ratio - 1)^3, the storm loss index of Klawa and Ulbrich;
+  and the days in a row up to D with the hottest hour of the worst cell at
+  calor_umbral_c or more. Like dia_*, they come from the reanalysis of D.
+- prev_*: the same daily weather for D from what ICON-EU forecast the day
+  before (metp1_* of Gold, Previous Runs API, from January 2024). It has no
+  history to train with, so it is never a block: the models of the variants
+  of variante_prevision (calendar, history, yesterday and the dia_* the
+  forecast also gives, with or without warnings and extremes) are fitted on
+  the reanalysis and then score the days of anios_prevision twice more, with
+  dia_* replaced by prev_*, raw and mapped to the distribution of the
+  reanalysis by quantiles (fitted on the other years of the forecast,
+  without the labels). The difference is what is lost going from a perfect
+  forecast to a real one. prev_ext_* are the extremes of the forecast (the
+  forecast gusts over the same climate of each cell, metp1_racha_clima_1h,
+  and the run of heat with the forecast hottest hour of D) and take the
+  place of ext_* the same way. meteo_dia.comparaciones_prevision compares
+  variants on the same weather of the day.
+
+Variants (meteo_dia.variantes): blocks and first day of training. Every year
+Y is scored by models chosen and fitted only on the days before Y
+(rolling_evaluation of job_ml_horas_riesgo), with the strongest gust of the
+day before, of the day itself and the highest warning as references.
+
+Every variant also gets rango, the mean of the percentiles in the year of
+its logistic regression and its XGBoost.
+
+Metrics on the years every variant scored, against y_dia: PR-AUC of the
+days, lift, the share of the days with interruptions that falls in the 5,
+10 and 20 % of the days of each year with more risk (a crew on alert those
+days), PR-AUC by distribuidora and the block bootstrap by dates of the
+paired differences (meteo_dia.comparaciones).
+
+Outputs: ml_runs and ml_metricas with run_id dia_*, resumen.md,
+metricas.csv, comparacion.csv, diferencias.csv, anios.csv and filas.csv in
+exportar_dir/<run_id>/.
+
+    docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g \\
+        --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py,/app/jobs/04_ml/job_ml_horas_riesgo.py \\
+        /app/jobs/04_ml/job_ml_riesgo_dia.py --config /app/config/04_ml/config_ml.json
+"""
+
+import argparse
+import json
+import os
+import sys
+import uuid
+from datetime import datetime, timezone
+
+import numpy as np
+import pandas as pd
+from pyspark.sql import functions as F
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+import ml_metrics  # noqa: E402
+from calendario import holiday_flags, season  # noqa: E402
+from job_ml_horas_riesgo import distributor_weather, export, rolling_evaluation  # noqa: E402
+from job_ml_meteo_historia import add_history, read_events  # noqa: E402
+from job_ml_train import (  # noqa: E402
+    METRICS_TABLE,
+    RUNS_TABLE,
+    SEASON_FEATURE,
+    add_context,
+    get_spark,
+    load_config,
+    logger,
+    save_frame,
+)
+
+WARNINGS_TABLE = "l2_silver.f_aviso_meteo"
+CELLS_TABLE = "l3_gold.map_ct_celda"
+LABELS = ["y_dia", "y_dia_meteo", "y_dia_varias"]
+MAIN_LABEL = "y_dia"
+WARNING_GROUPS = {"viento": ["VI"], "lluvia": ["PR"], "tormenta": ["TO"], "nieve": ["NE"]}
+# What the warnings announce (the value of parametro: "RM;Rachas máximas;80 km/h") and how much of the network and of
+# the day they cover.
+WARNING_VALUE = r";\s*([\d.,]+)\s*(?:km/h|mm|cm|ºC|°C)"
+WARNING_DETAILS = ["aviso_det_racha_kmh", "aviso_det_lluvia_12h_mm", "aviso_det_lluvia_1h_mm", "aviso_det_viento_horas",
+                   "aviso_det_viento_ct", "aviso_det_tiempo_ct", "aviso_det_tormenta_ct"]
+# Models with one score per variant (the references score the same in every variant that has their feature).
+TRAINED = ("logistica", "xgboost", "random_forest", "rango")
+
+# Daily weather of a distribuidora: name -> (hourly column of distributor_weather, aggregation over the day).
+DAILY = {
+    "racha_max": ("metd_max_met_racha_1h", "max"),
+    "racha_media_max": ("metd_media_met_racha_1h", "max"),
+    "viento_max": ("metd_max_met_viento_1h", "max"),
+    "viento_media_max": ("metd_media_met_viento_1h", "max"),
+    "lluvia_max": ("metd_max_met_lluvia_1h", "sum"),
+    "lluvia_media": ("metd_media_met_lluvia_1h", "sum"),
+    "lluvia_hora_max": ("metd_max_met_lluvia_1h", "max"),
+    "temp_max": ("metd_max_met_temp_1h", "max"),
+    "temp_media_min": ("metd_media_met_temp_1h", "min"),
+    "humedad_media": ("metd_media_met_humedad_1h", "mean"),
+    "presion_min": ("metd_media_met_presion_1h", "min"),
+    "presion_caida_24h": ("metd_media_met_presion_delta_24h", "min"),
+    "nieve_max": ("metd_max_met_nieve_24h", "max"),
+    "region_racha_max": ("metd_max_met_region_racha_max_3h", "max"),
+    "focos_max": ("metd_max_met_focos_24h", "max"),
+    "fwi_max": ("metd_max_met_fwi_ayer", "max"),
+}
+
+# The same daily weather from the forecast of ICON-EU made the day before
+# (metp1_* of Gold). Snow, pressure and the size of the storm have no forecast.
+FORECAST_DAILY = {
+    "racha_max": ("metd_max_metp1_racha_1h", "max"),
+    "racha_media_max": ("metd_media_metp1_racha_1h", "max"),
+    "viento_max": ("metd_max_metp1_viento_1h", "max"),
+    "viento_media_max": ("metd_media_metp1_viento_1h", "max"),
+    "lluvia_max": ("metd_max_metp1_lluvia_1h", "sum"),
+    "lluvia_media": ("metd_media_metp1_lluvia_1h", "sum"),
+    "lluvia_hora_max": ("metd_max_metp1_lluvia_1h", "max"),
+    "temp_max": ("metd_max_metp1_temp_1h", "max"),
+    "temp_media_min": ("metd_media_metp1_temp_1h", "min"),
+    "humedad_media": ("metd_media_metp1_humedad_1h", "mean"),
+}
+
+# Gusts against the climate of each cell (Gold): name -> (hourly column of distributor_weather, aggregation).
+EXTREME_DAILY = {
+    "ext_racha_clima_max": ("metd_max_met_racha_clima_1h", "max"),
+    "ext_racha_clima_media": ("metd_media_met_racha_clima_1h", "max"),
+    "ext_racha_ku": ("metd_media_met_racha_ku_1h", "sum"),
+}
+# The same from the forecast of ICON-EU of the day before (prev_ext_*).
+FORECAST_EXTREME_DAILY = {
+    "ext_racha_clima_max": ("metd_max_metp1_racha_clima_1h", "max"),
+    "ext_racha_clima_media": ("metd_media_metp1_racha_clima_1h", "max"),
+    "ext_racha_ku": ("metd_media_metp1_racha_ku_1h", "sum"),
+}
+
+DEFAULTS = {
+    "desde": "2017-01-08",
+    "hasta": "2026-01-01",
+    "anios_evaluacion": [2022, 2023, 2024, 2025],
+    "dias_minimos_entreno": 365,
+    "causas_no_meteo": ["aguas_arriba", "apagon", "terceros", "programada", "maniobra", "cliente_bt", "red_bt"],
+    "retraso_conocido_dias": 7,
+    "ventanas_historia_dias": [7, 30, 365],
+    "horas_minimas_dia": 20,
+    "aviso_corte_h": 20,
+    "incidencias_dia_varias": 2,
+    "calor_umbral_c": 35.0,
+    "modelos": ["tasa_base", "logistica", "xgboost"],
+    "referencias": {"naif_racha_ayer": "ayer_racha_max", "naif_racha_dia": "dia_racha_max",
+                    "naif_aviso": "aviso_max_nivel"},
+    "fraccion_validacion_interna": 0.25,
+    "purga_horas": 0,
+    "fracciones_top": [0.05, 0.1, 0.2],
+    "anios_prevision": [2024, 2025],
+    "cobertura_minima_prevision": 0.9,
+    "bootstrap_reps": 500,
+    "busqueda": {
+        "logistica": [{"C": 0.003}, {"C": 0.01}, {"C": 0.03}, {"C": 0.1}],
+        "xgboost": [{"max_depth": 2, "min_child_weight": 5, "learning_rate": 0.05, "subsample": 0.8,
+                     "colsample_bytree": 0.8, "n_estimators": 1500, "early_stopping_rounds": 100, "verbose": 0},
+                    {"max_depth": 3, "min_child_weight": 5, "learning_rate": 0.05, "subsample": 0.8,
+                     "colsample_bytree": 0.8, "n_estimators": 1500, "early_stopping_rounds": 100, "verbose": 0}],
+    },
+    "variantes": [
+        {"nombre": "calendario_historia", "desde": "2017-01-08", "bloques": ["calendario", "historia"]},
+        {"nombre": "ayer", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer"]},
+        {"nombre": "perfecta", "desde": "2017-01-08", "bloques": ["calendario", "historia", "ayer", "dia"]},
+    ],
+    "comparaciones": [["ayer__logistica", "calendario_historia__logistica"],
+                      ["perfecta__logistica", "ayer__logistica"]],
+}
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run-id", default=None)
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--sin-busqueda", action="store_true", help="Only the first configuration of every model")
+    parser.add_argument("--variantes", default=None,
+                        help="Comma separated names of meteo_dia.variantes to run (all by default)")
+    args, _ = parser.parse_known_args(argv)
+
+    if not args.run_id:
+        args.run_id = "dia_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid.uuid4().hex[:6]
+
+    return args
+
+
+def settings(config: dict) -> dict:
+    cfg = {**DEFAULTS, **config.get("meteo_dia", {})}
+    excluded = config.get("analisis_red", {}).get("dias_excluidos", {"2025-04-28": "apagon peninsular"})
+    cfg["dias_excluidos"] = sorted(excluded)
+    return cfg
+
+
+# ---------------------------------------------------------------------------
+# Dataset
+# ---------------------------------------------------------------------------
+
+def daily_weather(hourly: pd.DataFrame, min_hours: int, mapping: dict = None) -> pd.DataFrame:
+    """
+    (distribuidora_id, fecha, <mapping>): the weather of every day of every
+    distribuidora from its hours (DAILY by default). A day with fewer than
+    min_hours hours of weather is left null (a gap of the source is not a
+    calm day).
+    """
+    d = hourly.assign(fecha=hourly["hora"].dt.floor("D"))
+    present = {name: spec for name, spec in (mapping or DAILY).items() if spec[0] in d.columns}
+    if not present:
+        return d[["distribuidora_id", "fecha"]].drop_duplicates().reset_index(drop=True)
+    days = d.groupby(["distribuidora_id", "fecha"]).agg(
+        _horas=(present[next(iter(present))][0], "count"),
+        **{name: (column, how) for name, (column, how) in present.items()},
+    ).reset_index()
+    short = days["_horas"] < int(min_hours)
+    days.loc[short, list(present)] = np.nan
+    return days.drop(columns="_horas")
+
+
+def extremes(hourly: pd.DataFrame, daily: pd.DataFrame, heat_c: float, min_hours: int) -> pd.DataFrame:
+    """
+    (distribuidora_id, fecha, ext_*): the gusts of every day against the
+    climate of each cell (EXTREME_DAILY, from met_racha_clima_1h and
+    met_racha_ku_1h of Gold) and the days in a row with temp_max of daily at
+    heat_c or more, up to the day. A day with fewer than min_hours hours of
+    gusts is left null.
+    """
+    out = daily_weather(hourly, min_hours, EXTREME_DAILY).set_index(["distribuidora_id", "fecha"]).sort_index()
+    if "temp_max" in daily.columns:
+        def run(values: pd.Series) -> pd.Series:
+            count, counts = 0.0, []
+            for value in values.to_numpy():
+                count = count + 1.0 if value >= heat_c else 0.0
+                counts.append(count if value == value else np.nan)
+            return pd.Series(counts, index=values.index)
+
+        heat = daily.sort_values(["distribuidora_id", "fecha"]).set_index(["distribuidora_id", "fecha"])["temp_max"]
+        out = out.join(heat.groupby(level="distribuidora_id", group_keys=False).apply(run).rename("ext_dias_calor"),
+                       how="outer")
+    return out.reset_index()
+
+
+def forecast_extremes(hourly: pd.DataFrame, forecast: pd.DataFrame, extreme: pd.DataFrame, heat_c: float,
+                      min_hours: int) -> pd.DataFrame:
+    """
+    (distribuidora_id, fecha, prev_ext_*): the extremes of the day from the
+    forecast of ICON-EU of the day before (FORECAST_EXTREME_DAILY) and the
+    days in a row of heat with the forecast temp_max of the day (forecast)
+    on top of the run of the reanalysis up to the day before (ext_dias_calor
+    of extreme on D - 1), what is known the evening before.
+    """
+    out = daily_weather(hourly, min_hours, FORECAST_EXTREME_DAILY)
+    out = out.rename(columns={c: f"prev_{c}" for c in out.columns if c not in ("distribuidora_id", "fecha")})
+    if "temp_max" in forecast.columns and "ext_dias_calor" in extreme.columns:
+        before = extreme[["distribuidora_id", "fecha", "ext_dias_calor"]].assign(
+            fecha=extreme["fecha"] + pd.Timedelta(days=1))
+        heat = forecast[["distribuidora_id", "fecha", "temp_max"]].merge(before, on=["distribuidora_id", "fecha"],
+                                                                         how="left")
+        hot = (heat["temp_max"] >= heat_c).to_numpy()
+        run = np.where(hot, heat["ext_dias_calor"].to_numpy(dtype=np.float64) + 1.0, 0.0)
+        run[heat["temp_max"].isna().to_numpy() | (hot & heat["ext_dias_calor"].isna().to_numpy())] = np.nan
+        heat["prev_ext_dias_calor"] = run
+        out = out.merge(heat[["distribuidora_id", "fecha", "prev_ext_dias_calor"]], on=["distribuidora_id", "fecha"],
+                        how="outer")
+    return out
+
+
+def day_calendar(days: pd.Series) -> pd.DataFrame:
+    """Calendar of the day: weekday, weekend, holiday, day of the year and season."""
+    weekday = days.dt.dayofweek.to_numpy()
+    day_of_year = days.dt.dayofyear.to_numpy()
+    return pd.DataFrame({
+        "cal_dia_semana_sin": np.sin(2 * np.pi * weekday / 7),
+        "cal_dia_semana_cos": np.cos(2 * np.pi * weekday / 7),
+        "cal_fin_de_semana": (weekday >= 5).astype("float64"),
+        "cal_festivo": holiday_flags(days).astype("float64"),
+        "cal_dia_anio_sin": np.sin(2 * np.pi * (day_of_year - 1) / 365.25),
+        "cal_dia_anio_cos": np.cos(2 * np.pi * (day_of_year - 1) / 365.25),
+        SEASON_FEATURE: season(days.dt.month).to_numpy(),
+    }, index=days.index)
+
+
+def day_labels(grid: pd.DataFrame, events: pd.DataFrame, excluded: list, several: int = 2) -> pd.DataFrame:
+    """
+    y_dia, y_dia_meteo and y_dia_varias (several or more incidents start that
+    day, the days that need more than one crew) of every (distribuidora_id,
+    fecha) of the grid.
+    """
+    starts = events.dropna(subset=["inicio_ts"]).assign(fecha=lambda e: pd.to_datetime(e["inicio_ts"]).dt.floor("D"))
+    weather_related = ~starts["causa"].isin(set(excluded))
+    incident = [c for c in ("periodo_id", "incidencia_id") if c in starts.columns] or ["inicio_ts"]
+    counts = starts.drop_duplicates(["distribuidora_id", "fecha"] + incident).groupby(["distribuidora_id", "fecha"]).size()
+    busy = counts[counts >= int(several)].reset_index()[["distribuidora_id", "fecha"]]
+
+    for label, keys in (("y_dia", starts), ("y_dia_meteo", starts[weather_related]), ("y_dia_varias", busy)):
+        keys = keys[["distribuidora_id", "fecha"]].drop_duplicates().assign(**{label: 1})
+        grid = grid.merge(keys, on=["distribuidora_id", "fecha"], how="left")
+        grid[label] = grid[label].fillna(0).astype("int8")
+
+    return grid
+
+
+def warning_days(warnings: pd.DataFrame, cells: pd.DataFrame, cutoff_h: int) -> tuple:
+    """
+    (aviso_* by (distribuidora_id, fecha), first day of the archive): the
+    highest level of the warnings that cover some hour of the day in a cell
+    of the distribuidora and were sent before cutoff_h of the day before.
+    Cancellations and green levels do not count. Also the details of those
+    warnings (WARNING_DETAILS): the strongest gust and the most rain they
+    announce (in 12 h and in one hour), the most hours of the day under a
+    wind warning, and the share of the CT of the distribuidora (n_ct of
+    cells, 1 per cell without it) in cells under a wind warning, under any
+    warning of wind, rain, thunderstorms or snow, and under a thunderstorm
+    warning.
+    """
+    if warnings is None or warnings.empty:
+        return pd.DataFrame(columns=["distribuidora_id", "fecha"]), None
+
+    w = warnings[(warnings["nivel_num"].fillna(0) >= 1)
+                 & (warnings["tipo_mensaje"].fillna("Alert") != "Cancel")].copy()
+    first_day = pd.to_datetime(warnings["enviado_ts"]).min().floor("D") + pd.Timedelta(days=1)
+    if w.empty:
+        return pd.DataFrame(columns=["distribuidora_id", "fecha"]), first_day
+
+    w["inicio_ts"] = pd.to_datetime(w["inicio_ts"])
+    w["fin_ts"] = pd.to_datetime(w["fin_ts"])
+    w["enviado_ts"] = pd.to_datetime(w["enviado_ts"])
+    text = w["parametro"].fillna("").astype(str) if "parametro" in w.columns else pd.Series("", index=w.index)
+    w["valor"] = pd.to_numeric(text.str.extract(WARNING_VALUE)[0].str.replace(",", ".", regex=False), errors="coerce")
+    w["clave"] = text.str.split(";").str[0].str.strip().str.upper()
+    rows = []
+    for record in w[["celda_id", "fenomeno_codigo", "nivel_num", "valor", "clave", "enviado_ts", "inicio_ts",
+                     "fin_ts"]].itertuples(index=False):
+        first = record.inicio_ts.floor("D")
+        # A warning that ends exactly at midnight does not cover the next day.
+        last = (record.fin_ts - pd.Timedelta(seconds=1)).floor("D")
+        for day in pd.date_range(first, max(first, last), freq="D"):
+            # Known the evening before: sent before cutoff_h of D - 1.
+            if record.enviado_ts <= day - pd.Timedelta(hours=24 - int(cutoff_h)):
+                hours = (min(record.fin_ts, day + pd.Timedelta(days=1)) - max(record.inicio_ts, day)) / pd.Timedelta(hours=1)
+                rows.append((record.celda_id, day, record.fenomeno_codigo, float(record.nivel_num), record.valor,
+                             record.clave, max(0.0, float(hours))))
+
+    if not rows:
+        return pd.DataFrame(columns=["distribuidora_id", "fecha"]), first_day
+
+    per_cell = pd.DataFrame(rows, columns=["celda_id", "fecha", "fenomeno_codigo", "nivel_num", "valor", "clave",
+                                           "horas"])
+    weights = cells.drop_duplicates(["distribuidora_id", "celda_id"]).copy()
+    if "n_ct" not in weights.columns:
+        weights["n_ct"] = 1.0
+    weights = weights[["distribuidora_id", "celda_id", "n_ct"]]
+    joined = per_cell.merge(weights, on="celda_id")
+    keys = ["distribuidora_id", "fecha"]
+    out = joined.groupby(keys)["nivel_num"].max().rename("aviso_max_nivel").to_frame()
+
+    for name, codes in WARNING_GROUPS.items():
+        part = joined[joined["fenomeno_codigo"].isin(codes)]
+        out[f"aviso_{name}_nivel"] = part.groupby(keys)["nivel_num"].max()
+
+    wind = joined[joined["fenomeno_codigo"].isin(WARNING_GROUPS["viento"])]
+    rain = joined[joined["fenomeno_codigo"].isin(WARNING_GROUPS["lluvia"])]
+    storm = joined[joined["fenomeno_codigo"].isin(WARNING_GROUPS["tormenta"])]
+    weather = joined[joined["fenomeno_codigo"].isin([c for codes in WARNING_GROUPS.values() for c in codes])]
+    out["aviso_det_racha_kmh"] = wind.groupby(keys)["valor"].max()
+    out["aviso_det_lluvia_12h_mm"] = rain[rain["clave"] == "P2"].groupby(keys)["valor"].max()
+    out["aviso_det_lluvia_1h_mm"] = rain[rain["clave"] == "P1"].groupby(keys)["valor"].max()
+    out["aviso_det_viento_horas"] = wind.groupby(keys)["horas"].max()
+    total = weights.groupby("distribuidora_id")["n_ct"].sum()
+    for name, part in (("viento", wind), ("tiempo", weather), ("tormenta", storm)):
+        covered = part.drop_duplicates(keys + ["celda_id"]).groupby(keys)["n_ct"].sum()
+        out[f"aviso_det_{name}_ct"] = covered / covered.index.get_level_values("distribuidora_id").map(total).to_numpy()
+
+    return out.reset_index(), first_day
+
+
+def block_of(name: str) -> str:
+    for prefix, block in (("cal_", "calendario"), ("hist_", "historia"), ("dist_", "distribuidora"),
+                          ("ayer_", "ayer"), ("dia_", "dia"), ("aviso_det_", "avisos_detalle"), ("aviso_", "avisos"),
+                          ("prev_", "prevision"), ("ext_", "extremos")):
+        if name.startswith(prefix):
+            return block
+    return "calendario" if name == SEASON_FEATURE else "otros"
+
+
+def build_dataset(spark, config: dict, cfg: dict) -> tuple:
+    """(pdf, {block: feature names}, first day of the warnings) of the distribuidora-day history."""
+    start, end = pd.Timestamp(cfg["desde"]), pd.Timestamp(cfg["hasta"])
+    weather, names = distributor_weather(spark, {**config.get("meteo", {}), "activo": True},
+                                         prefixes=("met_", "metp1_"))
+    if weather is None:
+        raise ValueError("No weather in Gold (meteo_celda_hora and map_ct_celda): nothing to learn from")
+
+    sources = (list(DAILY.values()) + list(FORECAST_DAILY.values()) + list(EXTREME_DAILY.values())
+               + list(FORECAST_EXTREME_DAILY.values()))
+    wanted = [c for c in {spec[0] for spec in sources} if c in names]
+    # The day before the first day needs its weather too.
+    hourly = weather.where((F.col("hora") >= F.lit(start - pd.Timedelta(days=1))) & (F.col("hora") < F.lit(end)))
+    hourly = hourly.select("distribuidora_id", "hora", *wanted).toPandas()
+    hourly["distribuidora_id"] = hourly["distribuidora_id"].astype("int64")
+    hourly["hora"] = pd.to_datetime(hourly["hora"])
+    daily = daily_weather(hourly, int(cfg["horas_minimas_dia"]))
+    weather_names = [c for c in daily.columns if c not in ("distribuidora_id", "fecha")]
+    forecast = daily_weather(hourly, int(cfg["horas_minimas_dia"]), FORECAST_DAILY)
+    forecast_names = [c for c in forecast.columns if c not in ("distribuidora_id", "fecha")]
+
+    today = daily.rename(columns={c: f"dia_{c}" for c in weather_names})
+    yesterday = daily.assign(fecha=daily["fecha"] + pd.Timedelta(days=1)).rename(
+        columns={c: f"ayer_{c}" for c in weather_names})
+
+    days = pd.date_range(start, end - pd.Timedelta(days=1), freq="D")
+    dists = sorted(daily["distribuidora_id"].unique())
+    pdf = pd.MultiIndex.from_product([dists, days], names=["distribuidora_id", "fecha"]).to_frame(index=False)
+    pdf = pdf[~pdf["fecha"].isin(pd.to_datetime(cfg["dias_excluidos"]))].reset_index(drop=True)
+    pdf = pdf.merge(today, on=["distribuidora_id", "fecha"], how="left")
+    pdf = pdf.merge(yesterday, on=["distribuidora_id", "fecha"], how="left")
+    extreme = extremes(hourly, daily, float(cfg["calor_umbral_c"]), int(cfg["horas_minimas_dia"]))
+    extreme_names = [c for c in extreme.columns if c.startswith("ext_")]
+    pdf = pdf.merge(extreme, on=["distribuidora_id", "fecha"], how="left")
+    forecast_extreme_names = []
+    if forecast_names:
+        pdf = pdf.merge(forecast.rename(columns={c: f"prev_{c}" for c in forecast_names}),
+                        on=["distribuidora_id", "fecha"], how="left")
+        forecast_extreme = forecast_extremes(hourly, forecast, extreme, float(cfg["calor_umbral_c"]),
+                                             int(cfg["horas_minimas_dia"]))
+        forecast_extreme_names = [c for c in forecast_extreme.columns if c.startswith("prev_ext_")]
+        if forecast_extreme_names:
+            pdf = pdf.merge(forecast_extreme, on=["distribuidora_id", "fecha"], how="left")
+
+    events, known = read_events(spark, cfg)
+    pdf = day_labels(pdf, events, cfg["causas_no_meteo"], int(cfg["incidencias_dia_varias"]))
+
+    # History known when the day starts (an incident known at 00:00 counts).
+    pdf["hora"] = pdf["fecha"]
+    history = add_history(pdf, known, cfg["ventanas_historia_dias"])
+    pdf["hist_dias_desde_ultima"] = pdf.pop("hist_horas_desde_ultima") / 24.0
+    history = [h for h in history if h != "hist_horas_desde_ultima"] + ["hist_dias_desde_ultima"]
+
+    cal = day_calendar(pdf["fecha"])
+    pdf = pd.concat([pdf, cal], axis=1)
+
+    for dist in dists:
+        pdf[f"dist_{dist}"] = (pdf["distribuidora_id"] == dist).astype("float64")
+
+    warnings_first = None
+    warning_names = []
+    if spark.catalog.tableExists(WARNINGS_TABLE) and spark.catalog.tableExists(CELLS_TABLE):
+        source = spark.table(WARNINGS_TABLE)
+        columns = ["celda_id", "fenomeno_codigo", "nivel_num", "tipo_mensaje", "enviado_ts", "inicio_ts", "fin_ts"]
+        warnings = source.select(*columns, *[c for c in ("parametro",) if c in source.columns]).toPandas()
+        cells = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
+                 .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
+                 .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+        table, warnings_first = warning_days(warnings, cells, int(cfg["aviso_corte_h"]))
+        if warnings_first is not None:
+            pdf = pdf.merge(table, on=["distribuidora_id", "fecha"], how="left")
+            warning_names = ["aviso_max_nivel"] + [f"aviso_{name}_nivel" for name in WARNING_GROUPS] + WARNING_DETAILS
+            for name in warning_names:
+                if name not in pdf.columns:
+                    pdf[name] = np.nan
+                # 0 without warning once the archive exists, null before it.
+                pdf[name] = pdf[name].where(pdf["fecha"] < warnings_first, pdf[name].fillna(0.0))
+            logger.info("Warnings of AEMET from %s", warnings_first.date())
+    else:
+        logger.info("%s not found: no warnings of AEMET in the daily model", WARNINGS_TABLE)
+
+    pdf["anio"] = pdf["fecha"].dt.year
+    pdf["ct_key"] = pdf["distribuidora_id"]
+    pdf["split"] = "train"
+
+    blocks = {}
+    features = ([f"dist_{d}" for d in dists] + list(cal.columns) + history + [f"ayer_{c}" for c in weather_names]
+                + [f"dia_{c}" for c in weather_names] + extreme_names + warning_names
+                + [f"prev_{c}" for c in forecast_names] + forecast_extreme_names)
+    for name in features:
+        blocks.setdefault(block_of(name), []).append(name)
+    # The weather of the day that the forecast also gives: the fair reference of the real forecast.
+    blocks["dia_comun"] = [f"dia_{c}" for c in forecast_names if c in weather_names]
+
+    return pdf.sort_values(["distribuidora_id", "fecha"]).reset_index(drop=True), blocks, warnings_first
+
+
+def describe(pdf: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for (year, dist), g in pdf.groupby(["anio", "distribuidora_id"]):
+        rows.append({"anio": int(year), "distribuidora": int(dist), "dias": len(g),
+                     **{f"dias_{label}": int(g[label].sum()) for label in LABELS},
+                     "con_meteo": float(g["dia_racha_max"].notna().mean()) if "dia_racha_max" in g else 0.0})
+    return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# Variants and metrics
+# ---------------------------------------------------------------------------
+
+def variant_features(variant: dict, blocks: dict) -> list:
+    chosen = list(blocks.get("distribuidora", []))
+    for block in variant["bloques"]:
+        chosen += blocks.get(block, [])
+    return chosen
+
+
+def variant_years(variant: dict, cfg: dict) -> list:
+    first = pd.Timestamp(variant["desde"]) + pd.Timedelta(days=int(cfg["dias_minimos_entreno"]))
+    return [int(y) for y in cfg["anios_evaluacion"] if pd.Timestamp(f"{int(y)}-01-01") >= first]
+
+
+def top_share(y: np.ndarray, score: np.ndarray, year: np.ndarray, share: float, seed: int = 0) -> float:
+    """Part of the positive days that falls in the share of the days with the highest score of each year."""
+    rng = np.random.default_rng(seed)
+    tie = rng.random(len(y))
+    hits = positives = 0
+    for value in np.unique(year):
+        mask = year == value
+        order = np.lexsort((-tie[mask], -np.nan_to_num(score[mask], nan=-np.inf)))
+        k = int(round(mask.sum() * share))
+        hits += int(y[mask][order[:k]].sum())
+        positives += int(y[mask].sum())
+    return hits / positives if positives else float("nan")
+
+
+def day_metrics(scored: pd.DataFrame, columns: list, shares: list, seed: int = 0) -> pd.DataFrame:
+    """Long table of metrics, the columns of ml_metrics.evaluate (modelo, etiqueta, segmento, ...)."""
+    rows = []
+    segments = [("total", "total", np.ones(len(scored), dtype=bool))]
+    segments += [("distribuidora", str(d), (scored["distribuidora_id"] == d).to_numpy())
+                 for d in sorted(scored["distribuidora_id"].unique())]
+    years = scored["anio"].to_numpy()
+
+    for column in columns:
+        model = column[2:]
+        s_all = scored[column].to_numpy(dtype=np.float64)
+        for label in LABELS:
+            y_all = scored[label].to_numpy()
+            for segment, value, mask in segments:
+                y, s = y_all[mask], s_all[mask]
+                n, pos = int(mask.sum()), int(y.sum())
+                prevalence = float(y.mean()) if n else float("nan")
+                ap = ml_metrics.average_precision(y, s)
+                found = [("prevalencia", prevalence), ("pr_auc", ap), ("roc_auc", ml_metrics.roc_auc(y, s)),
+                         ("lift_pr_auc", ap / prevalence if prevalence else float("nan"))]
+                found += [(f"dias_positivos_en_top_{int(round(share * 100))}pct",
+                           top_share(y, s, years[mask], float(share), seed)) for share in shares]
+                rows += [(model, label, segment, value, metric, float(v), n, pos) for metric, v in found]
+
+    return pd.DataFrame(rows, columns=["modelo", "etiqueta", "segmento", "valor_segmento", "metrica", "valor",
+                                       "n_filas", "n_positivos"])
+
+
+def comparison_table(metrics: pd.DataFrame, shares: list) -> pd.DataFrame:
+    rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)]
+    wanted = ["pr_auc", "lift_pr_auc", "roc_auc"] + [f"dias_positivos_en_top_{int(round(s * 100))}pct" for s in shares]
+    table = rows[rows["metrica"].isin(wanted)].pivot_table(index="modelo", columns="metrica", values="valor")
+    table = table[[c for c in wanted if c in table.columns]].reset_index()
+    split = table["modelo"].str.split("__", n=1, expand=True)
+    table.insert(0, "variante", split[0])
+    table["modelo"] = split[1]
+    meteo = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == "y_dia_meteo")
+                    & (metrics["metrica"] == "pr_auc")].set_index("modelo")["valor"]
+    table["pr_auc_y_dia_meteo"] = (table["variante"] + "__" + table["modelo"]).map(meteo)
+    # A reference (a single feature, the base rate) scores the same in every
+    # variant that has its feature: it is shown once.
+    trained = table["modelo"].isin(TRAINED)
+    table = pd.concat([table[trained], table[~trained].drop_duplicates("modelo")])
+    return table.sort_values("pr_auc", ascending=False).reset_index(drop=True)
+
+
+def busy_days_table(metrics: pd.DataFrame, shares: list) -> pd.DataFrame:
+    """The models trained for y_dia against y_dia_varias: how many of the busy days fall in the riskiest days."""
+    rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == "y_dia_varias")]
+    wanted = ["pr_auc", "lift_pr_auc"] + [f"dias_positivos_en_top_{int(round(s * 100))}pct" for s in shares]
+    table = rows[rows["metrica"].isin(wanted)].pivot_table(index="modelo", columns="metrica", values="valor")
+    if table.empty:
+        return pd.DataFrame()
+    table = table[[c for c in wanted if c in table.columns]].reset_index()
+    split = table["modelo"].str.split("__", n=1, expand=True)
+    table.insert(0, "variante", split[0])
+    table["modelo"] = split[1]
+    trained = table["modelo"].isin(TRAINED)
+    table = pd.concat([table[trained], table[~trained].drop_duplicates("modelo")])
+    return table.sort_values("pr_auc", ascending=False).reset_index(drop=True)
+
+
+def forecast_comparison(metrics: pd.DataFrame, shares: list) -> pd.DataFrame:
+    """
+    One row per variant, model and weather of the day (reanalysis, forecast,
+    mapped forecast; only yesterday for the variant ayer). The scores are
+    named p_<variant>__<model>__<weather> and p_ayer__<model>.
+    """
+    rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)]
+    wanted = ["pr_auc", "lift_pr_auc", "roc_auc"] + [f"dias_positivos_en_top_{int(round(s * 100))}pct" for s in shares]
+    table = rows[rows["metrica"].isin(wanted)].pivot_table(index="modelo", columns="metrica", values="valor")
+    table = table[[c for c in wanted if c in table.columns]].reset_index()
+    parts = table["modelo"].str.split("__", n=2, expand=True).reindex(columns=[0, 1, 2])
+    yesterday = parts[0] == "ayer"
+    table.insert(0, "variante", parts[0])
+    table.insert(1, "tiempo_del_dia", np.where(yesterday, "solo_ayer", parts[2]))
+    table["modelo"] = parts[1]
+    return table.sort_values("pr_auc", ascending=False).reset_index(drop=True)
+
+
+def by_year(metrics: pd.DataFrame) -> pd.DataFrame:
+    rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)
+                   & (metrics["metrica"] == "pr_auc") & metrics["split"].str.startswith("cv_")
+                   & (metrics["split"] != "cv_comun")]
+    table = rows.pivot_table(index="modelo", columns="split", values="valor").reset_index()
+    table.columns = [str(c).replace("cv_", "pr_auc ") for c in table.columns]
+    return once(table)
+
+
+def once(table: pd.DataFrame) -> pd.DataFrame:
+    """The rows of the references only once (the first variant that has them)."""
+    model = table["modelo"].str.split("__", n=1).str[-1]
+    trained = model.isin(TRAINED)
+    return pd.concat([table[trained], table[~trained].loc[~model[~trained].duplicated()]]).sort_values(
+        "modelo").reset_index(drop=True)
+
+
+def by_distribuidora(metrics: pd.DataFrame) -> pd.DataFrame:
+    rows = metrics[(metrics["split"] == "cv_comun") & (metrics["segmento"] == "distribuidora")
+                   & (metrics["etiqueta"] == MAIN_LABEL) & (metrics["metrica"] == "pr_auc")]
+    table = rows.pivot_table(index="modelo", columns="valor_segmento", values="valor")
+    table.columns = [f"pr_auc {c}" for c in table.columns]
+    return once(table.reset_index())
+
+
+def add_rank_mean(scored: pd.DataFrame, pairs: dict) -> pd.DataFrame:
+    """
+    {new column: (column a, column b)}: the mean of the percentiles of a and b
+    in each year. XGBoost and the logistic regression put their probabilities
+    at different levels every year; the percentiles weigh both rankings the
+    same.
+    """
+    for name, pair in pairs.items():
+        if all(c in scored.columns for c in pair):
+            ranks = scored.groupby("anio")[list(pair)].rank(pct=True)
+            scored[name] = ranks.mean(axis=1, skipna=False)
+    return scored
+
+
+def quantile_map(fit_forecast, fit_reanalysis, values) -> np.ndarray:
+    """
+    Forecast values taken to the distribution of the reanalysis: the value of
+    the reanalysis at the quantile the forecast has in the fitting days. The
+    model learnt the scale of the reanalysis (ICON-EU gives stronger gusts
+    than ECMWF IFS). Without enough days to fit, the values go as they are.
+    """
+    a = np.asarray(fit_forecast, dtype=np.float64)
+    b = np.asarray(fit_reanalysis, dtype=np.float64)
+    a, b = a[~np.isnan(a)], b[~np.isnan(b)]
+    values = np.asarray(values, dtype=np.float64)
+    if len(a) < 30 or len(b) < 30:
+        return values
+    qs = np.linspace(0.0, 1.0, 201)
+    qa, qb = np.quantile(a, qs), np.quantile(b, qs)
+    # Repeated quantiles (many dry days) would make np.interp jump.
+    qa = qa + np.arange(len(qa)) * 1e-9
+    return np.interp(values, qa, qb)
+
+
+def forecast_years(pdf: pd.DataFrame, cfg: dict) -> list:
+    """Years of anios_prevision where the forecast covers enough days of every distribuidora."""
+    if "prev_racha_max" not in pdf.columns:
+        return []
+    minimum = float(cfg["cobertura_minima_prevision"])
+    years = []
+    for year in [int(y) for y in cfg["anios_prevision"]]:
+        part = pdf[pdf["anio"] == year]
+        covered = part.groupby("distribuidora_id")["prev_racha_max"].apply(lambda v: float(v.notna().mean()))
+        if len(part) and len(covered) and covered.min() >= minimum:
+            years.append(year)
+        else:
+            logger.warning("Year %s left out of the forecast comparison: coverage by distribuidora %s", year,
+                           covered.round(3).to_dict())
+    return years
+
+
+def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: dict, cfg: dict, years: list,
+                        only_first: bool) -> pd.DataFrame:
+    """
+    The models of the variant fitted on the reanalysis of the days before
+    each year, scoring the days of the year with the weather of the day from
+    the reanalysis (p_<model>__reanalisis), from the forecast of ICON-EU of
+    the day before (__prevision) and from that forecast mapped by quantiles
+    (__prevision_cuantiles). The extremes of the variant (ext_*) go with the
+    forecast too when it has them (prev_ext_*). Only the days with a forecast
+    of the weather of the day.
+    """
+    features = variant_features(variant, blocks)
+    common = [c[len("dia_"):] for c in blocks.get("dia_comun", [])]
+    swap = [(f"dia_{name}", f"prev_{name}") for name in common]
+    swap += [(c, f"prev_{c}") for c in features if c.startswith("ext_") and f"prev_{c}" in pdf.columns]
+    rows = pdf[pdf["fecha"] >= pd.Timestamp(variant["desde"])]
+    parts = []
+
+    for year in years:
+        scored, _, scorers, _ = rolling_evaluation(rows, features, MAIN_LABEL, config, cfg, [year], only_first,
+                                                   names=cfg["modelos"])
+        target = rows[rows["anio"] == year].copy()
+        others = rows[rows["anio"].isin([y for y in years if y != year])]
+        fitting = others if len(others) else target
+        raw, mapped = target.copy(), target.copy()
+
+        for column, source in swap:
+            raw[column] = target[source].to_numpy()
+            values = np.full(len(target), np.nan)
+            for dist in target["distribuidora_id"].unique():
+                mask = (target["distribuidora_id"] == dist).to_numpy()
+                fit = fitting[fitting["distribuidora_id"] == dist]
+                values[mask] = quantile_map(fit[source], fit[column], target.loc[mask, source])
+            mapped[column] = values
+
+        out = target[["distribuidora_id", "fecha", "anio"] + LABELS].copy()
+        for source, frame in (("reanalisis", target), ("prevision", raw), ("prevision_cuantiles", mapped)):
+            X = frame[features].to_numpy(dtype=np.float32, na_value=np.nan)
+            for model, scorer in scorers.items():
+                out[f"p_{model}__{source}"] = scorer.score(X)
+        out["con_prevision"] = target[[f"prev_{n}" for n in common]].notna().all(axis=1).to_numpy()
+        parts.append(out)
+
+    if not parts:
+        return pd.DataFrame()
+    found = pd.concat(parts, ignore_index=True)
+    found = found[found["con_prevision"]].drop(columns="con_prevision").reset_index(drop=True)
+    return add_rank_mean(found, {f"p_rango__{source}": (f"p_logistica__{source}", f"p_xgboost__{source}")
+                                 for source in ("reanalisis", "prevision", "prevision_cuantiles")})
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main(argv=None):
+    args = parse_args(argv)
+    config = load_config(args.config)
+    spark = get_spark(config)
+    created = datetime.now(timezone.utc).replace(tzinfo=None)
+    cfg = settings(config)
+    seed = int(config.get("semilla", 0))
+    shares = [float(s) for s in cfg["fracciones_top"]]
+    version = f"meteo_dia_{cfg['desde']}_{cfg['hasta']}"
+
+    variants = cfg["variantes"]
+    if args.variantes:
+        wanted = {v.strip() for v in args.variantes.split(",") if v.strip()}
+        variants = [v for v in variants if v["nombre"] in wanted]
+
+    pdf, blocks, warnings_first = build_dataset(spark, config, cfg)
+    sizes = describe(pdf)
+    logger.info("Daily dataset: %s rows, blocks %s\n%s", len(pdf), {k: len(v) for k, v in blocks.items()},
+                ml_metrics.markdown_table(sizes, digits=3))
+
+    for variant in [v for v in variants if any(not blocks.get(b) for b in v["bloques"])]:
+        logger.warning("Variant %s skipped: no features of the blocks %s", variant["nombre"],
+                       [b for b in variant["bloques"] if not blocks.get(b)])
+    variants = [v for v in variants if all(blocks.get(b) for b in v["bloques"])]
+    if not variants:
+        raise ValueError("No variant has all its blocks")
+
+    # The models of the hours get the settings of the days: no purge between
+    # days, the grids of meteo_dia.busqueda.
+    run_cfg = {**cfg, "purga_horas": float(cfg.get("purga_horas", 0))}
+    outs, search, last = [], [], {}
+    for variant in variants:
+        years = variant_years(variant, cfg)
+        if not years:
+            logger.warning("Variant %s skipped: no year of evaluation has enough days before it", variant["nombre"])
+            continue
+        features = variant_features(variant, blocks)
+        rows = pdf[pdf["fecha"] >= pd.Timestamp(variant["desde"])]
+        logger.info("Variant %s: %s features, training from %s, years %s", variant["nombre"], len(features),
+                    variant["desde"], years)
+        scored, found, scorers, _ = rolling_evaluation(rows, features, MAIN_LABEL, config, run_cfg, years,
+                                                       args.sin_busqueda, names=cfg["modelos"])
+        out = scored[["distribuidora_id", "fecha", "anio"] + LABELS].copy()
+        for column in [c for c in scored.columns if c.startswith("p_")]:
+            out[f"p_{variant['nombre']}__{column[2:]}"] = scored[column].to_numpy()
+        outs.append(out)
+        search += [{**row, "variante": variant["nombre"]} for row in found]
+        last[variant["nombre"]] = scorers
+
+    if not outs:
+        raise ValueError("No variant could be scored")
+
+    scored = outs[0]
+    for out in outs[1:]:
+        scored = scored.merge(out.drop(columns=["anio"] + LABELS), on=["distribuidora_id", "fecha"], how="outer")
+        scored["anio"] = scored["fecha"].dt.year
+    scored = scored.drop(columns=LABELS).merge(pdf[["distribuidora_id", "fecha"] + LABELS],
+                                               on=["distribuidora_id", "fecha"], how="left")
+    scored = add_rank_mean(scored, {f"p_{v['nombre']}__rango": (f"p_{v['nombre']}__logistica", f"p_{v['nombre']}__xgboost")
+                                    for v in variants})
+    columns = [c for c in scored.columns if c.startswith("p_")]
+    years = sorted(scored["anio"].unique().tolist())
+    common = [y for y in years if scored.loc[scored["anio"] == y, columns].notna().all(axis=None)]
+
+    all_metrics = []
+    for year in years:
+        part = scored[scored["anio"] == year]
+        present = [c for c in columns if part[c].notna().all()]
+        all_metrics.append(add_context(day_metrics(part, present, shares, seed), args.run_id, version, f"cv_{year}"))
+    pooled = scored[scored["anio"].isin(common)]
+    if common:
+        all_metrics.append(add_context(day_metrics(pooled, columns, shares, seed), args.run_id, version, "cv_comun"))
+    metrics = pd.concat(all_metrics, ignore_index=True)
+    comparison = comparison_table(metrics[metrics["split"] == "cv_comun"], shares) if common else pd.DataFrame()
+
+    reps = int(cfg["bootstrap_reps"])
+    pairs = [(f"p_{a}", f"p_{b}") for a, b in cfg["comparaciones"] if f"p_{a}" in columns and f"p_{b}" in columns]
+    intervals, differences = pd.DataFrame(), pd.DataFrame()
+    if common and pairs:
+        named = sorted({name for pair in pairs for name in pair})
+        intervals, replicas = ml_metrics.bootstrap_pr_auc(
+            pooled[MAIN_LABEL].to_numpy(), np.ones(len(pooled)), pooled["fecha"].to_numpy(),
+            {name[2:]: pooled[name].to_numpy() for name in named}, reps, seed)
+        differences = ml_metrics.paired_differences(replicas, [(a[2:], b[2:]) for a, b in pairs])
+
+    # The real forecast: the models of variante_prevision (one variant or a
+    # list) with the forecast of ICON-EU in place of the weather of the day,
+    # on the days it covers.
+    forecast_table, forecast_differences = pd.DataFrame(), pd.DataFrame()
+    chosen = cfg.get("variante_prevision", "perfecta_comun")
+    chosen = [chosen] if isinstance(chosen, str) else list(chosen)
+    references = [v for v in variants if v["nombre"] in chosen]
+    years_forecast = forecast_years(pdf, cfg) if references else []
+    if years_forecast:
+        found = pd.DataFrame()
+        for reference in references:
+            part = forecast_evaluation(pdf, reference, blocks, config, run_cfg, years_forecast, args.sin_busqueda)
+            if part.empty:
+                continue
+            part = part.rename(columns={c: f"p_{reference['nombre']}__{c[2:]}" for c in part.columns
+                                        if c.startswith("p_")})
+            found = part if found.empty else found.merge(part.drop(columns=["anio"] + LABELS),
+                                                         on=["distribuidora_id", "fecha"], how="inner")
+        before = [c for c in columns if c.startswith("p_ayer__")]
+        if not found.empty and before:
+            found = found.merge(scored[["distribuidora_id", "fecha"] + before], on=["distribuidora_id", "fecha"],
+                                how="left")
+        forecast_columns = [c for c in found.columns if c.startswith("p_")]
+        if not found.empty:
+            forecast_metrics = add_context(day_metrics(found, forecast_columns, shares, seed), args.run_id, version,
+                                           "prevision_comun")
+            metrics = pd.concat([metrics, forecast_metrics], ignore_index=True)
+            forecast_table = forecast_comparison(forecast_metrics, shares)
+            wanted = []
+            for name in [r["nombre"] for r in references]:
+                for m in ("logistica", "xgboost", "rango"):
+                    wanted += [(f"p_{name}__{m}__prevision_cuantiles", f"p_{name}__{m}__reanalisis"),
+                               (f"p_{name}__{m}__prevision", f"p_{name}__{m}__reanalisis"),
+                               (f"p_{name}__{m}__prevision_cuantiles", f"p_ayer__{m}")]
+            # Between variants with the same weather of the day (meteo_dia.comparaciones_prevision).
+            wanted += [(f"p_{a}", f"p_{b}") for a, b in cfg.get("comparaciones_prevision", [])]
+            wanted = [(a, b) for a, b in wanted if a in found.columns and b in found.columns]
+            if wanted:
+                named = sorted({name for pair in wanted for name in pair})
+                _, replicas = ml_metrics.bootstrap_pr_auc(
+                    found[MAIN_LABEL].to_numpy(), np.ones(len(found)), found["fecha"].to_numpy(),
+                    {name[2:]: found[name].to_numpy() for name in named}, reps, seed)
+                forecast_differences = ml_metrics.paired_differences(replicas, [(a[2:], b[2:]) for a, b in wanted])
+            logger.info("Real forecast of ICON-EU on %s days of %s", len(found), years_forecast)
+
+    save_frame(spark, metrics, METRICS_TABLE, args.run_id)
+
+    variant_rows = pd.DataFrame([{
+        "variante": v["nombre"], "desde": v["desde"], "bloques": "+".join(v["bloques"]),
+        "anios": ",".join(str(y) for y in variant_years(v, cfg)), "n_features": len(variant_features(v, blocks)),
+    } for v in variants])
+    per_dist = by_distribuidora(metrics)
+    totals = sizes.groupby("anio")[[f"dias_{label}" for label in LABELS]].sum().reset_index()
+    top = f"dias_positivos_en_top_{int(round(shares[1] * 100))}pct" if len(shares) > 1 else ""
+    warning_text = (f"Los avisos de AEMET cuentan desde el {warnings_first:%d.%m.%Y}, si se enviaron antes de las "
+                    f"{int(cfg['aviso_corte_h'])}:00 del día anterior." if warnings_first is not None
+                    else "Sin avisos de AEMET en Silver.")
+
+    report = "\n\n".join([
+        f"# Riesgo del día siguiente: {args.run_id}",
+        f"Unidad: distribuidora y día, de {cfg['desde']} a {cfg['hasta']} sin los días excluidos "
+        f"({', '.join(cfg['dias_excluidos'])}). y_dia = 1 si ese día empieza una interrupción de la variante principal "
+        f"en algún CT de la distribuidora; y_dia_meteo, lo mismo sin las causas {', '.join(cfg['causas_no_meteo'])}. "
+        "Todo lo que usa el modelo se conoce la tarde anterior salvo el bloque dia, el tiempo del propio día sacado del "
+        f"reanálisis, que hace de previsión perfecta. {warning_text} Cada año lo puntúa un modelo que solo ha visto "
+        f"los días anteriores; las cifras comparadas son de los años que puntúan todas las variantes "
+        f"({', '.join(str(y) for y in common) or 'ninguno'}).",
+        "## Días con interrupción por año\n\n" + ml_metrics.markdown_table(totals, digits=0),
+        "## Variantes\n\n" + ml_metrics.markdown_table(variant_rows, digits=0),
+        f"## Comparación en los años comunes\n\n{top} es la parte de los días con avería que caen en el "
+        f"{int(round(shares[1] * 100)) if len(shares) > 1 else ''} % de días con más riesgo de cada año.\n\n"
+        + ml_metrics.markdown_table(comparison, digits=4),
+        f"## Días con {int(cfg['incidencias_dia_varias'])} incidencias o más\n\nLos mismos modelos frente a "
+        "y_dia_varias, los días que empiezan varias incidencias en la distribuidora y piden más de una brigada.\n\n"
+        + ml_metrics.markdown_table(busy_days_table(metrics[metrics["split"] == "cv_comun"], shares), digits=4),
+        "## PR-AUC por año\n\n" + ml_metrics.markdown_table(by_year(metrics), digits=4),
+        "## PR-AUC por distribuidora en los años comunes\n\n" + ml_metrics.markdown_table(per_dist, digits=4),
+        f"## PR-AUC con intervalo del 95 % (bootstrap por fechas, {reps} réplicas)\n\n"
+        + ml_metrics.markdown_table(intervals, digits=4),
+        "## Diferencias emparejadas (a - b)\n\nSi el intervalo cruza el cero, los datos no distinguen a de b.\n\n"
+        + ml_metrics.markdown_table(differences, digits=4),
+    ] + ([
+        f"## Con la previsión real del día anterior ({', '.join(str(y) for y in years_forecast)})\n\n"
+        f"Los modelos de {', '.join(r['nombre'] for r in references)} se entrenan con el reanálisis y puntúan los "
+        "días con previsión tres veces: con el tiempo del día sacado del reanálisis (reanalisis), con lo que preveía ICON-EU el "
+        "día anterior (prevision) y con esa previsión llevada por cuantiles a la escala del reanálisis "
+        "(prevision_cuantiles). ayer es la variante que solo sabe el tiempo del día anterior.\n\n"
+        + ml_metrics.markdown_table(forecast_table, digits=4)
+        + "\n\n" + ml_metrics.markdown_table(forecast_differences, digits=4),
+    ] if not forecast_table.empty else [])) + "\n"
+    export(config, args.run_id, report, {"metricas": metrics, "comparacion": comparison, "anios": by_year(metrics),
+                                         "distribuidoras": per_dist, "intervalos": intervals,
+                                         "diferencias": differences, "filas": sizes, "prevision": forecast_table,
+                                         "prevision_diferencias": forecast_differences})
+
+    summary = metrics[(metrics["split"] == "cv_comun") & (metrics["segmento"] == "total")
+                      & (metrics["etiqueta"] == MAIN_LABEL) & (metrics["metrica"] == "pr_auc")]
+    run = pd.DataFrame([{
+        "run_id": args.run_id,
+        "creado_ts": created,
+        "dataset_version": version,
+        "etiqueta": f"meteo_dia:{MAIN_LABEL}",
+        "n_features": int(variant_rows["n_features"].max()),
+        "modelos_json": json.dumps({v: {m: {"params": s.params, **s.info} for m, s in sc.items()}
+                                    for v, sc in last.items()}, default=str),
+        "busqueda_json": json.dumps(search, ensure_ascii=False, default=str),
+        "config_json": json.dumps({**config, "meteo_dia": cfg}, ensure_ascii=False, default=str),
+        "resumen_json": json.dumps({r.modelo: r.valor for r in summary.itertuples()}),
+        "splits_evaluados": ",".join(f"cv_{y}" for y in years),
+        "artefactos_uri": "",
+    }])
+    save_frame(spark, run, RUNS_TABLE, args.run_id)
+    logger.info("Run %s completed: variants %s, common years %s", args.run_id, [v["nombre"] for v in variants],
+                common)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

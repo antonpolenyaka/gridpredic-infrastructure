@@ -24,6 +24,20 @@ plan for non commercial use).
   (exit code 3) so it can go on the next day.
 - Timestamps are asked as unix time in UTC; Bronze takes them to the wall
   clock of Madrid, which is how Calser and TedisNet store their times.
+- The window can grow: a file whose stored window (_peticion) does not
+  cover the year asked now is asked again (the year 2020 of a first run
+  that started on 01.12.2020, when desde moves to 2017). The windows are
+  kept in _ventanas.json so the files are not read again in every run.
+- --fuente openmeteo_convectivo asks the Historical Forecast API (archived
+  runs of GFS, from 23.03.2021) for CAPE and the lifted index, the
+  instability of the air that the reanalysis does not give: the proxy of
+  thunderstorms we can have for free, since the lightning data of AEMET are
+  not open. CAPE is smooth, so its cells are of 0.25 degrees (the GFS grid)
+  and the whole window fits in the daily limit together with the history.
+- --fuente openmeteo_previo asks the Previous Runs API for the forecasts of
+  ICON-EU made one and two days before every hour (archived from January
+  2024): what the operator could know the day before. The same request,
+  only the API and the suffixed variables change.
 
 Run from the Spark master container (it has pandas, s3fs and the MinIO
 credentials; no Spark is needed):
@@ -124,19 +138,31 @@ def year_chunks(first: date, last: date) -> list:
     return chunks
 
 
-def request_url(lat: float, lon: float, lo: date, hi: date, cfg: dict) -> str:
+def request_url(lat: float, lon: float, lo: date, hi: date, cfg: dict, model: str = None) -> str:
     query = {
         "latitude": f"{lat:.4f}",
         "longitude": f"{lon:.4f}",
         "start_date": lo.isoformat(),
         "end_date": hi.isoformat(),
         "hourly": ",".join(cfg["variables"]),
-        "models": cfg.get("modelo", "ecmwf_ifs"),
+        "models": model or cfg.get("modelo", "ecmwf_ifs"),
         "timezone": "GMT",
         "timeformat": "unixtime",
         "wind_speed_unit": "kmh",
     }
-    return f"{API}?{urllib.parse.urlencode(query, safe=',')}"
+    return f"{cfg.get('api', API)}?{urllib.parse.urlencode(query, safe=',')}"
+
+
+def models_of(cfg: dict) -> list:
+    """Models to try in order: the list modelos, or the single modelo."""
+    return list(cfg.get("modelos") or [cfg.get("modelo", "ecmwf_ifs")])
+
+
+def covers(window, lo: date, hi: date) -> bool:
+    """True when the stored window [desde, hasta] includes [lo, hi]."""
+    if not window or not window[0] or not window[1]:
+        return False
+    return window[0] <= lo.isoformat() and window[1] >= hi.isoformat()
 
 
 def call_weight(days: int, n_variables: int) -> float:
@@ -195,10 +221,12 @@ def read_reference(fs, path: str) -> list:
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
+    parser.add_argument("--fuente", default="openmeteo",
+                        help="Block of the configuration: openmeteo (reanalysis) or openmeteo_convectivo (CAPE)")
     parser.add_argument("--max-peticiones", type=int, default=None, help="Stop after this many requests")
     args = parser.parse_args(argv)
 
-    cfg = load_config(args.config)["openmeteo"]
+    cfg = load_config(args.config)[args.fuente]
     fs = filesystem()
     landing = cfg["landing"].rstrip("/")
 
@@ -215,37 +243,68 @@ def main(argv=None):
     n_variables = len(cfg["variables"])
     total_weight = sum(call_weight((hi - lo).days + 1, n_variables) for _, lo, hi in chunks) * len(cells)
 
-    logger.info("%s municipalities in %s cells, %s to %s, about %.0f calls of the free plan",
-                len(places), len(cells), first, last, total_weight)
+    logger.info("%s: %s municipalities in %s cells, %s to %s, at most %.0f calls of the free plan",
+                args.fuente, len(places), len(cells), first, last, total_weight)
+
+    index_path = f"{landing}/_ventanas.json"
+    index = {}
+    if fs.exists(index_path):
+        with fs.open(index_path, "r") as file:
+            index = json.load(file)
 
     done = requested = 0
     pause = float(cfg.get("pausa_s", 25))
+    models = models_of(cfg)
+
+    def save_index():
+        with fs.open(index_path, "w") as file:
+            json.dump(index, file)
 
     for cell, (lat, lon) in sorted(cells.items()):
         for year, lo, hi in chunks:
             target = f"{landing}/{cell}/{year}.json"
+            key = f"{cell}/{year}"
 
             if fs.exists(target):
-                done += 1
-                continue
+                if key not in index:
+                    with fs.open(target, "r") as file:
+                        stored = json.load(file).get("_peticion", {})
+                    index[key] = [stored.get("desde"), stored.get("hasta")]
+                    save_index()
+                if covers(index[key], lo, hi):
+                    done += 1
+                    continue
+                logger.info("Cell %s, %s: the file covers %s, asking %s - %s again", cell, year, index[key], lo, hi)
 
             if args.max_peticiones is not None and requested >= args.max_peticiones:
                 logger.info("Stopped after %s requests as asked", requested)
                 return 0
 
-            payload = fetch(request_url(lat, lon, lo, hi, cfg), int(cfg.get("reintentos", 5)),
-                            float(cfg.get("espera_reintento_s", 60)))
+            payload, model = None, None
+            for k, candidate in enumerate(models):
+                try:
+                    payload = fetch(request_url(lat, lon, lo, hi, cfg, candidate), int(cfg.get("reintentos", 5)),
+                                    float(cfg.get("espera_reintento_s", 60)))
+                    model = candidate
+                    break
+                except RuntimeError as error:
+                    if k + 1 < len(models) and "HTTP 400" in str(error):
+                        logger.warning("Model %s refused (%s), trying %s", candidate, str(error)[:160], models[k + 1])
+                        continue
+                    raise
 
             hours = len(payload.get("hourly", {}).get("time", []))
             if not hours:
                 raise RuntimeError(f"Empty answer for cell {cell}, {year}: {str(payload)[:300]}")
 
             payload["_peticion"] = {"celda_id": cell, "desde": lo.isoformat(), "hasta": hi.isoformat(),
-                                    "modelo": cfg.get("modelo", "ecmwf_ifs")}
+                                    "modelo": model, "fuente": args.fuente}
 
             with fs.open(target, "w") as file:
                 json.dump(payload, file)
 
+            index[key] = [lo.isoformat(), hi.isoformat()]
+            save_index()
             requested += 1
             logger.info("Cell %s, %s: %s hours (%s requested, %s already there)", cell, year, hours, requested, done)
             time.sleep(pause)

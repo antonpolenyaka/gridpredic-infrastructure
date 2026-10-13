@@ -1,0 +1,468 @@
+"""
+Test of the risk of the next day (job_ml_riesgo_dia): daily weather, labels,
+warnings known the evening before, and the whole job on a local Spark with
+seven years of synthetic weather where storm days bring interruptions and
+AEMET warns of most of them the day before.
+
+    python -m pytest tests/04_ml/test_riesgo_dia.py -q
+"""
+
+import json
+import os
+import shutil
+import sys
+import tempfile
+import time
+
+import numpy as np
+import pandas as pd
+import pytest
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+ML_DIR = os.path.join(ROOT, "etl", "jobs", "04_ml")
+CONFIG = os.path.join(ROOT, "etl", "config", "04_ml", "config_ml.json")
+
+if ML_DIR not in sys.path:
+    sys.path.insert(0, ML_DIR)
+
+import job_ml_riesgo_dia as rd  # noqa: E402
+from delta import configure_spark_with_delta_pip  # noqa: E402
+from pyspark.sql import SparkSession  # noqa: E402
+
+os.environ["TZ"] = "UTC"
+time.tzset()
+
+RUN_ID = "dia_test"
+CELLS = {1: "c1", 2: "c2"}
+
+
+# ---------------------------------------------------------------------------
+# Pure functions
+# ---------------------------------------------------------------------------
+
+def test_daily_weather_and_days_with_gaps():
+    hours = pd.date_range("2024-01-01 00:00", "2024-01-02 23:00", freq="h")
+    hourly = pd.DataFrame({"distribuidora_id": 1, "hora": hours,
+                           "metd_max_met_racha_1h": np.arange(48, dtype=float),
+                           "metd_max_met_lluvia_1h": 0.5, "metd_media_met_temp_1h": 10.0})
+    # The second day keeps only 10 hours of weather: a gap, not a calm day.
+    hourly.loc[hourly["hora"] >= "2024-01-02 10:00", "metd_max_met_racha_1h"] = np.nan
+    days = rd.daily_weather(hourly, 20).set_index("fecha")
+    assert days.loc["2024-01-01", "racha_max"] == 23
+    assert days.loc["2024-01-01", "lluvia_max"] == pytest.approx(12.0)
+    assert days.loc["2024-01-01", "temp_media_min"] == 10.0
+    assert np.isnan(days.loc["2024-01-02", "racha_max"]) and np.isnan(days.loc["2024-01-02", "lluvia_max"])
+
+
+def test_day_labels_and_calendar():
+    grid = pd.DataFrame({"distribuidora_id": [1, 1, 1, 2],
+                         "fecha": pd.to_datetime(["2024-03-28", "2024-03-29", "2024-03-30", "2024-03-29"])})
+    events = pd.DataFrame({"distribuidora_id": [1, 1, 2],
+                           "inicio_ts": pd.to_datetime(["2024-03-28 23:50", "2024-03-30 08:00", "2024-03-29 10:00"]),
+                           "causa": ["meteorologia", "aguas_arriba", "equipo"]})
+    out = rd.day_labels(grid, events, ["aguas_arriba"])
+    assert out["y_dia"].tolist() == [1, 0, 1, 1]
+    assert out["y_dia_meteo"].tolist() == [1, 0, 0, 1]
+    assert out["y_dia_varias"].tolist() == [0, 0, 0, 0]
+    # Two incidents on 30.03 (one of them with two CT) make a busy day; one incident with two CT does not.
+    busy = pd.DataFrame({"distribuidora_id": [1, 1, 1, 2, 2], "periodo_id": [2024] * 5,
+                         "incidencia_id": [7, 8, 8, 9, 9],
+                         "inicio_ts": pd.to_datetime(["2024-03-30 08:00", "2024-03-30 17:00", "2024-03-30 17:05",
+                                                      "2024-03-29 10:00", "2024-03-29 10:30"]),
+                         "causa": ["meteorologia"] * 5})
+    out = rd.day_labels(grid, busy, ["aguas_arriba"], several=2)
+    assert out["y_dia_varias"].tolist() == [0, 0, 1, 0]
+
+    cal = rd.day_calendar(grid["fecha"])
+    # Good Friday 2024 is a holiday; 30.03.2024 is a Saturday.
+    assert cal["cal_festivo"].tolist() == [1.0, 1.0, 0.0, 1.0]
+    assert cal["cal_fin_de_semana"].tolist() == [0.0, 0.0, 1.0, 0.0]
+
+
+def test_warnings_count_only_when_sent_the_evening_before():
+    cells = pd.DataFrame({"distribuidora_id": [1, 2], "celda_id": ["c1", "c2"]})
+    warnings = pd.DataFrame([
+        # Sent at 19:00 the day before: it counts for 10.01 (cutoff 20:00).
+        {"celda_id": "c1", "fenomeno_codigo": "VI", "nivel_num": 2, "tipo_mensaje": "Alert",
+         "enviado_ts": "2024-01-09 19:00", "inicio_ts": "2024-01-10 12:00", "fin_ts": "2024-01-10 23:59:59"},
+        # Sent at 22:00 for the next two days: too late for 11.01, in time for 12.01.
+        {"celda_id": "c1", "fenomeno_codigo": "PR", "nivel_num": 1, "tipo_mensaje": "Alert",
+         "enviado_ts": "2024-01-10 22:00", "inicio_ts": "2024-01-11 06:00", "fin_ts": "2024-01-13 00:00:00"},
+        # A cancellation and a green level never count.
+        {"celda_id": "c1", "fenomeno_codigo": "VI", "nivel_num": 3, "tipo_mensaje": "Cancel",
+         "enviado_ts": "2024-01-09 10:00", "inicio_ts": "2024-01-10 00:00", "fin_ts": "2024-01-10 23:59:59"},
+        {"celda_id": "c2", "fenomeno_codigo": "TO", "nivel_num": 0, "tipo_mensaje": "Alert",
+         "enviado_ts": "2024-01-09 10:00", "inicio_ts": "2024-01-10 00:00", "fin_ts": "2024-01-10 23:59:59"},
+    ])
+    table, first = rd.warning_days(warnings, cells, 20)
+    assert first == pd.Timestamp("2024-01-10")
+    rows = table.set_index(["distribuidora_id", "fecha"])
+    assert rows.loc[(1, pd.Timestamp("2024-01-10")), "aviso_max_nivel"] == 2
+    assert rows.loc[(1, pd.Timestamp("2024-01-10")), "aviso_viento_nivel"] == 2
+    assert (1, pd.Timestamp("2024-01-11")) not in rows.index
+    assert rows.loc[(1, pd.Timestamp("2024-01-12")), "aviso_lluvia_nivel"] == 1
+    # Ending exactly at midnight does not cover 13.01; the green level leaves no row.
+    assert (1, pd.Timestamp("2024-01-13")) not in rows.index
+    assert 2 not in rows.index.get_level_values(0)
+
+
+def test_what_the_warnings_announce_and_how_much_they_cover():
+    # Distribuidora 1 has 3 CT in c1 and 1 in c2.
+    cells = pd.DataFrame({"distribuidora_id": [1, 1], "celda_id": ["c1", "c2"], "n_ct": [3.0, 1.0]})
+    sent = "2024-01-09 12:00"
+    warnings = pd.DataFrame([
+        {"celda_id": "c1", "fenomeno_codigo": "VI", "nivel_num": 1, "tipo_mensaje": "Alert", "enviado_ts": sent,
+         "inicio_ts": "2024-01-10 06:00", "fin_ts": "2024-01-10 12:00", "parametro": "RM;Rachas máximas;70 km/h"},
+        {"celda_id": "c1", "fenomeno_codigo": "VI", "nivel_num": 2, "tipo_mensaje": "Alert", "enviado_ts": sent,
+         "inicio_ts": "2024-01-10 12:00", "fin_ts": "2024-01-11 00:00", "parametro": "RM;Rachas máximas;90 km/h"},
+        {"celda_id": "c2", "fenomeno_codigo": "PR", "nivel_num": 1, "tipo_mensaje": "Alert", "enviado_ts": sent,
+         "inicio_ts": "2024-01-10 00:00", "fin_ts": "2024-01-10 12:00",
+         "parametro": "P2;Precipitación acumulada en 12 horas;40 mm"},
+        # Heat counts in the level, not in the share under a warning of the weather that breaks lines.
+        {"celda_id": "c2", "fenomeno_codigo": "AT", "nivel_num": 1, "tipo_mensaje": "Alert", "enviado_ts": sent,
+         "inicio_ts": "2024-01-10 12:00", "fin_ts": "2024-01-10 20:00", "parametro": "TA;Temperatura máxima;38 ºC"},
+    ])
+    rows = rd.warning_days(warnings, cells, 20)[0].set_index(["distribuidora_id", "fecha"])
+    day = rows.loc[(1, pd.Timestamp("2024-01-10"))]
+    assert day["aviso_max_nivel"] == 2 and day["aviso_det_racha_kmh"] == 90
+    assert day["aviso_det_lluvia_12h_mm"] == 40 and pd.isna(day["aviso_det_lluvia_1h_mm"])
+    # The longest wind warning of the day, 12 hours.
+    assert day["aviso_det_viento_horas"] == pytest.approx(12.0)
+    assert day["aviso_det_viento_ct"] == pytest.approx(0.75)
+    assert day["aviso_det_tiempo_ct"] == pytest.approx(1.0)
+    assert pd.isna(day["aviso_det_tormenta_ct"])
+
+
+def test_quantile_map_takes_the_forecast_to_the_scale_of_the_reanalysis():
+    rng = np.random.default_rng(0)
+    reanalysis = rng.gamma(4.0, 8.0, 2000)
+    forecast = reanalysis * 1.2 + 5.0
+    mapped = rd.quantile_map(forecast, reanalysis, np.quantile(forecast, [0.1, 0.5, 0.9]))
+    assert mapped == pytest.approx(np.quantile(reanalysis, [0.1, 0.5, 0.9]), rel=0.02)
+    # Too few days to fit: the values go as they are.
+    assert rd.quantile_map([1.0, 2.0], [3.0, 4.0], [5.0]).tolist() == [5.0]
+
+
+def test_top_share_counts_the_positive_days_of_the_top_of_each_year():
+    y = np.array([1, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+    score = np.array([0.9, 0.1, 0.2, 0.3, 0.05, 0.8, 0.1, 0.2, 0.3, 0.7])
+    year = np.array([2024] * 5 + [2025] * 5)
+    # The top 20 % is one day per year: 2024 holds its first positive, 2025 does not.
+    assert rd.top_share(y, score, year, 0.2) == pytest.approx(1 / 3)
+    assert rd.top_share(y, score, year, 0.4) == pytest.approx(2 / 3)
+
+
+def test_extremes_from_the_gusts_against_the_climate_of_each_cell():
+    hours = pd.date_range("2022-01-02", "2022-01-05 23:00", freq="h")
+    hourly = pd.concat([pd.DataFrame({"distribuidora_id": dist, "hora": hours, "metd_max_met_racha_clima_1h": 0.8,
+                                      "metd_media_met_racha_clima_1h": 0.5, "metd_media_met_racha_ku_1h": 0.0})
+                        for dist in (1, 2)], ignore_index=True)
+    # A storm on 03.01: the worst cell at twice its p98 for six hours, the CT weighted mean at 1.5.
+    storm = (hourly["hora"] >= "2022-01-03 10:00") & (hourly["hora"] < "2022-01-03 16:00")
+    hourly.loc[storm, "metd_max_met_racha_clima_1h"] = 2.0
+    hourly.loc[storm, "metd_media_met_racha_clima_1h"] = 1.5
+    hourly.loc[storm, "metd_media_met_racha_ku_1h"] = 0.125
+    # 18 hours of gusts on 04.01 in 1 are not a day.
+    gap = (hourly["distribuidora_id"] == 1) & (hourly["hora"] >= "2022-01-04 00:00") & (hourly["hora"] < "2022-01-04 06:00")
+    hourly.loc[gap, ["metd_max_met_racha_clima_1h", "metd_media_met_racha_clima_1h", "metd_media_met_racha_ku_1h"]] = np.nan
+    days = pd.date_range("2021-12-28", "2022-01-05", freq="D")
+    heat = [30, 36, 37, 20, 36, 36, 36, np.nan, 38]
+    daily = pd.concat([pd.DataFrame({"distribuidora_id": dist, "fecha": days, "temp_max": heat}) for dist in (1, 2)],
+                      ignore_index=True)
+    out = rd.extremes(hourly, daily, 35.0, 20).set_index(["distribuidora_id", "fecha"])
+
+    calm, stormy = out.loc[(2, pd.Timestamp("2022-01-02"))], out.loc[(2, pd.Timestamp("2022-01-03"))]
+    assert calm["ext_racha_clima_max"] == pytest.approx(0.8) and calm["ext_racha_ku"] == 0
+    assert stormy["ext_racha_clima_max"] == pytest.approx(2.0) and stormy["ext_racha_clima_media"] == pytest.approx(1.5)
+    assert stormy["ext_racha_ku"] == pytest.approx(0.75)
+    assert pd.isna(out.loc[(1, pd.Timestamp("2022-01-04")), "ext_racha_clima_max"])
+    assert out.loc[(2, pd.Timestamp("2022-01-04")), "ext_racha_clima_max"] == pytest.approx(0.8)
+    # Days in a row at 35 degrees or more, up to the day; an unknown day breaks the run.
+    runs = out.loc[1, "ext_dias_calor"].dropna()
+    assert runs.loc["2021-12-29":"2022-01-03"].tolist() == [1.0, 2.0, 0.0, 1.0, 2.0, 3.0]
+    assert pd.isna(out.loc[(1, pd.Timestamp("2022-01-04")), "ext_dias_calor"])
+    assert out.loc[(1, pd.Timestamp("2022-01-05")), "ext_dias_calor"] == 1.0
+
+
+def test_extremes_of_the_forecast_with_the_run_of_heat_known_the_evening_before():
+    hours = pd.date_range("2024-07-01", "2024-07-04 23:00", freq="h")
+    hourly = pd.DataFrame({"distribuidora_id": 1, "hora": hours, "metd_max_metp1_racha_clima_1h": 0.9,
+                           "metd_media_metp1_racha_clima_1h": 0.6, "metd_media_metp1_racha_ku_1h": 0.0})
+    storm = (hourly["hora"] >= "2024-07-02 14:00") & (hourly["hora"] < "2024-07-02 18:00")
+    hourly.loc[storm, ["metd_max_metp1_racha_clima_1h", "metd_media_metp1_racha_clima_1h",
+                       "metd_media_metp1_racha_ku_1h"]] = [1.8, 1.4, 0.064]
+    forecast = pd.DataFrame({"distribuidora_id": 1, "fecha": pd.date_range("2024-07-01", "2024-07-04", freq="D"),
+                             "temp_max": [36.0, 37.0, 30.0, np.nan]})
+    # The run of the reanalysis up to each day: unknown on 02.07.
+    extreme = pd.DataFrame({"distribuidora_id": 1, "fecha": pd.date_range("2024-06-30", "2024-07-03", freq="D"),
+                            "ext_dias_calor": [2.0, 3.0, np.nan, 0.0]})
+    out = rd.forecast_extremes(hourly, forecast, extreme, 35.0, 20).set_index("fecha")
+
+    assert out.loc["2024-07-02", "prev_ext_racha_clima_max"] == pytest.approx(1.8)
+    assert out.loc["2024-07-02", "prev_ext_racha_clima_media"] == pytest.approx(1.4)
+    assert out.loc["2024-07-02", "prev_ext_racha_ku"] == pytest.approx(4 * 0.064)
+    assert out.loc["2024-07-01", "prev_ext_racha_ku"] == 0
+    # The forecast hottest hour of the day on top of the run up to the day before; a cool day ends the run even
+    # when the day before is unknown, and a day without forecast has no run.
+    assert out.loc["2024-07-01", "prev_ext_dias_calor"] == 3.0
+    assert out.loc["2024-07-02", "prev_ext_dias_calor"] == 4.0
+    assert out.loc["2024-07-03", "prev_ext_dias_calor"] == 0.0
+    assert pd.isna(out.loc["2024-07-04", "prev_ext_dias_calor"])
+
+
+# ---------------------------------------------------------------------------
+# The whole job
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def workdir():
+    path = tempfile.mkdtemp(prefix="dia_test_")
+    yield path
+    shutil.rmtree(path, ignore_errors=True)
+
+
+@pytest.fixture(scope="module")
+def spark(workdir):
+    builder = (
+        SparkSession.builder
+        .master("local[2]")
+        .appName("dia-test")
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config("spark.sql.warehouse.dir", os.path.join(workdir, "warehouse"))
+        .config("spark.sql.shuffle.partitions", "4")
+        .config("spark.sql.session.timeZone", "UTC")
+        .config("spark.sql.execution.arrow.pyspark.enabled", "true")
+        .config("spark.ui.enabled", "false")
+    )
+    session = configure_spark_with_delta_pip(builder).getOrCreate()
+    for db in ("l2_silver", "l3_gold"):
+        session.sql(f"CREATE DATABASE IF NOT EXISTS {db}")
+    yield session
+    session.stop()
+
+
+def save(spark, pdf: pd.DataFrame, table: str):
+    spark.createDataFrame(pdf).write.format("delta").mode("overwrite").option(
+        "overwriteSchema", "true").saveAsTable(table)
+
+
+def synthetic():
+    """(weather per cell and hour, principal events with cause, warnings of AEMET)."""
+    rng = np.random.default_rng(11)
+    hours = pd.date_range("2019-01-01", "2025-12-31 23:00", freq="h")
+    days = pd.date_range("2019-01-02", "2025-12-30", freq="D")
+    weather, events, warnings = [], [], []
+
+    for dist, cell in CELLS.items():
+        gust = rng.gamma(4.0, 6.0, len(hours))
+        rain = np.where(rng.random(len(hours)) < 0.05, rng.gamma(1.0, 2.0, len(hours)), 0.0)
+        for day in rng.choice(days, size=7 * 20, replace=False):
+            start = int((pd.Timestamp(day) + pd.Timedelta(hours=10) - hours[0]) / pd.Timedelta(hours=1))
+            gust[start:start + 6] = rng.uniform(80, 110, 6)
+            rain[start:start + 6] = rng.uniform(2, 8, 6)
+            if rng.random() < 0.7:
+                events.append((dist, pd.Timestamp(day) + pd.Timedelta(hours=12), "meteorologia"))
+            # AEMET warns of most storms the day before at noon.
+            if rng.random() < 0.8:
+                warnings.append({"celda_id": cell, "fenomeno_codigo": "VI", "nivel_num": 2, "tipo_mensaje": "Alert",
+                                 "enviado_ts": pd.Timestamp(day) - pd.Timedelta(hours=12),
+                                 "inicio_ts": pd.Timestamp(day) + pd.Timedelta(hours=6),
+                                 "fin_ts": pd.Timestamp(day) + pd.Timedelta(hours=22)})
+        for _ in range(7 * 15):
+            events.append((dist, pd.Timestamp(rng.choice(days)) + pd.Timedelta(hours=int(rng.integers(0, 24))),
+                           "equipo" if rng.random() < 0.5 else "aguas_arriba"))
+        weather.append(pd.DataFrame({
+            "celda_id": cell, "hora": hours, "met_racha_1h": gust, "met_viento_1h": gust * 0.6,
+            "met_lluvia_1h": rain, "met_temp_1h": 15 + 10 * np.sin(2 * np.pi * (hours.dayofyear.to_numpy() - 100) / 365),
+            "met_humedad_1h": 60.0, "met_presion_1h": 1013.0, "met_presion_delta_24h": 0.0, "met_nieve_24h": 0.0,
+        }))
+
+    for dist in CELLS:
+        events.append((dist, pd.Timestamp("2025-04-28 12:33"), "apagon"))
+
+    weather = pd.concat(weather, ignore_index=True)
+    region = weather.groupby("hora")["met_racha_1h"].max().rolling(3, min_periods=1).max()
+    weather["met_region_racha_max_3h"] = weather["hora"].map(region)
+    # What a model forecast the day before, from 2024: the same weather with noise and stronger gusts.
+    archived = weather["hora"] >= "2024-01-01"
+    noise = rng.normal(1.0, 0.15, len(weather))
+    weather["metp1_racha_1h"] = np.where(archived, weather["met_racha_1h"] * 1.15 * noise, np.nan)
+    weather["metp1_viento_1h"] = np.where(archived, weather["met_viento_1h"] * 1.15 * noise, np.nan)
+    weather["metp1_lluvia_1h"] = np.where(archived, weather["met_lluvia_1h"] * noise.clip(0), np.nan)
+    weather["metp1_temp_1h"] = np.where(archived, weather["met_temp_1h"] + 1.0, np.nan)
+    weather["metp1_humedad_1h"] = np.where(archived, 60.0, np.nan)
+    # The gusts against the climate of each cell, as Gold computes them for the reanalysis and the forecast.
+    p98 = weather[weather["hora"] < "2022-01-01"].groupby("celda_id")["met_racha_1h"].quantile(0.98)
+    for prefix in ("met", "metp1"):
+        ratio = weather[f"{prefix}_racha_1h"] / weather["celda_id"].map(p98)
+        weather[f"{prefix}_racha_clima_1h"] = ratio
+        weather[f"{prefix}_racha_ku_1h"] = np.clip(ratio - 1.0, 0.0, None) ** 3
+    # The archive of warnings starts in the middle of 2019, as the real one in 2018.
+    warnings = pd.DataFrame(warnings)
+    warnings = warnings[warnings["enviado_ts"] >= "2019-06-18"].reset_index(drop=True)
+    return weather, events, warnings
+
+
+@pytest.fixture(scope="module")
+def tables(spark):
+    weather, events, warnings = synthetic()
+    save(spark, weather, "l3_gold.meteo_celda_hora")
+    save(spark, pd.DataFrame([{"distribuidora_id": d, "ct_id": f"{d}-{i}", "celda_id": c}
+                              for d, c in CELLS.items() for i in range(3)]), "l3_gold.map_ct_celda")
+    facts, causes = [], []
+    for k, (dist, start, cause) in enumerate(events):
+        period, inc = start.strftime("%Y%m"), f"E{k}"
+        facts.append({"distribuidora_id": dist, "periodo_id": period, "incidencia_id": inc, "ct_id": f"{dist}-0",
+                      "inicio_ts": start, "conocido_ts": start + pd.Timedelta(days=2), "variante": "principal"})
+        causes.append({"distribuidora_id": dist, "periodo_id": period, "id": inc, "causa": cause})
+    save(spark, pd.DataFrame(facts), "l3_gold.fact_interrupciones_mt")
+    save(spark, pd.DataFrame(causes), "l2_silver.f_incidencia_causa")
+    save(spark, warnings, "l2_silver.f_aviso_meteo")
+    return events
+
+
+@pytest.fixture(scope="module")
+def config_path(workdir):
+    with open(CONFIG, encoding="utf-8") as file:
+        config = json.load(file)
+    config["exportar_dir"] = os.path.join(workdir, "resultados")
+    config["spark_conf"] = {}
+    config["meteo_dia"] = {
+        **config.get("meteo_dia", {}),
+        "desde": "2019-01-08",
+        "hasta": "2026-01-01",
+        "anios_evaluacion": [2023, 2024, 2025],
+        "bootstrap_reps": 50,
+        "busqueda": {"logistica": [{"C": 0.1}],
+                     "xgboost": [{"max_depth": 2, "min_child_weight": 5, "learning_rate": 0.1, "subsample": 0.8,
+                                  "colsample_bytree": 0.8, "n_estimators": 200, "early_stopping_rounds": 20,
+                                  "verbose": 0}]},
+        "variantes": [
+            {"nombre": "calendario_historia", "desde": "2019-01-08", "bloques": ["calendario", "historia"]},
+            {"nombre": "ayer", "desde": "2019-01-08", "bloques": ["calendario", "historia", "ayer"]},
+            {"nombre": "avisos", "desde": "2019-06-25", "bloques": ["calendario", "historia", "ayer", "avisos"]},
+            {"nombre": "perfecta", "desde": "2019-01-08", "bloques": ["calendario", "historia", "ayer", "dia"]},
+            {"nombre": "perfecta_comun", "desde": "2019-01-08",
+             "bloques": ["calendario", "historia", "ayer", "dia_comun"]},
+            {"nombre": "perfecta_extremos", "desde": "2019-01-08",
+             "bloques": ["calendario", "historia", "ayer", "dia", "extremos"]},
+            {"nombre": "comun_avisos", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun"]},
+            {"nombre": "comun_avisos_extremos", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun", "extremos"]},
+            {"nombre": "comun_avisos_detalle", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "ayer", "avisos", "avisos_detalle", "dia_comun"]},
+        ],
+        "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos"],
+        "anios_prevision": [2024, 2025],
+        "comparaciones_prevision": [["comun_avisos_extremos__logistica__prevision",
+                                     "comun_avisos__logistica__prevision"]],
+        "comparaciones": [["perfecta__logistica", "ayer__logistica"], ["avisos__logistica", "ayer__logistica"]],
+    }
+    path = os.path.join(workdir, "config.json")
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(config, file)
+    return path
+
+
+@pytest.fixture(scope="module")
+def result(spark, tables, config_path, workdir):
+    code = rd.main(["--run-id", RUN_ID, "--config", config_path])
+    return code, os.path.join(workdir, "resultados", RUN_ID)
+
+
+def read(folder, name):
+    return pd.read_csv(os.path.join(folder, name))
+
+
+def test_report_files_and_days(result):
+    code, folder = result
+    assert code == 0
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    for title in ("## Variantes", "## Comparación en los años comunes", "## Diferencias emparejadas",
+                  "## Días con 2 incidencias o más"):
+        assert title in text
+    rows = read(folder, "filas.csv")
+    # Without the blackout day; 2024 is a leap year.
+    assert rows.loc[rows["anio"] == 2025, "dias"].tolist() == [364, 364]
+    assert rows.loc[rows["anio"] == 2024, "dias"].tolist() == [366, 366]
+    assert (rows["dias_y_dia_meteo"] <= rows["dias_y_dia"]).all()
+    assert (rows["dias_y_dia_varias"] <= rows["dias_y_dia"]).all()
+
+
+def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
+    _, folder = result
+    table = read(folder, "comparacion.csv").set_index(["variante", "modelo"])
+    perfect = table.loc[("perfecta", "logistica"), "pr_auc"]
+    nothing = table.loc[("calendario_historia", "logistica"), "pr_auc"]
+    warned = table.loc[("avisos", "logistica"), "pr_auc"]
+    assert perfect > 2 * nothing
+    # The warnings announce most storms the evening before: better than the weather of yesterday.
+    assert warned > 1.5 * table.loc[("ayer", "logistica"), "pr_auc"]
+    # A reference is shown once, under the first variant that has its feature.
+    references = table.reset_index().set_index("modelo")
+    assert references.loc["naif_racha_dia", "pr_auc"] > nothing
+    assert references.loc["naif_aviso", "dias_positivos_en_top_10pct"] > 0.3
+    # The two models of every variant together by their percentiles in the year.
+    assert table.loc[("perfecta", "rango"), "pr_auc"] > 2 * nothing
+    assert len(read(folder, "diferencias.csv")) == 2
+
+
+def test_the_real_forecast_scores_the_years_it_covers(result):
+    _, folder = result
+    full = read(folder, "prevision.csv")
+    # The variants of the forecast, with the models of yesterday once.
+    assert set(full["variante"]) == {"perfecta_comun", "comun_avisos", "comun_avisos_extremos", "ayer"}
+    table = full[full["variante"].isin(["perfecta_comun", "ayer"])].set_index(["tiempo_del_dia", "modelo"])
+    assert {"reanalisis", "prevision", "prevision_cuantiles", "solo_ayer"} <= set(table.index.get_level_values(0))
+    warned = full[full["variante"] == "comun_avisos"].set_index(["tiempo_del_dia", "modelo"])
+    assert warned.loc[("prevision_cuantiles", "logistica"), "pr_auc"] > full.loc[
+        (full["variante"] == "ayer") & (full["modelo"] == "logistica"), "pr_auc"].iloc[0]
+    assert ("prevision_cuantiles", "rango") in table.index
+    perfect = table.loc[("reanalisis", "logistica"), "pr_auc"]
+    mapped = table.loc[("prevision_cuantiles", "logistica"), "pr_auc"]
+    # A noisy forecast keeps most of what the weather of the day says, far above knowing only yesterday.
+    assert mapped > 2 * table.loc[("solo_ayer", "logistica"), "pr_auc"]
+    assert mapped > 0.6 * perfect
+    differences = read(folder, "prevision_diferencias.csv")
+    assert len(differences) >= 4 and differences["a"].str.startswith("comun_avisos__").any()
+    # Between variants on the same forecast (comparaciones_prevision).
+    pair = differences[(differences["a"] == "comun_avisos_extremos__logistica__prevision")
+                       & (differences["b"] == "comun_avisos__logistica__prevision")]
+    assert len(pair) == 1
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "## Con la previsión real del día anterior (2024, 2025)" in text
+
+
+def test_metrics_and_run_saved(result, spark):
+    assert spark.table("l3_gold.ml_metricas").where(f"run_id = '{RUN_ID}'").count() > 100
+    run = spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}'").first()
+    assert run is not None and run["etiqueta"] == "meteo_dia:y_dia"
+
+
+def test_the_extremes_of_the_forecast_are_never_a_block(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    pdf, blocks, _ = rd.build_dataset(spark, config, rd.settings(config))
+    names = ["prev_ext_racha_clima_max", "prev_ext_racha_clima_media", "prev_ext_racha_ku", "prev_ext_dias_calor"]
+    assert set(names) <= set(blocks["prevision"])
+    assert not any(c.startswith("prev_") for c in blocks["extremos"])
+    # The details of the warnings are a block of their own, 0 without warning once the archive exists.
+    assert set(rd.WARNING_DETAILS) == set(blocks["avisos_detalle"])
+    assert not any(c.startswith("aviso_det_") for c in blocks["avisos"])
+    archived = pdf[pdf["fecha"] >= "2019-06-20"]
+    assert archived["aviso_det_viento_ct"].notna().all() and archived["aviso_det_viento_ct"].max() == 1.0
+    # Only from 2024, when the forecast starts; the forecast gusts are stronger, so they go further over the climate.
+    known = pdf[pdf["prev_ext_racha_clima_max"].notna()]
+    assert known["fecha"].min() == pd.Timestamp("2024-01-01")
+    assert known["prev_ext_racha_clima_max"].mean() > known["ext_racha_clima_max"].mean()
+
+
+def test_the_models_of_the_hours_never_see_the_forecast_of_the_day_before(spark, tables):
+    from job_ml_horas_riesgo import distributor_weather
+
+    _, names = distributor_weather(spark, {"activo": True})
+    assert names and not any("metp1_" in n or "metp2_" in n for n in names)
+    _, names = distributor_weather(spark, {"activo": True}, prefixes=("met_", "metp1_"))
+    assert "metd_max_metp1_racha_1h" in names

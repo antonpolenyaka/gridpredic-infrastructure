@@ -36,6 +36,31 @@ cleaning and the aggregates are in Silver.
 - ieex_proyeccion_ame: population projected by the IEEX for every group of
   municipalities (AME) and year, 2024-2039, and ieex_ame_municipio: the AME
   of every municipality, from the CSV files of Landing.
+- gbif_conteo_celda: records of GBIF by cell and taxon (white stork, all
+  the birds): the total and the counts by year and by month (tipo total,
+  anio or mes, clave the year or the month).
+- effis_area_quemada: one row per burnt area of EFFIS: identifier, fire
+  date, last update, country, province, municipality, area (ha), the centre
+  and the box of its polygon in latitude and longitude (whatever the axis
+  order of the answer) and all the attributes as they come (atributos, JSON).
+- aemet_aviso: one row per warning message of AEMET and zone whose polygon
+  touches the study area: identifier, kind of message (Alert, Update,
+  Cancel), sent, effective, onset and expiry as they come (with their
+  offset), phenomenon code and name, level, threshold, probability, zone
+  code and name, polygon (lat lon pairs) and its box. The archive comes as
+  tar files that may hold other tar or gzip files; every XML inside is read.
+  The green messages (no warning) are left out and a message repeated in
+  several packages is kept once.
+- firms_foco: one row per active fire of FIRMS in the box of the study:
+  latitude, longitude, date and UTC time of the pass, satellite, instrument,
+  confidence (l, n, h for VIIRS; 0 - 100 for MODIS), fire radiative power,
+  day or night, brightness, the pixel size and the source (sensor and
+  processing), as text, as FIRMS gives them.
+- cems_fwi_dia: one row per day and point of the grid of the fire danger
+  indices of CEMS: date, latitude, longitude (from -180 to 180), the Fire
+  Weather Index (fwi) and its parts (ffmc, dmc, dc, isi, bui) and the piece
+  of Landing (year and dataset type, consolidated or intermediate). The
+  NetCDF4 files are read with h5py.
 
 The tables are rebuilt whole in every run (a few thousand rows, the
 buildings about a hundred thousand).
@@ -43,6 +68,7 @@ buildings about a hundred thousand).
     docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/01_bronze/job_bronze_datos_publicos.py
 """
 
+import csv
 import gzip
 import io
 import json
@@ -51,6 +77,7 @@ import math
 import os
 import re
 import sys
+import tarfile
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -582,6 +609,286 @@ def parse_catastro(raw: bytes, record: dict) -> list:
 # Main
 # ---------------------------------------------------------------------------
 
+# GBIF and EFFIS --------------------------------------------------------------
+
+def parse_gbif(payload: dict) -> list:
+    """Rows (celda_id, taxon, tipo, clave, registros) of the counts of one cell."""
+    cell = payload.get("_peticion", {}).get("celda_id")
+    stamp = payload.get("_peticion", {}).get("descargado_utc")
+    rows = []
+    for taxon, answer in (payload.get("taxones") or {}).items():
+        base = {"celda_id": cell, "taxon": taxon, "descargado_utc": stamp}
+        rows.append({**base, "tipo": "total", "clave": None, "registros": int(answer.get("count") or 0)})
+        for facet in answer.get("facets") or []:
+            kind = {"YEAR": "anio", "MONTH": "mes"}.get(str(facet.get("field", "")).upper())
+            if kind is None:
+                continue
+            for item in facet.get("counts") or []:
+                key = integer(item.get("name"))
+                if key is not None:
+                    rows.append({**base, "tipo": kind, "clave": key, "registros": int(item.get("count") or 0)})
+    return rows
+
+
+# Lat and lon of the study area, to tell the axis order of a GML answer.
+AREA_LAT = (36.0, 43.0)
+AREA_LON = (-9.5, -3.0)
+
+
+def coordinate_pairs(text: str) -> list:
+    numbers = [float(x) for x in re.split(r"[\s,]+", text.strip()) if x]
+    return list(zip(numbers[0::2], numbers[1::2]))
+
+
+def lat_lon(pairs: list) -> list:
+    """The pairs as (lat, lon): the order of the answer is told by the ranges of the study area."""
+    if not pairs:
+        return []
+    a, b = pairs[0]
+    if AREA_LAT[0] <= a <= AREA_LAT[1] and AREA_LON[0] <= b <= AREA_LON[1]:
+        return pairs
+    return [(y, x) for x, y in pairs]
+
+
+def parse_effis(text: str) -> list:
+    """Burnt areas of a GML answer of the EFFIS WFS (GML 2 or 3, any prefix)."""
+    root = ET.fromstring(text.encode("utf-8") if isinstance(text, str) else text)
+    rows = []
+    for member in root.iter():
+        if not member.tag.endswith("featureMember") or len(member) == 0:
+            continue
+        feature = member[0]
+        attributes, points = {}, []
+        for element in feature.iter():
+            local = element.tag.split("}")[-1]
+            if local in ("posList", "coordinates", "pos") and element.text:
+                points += coordinate_pairs(element.text)
+            elif element is not feature and len(element) == 0 and element.text and element.text.strip():
+                attributes[local.lower()] = element.text.strip()
+        points = lat_lon(points)
+        lats = [p[0] for p in points]
+        lons = [p[1] for p in points]
+        fid = feature.get("{http://www.opengis.net/gml}id") or feature.get("fid") or attributes.get("id")
+        rows.append({
+            "id": attributes.get("id") or fid,
+            "fecha_incendio": attributes.get("firedate"),
+            "ultima_actualizacion": attributes.get("lastupdate"),
+            "pais": attributes.get("country"),
+            "provincia": attributes.get("province"),
+            "municipio": attributes.get("commune"),
+            "area_ha": number(attributes.get("area_ha")),
+            "latitud": sum(lats) / len(lats) if lats else None,
+            "longitud": sum(lons) / len(lons) if lons else None,
+            "lat_min": min(lats) if lats else None, "lat_max": max(lats) if lats else None,
+            "lon_min": min(lons) if lons else None, "lon_max": max(lons) if lons else None,
+            "n_vertices": len(points),
+            "atributos": json.dumps(attributes, ensure_ascii=False),
+        })
+    return rows
+
+
+# AEMET ----------------------------------------------------------------------
+
+CAP = "{urn:oasis:names:tc:emergency:cap:1.2}"
+
+
+def cap_value(parent, tag: str, name: str):
+    """Value of the <tag><valueName>name</valueName><value>...</value></tag> child of parent."""
+    for element in parent.findall(f"{CAP}{tag}"):
+        if (element.findtext(f"{CAP}valueName") or "").strip() == name:
+            return (element.findtext(f"{CAP}value") or "").strip() or None
+    return None
+
+
+def polygon_points(text: str) -> list:
+    """(lat, lon) pairs of a CAP polygon ("lat,lon lat,lon ...")."""
+    points = []
+    for pair in (text or "").split():
+        parts = pair.split(",")
+        if len(parts) == 2:
+            lat, lon = number(parts[0]), number(parts[1])
+            if lat is not None and lon is not None:
+                points.append((lat, lon))
+    return points
+
+
+CAP_LEVEL = re.compile(rb"AEMET-Meteoalerta nivel</valueName>\s*<value>\s*([^<\s]*)")
+CAP_CANCEL = re.compile(rb"<msgType>\s*Cancel\s*</msgType>")
+
+
+def parse_cap(raw: bytes, box: tuple = None, green: bool = False) -> list:
+    """
+    Rows of one CAP message of AEMET, one per area, in Spanish when the
+    message comes in two languages. box (lat0, lon0, lat1, lon1) keeps only
+    the areas whose polygon box touches it. The green messages (no warning,
+    almost all of the archive: every zone and phenomenon is sent green
+    several times a day) are left out unless green is set; a cancellation
+    is always kept.
+    """
+    if not green:
+        # Most messages are green: a look at the raw text saves parsing them.
+        levels = set(CAP_LEVEL.findall(raw))
+        if levels and levels <= {b"verde"} and not CAP_CANCEL.search(raw):
+            return []
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return []
+    if not root.tag.endswith("alert"):
+        return []
+
+    infos = root.findall(f"{CAP}info")
+    info = next((i for i in infos if (i.findtext(f"{CAP}language") or "").lower().startswith("es")),
+                infos[0] if infos else None)
+    if info is None:
+        return []
+
+    head = {
+        "identificador": root.findtext(f"{CAP}identifier"),
+        "tipo_mensaje": root.findtext(f"{CAP}msgType"),
+        "enviado": root.findtext(f"{CAP}sent"),
+        "referencias": root.findtext(f"{CAP}references"),
+        "evento": info.findtext(f"{CAP}event"),
+        "severidad": info.findtext(f"{CAP}severity"),
+        "certeza": info.findtext(f"{CAP}certainty"),
+        "efectivo": info.findtext(f"{CAP}effective"),
+        "inicio": info.findtext(f"{CAP}onset"),
+        "fin": info.findtext(f"{CAP}expires"),
+        "fenomeno": cap_value(info, "eventCode", "AEMET-Meteoalerta fenomeno"),
+        "nivel": cap_value(info, "parameter", "AEMET-Meteoalerta nivel"),
+        "parametro": cap_value(info, "parameter", "AEMET-Meteoalerta parametro"),
+        "probabilidad": cap_value(info, "parameter", "AEMET-Meteoalerta probabilidad"),
+    }
+    if not green and (head["nivel"] or "").strip().lower() == "verde" and head["tipo_mensaje"] != "Cancel":
+        return []
+
+    rows = []
+    for area in info.findall(f"{CAP}area"):
+        points = []
+        for polygon in area.findall(f"{CAP}polygon"):
+            points += polygon_points(polygon.text)
+        lats = [p[0] for p in points]
+        lons = [p[1] for p in points]
+        if box and points:
+            lat0, lon0, lat1, lon1 = box
+            if max(lats) < lat0 or min(lats) > lat1 or max(lons) < lon0 or min(lons) > lon1:
+                continue
+        rows.append({
+            **head,
+            "zona": cap_value(area, "geocode", "AEMET-Meteoalerta zona"),
+            "zona_nombre": area.findtext(f"{CAP}areaDesc"),
+            "poligono": " ".join(f"{lat},{lon}" for lat, lon in points) or None,
+            "lat_min": min(lats) if lats else None, "lat_max": max(lats) if lats else None,
+            "lon_min": min(lons) if lons else None, "lon_max": max(lons) if lons else None,
+        })
+    return rows
+
+
+# CSV column of FIRMS -> Bronze column (VIIRS gives bright_ti4, MODIS brightness).
+FIRMS_COLUMNS = {
+    "latitude": "latitud", "longitude": "longitud", "acq_date": "fecha", "acq_time": "hora_utc",
+    "satellite": "satelite", "instrument": "instrumento", "confidence": "confianza", "frp": "frp",
+    "daynight": "dia_noche", "bright_ti4": "brillo", "brightness": "brillo", "scan": "scan", "track": "track",
+    "version": "version",
+}
+
+
+def parse_firms(text: str, source: str) -> list:
+    """Rows of a CSV of the area API of FIRMS (empty answers have only the header)."""
+    rows = []
+    for record in csv.DictReader(io.StringIO(text)):
+        row = {"fuente": source}
+        for column, name in FIRMS_COLUMNS.items():
+            if column in record and record[column] not in (None, ""):
+                row[name] = record[column]
+        if row.get("latitud") and row.get("longitud") and row.get("fecha"):
+            rows.append(row)
+    return rows
+
+
+def parse_aemet_archive(raw: bytes, box: tuple = None, depth: int = 0) -> list:
+    """Rows of every CAP message inside an archive of AEMET (tar, tar.gz, gzip or a bare XML), recursively."""
+    if depth > 4 or not raw:
+        return []
+    if raw[:2] == b"\x1f\x8b":
+        try:
+            return parse_aemet_archive(gzip.decompress(raw), box, depth + 1)
+        except OSError:
+            return []
+    stripped = raw.lstrip()
+    if stripped.startswith(b"<") or stripped.startswith(b"\xef\xbb\xbf<"):
+        return parse_cap(raw, box)
+    try:
+        archive = tarfile.open(fileobj=io.BytesIO(raw), mode="r:*")
+    except tarfile.TarError:
+        return []
+    rows = []
+    with archive:
+        for member in archive.getmembers():
+            if not member.isfile():
+                continue
+            handle = archive.extractfile(member)
+            if handle is not None:
+                rows += parse_aemet_archive(handle.read(), box, depth + 1)
+    return rows
+
+
+# Short names of the variables of the EWDS (GRIB shortName kept by the NetCDF) -> Bronze column.
+FWI_VARIABLES = {"fwinx": "fwi", "ffmcode": "ffmc", "dufmcode": "dmc", "drtcode": "dc", "infsinx": "isi",
+                 "fbupinx": "bui", "buinfx": "bui"}
+TIME_UNITS = re.compile(r"\s*(seconds|minutes|hours|days)\s+since\s+(\d{4}-\d{1,2}-\d{1,2})(?:[ T](\d{1,2}:\d{2}(?::\d{2})?))?")
+
+
+def nc_dates(values, units: str) -> list:
+    """ISO dates of the values of a CF time axis ("seconds since 1970-01-01" and the like)."""
+    match = TIME_UNITS.match(units or "")
+    if not match:
+        raise ValueError(f"Unknown time units: {units}")
+    step = {"seconds": "s", "minutes": "min", "hours": "h", "days": "D"}[match.group(1)]
+    base = pd.Timestamp(match.group(2) + (" " + match.group(3) if match.group(3) else ""))
+    return [(base + pd.to_timedelta(float(v), unit=step)).date().isoformat() for v in values]
+
+
+def text_attribute(value) -> str:
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    if isinstance(value, list):
+        value = value[0] if value else ""
+    return value.decode("utf-8", "replace") if isinstance(value, bytes) else str(value)
+
+
+def parse_fwi(raw: bytes, piece: str) -> list:
+    """Rows of a NetCDF4 of the fire danger indices: one per day and point, the indices as numbers."""
+    import h5py
+    import numpy as np
+
+    with h5py.File(io.BytesIO(raw), "r") as nc:
+        axis = "valid_time" if "valid_time" in nc else "time"
+        dates = nc_dates(nc[axis][:], text_attribute(nc[axis].attrs.get("units", b"")))
+        lats = np.asarray(nc["latitude"][:], dtype="float64")
+        lons = np.asarray(nc["longitude"][:], dtype="float64")
+        lons = np.where(lons > 180.0, lons - 360.0, lons)
+        values = {}
+        for name, column in FWI_VARIABLES.items():
+            if name in nc and nc[name].ndim == 3 and column not in values:
+                data = np.asarray(nc[name][:], dtype="float64")
+                fill = nc[name].attrs.get("_FillValue")
+                if fill is not None and not np.all(np.isnan(np.atleast_1d(fill))):
+                    data[np.isclose(data, float(np.atleast_1d(fill)[0]))] = np.nan
+                data[np.abs(data) > 1e20] = np.nan
+                values[column] = data
+
+    t, y, x = np.meshgrid(np.arange(len(dates)), np.arange(len(lats)), np.arange(len(lons)), indexing="ij")
+    frame = pd.DataFrame({"fecha": np.asarray(dates)[t.ravel()], "latitud": np.round(lats[y.ravel()], 4),
+                          "longitud": np.round(lons[x.ravel()], 4)})
+    for column, data in values.items():
+        frame[column] = data.reshape(-1)
+    frame = frame.dropna(subset=list(values), how="all")
+    frame["pieza"] = piece
+    return [{k: (None if isinstance(v, float) and v != v else v) for k, v in row.items()}
+            for row in frame.to_dict("records")]
+
+
 def read_json(fs, path):
     with fs.open(path, "r") as file:
         return json.load(file)
@@ -680,6 +987,62 @@ def main():
             with fs.open(path, "rb") as file:
                 rows = pd.read_csv(file, dtype=str).assign(descargado_utc=stamp_utc).to_dict("records")
         write(rows, table, label)
+
+    birds = []
+    for path in sorted(fs.glob(f"{landing}/aves/*.json")):
+        birds += parse_gbif(read_json(fs, path))
+    write(birds, tables["aves"], "GBIF counts")
+
+    fires_path = f"{landing}/incendios/effis_area_quemada.gml"
+    fires = []
+    if fs.exists(fires_path):
+        with fs.open(fires_path, "rb") as file:
+            fires = parse_effis(file.read())
+        stamp_path = f"{landing}/incendios/peticion.json"
+        stamp_utc = read_json(fs, stamp_path).get("descargado_utc") if fs.exists(stamp_path) else None
+        for row in fires:
+            row["descargado_utc"] = stamp_utc
+    write(fires, tables["incendios"], "EFFIS burnt areas")
+
+    # The warnings that touch the study area: the cells with the margin of the configuration.
+    cells_path = f"{landing}/celdas.json"
+    warnings, box = [], None
+    if "avisos" in tables and fs.glob(f"{landing}/avisos/*.tar"):
+        margin = float(cfg.get("avisos", {}).get("margen_grados", 0.3))
+        if fs.exists(cells_path):
+            cells = read_json(fs, cells_path)
+            lats = [c["latitud"] for c in cells]
+            lons = [c["longitud"] for c in cells]
+            box = (min(lats) - margin, min(lons) - margin, max(lats) + margin, max(lons) + margin)
+        else:
+            box = (AREA_LAT[0], AREA_LON[0], AREA_LAT[1], AREA_LON[1])
+        # The packages of a piece repeat the messages in force: one row per message and zone.
+        unique = {}
+        for path in sorted(fs.glob(f"{landing}/avisos/*.tar")):
+            with fs.open(path, "rb") as file:
+                rows = parse_aemet_archive(file.read(), box)
+            for row in rows:
+                unique.setdefault((row.get("identificador"), row.get("zona")), row)
+            logger.info("AEMET %s: %s messages and zones in the area", path.rsplit("/", 1)[-1], len(rows))
+        warnings = list(unique.values())
+    if "avisos" in tables:
+        write(warnings, tables["avisos"], "AEMET warnings")
+
+    hotspots = []
+    if "focos" in tables:
+        for path in sorted(fs.glob(f"{landing}/focos/*/*.csv")):
+            with fs.open(path, "r") as file:
+                hotspots += parse_firms(file.read(), path.rsplit("/", 2)[-2])
+        write(hotspots, tables["focos"], "FIRMS active fires")
+
+    danger = []
+    if "fwi" in tables:
+        for path in sorted(fs.glob(f"{landing}/fwi/*.nc")):
+            with fs.open(path, "rb") as file:
+                rows = parse_fwi(file.read(), path.rsplit("/", 1)[-1][:-3])
+            danger += rows
+            logger.info("EWDS %s: %s days and points", path.rsplit("/", 1)[-1], len(rows))
+        write(danger, tables["fwi"], "CEMS fire danger indices")
 
     logger.info("Bronze of the public data completed")
 
