@@ -406,3 +406,11 @@ El cuadro de mando es una página estática (`dashboard/index.html`, Leaflet sob
 ```powershell
 docker compose up -d dashboard
 ```
+
+**Los rayos en vivo.** `dag_rayos_vivo` corre cada 15 minutos (`riesgo_manana.rayos.horario`): pide al Data Store de EUMETSAT los productos del Lightning Imager de MTG (LI-2-LFL, uno cada 10 minutos) de la última hora y media que aún no están en la Landing, guarda los flashes de la caja de estudio en `s3://datalake/00_landing/vivo/rayos/<día>/flashes_<inicio>_<fin>.csv` (un fichero por producto, vacío cuando no hubo rayos, para no volver a pedirlo) y escribe `dashboard/data/rayos.json`: los rayos de la última hora y, con los municipios de `riesgo.json`, cuántos cayeron a menos de 10 y de 20 km de la red de cada distribuidora y qué líneas tocan. El cuadro de mando los pinta sobre el mapa (más pálidos cuanto más antiguos) con una franja por distribuidora ("tormenta sobre la red", "tormenta cerca" o "sin tormenta") y los vuelve a leer cada 5 minutos. Hace falta la cuenta gratuita del Data Store (`EUMETSAT_CONSUMER_KEY` y `EUMETSAT_CONSUMER_SECRET` en `.env`); sin ella el DAG se salta. Es la señal de la hora siguiente que el modelo por horas no tiene: antes del 17 % de las incidencias de 2024 - 2025 hubo rayos a menos de 10 km de la red en la hora anterior, frente al 1,1 % de las ventanas sin incidencias.
+
+```powershell
+docker compose up -d --no-deps airflow                                  # recoge las credenciales de .env
+docker compose exec -T airflow airflow dags unpause dag_rayos_vivo
+docker compose exec -T airflow python /app/jobs/00_landing/job_landing_rayos.py   # una pasada a mano
+```
