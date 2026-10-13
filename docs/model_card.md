@@ -29,7 +29,7 @@ metrics:
 
 Clasificadores binarios que estiman la probabilidad de que en las siguientes 1 a 3 horas empiece una interrupción imprevista de suministro. Hay dos unidades: cada centro de transformación (CT) de media tensión y hora, que es la unidad con la que empezamos, y cada distribuidora y hora (horas de riesgo), que es donde los resultados muestran que vive la señal. Se entrena sobre la telemetría histórica del SCADA TedisNet y las interrupciones registradas en Calser (ver la [dataset card](dataset_card.md)). Es una herramienta de apoyo a la decisión del operador de la distribuidora: no actúa sobre la red.
 
-Estado a 11.10.2026: pipeline hasta Gold cargado con la ventana completa (dataset `ds_20261010T045104_a5a2531cacbb`, 246 features, 1.287 CT), meteorología integrada, modelos entrenados y evaluados en `etl/jobs/04_ml` (ver [ml-training.md](ml-training.md)) y test usado una sola vez, con la configuración cerrada. Los requisitos y la metodología de evaluación se fijaron en esta ficha antes de entrenar; los resultados están en Results.
+Estado a 11.10.2026: pipeline hasta Gold cargado con la ventana completa (dataset `ds_20261010T045104_a5a2531cacbb`, 246 features, 1.287 CT), meteorología integrada, modelos entrenados y evaluados en `etl/jobs/04_ml` (ver [ml-training.md](ml-training.md)) y test usado una sola vez, con la configuración cerrada. Los requisitos y la metodología de evaluación se fijaron en esta ficha antes de entrenar; los resultados están en Results. Desde el 13.10.2026 Results recoge también el riesgo del día siguiente por distribuidora, con los avisos de AEMET y la previsión real de ICON-EU.
 
 ## Model Details
 
@@ -184,7 +184,19 @@ Contra los criterios de aceptación de esta ficha: la PR-AUC supera con claridad
 
 **Riesgo del año siguiente por CT y cabecera** (`job_ml_riesgo_ct.py`, `rct_20261011T215018_d996ba`, años 2021 - 2025). XGBoost Tweedie sobre los kVA·h imprevistos de cada CT y año, con lo que se sabía al empezar el año. Por cabecera, el 10 % que señala el modelo con historia y estructura recoge el 70,9 % de los kVA·h del año siguiente, frente al 63,5 % de ordenar por los dos años anteriores y al 80,7 % del máximo posible, y gana en cuatro de los cinco años; con el 20 % y el SCADA llega al 82,9 % (74,3 % la lista naif). Por CT apenas mejora a la lista naif (30,9 % frente a 27,9 % con el clima). Ni los datos públicos ni el bloque de obras y edificación (PLACSP y Catastro) aportan a un año vista. Las obras públicas por municipio y año tampoco anticipan las averías de terceros: comparando cada municipio consigo mismo, la razón de tasas es 0,66 [0,51 - 1,08]. Ver [network-analysis.md](network-analysis.md).
 
-**Lectura.** El modelo sirve para señalar días y zonas de riesgo con unas horas de antelación, apoyado en la meteorología y en el estado de la red aguas arriba; no sirve para anunciar la hora exacta ni el CT concreto de la interrupción. No recomendamos pasarlo a serving como alerta horaria por CT. A un año vista, en cambio, la lista de cabeceras sí es útil para decidir dónde revisar, podar o poner telemando.
+**Riesgo del día siguiente por distribuidora** (`job_ml_riesgo_dia.py`, `dia_ext_20261013_0332` y `dia_det_20261013_0353`). Con lo que se sabe la tarde anterior: calendario, historia de Calser, tiempo del día anterior, avisos de AEMET enviados antes de las 20:00 y la previsión de ICON-EU para el día siguiente con la racha frente al clima de cada celda. Cada año lo puntúa un modelo entrenado con el reanálisis de los años anteriores; 2024 y 2025 se puntúan también con la previsión real (58 días con avería, tasa base 0,028):
+
+| Modelo | PR-AUC con la previsión real | Lift | Días con avería en el 10 % de días de más riesgo | En el 20 % |
+| --- | --- | --- | --- | --- |
+| Regresión logística con avisos y extremos | 0,191 | 7,0 | 52 % | 72 % |
+| Logística y XGBoost por percentiles, con avisos y extremos | 0,198 | 7,3 | 47 % | 71 % |
+| Regresión logística con avisos, sin extremos | 0,170 | 6,2 | 52 % | 69 % |
+| Racha máxima prevista (referencia) | 0,105 | 3,9 | 41 % | 57 % |
+| Solo el tiempo de ayer, regresión logística | 0,070 | 2,6 | 22 % | 45 % |
+
+Con el reanálisis en 2022 - 2025 (137 días con avería) la logística con avisos y extremos llega a 0,158. Contra los criterios de aceptación: supera con claridad a la tasa base y a la regla de la racha prevista, y al modelo que solo sabe el tiempo de ayer con el intervalo entero por encima de cero (+0,108 con la previsión llevada por cuantiles, de 0,025 a 0,214). Pasar del reanálisis a la previsión real apenas cuesta (de 0,204 a 0,191 en esos dos años, sin diferencia que se distinga). Con dos días de antelación la logística baja a 0,150. Ver [causas-incidencias.md](causas-incidencias.md), apartado 8.
+
+**Lectura.** El modelo sirve para señalar días y zonas de riesgo con unas horas de antelación, apoyado en la meteorología y en el estado de la red aguas arriba; no sirve para anunciar la hora exacta ni el CT concreto de la interrupción. No recomendamos pasarlo a serving como alerta horaria por CT. La víspera, en cambio, el riesgo del día siguiente con la previsión de ICON-EU y los avisos de AEMET sí sirve para planificar las brigadas, y es el que proponemos llevar a serving, con las cabeceras ordenadas por tamaño para decidir dónde mirar primero. A un año vista, la lista de cabeceras es útil para decidir dónde revisar, podar o poner telemando.
 
 ## Model Examination [optional]
 
