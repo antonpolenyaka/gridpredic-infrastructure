@@ -9,7 +9,7 @@ Hasta ahora medíamos el modelo con métricas de clasificación (PR-AUC, parte d
 - Las averías: las incidencias de causa local de Calser (equipos, meteorología, vegetación, fauna, terceros y causa desconocida; fuera las de aguas arriba, los apagones, las programadas y las maniobras) en los CT en estudio, con los clientes de cada CT y la duración real de cada corte. Las horas-cliente son la suma, CT a CT, de clientes por horas sin suministro. Como un solo corte (el incendio de Jarilla del 13.08.2025, tres CT de Cabezabellosa sin luz 32 horas) pesa tanto como un año entero, las tablas recortan los cortes a 110 minutos (el percentil 99 de 2022 - 2025) y dan al lado la cifra sin recortar.
 - Las brigadas: las bases que minimizan la llegada (p-mediana sobre los municipios de los CT) con los minutos por carretera de OSRM sobre OpenStreetMap, 1 y 2 brigadas, y fuera del horario laboral (lunes a viernes de 8 a 17) una movilización de 30 minutos cuando la brigada está de retén.
 
-El cálculo está en el job `job_ml_caso_negocio.py` y deja `historico.json` para la página del cuadro de mando, las tablas de este documento (ejecución `caso_v4_20261014_1056` del lakehouse) y el Excel `2026-10-14 Caso_de_negocio_2022-2025.xlsx` de la carpeta de exportación del proyecto, con las tablas como fórmulas sobre los días y los cortes.
+El cálculo está en el job `job_ml_caso_negocio.py` y deja `historico.json` para la página del cuadro de mando, las tablas de este documento (ejecución `caso_v9_20261014_1351` del lakehouse) y los Excel `2026-10-14 Caso_de_negocio_2022-2026.xlsx` y `2026-10-14 Caso_de_negocio_2022-2025.xlsx` de la carpeta de exportación del proyecto, con las tablas como fórmulas sobre los días y los cortes.
 
 ## 2. Lo que vería un director de distribución
 
