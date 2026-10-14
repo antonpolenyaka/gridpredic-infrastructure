@@ -1,5 +1,7 @@
-# Environment
+# Environment (y sus copias, como .env.bak; la plantilla sí se versiona)
 .env
+.env.*
+!.env.example
 
 # Copias de seguridad locales con marca de tiempo (fichero.ext.bak_AAAAMMDD_HHMMSS)
 *.bak_*
