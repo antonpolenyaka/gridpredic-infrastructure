@@ -46,7 +46,8 @@ def test_the_replay_scores_every_day_with_the_past_only(replayed, spark):
     assert set(days["modo"]) == {"reanalisis", "prevision"}
     assert sorted(days["anio"].unique()) == [2024, 2025]
     one = days[(days["modo"] == "reanalisis") & (days["distribuidora_id"] == 1)]
-    assert len(one) == 2 * 365 - 1 or len(one) == 2 * 365 or len(one) == 2 * 365 + 1
+    # Two years, minus the last days whose label is not known yet (the margin after the last incident of Calser).
+    assert 2 * 365 - 14 <= len(one) <= 2 * 365 + 1
     assert set(one["nivel"]) <= {"bajo", "medio", "alto", "muy alto"}
     # The storms of the synthetic data (gusts of 85 - 110 km/h with incidents) are the days in alert.
     assert one["alerta"].mean() < 0.3
