@@ -9,6 +9,10 @@ Risk of tomorrow, every evening at riesgo_manana.horario (20:30 in Madrid).
   forecast is needed: without it the run fails. Without an answer of AEMET
   after three tries avisos is skipped and the day is scored without warnings
   (the row says so).
+- ensemble: the 40 runs of ICON-EU EPS (Open-Meteo Ensemble API) for a few
+  points of every network go to the Landing and to dashboard/data/ensemble.json
+  (the band of the gust and the share of runs above every threshold). It is
+  not needed to score: without an answer the task is skipped.
 - puntuar: job_ml_riesgo_manana fits the model on every labelled day and
   writes the risk of every distribuidora in l3_gold.riesgo_dia_siguiente.
 - avisar: when some distribuidora reaches riesgo_manana.aviso.nivel_minimo,
@@ -88,6 +92,19 @@ def prevision(day: str) -> None:
 
 
 @task(retries=0)
+def ensemble(day: str) -> None:
+    # Never a failure: the score does not need it, and a failed upstream would stop puntuar.
+    try:
+        code = land("ensemble", day)
+    except Exception as error:  # noqa: BLE001
+        raise AirflowSkipException(f"The ensemble did not land: {str(error)[:200]}") from error
+    if code == 2:
+        raise AirflowSkipException("The Ensemble API did not answer for any point: scored without the band of the gust")
+    if code != 0:
+        raise AirflowSkipException("Some points of the ensemble did not land: the band uses the rest")
+
+
+@task(retries=0)
 def avisos(day: str) -> None:
     variable = settings.get("avisos", {}).get("clave_env", "AEMET_API_KEY")
     if not os.environ.get(variable):
@@ -129,4 +146,4 @@ with DAG(
         trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,
     )
 
-    [prevision(day), avisos(day)] >> puntuar >> avisar()
+    [prevision(day), avisos(day), ensemble(day)] >> puntuar >> avisar()
