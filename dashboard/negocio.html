@@ -131,7 +131,7 @@
     const groups = new Map();
     for (const d of days) { const k = d.id + "|" + d.anio; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
     const sum = (list) => list.reduce((s, d) => s + d.h, 0);
-    const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, aviso: { dias: 0, h: 0 }, avisoViento: { dias: 0, h: 0 }, avisoNaranja: { dias: 0, h: 0 },
+    const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, aviso: { dias: 0, h: 0 }, avisoViento: { dias: 0, h: 0 }, avisoVientoTormenta: { dias: 0, h: 0 }, avisoNaranja: { dias: 0, h: 0 },
                   sistema: { dias: 0, h: 0 }, union: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, mismoAviso: { dias: 0, h: 0 }, total: 0, grupos: groups.size, anios: 0,
                   conAvisos: days.some((d) => d.a != null) };
     // A year with part of its days (the current one, or the first with forecast) counts as the part of a year it is.
@@ -141,6 +141,7 @@
       const weekends = g.filter((d) => isWeekend(d.f));
       const alert = g.filter((d) => d.alerta);
       const warned = g.filter((d) => (d.a || 0) >= 1), wind = g.filter((d) => (d.av || 0) >= 1), orange = g.filter((d) => (d.a || 0) >= 2);
+      const windStorm = g.filter((d) => (d.av || 0) >= 1 || (d.at || 0) >= 1);
       const union = g.filter((d) => d.alerta || (d.a || 0) >= 2);
       const byRisk = [...g].sort((a, b) => b.p - a.p);
       const same = byRisk.slice(0, winter.length), sameWarned = byRisk.slice(0, warned.length);
@@ -148,6 +149,7 @@
       out.findes.dias += weekends.length; out.findes.h += sum(weekends);
       out.aviso.dias += warned.length; out.aviso.h += sum(warned);
       out.avisoViento.dias += wind.length; out.avisoViento.h += sum(wind);
+      out.avisoVientoTormenta.dias += windStorm.length; out.avisoVientoTormenta.h += sum(windStorm);
       out.avisoNaranja.dias += orange.length; out.avisoNaranja.h += sum(orange);
       out.sistema.dias += alert.length; out.sistema.h += sum(alert);
       out.union.dias += union.length; out.union.h += sum(union);
@@ -375,7 +377,7 @@
     const cost = Number(document.getElementById("coste").value) || 0;
     const rows = [["Calendario fijo: fines de semana de invierno", pol.invierno], ["Calendario fijo: todos los fines de semana", pol.findes]];
     if (pol.conAvisos) rows.push(["Avisos de AEMET: amarillo o más, cualquier fenómeno", pol.aviso], ["Avisos de AEMET: viento, amarillo o más", pol.avisoViento],
-                                 ["Avisos de AEMET: naranja o rojo", pol.avisoNaranja]);
+                                 ["Avisos de AEMET: viento o tormenta, amarillo o más", pol.avisoVientoTormenta], ["Avisos de AEMET: naranja o rojo", pol.avisoNaranja]);
     rows.push(["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo]);
     if (pol.conAvisos) rows.push(["GridPredict, mismo número de días que los avisos amarillos", pol.mismoAviso]);
     rows.push(["GridPredict, solo los días en alerta", pol.sistema]);
