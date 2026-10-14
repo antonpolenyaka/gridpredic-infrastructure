@@ -405,6 +405,7 @@ def policy_table(d: pd.DataFrame) -> pd.DataFrame:
         same.loc[g.sort_values("probabilidad", ascending=False).index[:n]] = True
     policies = [("aviso de AEMET amarillo o más (cualquier fenómeno)", warn >= 1), ("aviso de AEMET de viento, amarillo o más", wind >= 1),
                 ("aviso de AEMET naranja o rojo", warn >= 2), ("GridPredict en alerta (alto o muy alto)", d["alerta"].astype(bool)),
+                ("GridPredict en alerta o aviso naranja o rojo", d["alerta"].astype(bool) | (warn >= 2)),
                 ("GridPredict con tantos días como avisos amarillos", same)]
     rows = []
     for name, mask in policies:

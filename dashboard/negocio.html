@@ -129,7 +129,7 @@
     for (const d of days) { const k = d.id + "|" + d.anio; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
     const sum = (list) => list.reduce((s, d) => s + d.h, 0);
     const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, aviso: { dias: 0, h: 0 }, avisoViento: { dias: 0, h: 0 }, avisoNaranja: { dias: 0, h: 0 },
-                  sistema: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, mismoAviso: { dias: 0, h: 0 }, total: 0, grupos: groups.size, anios: 0,
+                  sistema: { dias: 0, h: 0 }, union: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, mismoAviso: { dias: 0, h: 0 }, total: 0, grupos: groups.size, anios: 0,
                   conAvisos: days.some((d) => d.a != null) };
     // A year with part of its days (the current one, or the first with forecast) counts as the part of a year it is.
     for (const g of groups.values()) out.anios += g.length / 365;
@@ -138,6 +138,7 @@
       const weekends = g.filter((d) => isWeekend(d.f));
       const alert = g.filter((d) => d.alerta);
       const warned = g.filter((d) => (d.a || 0) >= 1), wind = g.filter((d) => (d.av || 0) >= 1), orange = g.filter((d) => (d.a || 0) >= 2);
+      const union = g.filter((d) => d.alerta || (d.a || 0) >= 2);
       const byRisk = [...g].sort((a, b) => b.p - a.p);
       const same = byRisk.slice(0, winter.length), sameWarned = byRisk.slice(0, warned.length);
       out.invierno.dias += winter.length; out.invierno.h += sum(winter);
@@ -146,6 +147,7 @@
       out.avisoViento.dias += wind.length; out.avisoViento.h += sum(wind);
       out.avisoNaranja.dias += orange.length; out.avisoNaranja.h += sum(orange);
       out.sistema.dias += alert.length; out.sistema.h += sum(alert);
+      out.union.dias += union.length; out.union.h += sum(union);
       out.mismo.dias += same.length; out.mismo.h += sum(same);
       out.mismoAviso.dias += sameWarned.length; out.mismoAviso.h += sum(sameWarned);
       out.total += sum(g);
@@ -302,6 +304,7 @@
     rows.push(["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo]);
     if (pol.conAvisos) rows.push(["GridPredict, mismo número de días que los avisos amarillos", pol.mismoAviso]);
     rows.push(["GridPredict, solo los días en alerta", pol.sistema]);
+    if (pol.conAvisos) rows.push(["GridPredict en alerta o aviso naranja o rojo de AEMET", pol.union]);
     const years = Math.max(0.01, pol.anios || groups);
     const base = pol.invierno.dias / years * cost;
     let html = `<thead><tr><th>política de guardia</th><th class="num">días reforzados al año</th><th class="num">cobertura de las horas-cliente</th><th class="num">coste al año (euros)</th><th class="num">frente al calendario</th></tr></thead><tbody>`;
