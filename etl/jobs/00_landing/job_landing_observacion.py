@@ -224,7 +224,7 @@ def archived_forecast(folder: str, day: date, prefix: str = "riesgo") -> dict:
         return json.load(file)
 
 
-def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: dict = None) -> list:
+def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: dict = None, aemet: dict = None) -> list:
     """
     One record per distribuidora of riesgo_<day>.json: the peak gust it forecast
     (hour and km/h) against the peak the stations near the network measured
@@ -232,6 +232,7 @@ def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: 
     with ensemble_<day>.json, whether it fell inside the band of the runs.
     """
     bands = {str(b.get("id")): b for b in (ensemble or {}).get("distribuidoras", [])}
+    second = {str(b.get("id")): b for b in (aemet or {}).get("distribuidoras", [])}
     zone = ZoneInfo(cfg["zona_horaria"])
     out = []
     if not risk:
@@ -259,6 +260,11 @@ def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: 
             rec["error_kmh"] = rec["racha_observada_max"] - rec["racha_prevista_max"]
             if window.get("inicio") is not None and window.get("fin") is not None:
                 rec["pico_en_franja"] = bool(int(window["inicio"]) <= rec["hora_observada"] <= int(window["fin"]))
+        peak2 = (second.get(str(dist.get("id"))) or {}).get("pico") or {}
+        if peak2.get("racha_kmh") is not None:
+            rec["racha_aemet_max"], rec["hora_aemet"] = peak2["racha_kmh"], peak2.get("hora")
+            if "racha_observada_max" in rec:
+                rec["error_aemet_kmh"] = rec["racha_observada_max"] - peak2["racha_kmh"]
         band = (bands.get(str(dist.get("id"))) or {}).get("pico") or {}
         if band.get("p10") is not None and band.get("p90") is not None:
             rec["banda_p10"], rec["banda_p50"], rec["banda_p90"] = band["p10"], band.get("p50"), band["p90"]
@@ -288,11 +294,18 @@ def verification_summary(days: dict, minimum_hours: int) -> list:
         if "pico_en_banda" in g.columns and g["pico_en_banda"].notna().any():
             block["dias_con_banda"] = int(g["pico_en_banda"].notna().sum())
             block["pico_en_banda"] = round(float(g["pico_en_banda"].dropna().astype(bool).mean()), 2)
+        if "error_aemet_kmh" in g.columns and g["error_aemet_kmh"].notna().any():
+            e2 = g["error_aemet_kmh"].dropna()
+            block["dias_con_aemet"] = int(len(e2))
+            block["sesgo_aemet_kmh"] = round(float(e2.mean()), 1)
+            block["error_abs_aemet_kmh"] = round(float(e2.abs().mean()), 1)
         days_text = "el último día completo" if block["dias"] == 1 else f"los últimos {block['dias']} días completos"
         block["texto"] = (f"en {days_text}, la previsión de la víspera dio de media {abs(block['sesgo_kmh']):g} km/h "
                           f"{'más' if block['sesgo_kmh'] < 0 else 'menos'} que las estaciones (error medio {block['error_abs_kmh']:g} km/h)"
                           + (f"; el pico observado cayó en la franja prevista el {100 * block['pico_en_franja']:.0f} % de los días" if "pico_en_franja" in block else "")
-                          + (f"; dentro de la banda de los escenarios el {100 * block['pico_en_banda']:.0f} % de los {block['dias_con_banda']} días con banda" if "pico_en_banda" in block else ""))
+                          + (f"; dentro de la banda de los escenarios el {100 * block['pico_en_banda']:.0f} % de los {block['dias_con_banda']} días con banda" if "pico_en_banda" in block else "")
+                          + (f"; AEMET por municipios dio de media {abs(block['sesgo_aemet_kmh']):g} km/h {'más' if block['sesgo_aemet_kmh'] < 0 else 'menos'} "
+                             f"que las estaciones (error medio {block['error_abs_aemet_kmh']:g} km/h en {block['dias_con_aemet']} días)" if "sesgo_aemet_kmh" in block else ""))
         out.append(block)
     return out
 
@@ -323,7 +336,7 @@ def verify(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> dict:
         risk = archived_forecast(folder, day)
         if not risk:
             continue
-        records = verify_day(both, risk, cfg, day, archived_forecast(folder, day, "ensemble"))
+        records = verify_day(both, risk, cfg, day, archived_forecast(folder, day, "ensemble"), archived_forecast(folder, day, "aemet"))
         if day == today:
             today_records = records
         else:
