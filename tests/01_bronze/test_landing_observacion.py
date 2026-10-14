@@ -121,6 +121,10 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
             json.dump(forecast(day, hour, peak, window), file)
     with open(tmp_path / "riesgo.json", "w", encoding="utf-8") as file:
         json.dump(forecast("2026-07-20", 14, 80.0, (13, 16)), file)
+    # The band of the ensemble of yesterday: the observed 72 falls inside 55 - 75 for Pitarch.
+    with open(tmp_path / "ensemble_20260719.json", "w", encoding="utf-8") as file:
+        json.dump({"fecha": "2026-07-19", "distribuidoras": [{"id": 2, "nombre": "Pitarch", "pico": {"p10": 55, "p50": 63, "p90": 75}},
+                                                            {"id": 3, "nombre": "EOSA", "pico": {"p10": 50, "p50": 58, "p90": 70}}]}, file)
     # The run of the day before landed the same stations one day earlier: with it, yesterday has its 24 hours.
     earlier = []
     for r in records():
@@ -138,13 +142,17 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
     assert pitarch["horas_observadas"] == 24 and pitarch["racha_observada_max"] == 72 and pitarch["hora_observada"] == 10
     assert pitarch["racha_prevista_max"] == 60 and pitarch["hora_prevista"] == 11 and pitarch["error_kmh"] == 12 and pitarch["pico_en_franja"] is True
     assert eosa["estaciones"] == 0 and "racha_observada_max" not in eosa and "error_kmh" not in eosa and eosa["racha_prevista_max"] == 60
+    assert pitarch["banda_p10"] == 55 and pitarch["banda_p90"] == 75 and pitarch["pico_en_banda"] is True
+    assert eosa["banda_p50"] == 58 and "pico_en_banda" not in eosa
     today = out["hoy"]["distribuidoras"][0]
     assert today["horas_observadas"] == 16 and today["error_kmh"] == 72 - 80 and today["pico_en_franja"] is False
     # The summary only counts the complete days and only the networks with stations.
     assert [s["id"] for s in out["resumen"]] == [2]
     s = out["resumen"][0]
     assert s["dias"] == 1 and s["sesgo_kmh"] == 12.0 and s["error_abs_kmh"] == 12.0 and s["pico_en_franja"] == 1.0 and s["dias_prevision_mayor"] == 0.0
-    assert s["texto"] == "en el último día completo, la previsión de la víspera dio de media 12 km/h menos que las estaciones (error medio 12 km/h); el pico observado cayó en la franja prevista el 100 % de los días"
+    assert s["pico_en_banda"] == 1.0 and s["dias_con_banda"] == 1
+    assert s["texto"] == ("en el último día completo, la previsión de la víspera dio de media 12 km/h menos que las estaciones (error medio 12 km/h); "
+                          "el pico observado cayó en la franja prevista el 100 % de los días; dentro de la banda de los escenarios el 100 % de los 1 días con banda")
     # A second run of the same day keeps yesterday and does not duplicate it.
     assert obs.main(["--dashboard-dir", str(tmp_path), "--landing", cfg["landing"]], fs=fs, now=NOW + timedelta(hours=1), records=records()) == 0
     with open(tmp_path / "verificacion.json", encoding="utf-8") as file:

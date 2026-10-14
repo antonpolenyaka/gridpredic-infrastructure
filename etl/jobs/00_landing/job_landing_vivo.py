@@ -342,10 +342,12 @@ def write_ensemble(payload: dict, folder: str) -> bool:
     if not folder or not os.path.isdir(folder):
         logger.warning("Dashboard folder %s not found: ensemble.json not written", folder)
         return False
-    path = os.path.join(folder, "ensemble.json")
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(payload, file, ensure_ascii=False, indent=1)
-    logger.info("ensemble.json written in %s", path)
+    # ensemble.json for the page and ensemble_<day>.json for the verification of the band against the stations.
+    for name in ("ensemble.json", f"ensemble_{payload['fecha'].replace('-', '')}.json"):
+        path = os.path.join(folder, name)
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, indent=1)
+    logger.info("ensemble.json written in %s", folder)
     return True
 
 
