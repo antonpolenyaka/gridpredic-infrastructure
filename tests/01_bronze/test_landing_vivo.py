@@ -212,3 +212,67 @@ def test_the_points_of_the_ensemble_from_the_cells_of_the_reference(fs, monkeypa
     assert [p["nombre"] for p in points["3"]] == ["40.30_-6.00", "40.20_-6.20"] and points["3"][0]["lat"] == 40.3 and points["3"][0]["lon"] == -6.0
     assert points["2"] == [{"nombre": "39.60_-6.80", "lat": 39.6, "lon": -6.8}] and len(points["1366"]) == 1
     assert vivo.ensemble_points(fs, {"usar_celdas": False, "puntos": {"3": [{"nombre": "a", "lat": 1, "lon": 2}]}}) == {"3": [{"nombre": "a", "lat": 1, "lon": 2}]}
+
+
+def aemet_municipality(ine: str, name: str, day: date, peak: float, peak_hour: int, storm: float = 0.0) -> dict:
+    """The hourly forecast of AEMET as it comes: a list with one element, three days, wind and gusts interleaved."""
+    def hours(d: date, first: int):
+        wind, rain, temp = [], [], []
+        for h in range(first, 24):
+            gust = peak if h == peak_hour else 15.0 + h / 10
+            wind.append({"direccion": ["SE"], "velocidad": [str(int(gust * 0.6))], "periodo": f"{h:02d}"})
+            wind.append({"value": str(int(gust)), "periodo": f"{h:02d}"})
+            rain.append({"value": "Ip" if h == peak_hour else "0", "periodo": f"{h:02d}"})
+            temp.append({"value": "17", "periodo": f"{h:02d}"})
+        return {"fecha": f"{d.isoformat()}T00:00:00", "vientoAndRachaMax": wind, "precipitacion": rain, "temperatura": temp,
+                "probTormenta": [{"value": "0", "periodo": "0208"}, {"value": str(int(storm)), "periodo": "0814"}, {"value": "0", "periodo": "1420"}]}
+    before = day - timedelta(days=1)
+    return [{"origen": {}, "elaborado": f"{before.isoformat()}T18:55:08", "nombre": name, "provincia": "Cáceres", "id": ine, "version": "1.0",
+             "prediccion": {"dia": [hours(before, 19), hours(day, 0), hours(day + timedelta(days=1), 0)]}}]
+
+
+def test_the_hourly_forecast_of_aemet_by_municipality(fs, cfg, monkeypatch, tmp_path):
+    config = vivo.load_config()
+    config["riesgo_manana"]["landing"] = "/vivo"
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+    day = date(2026, 10, 15)
+    rows = [{"codigo_ine": "10148", "municipio": "Plasencia", "distribuidora": "1", "latitud": "40.03", "longitud": "-6.09"},
+            {"codigo_ine": "10103", "municipio": "Hervás", "distribuidora": "1", "latitud": "40.27", "longitud": "-5.87"},
+            {"codigo_ine": "10049", "municipio": "Casar de Cáceres", "distribuidora": "2", "latitud": "39.56", "longitud": "-6.42"},
+            {"codigo_ine": "", "municipio": "TOTAL", "distribuidora": "", "latitud": None, "longitud": None}]
+    monkeypatch.setattr(vivo, "load_meteo_config", lambda: {"openmeteo": {"referencia_municipios": "x", "celda_grados": 0.1}})
+    monkeypatch.setattr(vivo, "read_reference", lambda fs, path: rows)
+    monkeypatch.setattr(vivo.time, "sleep", lambda s: None)
+    answers = {"10148": aemet_municipality("10148", "Plasencia", day, 46, 12, storm=40), "10103": aemet_municipality("10103", "Hervás", day, 58, 13),
+               "10049": aemet_municipality("10049", "Casar de Cáceres", day, 39, 11)}
+
+    def fake_fetch(url, **kwargs):
+        if "/municipio/horaria/" in url:
+            ine = url.rsplit("/", 1)[1]
+            if ine == "10049":
+                raise RuntimeError("HTTP 429 for AEMET municipio 10049")
+            return json.dumps({"estado": 200, "datos": f"https://opendata.aemet.es/opendata/sh/{ine}"}).encode()
+        ine = url.rsplit("/", 1)[1]
+        text = json.dumps(answers[ine], ensure_ascii=False)
+        return b"\xef\xbb\xbf" + text.encode("utf-8") if ine == "10148" else text.encode("iso-8859-15")  # both ways AEMET serves it
+
+    monkeypatch.setattr(vivo, "fetch", fake_fetch)
+    monkeypatch.delenv("AEMET_API_KEY", raising=False)
+    assert vivo.main(["--fuente", "aemet_municipios", "--fecha", day.isoformat(), "--config", str(path), "--dashboard-dir", str(tmp_path)], fs=fs) == 2
+    monkeypatch.setenv("AEMET_API_KEY", "k")
+    # One of three municipalities fails (above max_fallos of 0.3): code 1, but what landed is used.
+    assert vivo.main(["--fuente", "aemet_municipios", "--fecha", day.isoformat(), "--config", str(path), "--dashboard-dir", str(tmp_path)], fs=fs) == 1
+    assert sorted(fs.ls("/vivo/20261015/aemet", detail=False)) == ["/vivo/20261015/aemet/10103.json", "/vivo/20261015/aemet/10148.json"]
+    with open(tmp_path / "aemet.json", encoding="utf-8") as file:
+        out = json.load(file)
+    assert out["fecha"] == "2026-10-15" and [d["id"] for d in out["distribuidoras"]] == [3]
+    eosa = out["distribuidoras"][0]
+    assert eosa["nombre"] == "EOSA" and eosa["municipios"] == 2 and len(eosa["horas"]) == 24 and eosa["elaborado"] == "2026-10-14T18:55:08"
+    assert eosa["pico"] == {"racha_kmh": 58, "hora": 13, "municipio": "Hervás"}
+    noon = next(h for h in eosa["horas"] if h["hora"] == 12)
+    assert noon["racha_kmh"] == 46 and noon["lluvia_mm"] == 0.1 and noon["tormenta_pct"] == 40
+    assert next(h for h in eosa["horas"] if h["hora"] == 3)["tormenta_pct"] == 0
+    assert eosa["texto"] == "AEMET por municipios (2 municipios, elaborada 18:55): pico de racha 58 km/h a las 13:00 en Hervás; hasta 0.2 mm de lluvia; probabilidad de tormenta hasta el 40 %"
+    assert (tmp_path / "aemet_20261015.json").exists()
+    assert vivo.aemet_value("Ip") == 0.1 and vivo.aemet_value("") != vivo.aemet_value("") and vivo.aemet_value("12,5") == 12.5
