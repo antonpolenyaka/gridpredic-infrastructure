@@ -482,6 +482,12 @@
       "clave_env": "AEMET_API_KEY",
       "timeout_s": 120
     },
+    "aviso": {
+      "url_env": "AVISO_WEBHOOK_URL",
+      "nivel_minimo": "alto",
+      "campo": "text",
+      "timeout_s": 30
+    },
     "rayos": {
       "api": "https://api.eumetsat.int",
       "coleccion": "EO:EUM:DAT:0691",
