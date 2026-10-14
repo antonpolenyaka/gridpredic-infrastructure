@@ -279,11 +279,21 @@ def synthetic():
         for _ in range(7 * 15):
             events.append((dist, pd.Timestamp(rng.choice(days)) + pd.Timedelta(hours=int(rng.integers(0, 24))),
                            "equipo" if rng.random() < 0.5 else "aguas_arriba"))
+        temp = 15 + 10 * np.sin(2 * np.pi * (hours.dayofyear.to_numpy() - 100) / 365)
+        # A freezing rain episode: the morning of 10.01.2024, rain at -2 degrees.
+        freezing = (hours >= "2024-01-10 03:00") & (hours < "2024-01-10 09:00")
+        temp = np.where(freezing, -2.0, temp)
+        rain = np.where(freezing, 1.5, rain)
+        # The reference evapotranspiration of the week: more in summer, with a dry 2025 (half the rain, more ET0).
+        et0_day = 3.0 + 2.5 * np.sin(2 * np.pi * (hours.dayofyear.to_numpy() - 110) / 365)
+        dry = hours.year.to_numpy() == 2025
+        rain = np.where(dry, rain * 0.5, rain)
         weather.append(pd.DataFrame({
             "celda_id": cell, "hora": hours, "met_racha_1h": gust, "met_viento_1h": gust * 0.6,
-            "met_lluvia_1h": rain, "met_temp_1h": 15 + 10 * np.sin(2 * np.pi * (hours.dayofyear.to_numpy() - 100) / 365),
+            "met_lluvia_1h": rain, "met_temp_1h": temp,
             "met_humedad_1h": 60.0, "met_presion_1h": 1013.0, "met_presion_delta_24h": 0.0, "met_nieve_24h": 0.0,
             "met_dir_viento_sin": np.sin(np.radians(direction)), "met_dir_viento_cos": np.cos(np.radians(direction)),
+            "met_et0_7d": 7.0 * np.where(dry, et0_day * 1.3, et0_day),
         }))
 
     for dist in CELLS:
@@ -599,6 +609,20 @@ def test_the_extent_the_interactions_and_the_direction_of_the_gusts(spark, table
     # Without the flag, no direction and nothing else changes.
     _, plain, _ = rd.build_dataset(spark, config, rd.settings(config))
     assert "direccion" not in plain and set(plain["extension"]) == set(blocks["extension"])
+    # The drought: the balance of 90 and 180 days as a z-score of the month; 2025 is the dry year of the fixture.
+    assert set(blocks["sequia"]) == {"seq_3m", "seq_6m"}
+    known = pdf[pdf["seq_6m"].notna()]
+    assert known["fecha"].min() <= pd.Timestamp("2019-07-01")  # the 180 days need the weather before them
+    dry = known[(known["fecha"] >= "2025-06-01") & (known["fecha"] < "2025-12-31")]
+    wet = known[(known["fecha"] >= "2023-06-01") & (known["fecha"] < "2023-12-31")]
+    assert dry["seq_6m"].mean() < -1.0 and abs(wet["seq_6m"].mean()) < 1.0
+    # The freezing rain of 10.01.2024: CT-hours of precipitation at 0,5 degrees or less, in the reanalysis and in
+    # the forecast of the day before (one degree warmer, still freezing); nothing the other days.
+    assert set(blocks["hielo"]) == {"hie_horas"} and "prev_hie_horas" in blocks["prevision"]
+    day = pdf[pdf["fecha"] == "2024-01-10"]
+    assert day["hie_horas"].tolist() == pytest.approx([6.0, 6.0]) and day["prev_hie_horas"].tolist() == pytest.approx([6.0, 6.0])
+    others = pdf[(pdf["fecha"] != "2024-01-10") & pdf["hie_horas"].notna()]
+    assert (others["hie_horas"] == 0).all()
 
 
 def test_the_models_of_the_hours_never_see_the_forecast_of_the_day_before(spark, tables):
