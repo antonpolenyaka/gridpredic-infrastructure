@@ -52,6 +52,7 @@ resumen.md and prediccion.csv in exportar_dir/<run_id>/.
 
 import argparse
 import glob
+import hashlib
 import json
 import math
 import os
@@ -94,10 +95,13 @@ from job_ml_riesgo_dia import (  # noqa: E402
     warning_days,
 )
 from job_ml_train import RUNS_TABLE, get_spark, load_config, logger, save_frame  # noqa: E402
+import riesgo_zonas as rz  # noqa: E402
 from job_silver_contexto_publico import WARNING_LEVELS, inside, local_wall_clock  # noqa: E402
 
 INCIDENTS_TABLE = "l2_silver.f_incidencia"
 WEATHER_TABLE = "l3_gold.meteo_celda_hora"
+DIM_TABLE = "l3_gold.dim_ct"
+ZONES_TABLE = "l3_gold.riesgo_zona_siguiente"
 
 DEFAULTS = {
     "variante": "operativa",
@@ -105,10 +109,16 @@ DEFAULTS = {
     "zona_horaria": "Europe/Madrid",
     "landing": "s3://datalake/00_landing/vivo",
     "tabla": "l3_gold.riesgo_dia_siguiente",
+    "tabla_zonas": ZONES_TABLE,
     "margen_etiquetas_dias": 7,
     "niveles": {"muy alto": 0.95, "alto": 0.9, "medio": 0.75},
     "motivos": 3,
     "zonas": 3,
+    "dashboard_dir": "/app/dashboard/data",
+    "riesgo_zonas": {"brigadas": {}, "velocidad_kmh": 60.0, "factor_carretera": 1.3, "bases_fijas": {},
+                     "franja_parte_pico": 0.8, "franja_calma_kmh": 40.0,
+                     "rutas": {"activo": False, "api": "https://router.project-osrm.org", "timeout_s": 60,
+                               "cache": "s3://datalake/00_landing/vivo/rutas"}},
 }
 
 # Variable of the forecast of Open-Meteo -> hourly column of Gold without its prefix, physical range of Silver.
@@ -161,6 +171,15 @@ OUTPUT_COLUMNS = [
     ("calser_hasta", "date"), ("entrenado_hasta", "date"), ("dias_entreno", "bigint"), ("variante", "string"),
     ("modelo", "string"), ("params_json", "string"), ("prevision_pedida_utc", "string"),
     ("avisos_pedidos_utc", "string"), ("run_id", "string"), ("creado_ts", "timestamp"),
+    ("incidencias_esperadas", "double"), ("ct_esperados", "double"), ("clientes_esperados", "double"),
+    ("franja_inicio", "bigint"), ("franja_fin", "bigint"), ("hora_pico", "bigint"),
+]
+ZONE_COLUMNS = [
+    ("fecha", "date"), ("distribuidora_id", "bigint"), ("zona", "string"), ("nombre", "string"),
+    ("probabilidad", "double"), ("parte", "double"), ("percentil", "double"), ("nivel", "string"), ("n_ct", "bigint"),
+    ("abonados", "double"), ("kva", "double"), ("racha_max_kmh", "double"), ("racha_clima_max", "double"),
+    ("lluvia_mm", "double"), ("hist_365d", "double"), ("clientes_esperados", "double"), ("municipios", "string"),
+    ("run_id", "string"), ("creado_ts", "timestamp"),
 ]
 # Output column -> live feature.
 INPUTS = {"racha_max_kmh": "dia_racha_max", "racha_clima_max": "ext_racha_clima_max", "lluvia_mm": "dia_lluvia_max",
@@ -212,6 +231,9 @@ class LocalFiles:
 
     def exists(self, path: str) -> bool:
         return os.path.exists(path)
+
+    def makedirs(self, path: str, exist_ok: bool = True):
+        os.makedirs(path, exist_ok=exist_ok)
 
 
 def live_filesystem(path: str):
@@ -459,16 +481,340 @@ def distributor_names(spark) -> dict:
     return {int(r["d"]): str(r["source_database"]).replace("Calser_", "") for r in rows if r["source_database"]}
 
 
-def save_prediction(spark, pdf: pd.DataFrame, table: str, day: pd.Timestamp):
+def save_prediction(spark, pdf: pd.DataFrame, table: str, day: pd.Timestamp, columns: list = None):
     """The rows of D in the table, replacing the ones of an earlier run for the same day."""
-    schema = ", ".join(f"{name} {kind}" for name, kind in OUTPUT_COLUMNS)
-    df = spark.createDataFrame(pdf[[name for name, _ in OUTPUT_COLUMNS]], schema=schema)
+    columns = columns or OUTPUT_COLUMNS
+    schema = ", ".join(f"{name} {kind}" for name, kind in columns)
+    df = spark.createDataFrame(pdf[[name for name, _ in columns]], schema=schema)
     df = df.withColumn("audit_loaded_at", F.current_timestamp())
     writer = df.write.format("delta").option("mergeSchema", "true")
     if spark.catalog.tableExists(table):
         writer.mode("overwrite").option("replaceWhere", f"fecha = DATE'{day:%Y-%m-%d}'").saveAsTable(table)
     else:
         writer.mode("overwrite").saveAsTable(table)
+
+
+# ---------------------------------------------------------------------------
+# Zones (riesgo_zonas): where, when, why, how much and the crews
+# ---------------------------------------------------------------------------
+
+def gold_cell_days(spark) -> pd.DataFrame:
+    """
+    (celda_id, fecha, racha_max, clima_max, lluvia, temp_max, hora_pico) of
+    the reanalysis of every cell and day in Gold; days with fewer than 20
+    hours are left null.
+    """
+    weather = spark.table(WEATHER_TABLE)
+    clima = F.col("met_racha_clima_1h") if "met_racha_clima_1h" in weather.columns else F.lit(None).cast("double")
+    daily = (weather.groupBy("celda_id", F.to_date("hora").alias("fecha"))
+             .agg(F.max("met_racha_1h").alias("racha_max"), F.max(clima).alias("clima_max"),
+                  F.sum("met_lluvia_1h").alias("lluvia"), F.max("met_temp_1h").alias("temp_max"),
+                  F.count("met_racha_1h").alias("horas"), F.max_by("hora", "met_racha_1h").alias("hora_pico"))
+             .toPandas())
+    daily["fecha"] = pd.to_datetime(daily["fecha"])
+    daily["hora_pico"] = pd.to_datetime(daily["hora_pico"])
+    short = daily["horas"] < 20
+    daily.loc[short, ["racha_max", "clima_max", "lluvia", "temp_max"]] = np.nan
+    return daily.drop(columns="horas")
+
+
+def live_cell_days(cells_hours: pd.DataFrame, climate: pd.Series, day: pd.Timestamp) -> pd.DataFrame:
+    """The same daily weather of every cell for D from the live forecast (racha_1h, lluvia_1h, temp_1h)."""
+    part = cells_hours[cells_hours["hora"].dt.floor("D") == day]
+    out = part.groupby("celda_id").agg(racha_max=("racha_1h", "max"), lluvia=("lluvia_1h", "sum"),
+                                       temp_max=("temp_1h", "max"), horas=("racha_1h", "count")).reset_index()
+    out = out[out["horas"] >= 20].drop(columns="horas")
+    p98 = out["celda_id"].map(climate).astype("float64")
+    out["clima_max"] = out["racha_max"] / p98.where(p98 > 0)
+    out["fecha"] = day
+    return out
+
+
+def fit_zone_model(rows: pd.DataFrame, features: list, config: dict, cfg: dict):
+    """The logistic regression of the zone days: the regularisation chosen on the last quarter of the days."""
+    seed = int(config.get("semilla", 0))
+    n_jobs = int(config.get("n_jobs", -1))
+    grid = cfg.get("busqueda", {}).get("logistica") or [{"C": 0.003}, {"C": 0.01}, {"C": 0.03}, {"C": 0.1}]
+    days = np.sort(rows["fecha"].unique())
+    cut = days[int(len(days) * (1 - float(cfg.get("fraccion_validacion_interna", 0.25))))]
+    X, y = to_arrays(rows[rows["fecha"] < cut], features, "y")
+    Xv, yv = to_arrays(rows[rows["fecha"] >= cut], features, "y")
+    inner = {"X": X, "y": y, "w": np.ones(len(y)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)), "feature_names": features}
+    scorers, search = train(["logistica"], {**config, "busqueda": {"logistica": grid}}, {"busqueda": {}}, inner,
+                            float(y.mean()), False, references=False)
+    Xa, ya = to_arrays(rows, features, "y")
+    full = {"X": Xa, "y": ya, "w": np.ones(len(ya)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)), "feature_names": features}
+    return refit("logistica", scorers["logistica"], full, seed, n_jobs), search, Xa
+
+
+def road_minutes(fs, zcfg: dict, municipalities: pd.DataFrame, dist: int):
+    """
+    The minutes by road between the municipalities of a distribuidora (OSRM
+    over OpenStreetMap, riesgo_zonas.rutas), kept in the cache folder by the
+    set of municipalities so the service is asked once. None when the routes
+    are off, the service fails or fs cannot keep the cache: the crews fall
+    back to straight lines.
+    """
+    rcfg = {**DEFAULTS["riesgo_zonas"]["rutas"], **(zcfg.get("rutas") or {})}
+    if not rcfg.get("activo") or fs is None:
+        return None
+    places = municipalities.dropna(subset=["lat", "lon"]).sort_values("municipio")
+    if places.empty:
+        return None
+    names = places["municipio"].astype(str).tolist()
+    points = [(round(float(a), 4), round(float(o), 4)) for a, o in zip(places["lat"], places["lon"])]
+    key = hashlib.sha1(json.dumps([names, points]).encode("utf-8")).hexdigest()[:12]
+    cache = f"{str(rcfg['cache']).rstrip('/')}/{int(dist)}_{key}.json"
+    try:
+        if fs.exists(cache):
+            payload = read_json(fs, cache)
+            return pd.DataFrame(payload["minutos"], index=payload["municipios"], columns=payload["municipios"], dtype=float)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Road minutes of %s not read from %s: %s", dist, cache, error)
+    try:
+        matrix = rz.osrm_table(points, rcfg["api"], float(rcfg.get("timeout_s", 60)))
+    except Exception as error:  # noqa: BLE001
+        logger.warning("OSRM did not give the road minutes of %s (%s): straight lines instead", dist, str(error)[:160])
+        return None
+    logger.info("Road minutes of %s: %s municipalities from OSRM (%s without route)", dist, len(names),
+                int(np.isnan(matrix).sum()))
+    try:
+        if hasattr(fs, "makedirs"):
+            fs.makedirs(os.path.dirname(cache), exist_ok=True)
+        with fs.open(cache, "w") as file:
+            json.dump({"municipios": names, "minutos": [[None if np.isnan(v) else round(float(v), 2) for v in row]
+                                                      for row in matrix], "api": rcfg["api"],
+                       "pedido_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}, file, ensure_ascii=False)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Road minutes of %s not cached in %s: %s", dist, cache, error)
+    return pd.DataFrame(matrix, index=names, columns=names, dtype=float)
+
+
+def zone_outputs(spark, config: dict, rcfg: dict, cfg: dict, variant: dict, pdf: pd.DataFrame, events: pd.DataFrame,
+                 live: pd.DataFrame, probability: np.ndarray, cells_hours: pd.DataFrame, climate: pd.Series,
+                 hourly: pd.DataFrame, day: pd.Timestamp, end: pd.Timestamp, names: dict, levels: dict,
+                 fs=None) -> dict:
+    """
+    {distribuidora_id: {...}} with the risk of tomorrow below the
+    distribuidora: zones (lines), municipalities, CTs, the window of the day,
+    the mix of causes, the expected impact and the crews, from riesgo_zonas.
+    pdf is the daily table of the training, live the row of tomorrow of every
+    distribuidora and probability its probability of the day.
+    """
+    zcfg = {**DEFAULTS["riesgo_zonas"], **rcfg.get("riesgo_zonas", {})}
+    dim = spark.table(DIM_TABLE)
+    wanted = [c for c in ("distribuidora_id", "ct_id", "grupo_red_id", "municipio_nombre", "potencia_kva",
+                          "num_abonados", "tipo_zona_codigo", "en_estudio") if c in dim.columns]
+    ct = rz.zone_table(dim.select(*wanted).toPandas(), spark.table(CELLS_TABLE).toPandas())
+    if ct.empty:
+        logger.warning("%s has no network groups: no risk by zones", DIM_TABLE)
+        return {}
+    facts = spark.table(FACTS_TABLE).where(F.col("variante") == "principal")
+    extra = [c for c in ("duracion_winsor_s",) if c in facts.columns]
+    if extra:
+        durations = facts.select(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "periodo_id",
+                                 "incidencia_id", "ct_id", *extra).toPandas()
+        durations["ct_id"] = durations["ct_id"].astype(str)
+        ev = events.assign(ct_id=events["ct_id"].astype(str)).merge(
+            durations, on=["distribuidora_id", "periodo_id", "incidencia_id", "ct_id"], how="left")
+    else:
+        ev = events
+    zones = rz.zones_of(ct)
+    starts = rz.local_starts(ev, ct)
+    cell_days = gold_cell_days(spark)
+    weather = rz.zone_weather(ct, cell_days)
+    day_features = [c for c in pdf.columns if c.startswith(("cal_", "hist_", "aviso_", "dia_", "ext_", "ayer_"))
+                    and c in live.columns and c != "hist_horas_desde_ultima"]
+    table = rz.zone_days(zones, starts, weather, pdf, day_features, variant["desde"], f"{end:%Y-%m-%d}")
+    table = table[table["fecha"] <= end]
+    features = rz.zone_features(zones, day_features)
+    scorer, search, X_train = fit_zone_model(table, features, config, cfg)
+    train_scores = scorer.score(X_train)
+    logger.info("Zone model: %s zones, %s zone days (%s with incidents), %s features", len(zones), len(table),
+                int(table["y"].sum()), len(features))
+
+    # Tomorrow: the zones with their history at D and the forecast of their cells.
+    today = zones[["distribuidora_id", "zona"] + rz.ZONE_FEATURES_SIZE].assign(fecha=day)
+    today = today.merge(rz.zone_weather(ct, live_cell_days(cells_hours, climate, day)), on=["distribuidora_id", "zona", "fecha"], how="left")
+    today = rz.zone_history(today, starts)
+    today = today.merge(live[["distribuidora_id"] + day_features], on="distribuidora_id", how="left")
+    for dist in sorted(zones["distribuidora_id"].unique()):
+        today[f"dist_{dist}"] = (today["distribuidora_id"] == dist).astype(float)
+    today["score"] = scorer.score(today[features].to_numpy(dtype=np.float32, na_value=np.nan)).astype("float64")
+    shares = rz.ct_shares(ct, ev)
+    stats = rz.impact_stats(ct, ev)
+    mix = rz.cause_mix(starts, ct, cell_days)
+    lags = rz.lag_stats(starts, cell_days, ct)
+    cascade = rz.cascade_rule(starts)
+    out = {}
+    for i, dist in enumerate(live["distribuidora_id"].tolist()):
+        mask = (today["distribuidora_id"] == dist).to_numpy()
+        if not mask.any():
+            continue
+        part = today[mask].copy()
+        part["probabilidad"] = rz.rescale_to_day(part["score"].to_numpy(), float(probability[i]))
+        part["parte"] = part["probabilidad"] / part["probabilidad"].sum() if part["probabilidad"].sum() > 0 else 0.0
+        train_mask = (table["distribuidora_id"] == dist).to_numpy()
+        percentiles = []
+        for zone, score in zip(part["zona"], part["score"]):
+            own = train_scores[train_mask & (table["zona"] == zone).to_numpy()]
+            percentiles.append(float((own <= score).mean()) if len(own) else 0.0)
+        part["percentil"] = percentiles
+        part["nivel"] = [rz.level_of(p, levels) for p in part["percentil"]]
+        part = part.merge(zones[["distribuidora_id", "zona", "nombre", "municipios", "lat", "lon"]], on=["distribuidora_id", "zona"])
+        part = part.merge(stats, on=["distribuidora_id", "zona"], how="left")
+        part["clientes_esperados"] = part["probabilidad"] * part["abonados"].fillna(0.0)
+        municipalities = rz.municipality_risk(ct[ct["distribuidora_id"] == dist], part, shares)
+        zone_level = dict(zip(part["zona"], part["nivel"]))
+        zone_p = dict(zip(part["zona"], part["probabilidad"]))
+        municipalities["nivel"] = [zone_level.get(max(z, key=lambda k: zone_p.get(k, 0.0)), "bajo") if z else "bajo"
+                                   for z in municipalities["zonas"]]
+        cts = rz.ct_risk(ct[ct["distribuidora_id"] == dist], part, shares)
+        installed = float(ct.loc[ct["distribuidora_id"] == dist, "potencia_kva"].sum())
+        impact = rz.impact(part, stats, installed)
+        prof = hourly[(hourly["distribuidora_id"] == dist) & (hourly["hora"].dt.floor("D") == day)]
+        profile = pd.DataFrame({"hora": prof["hora"].dt.hour.to_numpy(),
+                                "racha_max": prof.get("metd_max_metp1_racha_1h", pd.Series(dtype=float)).to_numpy(),
+                                "racha_media": prof.get("metd_media_metp1_racha_1h", pd.Series(dtype=float)).to_numpy(),
+                                "lluvia": prof.get("metd_max_metp1_lluvia_1h", pd.Series(dtype=float)).to_numpy()})
+        window = rz.risk_window(profile, float(zcfg["franja_parte_pico"]), float(zcfg["franja_calma_kmh"]))
+        bucket = rz.gust_bucket(float(profile["racha_max"].max()) if len(profile) else None)
+        causes = mix[mix["bucket"] == bucket].sort_values("parte", ascending=False)
+        crews = int(zcfg.get("brigadas", {}).get(str(int(dist)), 1))
+        roads = road_minutes(fs, zcfg, municipalities, dist)
+        plan = rz.crew_plan(municipalities, crews, float(zcfg["velocidad_kmh"]), float(zcfg["factor_carretera"]),
+                            zcfg.get("bases_fijas", {}).get(str(int(dist))), roads)
+        if plan:
+            plan["curva"] = rz.crew_curve(municipalities, max(4, crews), speed_kmh=float(zcfg["velocidad_kmh"]),
+                                          road_factor=float(zcfg["factor_carretera"]), road_minutes=roads)
+            plan["posicionamiento"] = rz.positioning(window, plan)
+        zone_rows = part.sort_values("probabilidad", ascending=False)
+        # The municipality with the strongest forecast gust against its climate names the zones' weather.
+        racha_m = {}
+        if "celda_id" in ct.columns:
+            cell_day = live_cell_days(cells_hours, climate, day).set_index("celda_id")["racha_max"]
+            racha_m = (ct[ct["distribuidora_id"] == dist].assign(r=lambda t: t["celda_id"].map(cell_day))
+                       .groupby("municipio")["r"].max().to_dict())
+        municipalities["racha_max"] = municipalities["municipio"].map(racha_m)
+        out[int(dist)] = {
+            "nombre": names.get(int(dist), str(dist)),
+            "esperadas": impact["incidencias_esperadas"], "impacto": impact, "franja": window,
+            "perfil": profile.to_dict("records"),
+            "causas": [{"familia": rz.CAUSE_NAMES.get(r.familia, r.familia), "parte": float(r.parte), "n": int(r.n)}
+                       for r in causes.itertuples()],
+            "causas_bucket": bucket, "brigadas": plan,
+            "zonas": [{"zona": r.zona, "nombre": r.nombre, "probabilidad": float(r.probabilidad), "parte": float(r.parte),
+                       "percentil": float(r.percentil), "nivel": r.nivel, "n_ct": int(r.z_n_ct), "abonados": float(r.z_abonados),
+                       "kva": float(r.z_kva), "racha_max": r.z_racha_max, "clima_max": r.z_clima_max, "lluvia": r.z_lluvia_max,
+                       "hist_365d": float(r.z_hist_365d), "hist_dias_desde": float(r.z_hist_dias_desde),
+                       "clientes_esperados": float(r.clientes_esperados), "municipios": list(r.municipios),
+                       "lat": r.lat, "lon": r.lon, "ct_por_incidencia": r.cts, "horas_por_incidencia": r.horas}
+                      for r in zone_rows.itertuples()],
+            "municipios": [{"nombre": r.municipio, "codigo_ine": r.codigo_ine, "lat": r.lat, "lon": r.lon, "n_ct": int(r.n_ct),
+                            "abonados": float(r.abonados), "kva": float(r.kva), "probabilidad": float(r.probabilidad),
+                            "nivel": r.nivel, "zonas": [dict(zip(part["zona"], part["nombre"])).get(z, z) for z in r.zonas],
+                            "clientes_esperados": float(r.clientes_esperados), "racha_max": r.racha_max}
+                           for r in municipalities.sort_values("probabilidad", ascending=False).itertuples()],
+            "cts": [{"ct_id": r.ct_id, "zona": r.zona, "municipio": r.municipio, "abonados": float(r.num_abonados),
+                     "kva": float(r.potencia_kva), "probabilidad": float(r.probabilidad)}
+                    for r in cts.sort_values("probabilidad", ascending=False).itertuples()],
+            "_tabla": zone_rows,
+        }
+    out["_comun"] = {"retardos": lags, "cascada": cascade, "mezcla_causas": mix, "features": features,
+                     "params": scorer.params, "busqueda": search, "n_zonas": len(zones), "dias": len(table),
+                     "positivos": int(table["y"].sum())}
+    return out
+
+
+def zone_rows_table(zone_out: dict, day: pd.Timestamp, run_id: str, created) -> pd.DataFrame:
+    """The rows of riesgo_zona_siguiente of every distribuidora."""
+    rows = []
+    for dist, block in zone_out.items():
+        if not isinstance(dist, int):
+            continue
+        for z in block["zonas"]:
+            rows.append({"fecha": day.date(), "distribuidora_id": dist, "zona": z["zona"], "nombre": z["nombre"],
+                         "probabilidad": z["probabilidad"], "parte": z["parte"], "percentil": z["percentil"], "nivel": z["nivel"],
+                         "n_ct": z["n_ct"], "abonados": z["abonados"], "kva": z["kva"], "racha_max_kmh": z["racha_max"],
+                         "racha_clima_max": z["clima_max"], "lluvia_mm": z["lluvia"], "hist_365d": z["hist_365d"],
+                         "clientes_esperados": z["clientes_esperados"], "municipios": ", ".join(z["municipios"][:5]),
+                         "run_id": run_id, "creado_ts": created})
+    return pd.DataFrame(rows)
+
+
+def follow_up(spark, table: str, events: pd.DataFrame, end: pd.Timestamp, levels: dict) -> dict:
+    """
+    What happened on the days already predicted: the level and probability of
+    every past row of the table against the incidents of Calser (any cause),
+    up to the last day with labels. Days without labels yet are kept with
+    averias null.
+    """
+    if not spark.catalog.tableExists(table):
+        return {}
+    past = spark.table(table).select("fecha", "distribuidora_id", "distribuidora", "probabilidad", "nivel", "run_id").toPandas()
+    if past.empty:
+        return {}
+    past["fecha"] = pd.to_datetime(past["fecha"])
+    past = past.sort_values(["fecha", "distribuidora_id"]).drop_duplicates(["fecha", "distribuidora_id"], keep="last")
+    ev = events.copy()
+    ev["fecha"] = pd.to_datetime(ev["inicio_ts"]).dt.floor("D")
+    counts = (ev.drop_duplicates(["distribuidora_id", "periodo_id", "incidencia_id"])
+              .groupby(["distribuidora_id", "fecha"]).size().rename("averias").reset_index())
+    past = past.merge(counts, on=["distribuidora_id", "fecha"], how="left")
+    labelled = past["fecha"] <= end
+    past.loc[labelled, "averias"] = past.loc[labelled, "averias"].fillna(0)
+    past.loc[~labelled, "averias"] = np.nan
+    done = past[labelled]
+    high = done[done["nivel"].isin([n for n in levels if n != "bajo" and float(levels[n]) >= 0.9])]
+    low = done[done["nivel"] == "bajo"]
+    summary = {"dias": int(len(past)), "dias_con_resultado": int(len(done)),
+               "dias_con_averia": int((done["averias"] > 0).sum()) if len(done) else 0,
+               "acierto_alto": float((high["averias"] > 0).mean()) if len(high) else None,
+               "averia_en_bajo": float((low["averias"] > 0).mean()) if len(low) else None}
+    days = [{"fecha": f"{r.fecha:%d.%m.%Y}", "distribuidora": r.distribuidora, "nivel": r.nivel,
+             "probabilidad": float(r.probabilidad), "averias": None if pd.isna(r.averias) else int(r.averias)}
+            for r in past.sort_values(["fecha", "distribuidora_id"]).itertuples()]
+    return {"resumen": summary, "dias": days}
+
+
+def dashboard_payload(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out: dict, seguimiento: dict,
+                      run_id: str, notes: list) -> dict:
+    """The JSON the dashboard reads (dashboard/index.html)."""
+    common = zone_out.get("_comun", {})
+    lags = common.get("retardos", {}).get("meteorologia", {})
+    cascade = common.get("cascada", {})
+    rule_text = []
+    if lags:
+        rule_text.append(f"El {100 * lags['en_3h']:.0f} % de las averías por viento empiezan a menos de 3 h del pico de racha del día "
+                         f"(el {100 * lags['en_6h']:.0f} % a menos de 6 h, {lags['n']} averías).")
+    if cascade.get("todas") is not None:
+        rule_text.append(f"Tras una avería, otra en las {cascade['horas']:.0f} h siguientes en el {100 * cascade['todas']:.0f} % de los casos"
+                         + (f" (el {100 * cascade['meteorologia']:.0f} % si la primera fue por meteorología)." if cascade.get("meteorologia") is not None else "."))
+    dists = []
+    for r in out.itertuples():
+        block = zone_out.get(int(r.distribuidora_id), {})
+        dists.append({
+            "id": int(r.distribuidora_id), "nombre": r.distribuidora, "nivel": r.nivel, "probabilidad": r.probabilidad,
+            "tasa_base": r.tasa_base, "veces_tasa_base": r.veces_tasa_base, "percentil": r.percentil, "motivos": r.motivos,
+            "esperadas": block.get("esperadas"), "impacto": block.get("impacto", {}), "franja": block.get("franja", {}),
+            "perfil": block.get("perfil", []), "causas": block.get("causas", []), "causas_bucket": block.get("causas_bucket"),
+            "brigadas": block.get("brigadas", {}), "zonas": block.get("zonas", []), "municipios": block.get("municipios", []),
+            "cts": block.get("cts", []), "racha_max_kmh": r.racha_max_kmh, "racha_clima_max": r.racha_clima_max,
+            "lluvia_mm": r.lluvia_mm, "temp_max_c": r.temp_max_c, "aviso_max_nivel": r.aviso_max_nivel,
+            "cobertura_prevision": r.cobertura_prevision, "zonas_racha": r.zonas,
+        })
+    return {
+        "generado": rz.now_text(), "fecha": f"{day:%Y-%m-%d}", "fecha_texto": f"{day:%d.%m.%Y}", "run_id": run_id,
+        "modelo": {"variante": info["variante"], "descripcion": f"{MODEL_NAMES.get(info['modelo'], info['modelo'])}, variante {info['variante']}",
+                   "dias": info["dias"], "positivos": info["positivos"], "entrenado_hasta": f"{info['entrenado_hasta']:%d.%m.%Y}",
+                   "zonas": {k: v for k, v in common.items() if k in ("n_zonas", "dias", "positivos", "params")}},
+        "fuentes": {"prevision_pedida": moment(info["prevision_pedida_utc"]), "avisos_texto": info["avisos_texto"],
+                    "calser_hasta": f"{info['calser_hasta']:%d.%m.%Y}" if pd.notna(info["calser_hasta"]) else None,
+                    "historia_al_dia": info["historia_al_dia"], "avisos_disponibles": info["avisos_disponibles"]},
+        "distribuidoras": dists, "reglas": {"texto": " ".join(rule_text), "retardos": common.get("retardos", {}),
+                                            "cascada": cascade},
+        "seguimiento": seguimiento, "notas": notes,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -629,13 +975,73 @@ def windiest_places(hours: pd.DataFrame, places: pd.DataFrame, day: pd.Timestamp
 # Main
 # ---------------------------------------------------------------------------
 
-def report_text(day: pd.Timestamp, out: pd.DataFrame, info: dict) -> str:
+def report_notes(out: pd.DataFrame, info: dict) -> list:
+    notes = []
+    if not info["avisos_disponibles"]:
+        notes.append("AEMET no ha dado los avisos: el día se puntúa sin avisos, como si no hubiera ninguno.")
+    if not info["historia_al_dia"]:
+        notes.append(f"La copia de Calser llega hasta el {info['calser_hasta']:%d.%m.%Y}: la historia de incidencias "
+                     "no está al día y el modelo toma la mediana de los días de entrenamiento.")
+    for row in out[out["cobertura_prevision"] < 0.999].itertuples():
+        notes.append(f"{row.distribuidora}: solo el {number(100 * row.cobertura_prevision, 0)} % de sus CT está en "
+                     "celdas con previsión.")
+    return notes
+
+
+def zone_report(block: dict, name: str) -> str:
+    """The section of a distribuidora of resumen.md: zones, municipalities, window, causes, impact and crews."""
+    zones = pd.DataFrame([{
+        "zona (línea)": z["nombre"], "nivel": z["nivel"], "probabilidad": number(100 * z["probabilidad"], 1) + " %",
+        "parte del riesgo": number(100 * z["parte"], 0) + " %", "CT": z["n_ct"], "clientes": number(z["abonados"], 0),
+        "racha prevista (km/h)": number(z["racha_max"], 0) if z["racha_max"] is not None and pd.notna(z["racha_max"]) else "",
+        "veces el p98": number(z["clima_max"], 2) if z["clima_max"] is not None and pd.notna(z["clima_max"]) else "",
+        "averías en 365 días": number(z["hist_365d"], 0), "municipios": ", ".join(z["municipios"][:3]),
+    } for z in block["zonas"][:12]])
+    munis = pd.DataFrame([{"municipio": m["nombre"], "nivel": m["nivel"], "probabilidad": number(100 * m["probabilidad"], 1) + " %",
+                           "CT": m["n_ct"], "clientes": number(m["abonados"], 0),
+                           "clientes esperados sin luz": number(m["clientes_esperados"], 1)}
+                          for m in block["municipios"][:10]])
+    imp = block.get("impacto", {})
+    fr = block.get("franja", {})
+    plan = block.get("brigadas", {})
+    parts = [f"## {name}: dónde, cuándo, por qué y cuánto",
+             f"Averías esperadas: {number(imp.get('incidencias_esperadas', 0), 2)}; CT esperados sin luz: "
+             f"{number(imp.get('ct_esperados', 0), 1)}; clientes esperados sin luz: {number(imp.get('clientes_esperados', 0), 0)} "
+             f"({number(imp.get('kva_esperados', 0), 0)} kVA"
+             + (f", {number(imp['minutos_tiepi_esperados'], 2)} minutos de TIEPI" if imp.get("minutos_tiepi_esperados") is not None else "")
+             + f"). Franja de más riesgo: {fr.get('texto', '')}.",
+             "Las zonas son las líneas de las que cuelgan los CT en TedisNet. La probabilidad de cada una reparte la del día "
+             "por tamaño, historia y tiempo previsto de sus celdas; el modelo no sabe qué línea romperá, sabe cuáles "
+             "tienen más papeletas.",
+             ml_metrics.markdown_table(zones) if len(zones) else "Sin zonas.",
+             "### Municipios con más riesgo\n\n" + (ml_metrics.markdown_table(munis) if len(munis) else "Sin municipios.")]
+    if block.get("causas"):
+        parts.append("### Si hay avería, por qué (días con racha " + block.get("causas_bucket", "") + ")\n\n"
+                     + ", ".join(f"{c['familia']} {number(100 * c['parte'], 0)} %" for c in block["causas"]))
+    if plan.get("bases"):
+        bases = "; ".join(f"{b['municipio']} (cubre {b['cubre_ct']} CT, {number(100 * b['parte_riesgo'], 0)} % del riesgo, "
+                          f"llegada media {number(b['llegada_media_min'], 0)} min)" for b in plan["bases"])
+        curve = "; ".join(f"{c['n']}: {number(c['llegada_media_min'], 0)} min ({', '.join(c['bases'])})" for c in plan.get("curva", []))
+        parts.append(f"### Brigadas\n\nCon {plan['n']} brigada{'s' if plan['n'] > 1 else ''}, las bases que minimizan la llegada "
+                     f"al riesgo de mañana (tiempos: {plan.get('tiempos', 'línea recta')}): {bases}. "
+                     f"Llegada media ponderada por el riesgo: {number(plan['llegada_media_min'], 0)} min; "
+                     f"el {number(100 * plan['riesgo_30min'], 0)} % del riesgo a menos de 30 min."
+                     + (f" Con las bases fijas ({', '.join(plan['fijas']['municipios'])}): {number(plan['fijas']['llegada_media_min'], 0)} min."
+                        if plan.get("fijas") else "")
+                     + (f" Posicionamiento: {plan['posicionamiento']}." if plan.get("posicionamiento") else "")
+                     + (f" Llegada media según el número de brigadas: {curve}." if curve else ""))
+    return "\n\n".join(parts)
+
+
+def report_text(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out: dict = None) -> str:
+    zone_out = zone_out or {}
     shown = pd.DataFrame({
         "distribuidora": out["distribuidora"],
         "nivel": out["nivel"],
         "probabilidad": (100 * out["probabilidad"]).map(lambda v: number(v, 1) + " %"),
         "veces la tasa base": out["veces_tasa_base"].map(lambda v: number(v, 1) if pd.notna(v) else ""),
         "percentil": (100 * out["percentil"]).map(lambda v: number(v, 0)),
+        "averías esperadas": out["incidencias_esperadas"].map(lambda v: number(v, 2) if pd.notna(v) else ""),
         "motivos": out["motivos"],
     })
     params = ", ".join(f"{key} = {str(value).replace('.', ',')}" for key, value in info["params"].items())
@@ -648,17 +1054,21 @@ def report_text(day: pd.Timestamp, out: pd.DataFrame, info: dict) -> str:
         "aviso": out["aviso_max_nivel"].map(lambda v: LEVEL_NAMES.get(int(v), "no") if pd.notna(v) else ""),
         "zonas con más racha frente a su clima": out["zonas"],
     })
-    notes = []
-    if not info["avisos_disponibles"]:
-        notes.append("AEMET no ha dado los avisos: el día se puntúa sin avisos, como si no hubiera ninguno.")
-    if not info["historia_al_dia"]:
-        notes.append(f"La copia de Calser llega hasta el {info['calser_hasta']:%d.%m.%Y}: la historia de incidencias "
-                     "no está al día y el modelo toma la mediana de los días de entrenamiento.")
-    for row in out[out["cobertura_prevision"] < 0.999].itertuples():
-        notes.append(f"{row.distribuidora}: solo el {number(100 * row.cobertura_prevision, 0)} % de sus CT está en "
-                     "celdas con previsión.")
+    notes = report_notes(out, info)
     levels = ", ".join(f"{name} desde el percentil {number(100 * float(v), 0)}"
                        for name, v in sorted(info["niveles"].items(), key=lambda item: -float(item[1])))
+    common = zone_out.get("_comun", {})
+    rules = []
+    lags = common.get("retardos", {}).get("meteorologia")
+    if lags:
+        rules.append(f"El {number(100 * lags['en_3h'], 0)} % de las averías por meteorología de la historia empezaron a menos de "
+                     f"3 h del pico de racha de su día (el {number(100 * lags['en_6h'], 0)} % a menos de 6 h).")
+    cascade = common.get("cascada", {})
+    if cascade.get("todas") is not None:
+        rules.append(f"Tras una avería, otra en las {number(cascade['horas'], 0)} h siguientes en el "
+                     f"{number(100 * cascade['todas'], 0)} % de los casos"
+                     + (f", el {number(100 * cascade['meteorologia'], 0)} % si la primera fue por meteorología."
+                        if cascade.get("meteorologia") is not None else "."))
     return "\n\n".join([
         f"# Riesgo de mañana: {day:%d.%m.%Y}",
         f"Previsión de ICON-EU pedida el {moment(info['prevision_pedida_utc'])}; {info['avisos_texto']}. Modelo: "
@@ -671,7 +1081,44 @@ def report_text(day: pd.Timestamp, out: pd.DataFrame, info: dict) -> str:
         "paréntesis, por cuánto multiplica cada motivo la razón de probabilidades frente a un día medio.",
         ml_metrics.markdown_table(shown),
         "## Lo que se prevé\n\n" + ml_metrics.markdown_table(inputs),
-    ] + (["## Notas\n\n" + "\n".join(f"- {n}" for n in notes)] if notes else [])) + "\n"
+    ] + [zone_report(zone_out[int(r.distribuidora_id)], r.distribuidora) for r in out.itertuples()
+         if int(r.distribuidora_id) in zone_out]
+      + (["## Reglas de la historia\n\n" + "\n".join(f"- {t}" for t in rules)] if rules else [])
+      + (["## Notas\n\n" + "\n".join(f"- {n}" for n in notes)] if notes else [])) + "\n"
+
+
+def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day: pd.Timestamp):
+    """
+    riesgo.json for the dashboard (dashboard_dir, when the folder exists)
+    and a copy in the export folder, and parte_guardia.xlsx (the same
+    tables for the shift, to print or send) next to each of them.
+    """
+    targets = []
+    folder = config.get("exportar_dir")
+    if folder:
+        targets.append(os.path.join(folder, folder_id, "riesgo.json"))
+    dashboard = rcfg.get("dashboard_dir")
+    if dashboard and os.path.isdir(dashboard):
+        targets += [os.path.join(dashboard, "riesgo.json"), os.path.join(dashboard, f"riesgo_{day:%Y%m%d}.json")]
+    elif dashboard:
+        logger.warning("Dashboard folder %s not found: riesgo.json only in the export folder", dashboard)
+    for target in targets:
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            rz.write_json(payload, target)
+            logger.info("Dashboard JSON written in %s", target)
+        except OSError as error:
+            logger.error("Dashboard JSON not written in %s: %s", target, error)
+            continue
+        sheet = os.path.join(os.path.dirname(target), os.path.basename(target).replace("riesgo", "parte_guardia", 1)
+                             .replace(".json", ".xlsx"))
+        try:
+            if rz.write_shift_sheet(payload, sheet):
+                logger.info("Shift sheet written in %s", sheet)
+            else:
+                logger.warning("openpyxl not installed: no shift sheet")
+        except Exception as error:  # noqa: BLE001
+            logger.error("Shift sheet not written in %s: %s", sheet, error)
 
 
 def main(argv=None):
@@ -726,8 +1173,9 @@ def main(argv=None):
     dists = sorted(rows["distribuidora_id"].unique().tolist())
     weights = cell_weights(spark)
     hours = gold_columns(cells_hours, cell_climate(spark))
+    hourly = distributor_hours(hours, weights)
     live = pd.DataFrame({"distribuidora_id": dists})
-    live = live.merge(weather_features(distributor_hours(hours, weights), day, cfg), on="distribuidora_id", how="left")
+    live = live.merge(weather_features(hourly, day, cfg), on="distribuidora_id", how="left")
 
     areas = rcfg.get("avisos", {}).get("areas", ["esp"])
     cap_rows, answered, warnings_asked = warning_rows(fs, folder, areas)
@@ -765,9 +1213,17 @@ def main(argv=None):
     coverage = covered.groupby("distribuidora_id")["n_ct"].sum() / weights.groupby("distribuidora_id")["n_ct"].sum()
     places = windiest_places(hours, cell_places(spark), day, int(rcfg["zonas"]))
     names = {**distributor_names(spark), **{int(k): str(v) for k, v in rcfg.get("nombres", {}).items()}}
+    climate = cell_climate(spark)
+    zone_out = {}
+    if spark.catalog.tableExists(DIM_TABLE):
+        zone_out = zone_outputs(spark, config, rcfg, cfg, variant, pdf, events, live, probability, cells_hours, climate,
+                                hourly, day, end, names, rcfg["niveles"], fs)
+    else:
+        logger.warning("%s not found: no risk by zones", DIM_TABLE)
 
     out_rows = []
     for i, dist in enumerate(live["distribuidora_id"].tolist()):
+        block = zone_out.get(int(dist), {})
         mask = (rows["distribuidora_id"] == dist).to_numpy()
         base = float(rows.loc[mask, MAIN_LABEL].mean())
         percentile = float((train_scores[mask] <= probability[i]).mean())
@@ -804,9 +1260,18 @@ def main(argv=None):
             "avisos_pedidos_utc": warnings_asked,
             "run_id": args.run_id,
             "creado_ts": created,
+            "incidencias_esperadas": block.get("esperadas"),
+            "ct_esperados": block.get("impacto", {}).get("ct_esperados"),
+            "clientes_esperados": block.get("impacto", {}).get("clientes_esperados"),
+            "franja_inicio": block.get("franja", {}).get("inicio"),
+            "franja_fin": block.get("franja", {}).get("fin"),
+            "hora_pico": block.get("franja", {}).get("pico"),
         })
     out = pd.DataFrame(out_rows)
     save_prediction(spark, out, rcfg["tabla"], day)
+    zone_rows = zone_rows_table(zone_out, day, args.run_id, created)
+    if not zone_rows.empty:
+        save_prediction(spark, zone_rows, rcfg["tabla_zonas"], day, ZONE_COLUMNS)
 
     in_force = warnings_of_day(warnings, day)
     count = len(in_force[["fenomeno_codigo", "inicio_ts", "fin_ts"]].drop_duplicates())
@@ -824,7 +1289,11 @@ def main(argv=None):
         "calser_hasta": calser, "prevision_pedida_utc": forecast_asked, "avisos_texto": warning_text,
     }
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
-    export(config, folder_id, report_text(day, out, info), {"prediccion": out})
+    seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"])
+    notes = report_notes(out, info)
+    payload = dashboard_payload(day, out, info, zone_out, seguimiento, args.run_id, notes)
+    export(config, folder_id, report_text(day, out, info, zone_out), {"prediccion": out, "zonas": zone_rows})
+    write_dashboard(config, rcfg, folder_id, payload, day)
 
     run = pd.DataFrame([{
         "run_id": args.run_id,

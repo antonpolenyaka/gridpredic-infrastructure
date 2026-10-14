@@ -437,6 +437,22 @@
     "motivos": 3,
     "zonas": 3,
     "nombres": {"3": "EOSA", "2": "Pitarch", "1366": "Valle de Santa Ana"},
+    "tabla_zonas": "l3_gold.riesgo_zona_siguiente",
+    "dashboard_dir": "/app/dashboard/data",
+    "riesgo_zonas": {
+      "brigadas": {"3": 2, "2": 2, "1366": 1},
+      "velocidad_kmh": 60.0,
+      "factor_carretera": 1.3,
+      "bases_fijas": {},
+      "franja_parte_pico": 0.8,
+      "franja_calma_kmh": 40.0,
+      "rutas": {
+        "activo": true,
+        "api": "https://router.project-osrm.org",
+        "timeout_s": 60,
+        "cache": "s3://datalake/00_landing/vivo/rutas"
+      }
+    },
     "prevision": {
       "api": "https://api.open-meteo.com/v1/forecast",
       "modelo": "icon_eu",
@@ -455,6 +471,20 @@
       "areas": ["esp"],
       "clave_env": "AEMET_API_KEY",
       "timeout_s": 120
+    },
+    "rayos": {
+      "api": "https://api.eumetsat.int",
+      "coleccion": "EO:EUM:DAT:0691",
+      "caja": [38.1, -7.3, 40.6, -5.4],
+      "horario": "*/15 * * * *",
+      "ventana_min": 60,
+      "retraso_min": 30,
+      "max_productos": 12,
+      "radio_km": [10.0, 20.0],
+      "clave_env": "EUMETSAT_CONSUMER_KEY",
+      "secreto_env": "EUMETSAT_CONSUMER_SECRET",
+      "timeout_s": 120,
+      "pausa_s": 0.2
     }
   }
 }

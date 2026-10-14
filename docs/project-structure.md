@@ -28,11 +28,12 @@ gridpredic-infrastructure/
 │       ├── backups/             # Los .bak (ignorados por Git)
 │       └── scripts/             # restore_databases.sql, enable_cdc.sql
 ├── etl/                         # El pipeline, agrupado por capa de destino
-│   ├── dags/                    # Orquestación con Airflow (01_bronze, 02_silver, 03_gold y el riesgo de mañana en 04_ml)
+│   ├── dags/                    # Orquestación con Airflow (01_bronze, 02_silver, 03_gold y, en 04_ml, el riesgo de mañana y los rayos en vivo)
 │   ├── config/                  # Parámetros de los procesos en JSON (qué tablas, qué orden, qué recursos, reglas de Gold)
 │   └── jobs/                    # Transformaciones con Spark (00_landing ... 03_gold) y entrenamiento (04_ml)
 ├── data/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
+├── dashboard/                   # Cuadro de mando estático del riesgo de mañana (Leaflet y OpenStreetMap); data/ recibe el JSON del DAG
 ├── docs/                        # Documentación: cards, capas Silver y Gold, flujo de datos, este documento
 ├── notebooks/                   # Exploración (convención de nombres en su README)
 ├── tests/                       # Pruebas locales de los jobs, sin Docker
