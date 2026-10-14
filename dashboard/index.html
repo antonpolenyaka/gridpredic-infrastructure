@@ -66,6 +66,8 @@
   .rayos { margin: 8px 0 4px; padding: 8px 10px; border-radius: 6px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
   .vejez { margin: 12px 24px 0; border-color: #e0772f; background: rgba(224, 119, 47, 0.12); }
   .nivel.guardia-pill { background: var(--accent); }
+  header .guardia { flex-basis: 100%; font-size: 14px; }
+  header .guardia b { color: var(--accent); }
   .rayos.tormenta { border-color: #e3b53a; background: color-mix(in srgb, #e3b53a 18%, var(--panel)); }
   .rayos.cerca { border-color: #e3b53a; }
   .rayos b { font-weight: 600; }
@@ -80,6 +82,7 @@
 <header>
   <h1 id="titulo">Riesgo de mañana</h1>
   <div class="fuentes" id="fuentes">Cargando datos...</div>
+  <div class="guardia" id="guardia" style="display:none"></div>
 </header>
 <main id="main"></main>
 <footer id="pie"></footer>
@@ -114,6 +117,17 @@
       aviso.style.display = "";
     } else {
       aviso.style.display = "none";
+    }
+    // The guard of the day in one line: the distribuidoras to reinforce and why (alert, or a wind or thunderstorm warning).
+    const guard = document.getElementById("guardia");
+    const withGuard = (data.distribuidoras || []).filter((d) => d.guardia);
+    if (guard && withGuard.length) {
+      const reinforce = withGuard.filter((d) => d.guardia.reforzar), normal = withGuard.filter((d) => !d.guardia.reforzar);
+      guard.innerHTML = (reinforce.length ? `<b>Guardia reforzada</b> en ${reinforce.map((d) => `${esc(d.nombre)} (${esc(d.guardia.motivo)})`).join(", ")}` : "<b>Guardia normal</b> en todas las redes")
+        + (reinforce.length && normal.length ? `; normal en ${normal.map((d) => esc(d.nombre)).join(", ")}` : "") + ".";
+      guard.style.display = "";
+    } else if (guard) {
+      guard.style.display = "none";
     }
     const partes = [];
     if (f.prevision_pedida) partes.push("Previsión de ICON-EU pedida el " + f.prevision_pedida);
