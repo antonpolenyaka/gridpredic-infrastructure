@@ -17,7 +17,8 @@ Risk of tomorrow, every evening at riesgo_manana.horario (20:30 in Madrid).
   writes the risk of every distribuidora in l3_gold.riesgo_dia_siguiente.
 - avisar: when some distribuidora reaches riesgo_manana.aviso.nivel_minimo,
   the message of the evening goes to the webhook of AVISO_WEBHOOK_URL
-  (aviso_riesgo); skipped without URL or without alert.
+  (aviso_riesgo); skipped without URL or without alert. A task that fails
+  for good goes to the same webhook (on_failure_callback).
 
 The warnings need AEMET_API_KEY in the environment of the airflow container
 (compose.yaml takes it from .env).
@@ -47,6 +48,15 @@ with open(CONFIG_PATH) as file:
     settings = json.load(file)["riesgo_manana"]
 
 ZONE = settings.get("zona_horaria", "Europe/Madrid")
+
+
+def failed(context: dict) -> None:
+    """A task that failed for good goes to the webhook of the evening (silent without AVISO_WEBHOOK_URL)."""
+    if JOBS_DIR not in sys.path:
+        sys.path.insert(0, JOBS_DIR)
+    import aviso_riesgo
+
+    aviso_riesgo.notify_failure(context)
 
 
 def land(source: str, day: str) -> int:
@@ -124,7 +134,7 @@ with DAG(
     catchup=False,
     max_active_runs=1,
     params={"fecha": Param("", type="string", description="Día que se predice, AAAA-MM-DD (vacío: el día siguiente)")},
-    default_args={"retries": 1, "retry_delay": timedelta(minutes=5)},
+    default_args={"retries": 1, "retry_delay": timedelta(minutes=5), "on_failure_callback": failed},
     tags=["ml", "riesgo"],
 ) as dag:
 

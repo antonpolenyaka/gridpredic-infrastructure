@@ -92,3 +92,20 @@ def test_send_posts_json_only_with_the_url(monkeypatch, capsys, tmp_path):
     assert av.main([str(path)]) == 0
     out = capsys.readouterr().out
     assert "sin url" in out and "hooks.example" not in out
+
+
+def test_a_failed_task_goes_to_the_webhook(monkeypatch):
+    class TI:
+        dag_id, task_id, try_number = "dag_riesgo_manana", "prevision", 2
+
+    context = {"task_instance": TI(), "logical_date": "2026-10-14T18:30:00+00:00", "exception": RuntimeError("The forecast of ICON-EU for 2026-10-15 did not land")}
+    text = av.failure_message(context)
+    assert text == ("GridPredict: la tarea prevision de dag_riesgo_manana ha fallado (intento 2), ejecución 2026-10-14T18:30: "
+                    "The forecast of ICON-EU for 2026-10-15 did not land. Airflow: http://localhost:8080")
+    monkeypatch.delenv("AVISO_WEBHOOK_URL", raising=False)
+    assert av.notify_failure(context) == "sin url"
+    sent = []
+    monkeypatch.setenv("AVISO_WEBHOOK_URL", "https://hooks.example/abc")
+    monkeypatch.setattr(av, "post", lambda url, message, field, timeout: sent.append((url, message, field)) or 200)
+    assert av.notify_failure(context) == "enviado" and sent[0][0] == "https://hooks.example/abc" and sent[0][2] == "text"
+    assert "ha fallado" in sent[0][1]
