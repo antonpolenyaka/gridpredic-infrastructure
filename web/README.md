@@ -1,0 +1,28 @@
+# La página pública de GridPredic.com
+
+Una sola página estática (`index.html`, `gridpredic-web.css`, `web.js`) que cuenta el producto a una distribuidora: qué hace cada tarde, lo que habría valido en 2022 - 2026, cómo funciona, el argumento económico, lo que no hace y cómo pedir la demo de un mes. Usa los mismos tokens de color y la misma tipografía que el cuadro de mando (IBM Plex Sans, servida desde `vendor/fonts`, licencia OFL) y no depende de ningún servicio externo: ni fuentes de Google, ni CDN, ni analítica.
+
+## Abrirla en local
+
+```powershell
+python -m http.server 8795 --directory D:\GitHub\gridpredic-infrastructure\web
+```
+
+y abrir http://localhost:8795. Abrir `index.html` con doble clic también funciona (todo es relativo), pero algunos navegadores no cargan las fuentes desde `file://`.
+
+## El movimiento
+
+`web.js` usa GSAP y ScrollTrigger (`vendor/gsap`, licencia estándar sin cargo, válida para esta página) y hace tres cosas:
+
+- La escena del inicio (`#red`, un SVG) es una historia corta movida por el scroll: las líneas de la red se dibujan y pasa el viento (la previsión de la víspera a las 20:30), los municipios toman el color de su riesgo (la mañana siguiente) y la furgoneta de la brigada va de su base al punto medio de las zonas en riesgo. En pantallas de 1024 px o más el inicio queda fijado durante 1,6 pantallas y el scroll mueve la escena adelante y atrás; en pantallas más pequeñas se reproduce una vez al cargar. Los tres pasos bajo la escena se iluminan al ritmo de la historia.
+- Las tarjetas, los pasos y las cifras aparecen una vez al entrar en la vista (`[data-reveal]`, por lotes con un escalonado corto), y las cifras grandes cuentan hacia arriba (`data-cuenta` y `data-sufijo`). Un seguro enseña lo que haya quedado por encima de la vista tras un salto por ancla o una rueda muy rápida.
+- Con "reducir movimiento" en el sistema, o si el script no carga, la página se muestra en su estado final: nada queda escondido detrás de una animación.
+
+Lo que no hay, a propósito: paralaje sobre textos o figuras, secuencias de imágenes (la escena es un SVG de unos pocos KB) y efectos sobre las capturas del cuadro de mando.
+
+## Antes de publicarla
+
+- Las capturas de `img/` salen del cuadro de mando con los datos reales de las tres distribuidoras y llevan sus nombres. Para la web pública hay que regenerarlas con los nombres anonimizados (o con una distribuidora de demostración) con `experimentos/figuras/capturar.py` sobre un `dashboard/data` preparado.
+- El contacto es `hola@gridpredic.com`; el buzón tiene que existir antes de publicar.
+- Las cifras de la sección "Lo que habría pasado" son las de `docs/cifras.md` (2022 - 2026, `caso_v10_20261014_1543`); si se vuelve a ejecutar el caso de negocio, se actualizan aquí a mano.
+- Publicar es copiar la carpeta a cualquier hosting estático (GitHub Pages, Cloudflare Pages, Netlify o el propio nginx del proyecto); no hay build.

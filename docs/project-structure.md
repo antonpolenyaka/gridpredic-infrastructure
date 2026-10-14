@@ -34,6 +34,7 @@ gridpredic-infrastructure/
 ├── data/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
 ├── dashboard/                   # Cuadro de mando estático: index.html (riesgo de mañana, Leaflet y OpenStreetMap), dias.html (días archivados, desde data/indice.json), historial.html y negocio.html (lo que habría dicho en 2022 - 2026); gridpredic.css es el sistema de diseño común, motion.js el movimiento (GSAP y ScrollTrigger) y vendor/ lleva Leaflet, GSAP y la tipografía (IBM Plex Sans, OFL); data/ recibe los JSON de los jobs
+├── web/                         # La página pública de GridPredic.com (index.html, gridpredic-web.css, web.js): estática, con la escena de la red ligada al scroll (GSAP y ScrollTrigger en vendor/) y tres capturas del cuadro de mando en img/
 ├── docs/                        # Documentación: cards, capas Silver y Gold, flujo de datos, este documento
 ├── experimentos/                # El código de cada prueba del cuaderno de laboratorio (docs/investigacion-continua.md), reproducible fuera de Spark
 ├── notebooks/                   # Exploración (convención de nombres en su README)
