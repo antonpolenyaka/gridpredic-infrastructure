@@ -163,13 +163,15 @@ def test_the_morning_report_tells_yesterday_and_today_once_a_day(monkeypatch, tm
             {"id": 3, "nombre": "EOSA", "nivel": "alto", "probabilidad": 0.102, "estaciones": 17, "horas_observadas": 24, "aviso_aemet": 1,
              "racha_prevista_max": 75, "hora_prevista": 14, "racha_observada_max": 81, "hora_observada": 17, "pico_en_franja": False, "pico_en_banda": False}]}}
     risk = {"fecha": "2026-10-15", "distribuidoras": [
-        {"id": 3, "nombre": "EOSA", "nivel": "medio", "probabilidad": 0.052, "franja": {"inicio": 11, "fin": 17, "racha_pico": 48}, "aemet": {"pico": {"racha_kmh": 46}}},
+        {"id": 3, "nombre": "EOSA", "nivel": "medio", "probabilidad": 0.052, "franja": {"inicio": 11, "fin": 17, "racha_pico": 48}, "aemet": {"pico": {"racha_kmh": 46}},
+         "guardia": {"reforzar": True, "motivo": "aviso de tormenta de AEMET (amarillo)"}},
         {"id": 2, "nombre": "Pitarch", "nivel": "bajo", "probabilidad": 0.031, "franja": {"inicio": 12, "fin": 18, "racha_pico": 50}}]}
     text = av.morning_message(verification, risk)
     assert text.startswith("GridPredict, parte de la mañana.\nAyer 14.10.2026: Pitarch BAJO (3 %): pico previsto 60 km/h a las 11 h, medido 44 km/h a las 11 h "
                            "(en la franja, en la banda de los escenarios, AEMET decía 43 km/h); EOSA ALTO (10 %): pico previsto 75 km/h a las 14 h, "
                            "medido 81 km/h a las 17 h (fuera de la franja, fuera de la banda de los escenarios, aviso de AEMET de nivel 1).")
-    assert "Hoy 15.10.2026: EOSA MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h; Pitarch BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h." in text
+    assert ("Hoy 15.10.2026: EOSA MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h, guardia reforzada (aviso de tormenta de AEMET (amarillo)); "
+            "Pitarch BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h.") in text
     assert text.endswith("http://localhost:8086")
     # Without the risk of today, the block hoy of the verification; with the date of today, a warning; without anything, no message.
     assert "Hoy 15.10.2026: Pitarch BAJO (3 %)." in av.morning_message(verification, {"fecha": "2026-10-14"})
