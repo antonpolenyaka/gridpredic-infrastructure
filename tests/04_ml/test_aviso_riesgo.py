@@ -195,3 +195,16 @@ def test_the_morning_report_tells_yesterday_and_today_once_a_day(monkeypatch, tm
     monkeypatch.delenv("AVISO_WEBHOOK_URL", raising=False)
     assert av.send_morning(str(folder), rcfg, str(tmp_path / "otro.json"), datetime(2026, 10, 17, 6, 20, tzinfo=timezone.utc)) == "sin url"
     assert av.send_morning(str(tmp_path / "vacio"), rcfg, None, datetime(2026, 10, 17, 6, 20, tzinfo=timezone.utc)) == "sin datos"
+
+
+def test_the_outlook_of_the_day_after_tomorrow_goes_in_one_line():
+    payload = {**PAYLOAD, "pasado_manana": {"fecha": "2026-01-16", "fecha_texto": "16.01.2026", "variante": "operativa_48h",
+                                            "distribuidoras": [{"id": 3, "nombre": "EOSA", "nivel": "alto", "probabilidad": 0.14},
+                                                               {"id": 2, "nombre": "Pitarch", "nivel": "bajo", "probabilidad": 0.02}]}}
+    text = av.message_from(payload, "alto")
+    assert "Pasado mañana 16.01.2026, orientación a dos días: EOSA ALTO (14 %)." in text
+    assert "Pitarch BAJO" not in text and text.index("Pasado mañana") < text.index("11 % de los casos")
+    # Without any distribuidora reaching the minimum, no line; without the block, nothing changes.
+    assert "Pasado mañana" not in av.message_from(payload, "muy alto")
+    assert "Pasado mañana" not in av.message_from(PAYLOAD, "alto")
+    assert av.outlook_line({}) == ""

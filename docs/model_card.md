@@ -106,7 +106,7 @@ probabilidad = modelo.score(filas[features].to_numpy(dtype="float32", na_value=f
 
 Para entrenar, `l3_gold.dataset_train` trae la columna `split` y una muestra reproducible de negativos (`en_muestra_train`, `peso_muestra`). Cómo se lanza y qué tablas deja está en [ml-training.md](ml-training.md).
 
-El riesgo del día siguiente no hay que cargarlo a mano: `dag_riesgo_manana` lo calcula cada tarde a las 20:30 con la previsión de ICON-EU y los avisos de AEMET de ese momento, vuelve a entrenar la regresión logística con todos los días etiquetados y deja una fila por distribuidora y día en `l3_gold.riesgo_dia_siguiente`, una por línea en `l3_gold.riesgo_zona_siguiente` y el JSON del cuadro de mando en `dashboard/data/` (http://localhost:8086; ver [causas-incidencias.md](causas-incidencias.md), apartados 8 y 10):
+El riesgo del día siguiente no hay que cargarlo a mano: `dag_riesgo_manana` lo calcula cada tarde a las 20:30 con la previsión de ICON-EU y los avisos de AEMET de ese momento, vuelve a entrenar la regresión logística con todos los días etiquetados y deja una fila por distribuidora y día en `l3_gold.riesgo_dia_siguiente`, una por línea en `l3_gold.riesgo_zona_siguiente`, la orientación de pasado mañana en `l3_gold.riesgo_pasado_manana` (la variante de dos tardes antes, `operativa_48h`, con la misma previsión y los mismos avisos: 5,4 veces la tasa base frente a 6,9 a un día en 2024 - 2025; [investigacion-continua.md](investigacion-continua.md), 3e) y el JSON del cuadro de mando en `dashboard/data/` (http://localhost:8086; ver [causas-incidencias.md](causas-incidencias.md), apartados 8 y 10):
 
 ```sql
 SELECT fecha, distribuidora, nivel, ROUND(probabilidad, 3) AS probabilidad, ROUND(veces_tasa_base, 1) AS veces,
