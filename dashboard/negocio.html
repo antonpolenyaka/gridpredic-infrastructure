@@ -132,7 +132,7 @@
     for (const d of days) { const k = d.id + "|" + d.anio; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
     const sum = (list) => list.reduce((s, d) => s + d.h, 0);
     const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, aviso: { dias: 0, h: 0 }, avisoViento: { dias: 0, h: 0 }, avisoVientoTormenta: { dias: 0, h: 0 }, avisoNaranja: { dias: 0, h: 0 },
-                  sistema: { dias: 0, h: 0 }, union: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, mismoAviso: { dias: 0, h: 0 }, total: 0, grupos: groups.size, anios: 0,
+                  sistema: { dias: 0, h: 0 }, union: { dias: 0, h: 0 }, unionVientoTormenta: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, mismoAviso: { dias: 0, h: 0 }, total: 0, grupos: groups.size, anios: 0,
                   conAvisos: days.some((d) => d.a != null) };
     // A year with part of its days (the current one, or the first with forecast) counts as the part of a year it is.
     for (const g of groups.values()) out.anios += g.length / 365;
@@ -143,6 +143,7 @@
       const warned = g.filter((d) => (d.a || 0) >= 1), wind = g.filter((d) => (d.av || 0) >= 1), orange = g.filter((d) => (d.a || 0) >= 2);
       const windStorm = g.filter((d) => (d.av || 0) >= 1 || (d.at || 0) >= 1);
       const union = g.filter((d) => d.alerta || (d.a || 0) >= 2);
+      const unionWindStorm = g.filter((d) => d.alerta || (d.av || 0) >= 1 || (d.at || 0) >= 1);
       const byRisk = [...g].sort((a, b) => b.p - a.p);
       const same = byRisk.slice(0, winter.length), sameWarned = byRisk.slice(0, warned.length);
       out.invierno.dias += winter.length; out.invierno.h += sum(winter);
@@ -153,6 +154,7 @@
       out.avisoNaranja.dias += orange.length; out.avisoNaranja.h += sum(orange);
       out.sistema.dias += alert.length; out.sistema.h += sum(alert);
       out.union.dias += union.length; out.union.h += sum(union);
+      out.unionVientoTormenta.dias += unionWindStorm.length; out.unionVientoTormenta.h += sum(unionWindStorm);
       out.mismo.dias += same.length; out.mismo.h += sum(same);
       out.mismoAviso.dias += sameWarned.length; out.mismoAviso.h += sum(sameWarned);
       out.total += sum(g);
@@ -218,6 +220,7 @@
     if (pol.conAvisos) points.push(["aviso amarillo o más", pol.aviso], ["aviso de viento", pol.avisoViento], ["aviso de viento o tormenta", pol.avisoVientoTormenta],
                                    ["aviso naranja o rojo", pol.avisoNaranja]);
     points.push(["GridPredict en alerta", pol.sistema]);
+    if (pol.conAvisos) points.push(["GridPredict en alerta o aviso de viento o tormenta", pol.unionVientoTormenta]);
     const W = 520, H = 260, L = 46, R = 14, T = 12, B = 40, maxX = 150;
     const x = (v) => L + (W - L - R) * Math.min(v, maxX) / maxX, y = (v) => T + (H - T - B) * (1 - v);
     let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cobertura de las horas-cliente según los días reforzados al año">`;
@@ -282,7 +285,7 @@
       <table id="tabla-guardia"></table>
       <h3>La misma comparación a cualquier presupuesto</h3>
       ${coverageCurve(days, pol)}
-      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. Los avisos de AEMET son los que ya se habían emitido para el día antes de las 20:00 de la víspera, en las celdas de la red: lo que hoy mira un jefe de brigadas. "Mismo número de días" toma, cada año, tantos días como la política con la que se compara pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. Las averías de estas redes las trae el tiempo, no el calendario: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días.</p>
+      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. Los avisos de AEMET son los que ya se habían emitido para el día antes de las 20:00 de la víspera, en las celdas de la red: lo que hoy mira un jefe de brigadas. "Mismo número de días" toma, cada año, tantos días como la política con la que se compara pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. Las averías de estas redes las trae el tiempo, no el calendario: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días. La regla "aviso de viento o tormenta" es la mejor de las reglas sencillas y con pocos días cubre tanto o más que el sistema con los mismos días; sumarla a la alerta es la política que más cubre por día gastado.</p>
       </section>`;
 
     html += `<section><h2>Por distribuidora y año</h2><table><thead><tr><th>distribuidora</th><th>año</th><th class="num">días puntuados</th><th class="num">días en alerta</th><th class="num">incidencias</th><th class="num">en días de alerta</th><th class="num">horas-cliente</th><th class="num">en días de alerta</th></tr></thead><tbody>`;
@@ -420,7 +423,7 @@
     rows.push(["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo]);
     if (pol.conAvisos) rows.push(["GridPredict, mismo número de días que los avisos amarillos", pol.mismoAviso]);
     rows.push(["GridPredict, solo los días en alerta", pol.sistema]);
-    if (pol.conAvisos) rows.push(["GridPredict en alerta o aviso naranja o rojo de AEMET", pol.union]);
+    if (pol.conAvisos) rows.push(["GridPredict en alerta o aviso de viento o tormenta de AEMET", pol.unionVientoTormenta], ["GridPredict en alerta o aviso naranja o rojo de AEMET", pol.union]);
     const years = Math.max(0.01, pol.anios || groups);
     const base = pol.invierno.dias / years * cost;
     let html = `<thead><tr><th>política de guardia</th><th class="num">días reforzados al año</th><th class="num">cobertura de las horas-cliente</th><th class="num">coste al año (euros)</th><th class="num">frente al calendario</th></tr></thead><tbody>`;
