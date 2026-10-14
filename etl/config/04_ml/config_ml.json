@@ -581,7 +581,7 @@
       "nivel_minimo": "alto",
       "campo": "text",
       "timeout_s": 30,
-      "rayos_cada_min": 60
+      "rayos_cada_min": 60, "parte_manana_hora": 7
     },
     "observacion": {
       "api": "https://opendata.aemet.es/opendata/api/observacion/convencional/todas",
