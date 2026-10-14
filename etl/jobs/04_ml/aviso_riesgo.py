@@ -14,10 +14,11 @@ import logging
 import os
 import sys
 import urllib.request
+from datetime import datetime, timezone
 
 logger = logging.getLogger("aviso")
 
-DEFAULTS = {"url_env": "AVISO_WEBHOOK_URL", "nivel_minimo": "alto", "campo": "text", "timeout_s": 30}
+DEFAULTS = {"url_env": "AVISO_WEBHOOK_URL", "nivel_minimo": "alto", "campo": "text", "timeout_s": 30, "rayos_cada_min": 60}
 ORDER = ["bajo", "medio", "alto", "muy alto"]
 
 
@@ -115,6 +116,75 @@ def send(payload: dict, rcfg: dict, ensemble: dict = None) -> str:
         logger.error("The webhook did not take the message: %s", type(error).__name__)
         return f"error: {type(error).__name__}"
     logger.info("Message of the evening sent (HTTP %s)\n%s", status, message)
+    return "enviado"
+
+
+def storm_message(payload: dict) -> str:
+    """The text of a storm over the network from rayos.json: one line per distribuidora with flashes within the first radius."""
+    blocks = [d for d in payload.get("distribuidoras", []) if d.get("nivel") == "tormenta sobre la red"]
+    if not blocks:
+        return ""
+    when = str(payload.get("generado", ""))[11:16]
+    lines = [f"Rayos sobre la red{(' a las ' + when + ' UTC') if when else ''} (satélite MTG):"]
+    for d in blocks:
+        line = f"- {d.get('nombre')}: {d.get('texto', '')}"
+        if d.get("municipios"):
+            line += f"; municipios bajo la tormenta: {', '.join(d['municipios'][:6])}" + (", ..." if len(d["municipios"]) > 6 else "")
+        lines.append(line + ".")
+    lines.append("Antes del 17 % de las averías hubo rayos a menos de 10 km de la red en la hora previa (1 % en las horas normales). Cuadro de mando: http://localhost:8086")
+    return "\n".join(lines)
+
+
+def send_storm(payload: dict, rcfg: dict, state_path: str, now: datetime = None) -> str:
+    """
+    The storm message goes to the webhook once per distribuidora and
+    aviso.rayos_cada_min minutes (state_path remembers when each was last
+    sent), so a storm of two hours gives two messages, not eight. Returns
+    "enviado", "sin tormenta", "ya avisado", "sin url" or "error: ...".
+    """
+    cfg = alert_settings(rcfg)
+    every = float(cfg.get("rayos_cada_min", 60))
+    now = now or datetime.now(timezone.utc)
+    state = {}
+    if state_path and os.path.exists(state_path):
+        try:
+            with open(state_path, encoding="utf-8") as file:
+                state = json.load(file)
+        except (OSError, ValueError):
+            state = {}
+    blocks = [d for d in payload.get("distribuidoras", []) if d.get("nivel") == "tormenta sobre la red"]
+    if not blocks:
+        return "sin tormenta"
+    due = []
+    for d in blocks:
+        last = state.get(str(d.get("id")))
+        try:
+            fresh = last and (now - datetime.fromisoformat(last)).total_seconds() < every * 60
+        except ValueError:
+            fresh = False
+        if not fresh:
+            due.append(d)
+    if not due:
+        return "ya avisado"
+    message = storm_message({**payload, "distribuidoras": due})
+    url = os.environ.get(cfg["url_env"], "").strip()
+    if not url:
+        logger.info("No %s in the environment: the storm message is not sent\n%s", cfg["url_env"], message)
+        return "sin url"
+    try:
+        post(url, message, cfg["campo"], float(cfg["timeout_s"]))
+    except Exception as error:  # noqa: BLE001
+        logger.error("The webhook did not take the storm message: %s", type(error).__name__)
+        return f"error: {type(error).__name__}"
+    for d in due:
+        state[str(d.get("id"))] = now.isoformat(timespec="seconds")
+    if state_path:
+        try:
+            with open(state_path, "w", encoding="utf-8") as file:
+                json.dump(state, file)
+        except OSError as error:
+            logger.warning("Storm state not written in %s: %s", state_path, error)
+    logger.info("Storm message sent\n%s", message)
     return "enviado"
 
 

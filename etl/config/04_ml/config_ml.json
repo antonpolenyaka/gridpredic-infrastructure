@@ -579,7 +579,8 @@
       "url_env": "AVISO_WEBHOOK_URL",
       "nivel_minimo": "alto",
       "campo": "text",
-      "timeout_s": 30
+      "timeout_s": 30,
+      "rayos_cada_min": 60
     },
     "observacion": {
       "api": "https://opendata.aemet.es/opendata/api/observacion/convencional/todas",

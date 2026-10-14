@@ -115,3 +115,32 @@ def test_a_failed_task_goes_to_the_webhook(monkeypatch):
     monkeypatch.setattr(av, "post", lambda url, message, field, timeout: sent.append((url, message, field)) or 200)
     assert av.notify_failure(context) == "enviado" and sent[0][0] == "https://hooks.example/abc" and sent[0][2] == "text"
     assert "ha fallado" in sent[0][1]
+
+
+def test_a_storm_over_the_network_is_told_once_an_hour(monkeypatch, tmp_path):
+    from datetime import datetime, timezone
+
+    storm = {"generado": "2026-10-14T15:45Z", "fuente": "EUMETSAT MTG LI", "ventana_min": 60, "n_rayos": 12, "distribuidoras": [
+        {"id": 3, "nombre": "EOSA", "nivel": "tormenta sobre la red", "texto": "9 rayos a menos de 10 km de la red en la última hora (líneas: Hervás, Jerte)",
+         "lineas": ["Hervás", "Jerte"], "municipios": ["Hervás", "Baños de Montemayor", "Jerte", "Tornavacas", "Cabezuela", "Navaconcejo", "Rebollar"]},
+        {"id": 2, "nombre": "Pitarch", "nivel": "sin tormenta", "texto": "sin rayos", "lineas": [], "municipios": []}]}
+    text = av.storm_message(storm)
+    assert text.startswith("Rayos sobre la red a las 15:45 UTC (satélite MTG):\n- EOSA: 9 rayos a menos de 10 km de la red en la última hora (líneas: Hervás, Jerte); municipios bajo la tormenta: Hervás, Baños de Montemayor, Jerte, Tornavacas, Cabezuela, Navaconcejo, ....")
+    assert "Pitarch" not in text and text.endswith("http://localhost:8086")
+    assert av.storm_message({"distribuidoras": [{"nivel": "tormenta cerca"}]}) == ""
+    state = tmp_path / "rayos_aviso.json"
+    sent = []
+    monkeypatch.setattr(av, "post", lambda url, message, field, timeout: sent.append(message) or 200)
+    monkeypatch.delenv("AVISO_WEBHOOK_URL", raising=False)
+    now = datetime(2026, 10, 14, 15, 45, tzinfo=timezone.utc)
+    assert av.send_storm(storm, {}, str(state), now) == "sin url" and not state.exists()
+    monkeypatch.setenv("AVISO_WEBHOOK_URL", "https://hooks.example/abc")
+    assert av.send_storm(storm, {}, str(state), now) == "enviado" and len(sent) == 1 and json.load(open(state))["3"] == "2026-10-14T15:45:00+00:00"
+    # Fifteen minutes later the same storm is not told again; after the hour it is; another distribuidora is told at once.
+    assert av.send_storm(storm, {}, str(state), now.replace(minute=59)) == "ya avisado" and len(sent) == 1
+    assert av.send_storm(storm, {}, str(state), now.replace(hour=16, minute=50)) == "enviado" and len(sent) == 2
+    both = json.loads(json.dumps(storm))
+    both["distribuidoras"][1]["nivel"] = "tormenta sobre la red"
+    assert av.send_storm(both, {"aviso": {"rayos_cada_min": 30}}, str(state), now.replace(hour=16, minute=55)) == "enviado"
+    assert "Pitarch" in sent[2] and "EOSA" not in sent[2]
+    assert av.send_storm({"distribuidoras": []}, {}, str(state), now) == "sin tormenta"
