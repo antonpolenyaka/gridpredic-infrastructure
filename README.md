@@ -294,6 +294,7 @@ Durante el arranque se realiza automáticamente:
 | Kafka UI | http://localhost:8082 | Topics, mensajes y estado de Kafka Connect |
 | Airflow | http://localhost:8084 | Gestión y ejecución de DAGs |
 | Trino | http://localhost:8085 | Endpoint/UI del motor SQL |
+| Cuadro de mando del riesgo | http://localhost:8086 | El riesgo de mañana por distribuidora, línea y municipio sobre un mapa (ver apartado 13) |
 | MinIO Console | http://localhost:9001 | Navegación por buckets y objetos |
 | Spark History Server | http://localhost:18080 | Histórico de aplicaciones Spark |
 
@@ -576,7 +577,21 @@ FROM lakehouse.l3_gold.riesgo_dia_siguiente
 ORDER BY fecha DESC, probabilidad DESC;
 ```
 
-Cómo se calcula y qué limitaciones tiene está en [docs/causas-incidencias.md](docs/causas-incidencias.md), apartado 8.
+Desde la 0.11.0 el mismo DAG reparte ese riesgo entre las líneas (el grupo de red de TedisNet), los municipios y los CT, dice en qué franja del día se espera (el pico de racha), qué causas suelen tener los días como mañana, cuántas incidencias, CT y clientes se esperan y dónde conviene dejar las brigadas, y lo deja en `l3_gold.riesgo_zona_siguiente` y en `dashboard/data/riesgo.json`. Ese JSON lo pinta un cuadro de mando estático sobre OpenStreetMap (Leaflet, sin claves) que sirve el contenedor `dashboard` en http://localhost:8086:
+
+```bash
+docker compose up -d dashboard
+```
+
+```sql
+SELECT fecha, distribuidora_id, nombre, nivel, ROUND(probabilidad, 3) AS probabilidad, ROUND(parte, 2) AS parte, municipios
+FROM lakehouse.l3_gold.riesgo_zona_siguiente
+ORDER BY fecha DESC, probabilidad DESC;
+```
+
+Con las credenciales del Data Store de EUMETSAT en `.env`, `dag_rayos_vivo` añade cada 15 minutos los rayos que ve el satélite MTG sobre la red (`dashboard/data/rayos.json`), que el cuadro de mando pinta sobre el mapa con una franja por distribuidora.
+
+Cómo se calcula, qué se puede predecir a cada escala y qué limitaciones tiene está en [docs/causas-incidencias.md](docs/causas-incidencias.md), apartado 8.
 
 ---
 
