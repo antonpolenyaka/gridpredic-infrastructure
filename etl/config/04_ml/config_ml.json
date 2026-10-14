@@ -380,10 +380,13 @@
       {"nombre": "comun_avisos_detalle", "desde": "2018-06-25",
        "bloques": ["calendario", "historia", "ayer", "avisos", "avisos_detalle", "dia_comun"]},
       {"nombre": "comun_avisos_detalle_extremos", "desde": "2018-06-25",
-       "bloques": ["calendario", "historia", "ayer", "avisos", "avisos_detalle", "dia_comun", "extremos"]}
+       "bloques": ["calendario", "historia", "ayer", "avisos", "avisos_detalle", "dia_comun", "extremos"]},
+      {"nombre": "operativa", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]}
     ],
     "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "comun_avisos_detalle",
-                           "comun_avisos_detalle_extremos"],
+                           "comun_avisos_detalle_extremos", "operativa"],
     "anios_prevision": [2024, 2025],
     "comparaciones_prevision": [
       ["comun_avisos_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
@@ -395,7 +398,8 @@
       ["comun_avisos_detalle__xgboost__prevision", "comun_avisos__xgboost__prevision"],
       ["comun_avisos_detalle__rango__prevision", "comun_avisos__rango__prevision"],
       ["comun_avisos_detalle_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
-      ["comun_avisos_detalle_extremos__rango__prevision", "comun_avisos__rango__prevision"]
+      ["comun_avisos_detalle_extremos__rango__prevision", "comun_avisos__rango__prevision"],
+      ["operativa__logistica__prevision", "comun_avisos_extremos__logistica__prevision"]
     ],
     "comparaciones": [
       ["ayer__logistica", "calendario_historia__logistica"],
@@ -416,7 +420,41 @@
       ["comun_avisos_detalle__xgboost", "comun_avisos__xgboost"],
       ["comun_avisos_detalle__rango", "comun_avisos__rango"],
       ["comun_avisos_detalle_extremos__logistica", "comun_avisos__logistica"],
-      ["comun_avisos_detalle_extremos__rango", "comun_avisos__rango"]
+      ["comun_avisos_detalle_extremos__rango", "comun_avisos__rango"],
+      ["operativa__logistica", "comun_avisos_extremos__logistica"],
+      ["operativa__logistica", "ayer__logistica"]
     ]
+  },
+  "riesgo_manana": {
+    "variante": "operativa",
+    "modelo": "logistica",
+    "zona_horaria": "Europe/Madrid",
+    "horario": "30 20 * * *",
+    "landing": "s3://datalake/00_landing/vivo",
+    "tabla": "l3_gold.riesgo_dia_siguiente",
+    "margen_etiquetas_dias": 7,
+    "niveles": {"muy alto": 0.95, "alto": 0.9, "medio": 0.75},
+    "motivos": 3,
+    "zonas": 3,
+    "nombres": {"3": "EOSA", "2": "Pitarch", "1366": "Valle de Santa Ana"},
+    "prevision": {
+      "api": "https://api.open-meteo.com/v1/forecast",
+      "modelo": "icon_eu",
+      "variables": ["wind_gusts_10m", "wind_speed_10m", "precipitation", "snowfall", "temperature_2m",
+                    "relative_humidity_2m"],
+      "dias_pasados": 31,
+      "dias_futuros": 3,
+      "pausa_s": 0.5,
+      "reintentos": 4,
+      "espera_reintento_s": 30,
+      "timeout_s": 120,
+      "max_fallos": 0.1
+    },
+    "avisos": {
+      "api": "https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area/{area}",
+      "areas": ["esp"],
+      "clave_env": "AEMET_API_KEY",
+      "timeout_s": 120
+    }
   }
 }
