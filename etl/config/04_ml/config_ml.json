@@ -492,10 +492,11 @@
         "3": "1366"
       },
       "pausa_s": 4.0,
-      "reintentos": 3,
-      "espera_reintento_s": 30,
+      "reintentos": 2,
+      "espera_reintento_s": 20,
       "timeout_s": 60,
-      "max_fallos": 0.3
+      "max_fallos": 0.3,
+      "tiempo_max_s": 600
     },
     "ensemble": {
       "api": "https://ensemble-api.open-meteo.com/v1/ensemble",

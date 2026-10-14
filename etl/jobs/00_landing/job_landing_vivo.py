@@ -84,10 +84,11 @@ AEMET_MUNICIPIOS_DEFAULTS = {
     "clave_env": "AEMET_API_KEY",
     "referencia_distribuidoras": {},   # {number of the reference sheet: distribuidora id}
     "pausa_s": 4.0,                    # two requests per municipality: AEMET answers 429 (also as "HTTP 500 - 429") when asked too often
-    "reintentos": 3,
-    "espera_reintento_s": 30,
+    "reintentos": 2,
+    "espera_reintento_s": 20,
     "timeout_s": 60,
     "max_fallos": 0.3,
+    "tiempo_max_s": 600,               # the evening does not wait longer than this: what landed by then is used
 }
 ENSEMBLE_DEFAULTS = {
     "api": "https://ensemble-api.open-meteo.com/v1/ensemble",
@@ -438,10 +439,15 @@ def land_aemet_municipios(fs, cfg: dict, folder: str, day: date) -> tuple:
     mapping = {str(k): str(v) for k, v in (acfg.get("referencia_distribuidoras") or {}).items()}
     done = failed = 0
     by_dist, elaborated = {}, None
-    for place in places:
+    started = time.monotonic()
+    budget = float(acfg.get("tiempo_max_s", 600))
+    wanted = [p for p in places if str(p.get("codigo_ine") or "").zfill(5).strip("0") and mapping.get(str(p.get("distribuidora_ref") or "").strip())]
+    for k, place in enumerate(wanted):
         ine, dist = str(place.get("codigo_ine") or "").zfill(5), mapping.get(str(place.get("distribuidora_ref") or "").strip())
-        if not ine.strip("0") or not dist:
-            continue
+        if time.monotonic() - started > budget:
+            failed += len(wanted) - k
+            logger.warning("AEMET by municipality: %s s spent, %s municipalities left unasked", round(time.monotonic() - started), len(wanted) - k)
+            break
         try:
             payload = ask_aemet_municipality(ine, acfg, key)
         except Exception as error:  # noqa: BLE001
