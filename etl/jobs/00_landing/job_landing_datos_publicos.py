@@ -152,7 +152,7 @@ def fetch(url: str, data: bytes = None, headers: dict = None, retries: int = 4, 
     label, the messages name the request by it instead of by its URL (a URL
     that carries a key).
     """
-    headers = {"User-Agent": "GridPredict-TFM/1.0", **(headers or {})}
+    headers = {"User-Agent": "GridPredic-TFM/1.0", **(headers or {})}
     shown = label or url[:80]
 
     for attempt in range(1, retries + 1):
@@ -494,7 +494,7 @@ def download(url: str, target: str, retries: int = 3, wait_s: float = 30, chunk:
     """Streams a big file to disk, with retries from the start (the server ignores Range)."""
     for attempt in range(1, retries + 1):
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": "GridPredict-TFM/1.0"})
+            request = urllib.request.Request(url, headers={"User-Agent": "GridPredic-TFM/1.0"})
             total, next_log = 0, 250 << 20
             with urllib.request.urlopen(request, timeout=300) as response, open(target, "wb") as out:
                 while True:

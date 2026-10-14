@@ -27,7 +27,7 @@ URL = ("https://archive-api.open-meteo.com/v1/archive?latitude=%.4f&longitude=%.
 def ask(url: str, retries: int = 4, wait_s: float = 20.0) -> dict:
     for attempt in range(retries):
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": "GridPredict-TFM/1.0"})
+            request = urllib.request.Request(url, headers={"User-Agent": "GridPredic-TFM/1.0"})
             with urllib.request.urlopen(request, timeout=120) as response:
                 return json.loads(response.read())
         except Exception as error:  # noqa: BLE001

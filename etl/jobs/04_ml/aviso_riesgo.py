@@ -121,7 +121,7 @@ def post(url: str, message: str, field: str = "text", timeout: float = 30.0) -> 
     """POST {field: message} as JSON; returns the HTTP status. The URL never goes to the log."""
     body = json.dumps({field: message}, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json",
-                                                               "User-Agent": "GridPredict-TFM/1.0"})
+                                                               "User-Agent": "GridPredic-TFM/1.0"})
     with urllib.request.urlopen(request, timeout=timeout) as answer:
         return int(answer.status)
 
@@ -292,7 +292,7 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
         lines.append(f"Hoy {day_text(today.get('fecha'))}: " + "; ".join(parts) + ".")
     if not lines:
         return ""
-    return "GridPredict, parte de la mañana.\n" + "\n".join(lines) + "\nCuadro de mando: http://localhost:8086"
+    return "GridPredic, parte de la mañana.\n" + "\n".join(lines) + "\nCuadro de mando: http://localhost:8086"
 
 
 def send_morning(folder: str, rcfg: dict, state_path: str, now: datetime = None) -> str:
@@ -360,7 +360,7 @@ def failure_message(context: dict) -> str:
     attempt = getattr(ti, "try_number", None)
     when = context.get("logical_date") or context.get("execution_date") or context.get("run_id") or ""
     error = str(context.get("exception") or "")[:300]
-    return (f"GridPredict: la tarea {task_id} de {dag_id} ha fallado" + (f" (intento {attempt})" if attempt else "")
+    return (f"GridPredic: la tarea {task_id} de {dag_id} ha fallado" + (f" (intento {attempt})" if attempt else "")
             + (f", ejecución {str(when)[:16]}" if when else "") + (f": {error}" if error else "") + ". Airflow: http://localhost:8080")
 
 

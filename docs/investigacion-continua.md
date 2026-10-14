@@ -71,10 +71,10 @@ Las tablas de contraste van en la misma dirección que el artículo, pero sin fu
 | política | días al año | horas-cliente cubiertas 2024 - 2026 | 2024 - 2025 | sin el 28.01.2026 |
 | --- | --- | --- | --- | --- |
 | aviso de AEMET de viento o tormenta, amarillo o más | 23 | 69 % | 49 % | 40 % |
-| GridPredict con esos mismos 23 días (los de más probabilidad de cada año) | 23 | 66 % | 42 % | 34 % |
-| GridPredict en alerta (alto o muy alto) | 46 | 72 % | 57 % | 46 % |
-| GridPredict en alerta o aviso de viento o tormenta | 50 | 74 % | 61 % | 50 % |
-| GridPredict en alerta o aviso naranja o rojo | 63 | 74 % | 58 % | 49 % |
+| GridPredic con esos mismos 23 días (los de más probabilidad de cada año) | 23 | 66 % | 42 % | 34 % |
+| GridPredic en alerta (alto o muy alto) | 46 | 72 % | 57 % | 46 % |
+| GridPredic en alerta o aviso de viento o tormenta | 50 | 74 % | 61 % | 50 % |
+| GridPredic en alerta o aviso naranja o rojo | 63 | 74 % | 58 % | 49 % |
 
 La hipótesis era falsa a igual número de días: la regla sencilla cubre de 3 a 7 puntos más que el sistema con los mismos 23 días. El motivo está en los avisos de tormenta: los días con aviso de tormenta y sin aviso de viento (12 al año) tienen incidencia el 14 % de las veces (los días en alerta, el 13 %; un día cualquiera, el 4 %), y el sistema los pone en alto o muy alto en 48 de 63 casos de 2022 - 2026, pero con probabilidades del 10 % que no llegan a los 23 primeros puestos del año, ocupados por los temporales de invierno. Juntar las dos cosas es mejor que cada una: 50 días para el 74 % (61 % y 50 % en los otros cortes), y es la unión que gasta menos días por hora-cliente cubierta de todas las que pasan del 70 %. Lo que añade el aviso lo añade en verano: de abril a septiembre la alerta sola cubre el 42 % de las horas-cliente con el 7,7 % de los días y la unión el 48 % con el 9,3 %; de octubre a marzo las dos cubren el 84 % (con el 17,9 % y el 18,9 % de los días).
 
