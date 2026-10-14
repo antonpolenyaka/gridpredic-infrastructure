@@ -76,6 +76,10 @@
   .nivel.guardia-pill { background: var(--accent); }
   header .guardia { flex-basis: 100%; font-size: 14px; }
   header .guardia b { color: var(--accent); }
+  header .pasado { flex-basis: 100%; font-size: 13px; color: var(--muted); }
+  header .pasado .nivel { font-size: 11px; padding: 1px 7px; vertical-align: 1px; }
+  .pasado-bloque { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+  .pasado-bloque .nivel { font-size: 11px; padding: 1px 7px; vertical-align: 1px; }
   .rayos.tormenta { border-color: #e3b53a; background: color-mix(in srgb, #e3b53a 18%, var(--panel)); }
   .rayos.cerca { border-color: #e3b53a; }
   .rayos b { font-weight: 600; }
@@ -99,6 +103,7 @@
   <h1 id="titulo">Riesgo de mañana</h1>
   <div class="fuentes" id="fuentes">Cargando datos...</div>
   <div class="guardia" id="guardia" style="display:none"></div>
+  <div class="pasado" id="pasado" style="display:none"></div>
 </header>
 <main id="main"></main>
 <footer id="pie"></footer>
@@ -113,6 +118,15 @@
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   function nivelPill(nivel) { return `<span class="nivel ${cls(nivel)}">${esc(nivel || "bajo")}</span>`; }
+
+  // The outlook of the day after tomorrow for one distribuidora, under its figures.
+  function pasadoBloque(data, d) {
+    const outlook = data.pasado_manana;
+    const o = outlook && (outlook.distribuidoras || []).find((x) => x.id === d.id);
+    if (!o) return "";
+    const extra = [o.racha_max_kmh != null ? `racha prevista ${num(o.racha_max_kmh)} km/h` : "", o.aviso_max_nivel >= 1 ? "aviso de AEMET ya emitido" : ""].filter(Boolean).join(", ");
+    return `<p class="pasado-bloque">Pasado mañana (${esc(outlook.fecha_texto || outlook.fecha)}): ${nivelPill(o.nivel)} ${pct(o.probabilidad)}${extra ? ` (${extra})` : ""} · orientación a dos días</p>`;
+  }
 
   function cabecera(data) {
     const f = data.fuentes || {};
@@ -144,6 +158,16 @@
       guard.style.display = "";
     } else if (guard) {
       guard.style.display = "none";
+    }
+    // The outlook of the day after tomorrow (pasado_manana), when the evening scored it: an orientation to plan.
+    const after = document.getElementById("pasado");
+    const outlook = data.pasado_manana;
+    if (after && outlook && (outlook.distribuidoras || []).length) {
+      const items = outlook.distribuidoras.map((d) => `${esc(d.nombre)} ${nivelPill(d.nivel)} ${pct(d.probabilidad, 0)}${d.aviso_max_nivel >= 1 ? ", con aviso de AEMET" : ""}`);
+      after.innerHTML = `<b>Pasado mañana, ${esc(outlook.fecha_texto || outlook.fecha)}</b> (orientación a dos días, sin parte de guardia): ${items.join(" · ")}. <span title="${esc(outlook.nota || "")}">Por qué es orientativo</span>`;
+      after.style.display = "";
+    } else if (after) {
+      after.style.display = "none";
     }
     const partes = [];
     if (f.prevision_pedida) partes.push("Previsión de ICON-EU pedida el " + f.prevision_pedida);
@@ -616,6 +640,7 @@
               <div class="cifra"><div class="v">${num(imp.clientes_esperados)}</div><div class="l">clientes esperados sin luz (${num(imp.ct_esperados, 1)} CT, ${num(imp.kva_esperados)} kVA)</div></div>
               <div class="cifra"><div class="v">${fr.inicio != null ? fr.inicio + "-" + (fr.fin + 1) + " h" : "-"}</div><div class="l">franja de más riesgo (pico de racha a las ${fr.pico != null ? fr.pico + " h" : "-"}, ${num(fr.racha_pico)} km/h)</div></div>
             </div>
+            ${pasadoBloque(data, d)}
             <h3>Si hay avería, por qué</h3>${causasBarra(d.causas)}
             <h3>Brigadas</h3>${brigadas(d.brigadas)}
           </div>

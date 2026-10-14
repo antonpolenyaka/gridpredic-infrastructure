@@ -118,6 +118,8 @@ ZONES_TABLE = "l3_gold.riesgo_zona_siguiente"
 
 DEFAULTS = {
     "variante": "operativa",
+    "variante_pasado_manana": "operativa_48h",
+    "tabla_pasado_manana": "l3_gold.riesgo_pasado_manana",
     "modelo": "logistica",
     "zona_horaria": "Europe/Madrid",
     "landing": "s3://datalake/00_landing/vivo",
@@ -195,6 +197,15 @@ ZONE_COLUMNS = [
     ("abonados", "double"), ("kva", "double"), ("racha_max_kmh", "double"), ("racha_clima_max", "double"),
     ("lluvia_mm", "double"), ("hist_365d", "double"), ("clientes_esperados", "double"), ("municipios", "string"),
     ("run_id", "string"), ("creado_ts", "timestamp"),
+]
+# Columns of riesgo_manana.tabla_pasado_manana: the outlook of D + 2, scored the same evening with the variant of
+# two days ahead (no zones, no guard: an orientation to plan, not a shift sheet).
+OUTLOOK_COLUMNS = [
+    ("fecha", "date"), ("distribuidora_id", "bigint"), ("distribuidora", "string"), ("probabilidad", "double"),
+    ("tasa_base", "double"), ("veces_tasa_base", "double"), ("percentil", "double"), ("nivel", "string"),
+    ("racha_max_kmh", "double"), ("racha_clima_max", "double"), ("lluvia_mm", "double"), ("aviso_max_nivel", "double"),
+    ("cobertura_prevision", "double"), ("entrenado_hasta", "date"), ("dias_entreno", "bigint"), ("variante", "string"),
+    ("modelo", "string"), ("prevision_pedida_utc", "string"), ("run_id", "string"), ("creado_ts", "timestamp"),
 ]
 # Output column -> live feature.
 INPUTS = {"racha_max_kmh": "dia_racha_max", "racha_clima_max": "ext_racha_clima_max", "lluvia_mm": "dia_lluvia_max",
@@ -1200,6 +1211,114 @@ def attach_second_opinions(payload: dict, folder: str) -> dict:
     return payload
 
 
+def two_day_outlook(spark, config: dict, rcfg: dict, cfg: dict, pdf: pd.DataFrame, blocks: dict, end: pd.Timestamp,
+                    hourly: pd.DataFrame, cells_hours: pd.DataFrame, weights: pd.DataFrame, warnings: pd.DataFrame,
+                    dists: list, known: pd.DataFrame, up_to_date: bool, day: pd.Timestamp, names: dict,
+                    forecast_asked: str, run_id: str, created) -> pd.DataFrame:
+    """
+    The outlook of D + 2 (pasado mañana) from the same forecast and warnings
+    of the evening: the variant of two days ahead (riesgo_manana.
+    variante_pasado_manana, operativa_48h: gusts and rain of the day, their
+    extremes, the warnings already sent, the weather of the last known day)
+    fitted on the same training days and scored on D + 2. Levels by the same
+    percentiles. Empty when the variant, its blocks or the forecast of D + 2
+    are missing: an orientation to plan, never a reason to fail the evening.
+    """
+    wanted = rcfg.get("variante_pasado_manana")
+    variant = next((v for v in cfg["variantes"] if v["nombre"] == wanted), None) if wanted else None
+    if variant is None or any(not blocks.get(b) for b in variant["bloques"]):
+        logger.info("No outlook of D + 2: variant %s not available", wanted)
+        return pd.DataFrame()
+    day2 = day + pd.Timedelta(days=1)
+    features = variant_features(variant, blocks)
+    rows = pdf[(pdf["fecha"] >= pd.Timestamp(variant["desde"])) & (pdf["fecha"] <= end)].reset_index(drop=True)
+    name = rcfg["modelo"]
+    scorer, _, X_train = fit(rows, features, name, config, cfg)
+    train_scores = scorer.score(X_train)
+
+    live = pd.DataFrame({"distribuidora_id": dists})
+    live = live.merge(weather_features(hourly, day2, cfg), on="distribuidora_id", how="left")
+    # The last day known the evening of D is D itself (hace2_* of D + 2).
+    daily = daily_weather(hourly, int(cfg["horas_minimas_dia"]))
+    before = daily[daily["fecha"] == day].rename(columns={c: f"hace2_{c}" for c in daily.columns
+                                                          if c not in ("distribuidora_id", "fecha")})
+    live = live.merge(before.drop(columns="fecha"), on="distribuidora_id", how="left")
+    warned = warning_features(warnings, weights, day2, dists)
+    warned = warned.rename(columns={c: c.replace("aviso_", "aviso48_", 1) for c in warned.columns if c.startswith("aviso_")})
+    live = live.merge(warned, on="distribuidora_id", how="left")
+    live["hora"] = day2
+    history = add_history(live, known, cfg["ventanas_historia_dias"])
+    live["hist_dias_desde_ultima"] = live.pop("hist_horas_desde_ultima") / 24.0
+    history = [h for h in history if h != "hist_horas_desde_ultima"] + ["hist_dias_desde_ultima"]
+    if not up_to_date:
+        live[history] = np.nan
+    live = pd.concat([live, day_calendar(pd.Series(day2, index=live.index))], axis=1)
+    for dist in dists:
+        live[f"dist_{dist}"] = (live["distribuidora_id"] == dist).astype("float64")
+    for feature in [f for f in features if f not in live.columns]:
+        live[feature] = np.nan
+    day_weather = [f for f in features if f.startswith("dia_")]
+    if not day_weather or live[day_weather].isna().all(axis=1).any():
+        logger.info("No outlook of D + 2: the forecast does not cover %s for every distribuidora", day2.date())
+        return pd.DataFrame()
+
+    X = live[features].to_numpy(dtype=np.float32, na_value=np.nan)
+    probability = scorer.score(X).astype("float64")
+    of_day = cells_hours[(cells_hours["hora"].dt.floor("D") == day2) & cells_hours["racha_1h"].notna()]
+    covered = weights[weights["celda_id"].isin(set(of_day["celda_id"]))]
+    coverage = covered.groupby("distribuidora_id")["n_ct"].sum() / weights.groupby("distribuidora_id")["n_ct"].sum()
+    out = []
+    for i, dist in enumerate(live["distribuidora_id"].tolist()):
+        mask = (rows["distribuidora_id"] == dist).to_numpy()
+        base = float(rows.loc[mask, MAIN_LABEL].mean())
+        percentile = float((train_scores[mask] <= probability[i]).mean())
+        value = lambda column: float(live.loc[i, column]) if column in live.columns else float("nan")  # noqa: E731
+        out.append({
+            "fecha": day2.date(), "distribuidora_id": int(dist), "distribuidora": names.get(int(dist), str(dist)),
+            "probabilidad": float(probability[i]), "tasa_base": base,
+            "veces_tasa_base": float(probability[i] / base) if base > 0 else float("nan"),
+            "percentil": percentile, "nivel": level_of(percentile, rcfg["niveles"]),
+            "racha_max_kmh": value("dia_racha_max"), "racha_clima_max": value("ext_racha_clima_max"),
+            "lluvia_mm": value("dia_lluvia_max"), "aviso_max_nivel": value("aviso48_max_nivel"),
+            "cobertura_prevision": float(coverage.get(dist, 0.0)), "entrenado_hasta": end.date(),
+            "dias_entreno": int(mask.sum()), "variante": variant["nombre"], "modelo": name,
+            "prevision_pedida_utc": forecast_asked, "run_id": run_id, "creado_ts": created,
+        })
+    frame = pd.DataFrame(out)
+    table = rcfg.get("tabla_pasado_manana")
+    if table:
+        save_prediction(spark, frame, table, day2, OUTLOOK_COLUMNS)
+    logger.info("Outlook of %s (two days ahead, %s):\n%s", day2.date(), variant["nombre"],
+                frame[["distribuidora", "probabilidad", "percentil", "nivel"]].to_string(index=False))
+    return frame
+
+
+def outlook_payload(frame: pd.DataFrame, day: pd.Timestamp) -> dict:
+    """The block pasado_manana of riesgo.json; None without an outlook."""
+    if frame is None or frame.empty:
+        return None
+    day2 = day + pd.Timedelta(days=1)
+    dists = []
+    for r in frame.sort_values("probabilidad", ascending=False).itertuples():
+        dists.append({
+            "id": int(r.distribuidora_id), "nombre": r.distribuidora, "nivel": r.nivel, "probabilidad": float(r.probabilidad),
+            "veces_tasa_base": float(r.veces_tasa_base) if pd.notna(r.veces_tasa_base) else None,
+            "percentil": float(r.percentil), "racha_max_kmh": float(r.racha_max_kmh) if pd.notna(r.racha_max_kmh) else None,
+            "lluvia_mm": float(r.lluvia_mm) if pd.notna(r.lluvia_mm) else None,
+            "aviso_max_nivel": float(r.aviso_max_nivel) if pd.notna(r.aviso_max_nivel) else None,
+            "cobertura_prevision": float(r.cobertura_prevision),
+        })
+    variant = str(frame["variante"].iloc[0])
+    return {
+        "fecha": f"{day2:%Y-%m-%d}", "fecha_texto": f"{day2:%d.%m.%Y}", "variante": variant,
+        "distribuidoras": dists,
+        "nota": ("Orientación a dos días con la misma previsión de ICON-EU y los avisos de AEMET que ya existen, con el "
+                 "modelo de dos tardes antes (racha y lluvia): conserva la mayor parte de la señal del de mañana (5,4 "
+                 "frente a 6,9 veces la tasa base en 2024 - 2025) y pierde sobre todo los avisos que AEMET aún no ha "
+                 "emitido. Sirve para planificar, no sustituye al parte de mañana."),
+    }
+
+
 INDEX_FILE = "indice.json"
 DATED_FILE = re.compile(r"riesgo_(\d{8})\.json")
 
@@ -1220,6 +1339,7 @@ def day_summary(payload: dict, name: str, dashboard: str) -> dict:
             "guardia_reforzada": bool(guard.get("reforzar")), "guardia_motivo": guard.get("motivo"),
             "franja": (d.get("franja") or {}).get("texto"), "racha_max_kmh": d.get("racha_max_kmh"),
         })
+    outlook = payload.get("pasado_manana") or {}
     return {
         "fecha": payload.get("fecha") or f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}",
         "fecha_texto": payload.get("fecha_texto") or f"{stamp[6:]}.{stamp[4:6]}.{stamp[:4]}",
@@ -1227,6 +1347,10 @@ def day_summary(payload: dict, name: str, dashboard: str) -> dict:
         "repetido": "repetido" in forecast or "Gold" in forecast, "prevision": forecast,
         "modelo": (payload.get("modelo") or {}).get("descripcion"),
         "distribuidoras": dists,
+        "pasado_manana": {"fecha_texto": outlook.get("fecha_texto"),
+                          "distribuidoras": [{"nombre": d.get("nombre"), "nivel": d.get("nivel"),
+                                              "probabilidad": d.get("probabilidad")}
+                                             for d in outlook.get("distribuidoras", [])]} if outlook else None,
         "ficheros": {kind: file for kind, file in files.items() if os.path.exists(os.path.join(dashboard, file))},
     }
 
@@ -1479,6 +1603,14 @@ def main(argv=None):
     if not zone_rows.empty:
         save_prediction(spark, zone_rows, rcfg["tabla_zonas"], day, ZONE_COLUMNS)
 
+    outlook = pd.DataFrame()
+    if not args.desde_gold:
+        try:
+            outlook = two_day_outlook(spark, config, rcfg, cfg, pdf, blocks, end, hourly, cells_hours, weights, warnings,
+                                      dists, known, up_to_date, day, names, forecast_asked, args.run_id, created)
+        except Exception as error:  # noqa: BLE001
+            logger.error("Outlook of D + 2 not computed: %s", error)
+
     in_force = warnings_of_day(warnings, day)
     count = len(in_force[["fenomeno_codigo", "inicio_ts", "fin_ts"]].drop_duplicates())
     if not answered:
@@ -1498,6 +1630,7 @@ def main(argv=None):
     seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"])
     notes = report_notes(out, info)
     payload = attach_second_opinions(dashboard_payload(day, out, info, zone_out, seguimiento, args.run_id, notes), rcfg.get("dashboard_dir"))
+    payload["pasado_manana"] = outlook_payload(outlook, day)
     export(config, folder_id, report_text(day, out, info, zone_out), {"prediccion": out, "zonas": zone_rows})
     write_dashboard(config, rcfg, folder_id, payload, day, args.solo_archivo)
 

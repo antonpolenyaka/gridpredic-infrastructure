@@ -92,11 +92,29 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         if (d.get("aemet") or {}).get("texto"):
             line += f"; {d['aemet']['texto']}"
         lines.append(line + ".")
+    outlook = outlook_line(payload, minimum)
+    if outlook:
+        lines.append(outlook)
     rule = (payload.get("reglas") or {}).get("texto")
     if rule:
         lines.append(rule)
     lines.append("Cuadro de mando: http://localhost:8086")
     return "\n".join(lines)
+
+
+def outlook_line(payload: dict, minimum: str = "alto") -> str:
+    """
+    One line with the distribuidoras whose outlook of the day after tomorrow
+    (pasado_manana of riesgo.json) reaches minimum, as an orientation; empty
+    without it.
+    """
+    block = payload.get("pasado_manana") or {}
+    reached_ones = [d for d in block.get("distribuidoras", []) if reached(d.get("nivel", "bajo"), minimum)]
+    if not reached_ones:
+        return ""
+    parts = ", ".join(f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
+                      for d in reached_ones)
+    return f"Pasado mañana {block.get('fecha_texto') or block.get('fecha', '')}, orientación a dos días: {parts}."
 
 
 def post(url: str, message: str, field: str = "text", timeout: float = 30.0) -> int:
