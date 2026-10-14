@@ -76,6 +76,13 @@ async def capture(base: str, out: str, width: int, theme: str, days: list = None
                 await shot(follow, "index_seguimiento")
         await page.set_viewport_size({"width": width, "height": 900})
 
+        # The archive of the days (the table of the days with their levels), when the folder has its index.
+        await page.goto(f"{base}/dias.html", wait_until="networkidle")
+        await page.wait_for_timeout(1500)
+        table = await page.query_selector("#dias")
+        if table and await page.query_selector("#dias table"):
+            await shot(table, "dias_archivados")
+
         # The day by day since 2022: the whole page and every distributor alone.
         await page.goto(f"{base}/historial.html", wait_until="networkidle")
         await page.wait_for_timeout(1500)
