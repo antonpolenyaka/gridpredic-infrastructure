@@ -54,6 +54,7 @@
   .barra { display: flex; height: 18px; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
   .barra span { display: block; height: 100%; }
   .notas { color: var(--muted); font-size: 13px; }
+  .verificacion { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
   .notas li { margin: 2px 0; }
   .vacio { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 6px; }
   .zona-sel { background: color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -264,7 +265,39 @@
   function cargarObservado(data) {
     fetch("data/observado.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((o) => pintarObservado(data, o)).catch(() => {});
+    fetch("data/verificacion.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+      .then((v) => pintarVerificacion(data, v)).catch(() => {});
   }
+
+  // What the forecast of the evening before was worth (verificacion.json, written with the observations): yesterday's
+  // forecast peak against the measured one and the summary of the last complete days.
+  function pintarVerificacion(data, v) {
+    if (!v) return;
+    (data.distribuidoras || []).forEach((d, idx) => {
+      const sec = document.getElementById("dist-" + idx);
+      if (!sec) return;
+      const ayer = ((v.ayer || {}).distribuidoras || []).find((b) => String(b.id) === String(d.id));
+      const resumen = (v.resumen || []).find((b) => String(b.id) === String(d.id));
+      const parts = [];
+      if (ayer && ayer.racha_prevista_max != null && ayer.racha_observada_max != null) {
+        parts.push(`Ayer (${fechaCorta(v.ayer.fecha)}): previsto un pico de ${num(ayer.racha_prevista_max)} km/h a las ${ayer.hora_prevista}:00, observado ${num(ayer.racha_observada_max)} km/h a las ${ayer.hora_observada}:00 (${ayer.estaciones} estaciones${ayer.pico_en_franja == null ? "" : ayer.pico_en_franja ? ", dentro de la franja prevista" : ", fuera de la franja prevista"}).`);
+      } else if (ayer && ayer.racha_prevista_max != null && ayer.estaciones === 0) {
+        parts.push(`Ayer (${fechaCorta(v.ayer.fecha)}): sin estaciones de AEMET a menos de ${num(data.radio_km || 25)} km de la red para comprobar la previsión.`);
+      }
+      if (resumen && resumen.texto) parts.push(resumen.texto.charAt(0).toUpperCase() + resumen.texto.slice(1) + ".");
+      if (!parts.length) return;
+      let p = sec.querySelector(".verificacion");
+      if (!p) {
+        p = document.createElement("p");
+        p.className = "verificacion";
+        const holder = sec.querySelector(".perfil-holder");
+        if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
+      }
+      p.textContent = "Lo que valió la previsión. " + parts.join(" ");
+    });
+  }
+
+  function fechaCorta(f) { return f && f.length >= 10 ? f.slice(8, 10) + "." + f.slice(5, 7) : f || ""; }
 
   function cargarRayos(data) {
     fetch("data/rayos.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
