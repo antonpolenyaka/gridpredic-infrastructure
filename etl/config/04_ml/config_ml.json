@@ -425,6 +425,17 @@
       ["operativa__logistica", "ayer__logistica"]
     ]
   },
+  "caso_negocio": {
+    "anios": [2022, 2023, 2024, 2025],
+    "brigadas": {"3": [1, 2], "2": [1, 2], "1366": [1]},
+    "movilizacion_min": 30.0,
+    "recorte_min": 110.0,
+    "horario_laboral": [8, 17],
+    "tabla_dias": "l3_gold.caso_negocio_dia",
+    "tabla_resumen": "l3_gold.caso_negocio_resumen",
+    "peores_dias": 10,
+    "minimo_incidencias_nivel": 10
+  },
   "riesgo_manana": {
     "variante": "operativa",
     "modelo": "logistica",
@@ -470,6 +481,20 @@
       "api": "https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area/{area}",
       "areas": ["esp"],
       "clave_env": "AEMET_API_KEY",
+      "timeout_s": 120
+    },
+    "aviso": {
+      "url_env": "AVISO_WEBHOOK_URL",
+      "nivel_minimo": "alto",
+      "campo": "text",
+      "timeout_s": 30
+    },
+    "observacion": {
+      "api": "https://opendata.aemet.es/opendata/api/observacion/convencional/todas",
+      "clave_env": "AEMET_API_KEY",
+      "horario": "20 * * * *",
+      "caja": [38.1, -7.3, 40.6, -5.4],
+      "radio_km": 25.0,
       "timeout_s": 120
     },
     "rayos": {

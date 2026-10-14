@@ -270,6 +270,8 @@ services:
       # DAG is skipped).
       EUMETSAT_CONSUMER_KEY: ${EUMETSAT_CONSUMER_KEY:-}
       EUMETSAT_CONSUMER_SECRET: ${EUMETSAT_CONSUMER_SECRET:-}
+      # Webhook (Slack, Teams, Discord...) for the message of the evening when a distribuidora is in alert (optional).
+      AVISO_WEBHOOK_URL: ${AVISO_WEBHOOK_URL:-}
 
     volumes:
       - airflow-data:/opt/airflow
