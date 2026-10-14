@@ -122,7 +122,8 @@
     fetch("data/parte_guardia.xlsx", { method: "HEAD", cache: "no-store" }).then((r) => {
       if (r.ok) document.getElementById("fuentes").insertAdjacentHTML("beforeend", ' · <a href="data/parte_guardia.xlsx">Parte de guardia (Excel)</a>');
     }).catch(() => {});
-    document.getElementById("pie").textContent = "Generado el " + (data.generado || "") + ". Mapa: OpenStreetMap (ODbL). " + (data.reglas && data.reglas.texto ? data.reglas.texto : "");
+    document.getElementById("pie").textContent = "Generado el " + (data.generado || "") + ". Mapa: OpenStreetMap (ODbL). " + (data.reglas && data.reglas.texto ? data.reglas.texto : "")
+      + " Próximas 3 h por línea: regla sobre la probabilidad del día (el 74 % de las averías de los días de alerta empiezan en la franja; en el pico de racha, el 62 % de las averías por tiempo a menos de 3 h; rayos a menos de 10 km en la hora previa, 15 veces más averías): ordena las líneas para las próximas horas, no es una probabilidad calibrada.";
   }
 
   function perfilSvg(perfil, franja, observado, banda, aemet) {
@@ -191,9 +192,31 @@
       <td>${esc(z.nombre)}${extra}</td>
       <td>${nivelPill(z.nivel)}</td><td class="num">${pct(z.probabilidad)}</td><td class="num">${pct(z.parte, 0)}</td>
       <td class="num">${num(z.n_ct)}</td><td class="num">${num(z.abonados)}</td><td class="num">${num(z.clientes_esperados, 1)}</td><td class="num">${num(z.racha_max)}</td>
-      <td class="num">${num(z.hist_365d)}</td><td class="ahora" data-dist="${idx}" data-zona="${i}"></td></tr>`;
+      <td class="num">${num(z.hist_365d)}</td><td class="ahora" data-dist="${idx}" data-zona="${i}"></td><td class="num prox3" data-dist="${idx}" data-zona="${i}"></td></tr>`;
     }).join("");
-    return `<div class="scroll"><table><thead><tr><th>Zona (línea)</th><th>Nivel</th><th class="num">Prob.</th><th class="num">Parte del riesgo</th><th class="num">CT</th><th class="num">Clientes</th><th class="num">Clientes esp.</th><th class="num">Racha (km/h)</th><th class="num">Inc. último año</th><th>Ahora</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div class="scroll"><table><thead><tr><th>Zona (línea)</th><th>Nivel</th><th class="num">Prob.</th><th class="num">Parte del riesgo</th><th class="num">CT</th><th class="num">Clientes</th><th class="num">Clientes esp.</th><th class="num">Racha (km/h)</th><th class="num">Inc. último año</th><th>Ahora</th><th class="num" title="Regla con lo que hay en vivo sobre el riesgo del día: ver el pie de página">Próx. 3 h</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  // The risk of the next three hours of a line: a rule over the probability of the day. Inside the window of the
+  // day the incidents concentrate (74 % of the incidents of the alert days start inside it); at the peak of the
+  // gust, 62 % of the weather incidents start within 3 hours of it; flashes within 10 km in the previous hour
+  // precede 17 % of the incidents against 1.1 % of the control windows (15 times). The constants are the ones
+  // measured in causas-incidencias.md; the result ranks the lines for the next hours, it is not a calibrated
+  // probability.
+  const RULE = { enFranja: 0.74, enPico: 0.31, rayos: 15, tope: 0.95 };
+  function nextHoursRisk(z, franja, hour, storm, atPeak) {
+    const p = z.probabilidad || 0;
+    if (!p) return 0;
+    const inside = franja && franja.inicio != null && franja.fin != null;
+    const span = inside ? Math.max(1, franja.fin - franja.inicio + 1) : 24;
+    let base = 0;
+    for (let k = 0; k < 3; k++) {
+      const h = (hour + k) % 24;
+      base += inside ? (h >= franja.inicio && h <= franja.fin ? RULE.enFranja * p / span : (1 - RULE.enFranja) * p / Math.max(1, 24 - span)) : p / 24;
+    }
+    if (atPeak) base = Math.max(base, RULE.enPico * p);
+    if (storm) base *= RULE.rayos;
+    return Math.min(RULE.tope, base);
   }
 
   // "Ahora" of every line, from what is live: the flashes of the satellite over its municipalities in the last
@@ -222,11 +245,19 @@
         for (const st of stations) {
           if (places.some((m) => haversine(m.lat, m.lon, st.lat, st.lon) <= radius) && (best == null || st.racha_kmh > best.racha_kmh)) best = st;
         }
+        let atPeak = false;
         if (best) {
           const hit = z.racha_max != null && best.racha_kmh >= z.racha_max;
+          atPeak = z.racha_max != null && best.racha_kmh >= 0.9 * z.racha_max;
           parts.push(`<span${hit ? ' class="pico"' : ""} title="${esc(best.nombre)} a las ${esc(best.hora)}">${num(best.racha_kmh)} km/h${hit ? ", en el pico previsto" : ""}</span>`);
         }
         cell.innerHTML = parts.join(" ") || '<span class="notas">sin dato</span>';
+        const next = document.querySelector(`td.prox3[data-dist="${idx}"][data-zona="${i}"]`);
+        if (next) {
+          const risk = nextHoursRisk(z, d.franja, new Date().getHours(), lines.has(z.nombre), atPeak);
+          const why = [lines.has(z.nombre) ? "rayos a menos de 10 km en la última hora (x15)" : "", atPeak ? "racha medida en el pico previsto" : ""].filter(Boolean).join(", ");
+          next.innerHTML = `<span${risk >= 0.05 ? ' class="pico"' : ""} title="${esc(why || "sin señal en vivo: solo el reparto del riesgo del día por horas")}">${pct(risk, 1)}</span>`;
+        }
       });
     });
   }
