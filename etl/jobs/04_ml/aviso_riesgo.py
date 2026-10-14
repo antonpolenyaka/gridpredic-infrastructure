@@ -248,6 +248,8 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
                 text += f", franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico {float(fr.get('racha_pico') or 0):.0f} km/h"
             if (d.get("aemet") or {}).get("pico"):
                 text += f", AEMET {float(d['aemet']['pico'].get('racha_kmh') or 0):.0f} km/h"
+            if (d.get("guardia") or {}).get("reforzar"):
+                text += f", guardia reforzada ({d['guardia'].get('motivo', '')})"
             parts.append(text)
         lines.append(f"Hoy {day_text(source.get('fecha'))}: " + "; ".join(parts) + ".")
     elif today.get("distribuidoras"):
