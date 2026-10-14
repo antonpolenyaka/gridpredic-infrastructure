@@ -93,6 +93,7 @@ Lo que no podemos afirmar con estos datos: una cifra en euros del incentivo de c
 
 ## 5. Cómo enseñarlo
 
+- `negocio.html` en el cuadro de mando (http://localhost:8086/negocio.html): la página para una distribuidora o un inversor, calculada en el navegador a partir de `historico.json`: las cuatro cifras (veces más averías un día muy alto, parte de las horas-cliente en los días de alerta, peores días avisados, días de alerta al año), la tasa de avería por nivel y dónde cayeron las horas-cliente, la guardia a igual presupuesto (fines de semana de invierno, todos los fines de semana, el sistema con los mismos días, solo los días en alerta, con el coste por día que ponga quien la mira), la tabla por distribuidora y año, los diez peores días, la retribución y la licencia, y lo que el sistema no hace. Se imprime o se guarda en PDF desde el enlace de la cabecera.
 - `historial.html` en el cuadro de mando (http://localhost:8086/historial.html): cuatro años en una pantalla por distribuidora, con el selector de previsión real o reanálisis y el recorte del incendio. Al pasar el ratón por un día salen el nivel, la probabilidad, las incidencias, los clientes y las bases propuestas.
 - El cuadro de mando de mañana (`index.html`): el mismo producto en vivo, con los rayos del satélite cada 15 minutos.
 - Para una reunión: la tabla por niveles (10 veces más averías un día muy alto), los 10 peores días con lo que decía el sistema y la noche del incendio de Jarilla.
