@@ -425,6 +425,16 @@
       ["operativa__logistica", "ayer__logistica"]
     ]
   },
+  "caso_negocio": {
+    "anios": [2022, 2023, 2024, 2025],
+    "brigadas": {"3": [1, 2], "2": [1, 2], "1366": [1]},
+    "movilizacion_min": 30.0,
+    "recorte_min": 110.0,
+    "horario_laboral": [8, 17],
+    "tabla_dias": "l3_gold.caso_negocio_dia",
+    "tabla_resumen": "l3_gold.caso_negocio_resumen",
+    "peores_dias": 10
+  },
   "riesgo_manana": {
     "variante": "operativa",
     "modelo": "logistica",

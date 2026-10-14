@@ -33,7 +33,7 @@ gridpredic-infrastructure/
 │   └── jobs/                    # Transformaciones con Spark (00_landing ... 03_gold) y entrenamiento (04_ml)
 ├── data/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
-├── dashboard/                   # Cuadro de mando estático del riesgo de mañana (Leaflet y OpenStreetMap); data/ recibe el JSON del DAG
+├── dashboard/                   # Cuadro de mando estático del riesgo de mañana (Leaflet y OpenStreetMap) y de lo que habría dicho en 2022 - 2025; data/ recibe los JSON de los jobs
 ├── docs/                        # Documentación: cards, capas Silver y Gold, flujo de datos, este documento
 ├── notebooks/                   # Exploración (convención de nombres en su README)
 ├── tests/                       # Pruebas locales de los jobs, sin Docker
