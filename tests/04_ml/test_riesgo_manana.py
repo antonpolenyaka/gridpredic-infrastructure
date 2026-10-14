@@ -433,6 +433,8 @@ def config_path(workdir):
     # The outlook of pasado manana is off in production until the 72 h backtest is in; the tests keep it on.
     config["riesgo_manana"]["variante_pasado_manana"] = "operativa_48h"
     config["riesgo_manana"]["riesgo_zonas"] = {"brigadas": {"1": 1, "2": 1}, "bases_fijas": {"1": ["Torre de Santa María"]}}
+    # The names shown (the fixture has the distribuidoras 1 and 2, with Calser_EOSA and Calser_Pitarch as databases).
+    config["riesgo_manana"]["nombres"] = {"1": "Distribuidora 1", "2": "Distribuidora 2"}
     os.makedirs(config["riesgo_manana"]["dashboard_dir"])
     config["meteo_dia"] = {
         **config.get("meteo_dia", {}),
@@ -503,7 +505,7 @@ def test_the_storm_with_a_warning_is_the_riskiest_day(first):
     assert sorted(rows.index) == [1, 2]
     assert (rows["fecha"].astype(str) == "2026-01-15").all()
     storm, calm = rows.loc[1], rows.loc[2]
-    assert storm["distribuidora"] == "EOSA" and calm["distribuidora"] == "Pitarch"
+    assert storm["distribuidora"] == "Distribuidora 1" and calm["distribuidora"] == "Distribuidora 2"
     assert storm["probabilidad"] > 3 * calm["probabilidad"]
     assert storm["nivel"] in ("muy alto", "alto") and storm["percentil"] >= 0.9
     assert storm["veces_tasa_base"] > 2
@@ -559,7 +561,7 @@ def test_the_zones_split_the_risk_of_the_day(first, spark, workdir):
     for name in ("parte_guardia.xlsx", "parte_guardia_20260115.xlsx"):
         assert os.path.getsize(os.path.join(workdir, "dashboard", name)) > 5000
     text = open(os.path.join(workdir, "resultados", RUN_ID, "resumen.md"), encoding="utf-8").read()
-    assert "## EOSA: dónde, cuándo, por qué y cuánto" in text and "### Brigadas" in text
+    assert "## Distribuidora 1: dónde, cuándo, por qué y cuánto" in text and "### Brigadas" in text
 
 
 def test_the_summary_and_the_run(first, spark, workdir):

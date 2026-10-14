@@ -40,7 +40,7 @@ Las fuentes son cuatro bases de datos de SQL Server, restauradas a partir de bac
 
 | Base de datos | Qué contiene | Tamaño del backup |
 | --- | --- | --- |
-| `Calser_EOSA` (D1, Eléctrica del Oeste) | Interrupciones, incidencias, CTs, salidas, municipios y períodos. 805 CTs | 1,3 GB |
+| `Calser_EOSA` (D1, la Distribuidora 1) | Interrupciones, incidencias, CTs, salidas, municipios y períodos. 805 CTs | 1,3 GB |
 | `Calser_Pitarch` (D2) | Lo mismo para 598 CTs | 1,0 GB |
 | `Calser_ValleSantaAna` (D3) | Lo mismo para 11 CTs | 23 MB |
 | `TedisNet_EOSA` | SCADA de las tres distribuidoras: 78.301 tags, 12.307 nodos y 11.449 ramas de topología, 1.386 transformadores observables, series de medidas y eventos desde 2021 | 63,5 GB |
@@ -78,7 +78,7 @@ Cifras de volumen que condicionan el diseño del pipeline:
 - Reporte regulatorio de calidad de suministro a la CNMC: el dataset limpia y deduplica, y el cálculo oficial se hace en Calser.
 - Análisis de clientes o de consumo individual: las tablas de abonados y acometidas no se ingieren, y no debe cruzarse con datos personales.
 - Redes de baja tensión: TedisNet no modela la BT de estas distribuidoras, así que el dataset solo sirve para media tensión.
-- Reentrenar sobre `BDTest_v640` o cualquier copia de Pitarch: es la misma base congelada y duplicaría el 43 % de los eventos.
+- Reentrenar sobre `BDTest_v640` o cualquier copia de la Distribuidora 2: es la misma base congelada y duplicaría el 43 % de los eventos.
 
 ## Dataset Structure
 
@@ -113,7 +113,7 @@ Tablas de Gold (el detalle está en [gold-layer.md](gold-layer.md)):
 | `features_ct_hora`, `feature_metadata` | CT y hora | Unas 250 features y su descripción |
 | `dataset_train`, `dataset_versions` | CT y hora | Dataset de entrenamiento sin las horas en corte, sin SCADA activo o en las que el CT no existía, con split temporal (y 6 h de purga antes de cada frontera) y muestreo reproducible, y el registro de cada versión |
 
-Columnas técnicas comunes: `distribuidora_id` (el `DistributorId` de Calser, que coincide con el `Id` del elemento raíz en TedisNet: 3 EOSA, 2 Pitarch, 1366 Valle de Santa Ana), `_origen` (Historic, System o Stream), `run_id` de la ejecución del DAG y los flags booleanos de anomalías (`en_solape`, `duracion_cero`, `es_microcorte`, `es_estimado`, `es_copiado`, `es_error_comm`, `es_maniobra`, `potencia_cero`, `sin_telemetria`...).
+Columnas técnicas comunes: `distribuidora_id` (el `DistributorId` de Calser, que coincide con el `Id` del elemento raíz en TedisNet: 3 Distribuidora 1, 2 Distribuidora 2, 1366 Distribuidora 3), `_origen` (Historic, System o Stream), `run_id` de la ejecución del DAG y los flags booleanos de anomalías (`en_solape`, `duracion_cero`, `es_microcorte`, `es_estimado`, `es_copiado`, `es_error_comm`, `es_maniobra`, `potencia_cero`, `sin_telemetria`...).
 
 Clave de cruce entre las dos fuentes: `Calser.cts.CT_ID` (texto de cinco dígitos, por ejemplo "01011") = `TedisNet.SystemElements.ShortName` del elemento de tipo 145 (TRAFO CT) de la misma distribuidora. La cobertura verificada es del 97,8 % de los CT con interrupciones desde 2021 (1.317 de 1.346) y del 99,4 % de los eventos.
 
