@@ -73,7 +73,7 @@ def test_detection_and_false_alarms_of_the_policies():
         "aviso_max_nivel": [2, 0, 1, 0, 0] + [0] * 15, "aviso_viento_nivel": [2] + [0] * 19, "aviso_tormenta_nivel": [0, 0, 1] + [0] * 17,
     })
     table = cn.detection_table(days).set_index("política")
-    alert = table.loc["GridPredict en alerta (alto o muy alto)"]
+    alert = table.loc["GridPredic en alerta (alto o muy alto)"]
     # Three days with an incident, two of them in alert; of the 17 other days, two are in alert.
     assert alert["detección: día con alguna incidencia"] == pytest.approx(2 / 3, abs=0.01)
     assert alert["falsas alarmas: día con alguna incidencia"] == pytest.approx(2 / 17, abs=0.001)
@@ -102,7 +102,7 @@ def test_the_summary_the_files_and_the_history(replayed, spark, workdir):
     assert "## tiempo del día del reanálisis" in text and "### Brigadas" in text and "### Por nivel previsto (" in text
     assert "horas-cliente (recortadas)" in text and "| sin recortar |" in text
     assert "| probabilidad media |" in text and "Probabilidad de la víspera frente a los días con avería: AUC 0." in text
-    assert "### Frente a los avisos de AEMET" in text and "| GridPredict en alerta (alto o muy alto) |" in text
+    assert "### Frente a los avisos de AEMET" in text and "| GridPredic en alerta (alto o muy alto) |" in text
     assert "### Detección y falsas alarmas por día" in text and "| detección: día con alguna incidencia |" in text
     cts = pd.read_csv(os.path.join(folder, "cts.csv"))
     assert (cts["min_ganados_total"].abs() <= cts["dur_min"] + 1e-9).all()

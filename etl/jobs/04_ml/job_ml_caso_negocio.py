@@ -420,10 +420,10 @@ def policy_masks(d: pd.DataFrame) -> list:
         same.loc[g.sort_values("probabilidad", ascending=False).index[:n]] = True
     return [("aviso de AEMET amarillo o más (cualquier fenómeno)", warn >= 1), ("aviso de AEMET de viento, amarillo o más", wind >= 1),
             ("aviso de AEMET de viento o tormenta, amarillo o más", (wind >= 1) | (storm >= 1)),
-            ("aviso de AEMET naranja o rojo", warn >= 2), ("GridPredict en alerta (alto o muy alto)", d["alerta"].astype(bool)),
-            ("GridPredict en alerta o aviso de viento o tormenta", d["alerta"].astype(bool) | (wind >= 1) | (storm >= 1)),
-            ("GridPredict en alerta o aviso naranja o rojo", d["alerta"].astype(bool) | (warn >= 2)),
-            ("GridPredict con tantos días como avisos amarillos", same)]
+            ("aviso de AEMET naranja o rojo", warn >= 2), ("GridPredic en alerta (alto o muy alto)", d["alerta"].astype(bool)),
+            ("GridPredic en alerta o aviso de viento o tormenta", d["alerta"].astype(bool) | (wind >= 1) | (storm >= 1)),
+            ("GridPredic en alerta o aviso naranja o rojo", d["alerta"].astype(bool) | (warn >= 2)),
+            ("GridPredic con tantos días como avisos amarillos", same)]
 
 
 def detection_table(d: pd.DataFrame) -> pd.DataFrame:

@@ -15,7 +15,7 @@ Qué deja (cuando la página tiene los datos):
 - historial.png: el día a día desde 2022, e historial_<distribuidora>.png para cada red.
 - negocio_<bloque>.png: cada sección de la página de cifras (director, guardia, por año, peores días,
   retribución, sector, producción, límites), con todas las distribuidoras y con cada una por separado.
-- GridPredict en cifras.pdf: la página de cifras entera, con todas las distribuidoras, en A4.
+- GridPredic en cifras.pdf: la página de cifras entera, con todas las distribuidoras, en A4.
 """
 
 import argparse
@@ -114,7 +114,7 @@ async def capture(base: str, out: str, width: int, theme: str, days: list = None
         await page.select_option("#dist", "")
         await page.wait_for_timeout(600)
         await page.emulate_media(media="print")
-        pdf = os.path.join(out, "GridPredict en cifras.pdf")
+        pdf = os.path.join(out, "GridPredic en cifras.pdf")
         await page.pdf(path=pdf, format="A4", print_background=True, margin={"top": "12mm", "bottom": "12mm", "left": "10mm", "right": "10mm"})
         done.append(pdf)
         await browser.close()

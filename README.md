@@ -18,6 +18,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 | [docs/operacion-diaria.md](docs/operacion-diaria.md) | Manual de la operación en marcha: los DAG, sus horas, lo que dejan, los avisos y qué mirar si falla |
 | [docs/cifras.md](docs/cifras.md) | Las cifras que van a la memoria y a la presentación, en una página, con el documento y la ejecución de la que sale cada una |
 | [docs/guion-presentacion.md](docs/guion-presentacion.md) | El guion de la defensa: 14 diapositivas con el mensaje, la figura y la cifra de cada una |
+| [docs/memoria-lo-que-pide-el-tutor.md](docs/memoria-lo-que-pide-el-tutor.md) | Lo que pide el tutor de negocio para la memoria (tutorías del 06.07 y del 14.10.2026), lo que ya cubrimos y los textos propuestos: propuesta de valor, marca y posicionamiento, marketing mix, DAFO por fases, riesgos, validación y plan financiero |
 | [docs/investigacion-continua.md](docs/investigacion-continua.md) | Cuaderno de laboratorio: las hipótesis probadas con los datos (literatura, humedad del suelo y duración del viento, datos públicos, dispositivos de los clientes), cómo se probaron y qué se descartó; el código de cada prueba está en `experimentos/` |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | GitHub Flow tal como lo aplicamos, reglas de commits y versionado de datos |
 | [CHANGELOG.md](CHANGELOG.md) | Historial de versiones |
@@ -596,7 +597,7 @@ ORDER BY fecha DESC, probabilidad DESC;
 
 La misma ejecución deja la orientación de pasado mañana (`l3_gold.riesgo_pasado_manana` y el bloque `pasado_manana` de `riesgo.json`): el nivel de cada red a dos días con el modelo de dos tardes antes, que conserva la mayor parte de la señal del de mañana (5,4 frente a 6,9 veces la tasa base en 2024 - 2025) y pierde sobre todo los avisos que AEMET aún no ha emitido; sirve para planificar, no lleva zonas ni guardia.
 
-El cuadro de mando son cuatro páginas con el mismo menú y el mismo sistema de diseño (`dashboard/gridpredict.css`, tema claro y oscuro, de móvil a pantalla grande): `index.html` (el riesgo de mañana), `dias.html` (todos los días con riesgo guardado, de las ejecuciones de la tarde y de los días repetidos, cada uno con su enlace y su parte de guardia; lee `data/indice.json`, que el job reescribe cada vez que guarda un día), `historial.html` (día a día desde 2022) y `negocio.html` (las cifras).
+El cuadro de mando son cuatro páginas con el mismo menú y el mismo sistema de diseño (`dashboard/gridpredic.css`, tema claro y oscuro, de móvil a pantalla grande): `index.html` (el riesgo de mañana), `dias.html` (todos los días con riesgo guardado, de las ejecuciones de la tarde y de los días repetidos, cada uno con su enlace y su parte de guardia; lee `data/indice.json`, que el job reescribe cada vez que guarda un día), `historial.html` (día a día desde 2022) y `negocio.html` (las cifras).
 
 Con las credenciales del Data Store de EUMETSAT en `.env`, `dag_rayos_vivo` añade cada 15 minutos los rayos que ve el satélite MTG sobre la red (`dashboard/data/rayos.json`), que el cuadro de mando pinta sobre el mapa con una franja por distribuidora.
 
