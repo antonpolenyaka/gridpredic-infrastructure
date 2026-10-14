@@ -4,66 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GridPredict en cifras</title>
+<link rel="stylesheet" href="gridpredict.css">
 <style>
-  /* The page for a distribuidora or an investor: what the system would have said in 2022 - 2025 and what it is
+  /* The page for a distribuidora or an investor: what the system would have said in 2022 - 2026 and what it is
      worth, computed in the browser from historico.json (what job_ml_caso_negocio leaves). Printable. */
-  :root {
-    --bg: #f6f7f4; --panel: #ffffff; --fg: #1d2230; --muted: #5d6675; --line: #d9ddd3; --accent: #1f5f8b;
-    --bajo: #7fb27f; --medio: #e3b53a; --alto: #e0772f; --muy-alto: #b8302f; --grid: #e6e8e2; --input: #fff8d6;
-    --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
-      --accent: #7fb3dd; --grid: #2a3040; --input: #3a3620; color-scheme: dark; }
-  }
-  :root[data-theme="dark"] { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
-    --accent: #7fb3dd; --grid: #2a3040; --input: #3a3620; color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); padding-block: 0 32px; }
-  /* The same menu on every page of the dashboard: nobody needs to know the names of the files. */
-  nav.menu { display: flex; flex-wrap: wrap; gap: 2px 18px; align-items: center; padding: 8px 24px; background: var(--panel);
-    border-bottom: 1px solid var(--line); font-size: 13px; }
-  nav.menu .marca { font-weight: 700; color: var(--fg); text-decoration: none; margin-right: 6px; letter-spacing: .02em; }
-  nav.menu a { color: var(--accent); text-decoration: none; padding: 4px 0; border-bottom: 2px solid transparent; }
-  nav.menu a.actual { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
-  nav.menu .derecha { margin-left: auto; color: var(--muted); display: flex; gap: 14px; }
-  @media (max-width: 700px) { nav.menu { padding-left: 16px; padding-right: 16px; } nav.menu .derecha { margin-left: 0; } }
-  header { padding: 18px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; }
-  header h1 { font-size: 22px; margin: 0; font-weight: 600; }
-  header .fuentes { color: var(--muted); font-size: 13px; }
-  a { color: var(--accent); }
-  main { padding: 0 24px; display: grid; gap: 20px; margin-top: 16px; max-width: 1180px; }
-  @media (max-width: 700px) { header, main { padding-left: 16px; padding-right: 16px; } }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; }
-  section h2 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
-  h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  p { margin: 6px 0; max-width: 90ch; }
-  .controles { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
+  :root { --input: #fff8d6; --bg: var(--paper); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --input: #3a3620; } }
+  :root[data-theme="dark"] { --input: #3a3620; }
+  main, footer, header.page { max-width: 1280px; }
+  main section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-3); box-shadow: var(--shadow); padding: var(--s-4) var(--s-5) var(--s-5); }
+  main section h2 { margin: 0 0 var(--s-3); font-size: var(--fs-4); }
+  main section h3 { margin: var(--s-4) 0 var(--s-2); font-size: var(--fs-2); }
+  main section p { margin: var(--s-2) 0; max-width: 90ch; }
+  .controles { display: flex; gap: var(--s-3) var(--s-4); flex-wrap: wrap; align-items: center; font-size: var(--fs-1); color: var(--muted); }
   .controles label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; color: var(--fg); }
-  .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px; }
-  .cifra { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
-  .cifra .v { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
-  .cifra .l { color: var(--muted); font-size: 12px; margin-top: 4px; }
-  .dos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; align-items: start; }
+  .controles select { font: inherit; font-size: var(--fs-1); padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--panel); color: var(--fg); }
+  .cifras { margin-top: var(--s-2); }
+  .cifra .v { font-size: var(--fs-6); }
+  .dos { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; gap: var(--s-4); }
   svg.graf { display: block; width: 100%; height: auto; }
-  table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   tr.total td { font-weight: 600; }
-  .nivel { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #fff; }
-  .nivel.bajo { background: var(--bajo); } .nivel.medio { background: var(--medio); color: #222; } .nivel.alto { background: var(--alto); } .nivel.muy-alto { background: var(--muy-alto); }
-  .calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 18px; align-items: end; }
-  .calc label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
-  .calc input { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--input); color: var(--fg); max-width: 160px; }
-  .notas { color: var(--muted); font-size: 13px; }
-  ul { margin: 6px 0; padding-left: 20px; } li { margin: 3px 0; }
-  footer { padding: 16px 24px; color: var(--muted); font-size: 12px; max-width: 1180px; }
-  .vacio { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 6px; }
+  .calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s-3) var(--s-4); align-items: end; }
+  .calc label { display: grid; gap: 4px; font-size: var(--fs-0); color: var(--muted); }
+  .calc input { font: inherit; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--input); color: var(--fg); max-width: 160px; }
+  table { font-size: var(--fs-1); }
+  th, td { padding: 7px 8px; }
+  td:first-child, th:first-child { position: static; }
+  .scroll { max-height: none; }
   @media print {
     body { background: #fff; color: #000; font-size: 12px; }
-    header, section { border-color: #bbb; break-inside: avoid; }
-    .controles, .noimprimir { display: none; }
+    header.page, main section { border-color: #bbb; break-inside: avoid; box-shadow: none; }
     main { max-width: none; }
     a { color: inherit; text-decoration: none; }
   }
@@ -71,16 +41,21 @@
 </head>
 <body>
 <nav class="menu" aria-label="Páginas del cuadro de mando">
-  <a class="marca" href="index.html">GridPredict</a>
-  <a href="index.html">Riesgo de mañana</a>
-  <a href="dias.html">Días archivados</a>
-  <a href="historial.html">Día a día 2022 - 2026</a>
-  <a href="negocio.html" class="actual">Negocio y cifras</a>
+  <a class="marca" href="index.html" aria-label="GridPredict, riesgo de mañana"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h5l3 4h10" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12h7l3 4h8" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/><path d="M3 19h4l3-4h11" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><circle cx="8" cy="5" r="1.8" fill="#ffffff"/><circle cx="10" cy="12" r="1.8" fill="#ffffff"/><circle cx="7" cy="19" r="1.8" fill="#ffffff"/></svg>GridPredict</a>
+  <div class="items">
+    <a href="index.html">Riesgo de mañana</a>
+    <a href="dias.html">Días archivados</a>
+    <a href="historial.html">Día a día 2022 - 2026</a>
+    <a href="negocio.html" class="actual">Negocio y cifras</a>
+  </div>
   <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
 </nav>
-<header>
-  <h1>GridPredict en cifras: lo que habría pasado con el sistema en marcha</h1>
-  <div class="fuentes" id="fuentes">Cargando data/historico.json... <a href="index.html">Riesgo de mañana</a> · <a href="historial.html">Día a día</a></div>
+<header class="page">
+  <div class="page-top">
+    <div class="titulo"><h1>GridPredict en cifras</h1><span class="fecha-chip">lo que habría pasado con el sistema en marcha</span></div>
+    <div class="acciones"><a class="boton noimprimir" href="#" id="imprimir-arriba">Imprimir o guardar en PDF</a></div>
+  </div>
+  <p class="sub" id="fuentes">Cargando data/historico.json...</p>
 </header>
 <main id="main">
   <section class="noimprimir">
@@ -90,7 +65,7 @@
       <label><input type="radio" name="modo" value="reanalisis"> reanálisis, como previsión perfecta (desde 2022)</label>
       <label><input type="checkbox" id="winsor" checked> cortes recortados a 110 minutos</label>
       <label>Distribuidora: <select id="dist"><option value="">todas</option></select></label>
-      <a class="noimprimir" href="#" id="imprimir">Imprimir o guardar en PDF</a>
+
     </div>
   </section>
   <div id="bloques"></div>
@@ -99,6 +74,14 @@
 <script>
 (function () {
   "use strict";
+
+  // Every table scrolls inside its own box on narrow screens instead of widening the page.
+  function envolverTablas(root) {
+    root.querySelectorAll("table").forEach((t) => {
+      if (t.closest(".scroll")) return;
+      const w = document.createElement("div"); w.className = "scroll"; t.parentNode.insertBefore(w, t); w.appendChild(t);
+    });
+  }
   const ORDER = ["bajo", "medio", "alto", "muy alto"];
   const cls = (n) => (n || "bajo").replace(" ", "-");
   const num = (x, d = 0) => (x == null || isNaN(x)) ? "" : Number(x).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -346,6 +329,7 @@
     </ul></section>`;
 
     root.innerHTML = html;
+    envolverTablas(root);
     document.getElementById("coste").addEventListener("input", () => guardTable(pol, groups));
     guardTable(pol, groups);
     produccion();
@@ -448,12 +432,13 @@
       html += `<tr><td>${label}</td><td class="num">${num(d)}</td><td class="num">${pct(pol.total ? p.h / pol.total : 0)}</td><td class="num">${num(c)}</td><td class="num">${c === base ? "-" : (c < base ? "-" : "+") + num(Math.abs(c - base))}</td></tr>`;
     }
     document.getElementById("tabla-guardia").innerHTML = html + "</tbody></table>";
+    envolverTablas(document.getElementById("tabla-guardia"));
   }
 
   fetch("data/historico.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
     .then((data) => {
       DATA = data;
-      document.getElementById("fuentes").innerHTML = `Calculado en el navegador a partir de data/historico.json (generado ${esc(data.generado || "")}). <a href="index.html">Riesgo de mañana</a> · <a href="historial.html">Día a día</a> · <a href="https://github.com/antonpolenyaka/gridpredic-infrastructure/blob/main/docs/caso-de-negocio.md">Método y límites</a>`;
+      document.getElementById("fuentes").innerHTML = `Calculado en el navegador a partir de data/historico.json (generado ${esc(data.generado || "")}). El método y los límites están en <a href="https://github.com/antonpolenyaka/gridpredic-infrastructure/blob/main/docs/caso-de-negocio.md">caso-de-negocio.md</a>.`;
       document.getElementById("pie").textContent = "Niveles: muy alto desde el percentil 95 de los días de entrenamiento de cada distribuidora, alto desde el 90, medio desde el 75. Averías: incidencias de causa local de Calser (equipos, meteorología, vegetación, fauna, terceros y causa desconocida) en los CT en estudio, con los clientes y la duración real de cada corte de CT. Las distribuidoras con menos de 10 incidencias en el periodo no entran en las cifras.";
       // The distribuidoras with enough incidents in some mode can be looked at alone: the levels are their own percentiles.
       const select = document.getElementById("dist");
@@ -462,7 +447,7 @@
         if (enough) select.insertAdjacentHTML("beforeend", `<option value="${esc(d.id)}">${esc(d.nombre)}</option>`);
       }
       document.querySelectorAll('input[name="modo"], #winsor, #dist').forEach((el) => el.addEventListener("change", render));
-      document.getElementById("imprimir").addEventListener("click", (e) => { e.preventDefault(); window.print(); });
+      document.getElementById("imprimir-arriba").addEventListener("click", (e) => { e.preventDefault(); window.print(); });
       render();
     })
     .catch((e) => { document.getElementById("bloques").innerHTML = `<div class="vacio">No hay data/historico.json todavía: corre job_ml_caso_negocio.py (${esc(e.message)}).</div>`; });
