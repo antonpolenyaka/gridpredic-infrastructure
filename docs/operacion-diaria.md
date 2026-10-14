@@ -1,0 +1,47 @@
+# Operación diaria: qué corre, cuándo, qué deja y qué mirar si falla
+
+Este documento es el manual de la operación en marcha: los tres DAG de Airflow que mantienen el cuadro de mando al día, los ficheros que dejan, los avisos que mandan y qué hacer cuando algo no sale. El porqué de cada pieza está en [causas-incidencias.md](causas-incidencias.md) (apartado 10) y los resultados en [caso-de-negocio.md](caso-de-negocio.md).
+
+## 1. El ciclo de un día
+
+| Hora (Madrid) | DAG y tarea | Qué hace | Qué deja |
+| --- | --- | --- | --- |
+| 20:30 | `dag_riesgo_manana` / `dia` | Decide el día que se predice (mañana) | - |
+| 20:30 | `prevision` | Previsión de ICON-EU de la víspera para las celdas de las tres redes (Open-Meteo, sin clave) | `00_landing/vivo/<día>/prevision/<celda>.json` |
+| 20:30 | `avisos` | Avisos de AEMET en vigor para el día (clave de AEMET) | `00_landing/vivo/<día>/avisos/` |
+| 20:30 | `ensemble` | Los 40 escenarios de ICON-EU EPS para las celdas de cada red (Open-Meteo, sin clave); 44 celdas, menos de un minuto | `00_landing/vivo/<día>/ensemble/<celda>.json` y `dashboard/data/ensemble.json` (+ `ensemble_<día>.json`) |
+| 20:30 | `aemet_municipios` | Predicción horaria de AEMET por municipios, su propio modelo (73 municipios, unos 6 minutos por el límite de peticiones de AEMET) | `00_landing/vivo/<día>/aemet/<ine>.json` y `dashboard/data/aemet.json` (+ `aemet_<día>.json`) |
+| 20:33 - 20:40 | `puntuar` | `job_ml_riesgo_manana` en Spark: reentrena con todos los días etiquetados, puntúa el día por distribuidora, línea, municipio y CT, calcula la franja, las brigadas y las bases; adjunta los escenarios y la predicción de AEMET | `l3_gold.riesgo_dia_siguiente`, `dashboard/data/riesgo.json` (+ `riesgo_<día>.json`), `parte_guardia.xlsx`, carpeta de exportación |
+| al acabar | `avisar` | El mensaje de la tarde al webhook si alguna distribuidora está en alto o muy alto | mensaje en Slack, Teams o el endpoint de `AVISO_WEBHOOK_URL` |
+| cada 15 min | `dag_rayos_vivo` / `rayos` | Rayos del Lightning Imager de MTG de la última hora y media (EUMETSAT, claves) | `00_landing/vivo/rayos/<día>/` y `dashboard/data/rayos.json` |
+| cada 15 min | `avisar_rayos` | Rayos a menos de 10 km de una red al webhook, una vez por distribuidora y hora | `dashboard/data/rayos_aviso.json` (cuándo se avisó) |
+| cada hora, a y 20 | `dag_observacion_vivo` / `observar` | Las últimas 24 horas de las estaciones de AEMET de la caja de estudio (clave de AEMET); verifica la previsión de ayer y de hoy frente a lo medido | `00_landing/vivo/observacion/<día>/obs_<hhmm>.json`, `dashboard/data/observado.json`, `dashboard/data/verificacion.json` |
+
+Las tareas `ensemble`, `aemet_municipios` y `avisos` nunca bloquean la puntuación: sin respuesta se saltan y el día se puntúa sin ellas (la fila lo dice). Sin la previsión de ICON-EU no hay puntuación, y la tarea reintenta dos veces con diez minutos entre medias.
+
+## 2. Lo que ve el usuario
+
+- `http://localhost:8086` (`index.html`): el riesgo de mañana (o de hoy, durante el día) por distribuidora, con el perfil de racha por horas (barras), la banda de los escenarios (morado), la predicción de AEMET (verde) y lo medido por las estaciones (rojo); los rayos ahora; las líneas con su nivel, lo que pasa ahora cerca de cada una y el riesgo de las próximas tres horas; las brigadas y sus bases; y al final, la tabla de lo que dijimos cada tarde y lo que pasó con el viento. Si la ejecución de anoche no dejó riesgo nuevo, lo dice en naranja arriba.
+- `historial.html`: lo que habría dicho el sistema cada tarde desde 2022, día a día, y lo que pasó.
+- `negocio.html`: las cifras para una distribuidora o un inversor, la guardia a igual presupuesto frente a los calendarios fijos y a los avisos de AEMET, y lo que vale la previsión medido en producción. Se imprime a PDF.
+- `data/parte_guardia.xlsx`: el parte de guardia de mañana, con los escenarios y la predicción de AEMET en la hoja Resumen.
+- El webhook (opcional, `AVISO_WEBHOOK_URL` en `.env`): el mensaje de la tarde cuando hay alerta, los rayos sobre la red durante el día y las tareas que fallan del todo.
+
+## 3. Qué mirar si algo no sale
+
+| Síntoma | Dónde mirar | Qué hacer |
+| --- | --- | --- |
+| La cabecera dice en naranja que el riesgo es de otro día | Airflow (http://localhost:8080), `dag_riesgo_manana`, tarea `prevision` o `puntuar` | Si falló la previsión, Open-Meteo no respondió: relanzar el DAG con el día en `fecha`. Si falló `puntuar`, el log de Spark dice la causa (memoria, tabla que falta); relanzar solo esa tarea |
+| No hay banda morada ni línea verde | `ensemble.json` o `aemet.json` de otro día, o las tareas saltadas | Lanzar a mano `job_landing_vivo.py --fuente ensemble` o `--fuente aemet_municipios` con `--fecha`; la página los coge sola al recargar |
+| No hay línea roja de las estaciones | `dag_observacion_vivo` saltado (falta `AEMET_API_KEY`) o AEMET sin datos | Comprobar la clave en `.env` y `docker compose up -d airflow`; lanzar `job_landing_observacion.py` a mano |
+| Rayos ahora dice que el satélite no responde | `dag_rayos_vivo`, claves de EUMETSAT, red del portátil | Suele ser la red; el siguiente run reconstruye el JSON con lo que hay en la Landing |
+| El mensaje de la tarde no llega | `avisar` saltada ("sin url" o "sin alerta") | Sin URL no se manda; con URL, el log dice el estado HTTP del webhook |
+| La tabla de los últimos días no crece | `verificacion.json` necesita `riesgo_<día>.json` de ayer y el archivo de observaciones de ayer | Comprobar que `dag_riesgo_manana` corrió anoche y que `dag_observacion_vivo` está activo |
+
+Los comandos de cada job, con sus opciones, están en el apartado 10 de [causas-incidencias.md](causas-incidencias.md); las claves y variables de entorno, en `.env.example`.
+
+## 4. Lo que se acumula y para qué sirve
+
+- `riesgo_<día>.json`, `ensemble_<día>.json` y `aemet_<día>.json` guardan lo que se dijo cada tarde; `verificacion.json` compara cada día las tres previsiones con las estaciones (pico previsto y medido, hora, franja, banda, umbrales) y resume por distribuidora el sesgo y el error de cada previsión y qué parte de los días el pico cayó en la banda. Con tres semanas en marcha se puede decir con datos cuál de las previsiones se acerca más al viento medido y si los escenarios están bien calibrados.
+- Las incidencias reales de cada día llegan con la siguiente copia de Calser; con ella, `job_ml_caso_negocio.py` vuelve a puntuar esos días y el historial dice si las alertas acertaron.
+- Cada ejecución de la tarde queda en `l3_gold.riesgo_dia_siguiente` y `l3_gold.ml_runs`, con su `run_id`, para repetirla o compararla.
