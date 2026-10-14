@@ -84,7 +84,7 @@ La hipótesis era falsa a igual número de días: la regla sencilla cubre de 3 a
 
 **Pregunta.** El sistema corre a las 20:30 de la víspera con los avisos que ya están emitidos. ¿Qué parte de los avisos de un día ya existe a esa hora, y cuáles llegan después?
 
-**Datos.** El archivo de avisos de AEMET en Silver (`l2_silver.f_aviso_meteo`, del 20.06.2018 al 31.08.2026) cruzado con las celdas de cada red: 2.158 (distribuidora, día, fenómeno) con algún aviso amarillo o más. Para cada uno, las horas entre el primer mensaje y las 00:00 del día (`experimentos/avisos_antelacion/analizar.py`; calculado sobre la exportación `avisos_c_20261012_1845`).
+**Datos.** El archivo de avisos de AEMET en Silver (`l2_silver.f_aviso_meteo`, del 20.06.2018 al 31.08.2026) cruzado con las celdas de cada red: 2.158 (distribuidora, día, fenómeno) con algún aviso amarillo o más. Para cada uno, las horas entre el primer mensaje y las 00:00 del día (`experimentos/avisos_antelacion/analizar.py`; calculado sobre la exportación `avisos_c_20261012_1845` y repetido sobre el lakehouse el 14.10.2026 con las mismas cifras).
 
 | fenómeno | días con aviso | primer mensaje antes de las 20:00 de la víspera | antes de las 12:00 de la víspera | dos días antes o más | mediana de antelación |
 | --- | --- | --- | --- | --- | --- |
@@ -98,6 +98,16 @@ La hipótesis era falsa a igual número de días: la regla sencilla cubre de 3 a
 El 21 % de los avisos de un día no existían a las 20:00 de la víspera (en las tormentas, el 43 %), y en un 3 % el nivel subió después. El aviso de viento se conoce con un día de margen en tres de cada cuatro casos; el de tormenta, que es el que más añade al sistema (apartado 3c), muchas veces llega la misma mañana.
 
 **Decisión.** La ejecución de la tarde no basta para los avisos de tormenta: la operación vuelve a leer los avisos de AEMET durante el día (tarea `avisos_hoy` de `dag_observacion_vivo`, cada hora) y, cuando aparece un aviso de viento o tormenta para hoy que no estaba anoche, sube la guardia a reforzada, lo escribe en el cuadro de mando y lo manda al webhook una vez por distribuidora y día.
+
+## 3e. El riesgo por zona con dos y tres días de antelación (en marcha, 14.10.2026)
+
+**Pregunta.** Al principio del proyecto propusimos pasar del CT concreto al riesgo por zona (línea o municipio) a 24 - 72 horas, más un ranking de CT, y dejamos dicho que había que comprobarlo con datos antes de comprometerlo. Lo de 24 horas está hecho y medido (el día y la franja funcionan; la línea, poco; el CT, nada: apartado 8 de [causas-incidencias.md](causas-incidencias.md) y apartado 2 de [caso-de-negocio.md](caso-de-negocio.md)). Queda lo de 48 y 72 horas: ¿cuánto se pierde cuando la guardia se decide dos o tres tardes antes?
+
+**Qué ya sabemos antes de medir.** Dos cosas ponen el listón: los avisos de AEMET existen dos días antes solo en el 55 % de los días de viento y el 21 % de los de tormenta (apartado 3d), y la previsión de racha de ICON-EU pierde acierto con cada día de antelación. Y la parte del sistema que sí funciona dentro del día (la franja, el reparto entre líneas por tamaño e historia) no depende del horizonte: el reparto entre líneas lo manda el tamaño de la línea, igual a 24 que a 72 horas.
+
+**Diseño.** Gold guarda desde enero de 2024 lo que ICON-EU previó para cada hora un día antes (`metp1_*`, seis variables), dos días antes (`metp2_*`, racha y lluvia) y, desde esta noche, tres días antes (`metp3_*`, racha y lluvia: `wind_gusts_10m_previous_day3` de la API Previous Runs). `job_ml_riesgo_dia.py` tiene ahora variantes con horizonte: se entrenan con el reanálisis como siempre y puntúan 2024 - 2025 con la previsión de ese horizonte, los avisos de AEMET que ya estaban emitidos a las 20:00 de D - 2 (o D - 3) y el tiempo del último día conocido esa tarde. Tres variantes con las mismas variables (calendario, historia, avisos, racha y lluvia del día con sus extremos sobre el clima de cada celda, la racha y la lluvia del último día conocido): `operativa_racha` a 24 h (la referencia justa, sin viento ni temperatura, que a 48 h no hay), `operativa_48h` y `operativa_72h`. La historia de incidencias es la conocida al empezar el día (uno o dos días después de aquella tarde; con la semana de retraso con la que Calser conoce las incidencias, la diferencia es pequeña).
+
+**Resultados.** Pendientes de la ejecución de esta noche (`dia_48h_20261014_1854` con lo que hay en Gold; `dia_72h` tras la descarga de las 02:10). Se anotarán aquí con PR-AUC, parte de los días con avería en el 10 % de días de más riesgo y la diferencia emparejada con bootstrap frente a 24 h.
 
 ## 4. Datos públicos de España que revisamos
 
@@ -121,3 +131,4 @@ Preguntamos qué datos de los equipos instalados en los clientes podrían cruzar
 - Pedir los cortes de los contadores de telegestión a una de las distribuidoras para medir cuántos cortes de baja tensión no vemos.
 - Hecho el 14.10.2026: el replay da ya la detección y las falsas alarmas por día de cada política (apartado 2b de [caso-de-negocio.md](caso-de-negocio.md)): el sistema en alerta detecta el 71 % de los días con dos o más incidencias marcando el 12,5 % de los días, frente al 73 % con el 3 % de falsas alarmas del trabajo de Alcalá, que cuenta averías de una provincia entera. Queda pendiente definir el día extremo como ellos (por número de averías) cuando entre una red mayor.
 - Con los avisos de AEMET, una política mixta por fenómeno (viento y tormenta sí, calor no) frente a la unión que ya medimos.
+- El riesgo por zona a 48 y 72 horas (apartado 3e): en marcha; cuando estén las cifras, decidir si el parte de guardia lleva también una columna "pasado mañana" con su nivel.

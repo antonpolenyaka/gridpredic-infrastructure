@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Días archivados</title>
+<style>
+  /* The archive of the dashboard: every day the system scored (the evening runs and the days played again from
+     Gold), from data/indice.json, with a link to each one and to its shift sheet, and a short guide of the pages. */
+  :root {
+    --bg: #f6f7f4; --panel: #ffffff; --fg: #1d2230; --muted: #5d6675; --line: #d9ddd3; --accent: #1f5f8b;
+    --bajo: #7fb27f; --medio: #e3b53a; --alto: #e0772f; --muy-alto: #b8302f; --grid: #e6e8e2;
+    --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif; --mono: Consolas, "Courier New", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
+      --accent: #7fb3dd; --grid: #2a3040; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
+    --accent: #7fb3dd; --grid: #2a3040; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); padding-block: 0 32px; }
+  /* The same menu on every page of the dashboard: nobody needs to know the names of the files. */
+  nav.menu { display: flex; flex-wrap: wrap; gap: 2px 18px; align-items: center; padding: 8px 24px; background: var(--panel);
+    border-bottom: 1px solid var(--line); font-size: 13px; }
+  nav.menu .marca { font-weight: 700; color: var(--fg); text-decoration: none; margin-right: 6px; letter-spacing: .02em; }
+  nav.menu a { color: var(--accent); text-decoration: none; padding: 4px 0; border-bottom: 2px solid transparent; }
+  nav.menu a.actual { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+  nav.menu .derecha { margin-left: auto; color: var(--muted); display: flex; gap: 14px; }
+  @media (max-width: 700px) { nav.menu { padding-left: 16px; padding-right: 16px; } nav.menu .derecha { margin-left: 0; } }
+  header { padding: 18px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; }
+  header h1 { font-size: 22px; margin: 0; font-weight: 600; }
+  header .fuentes { color: var(--muted); font-size: 13px; }
+  main { padding: 0 24px; display: grid; gap: 20px; margin-top: 16px; }
+  @media (max-width: 700px) { header, main { padding-left: 16px; padding-right: 16px; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
+  section h2 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
+  h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  p.texto { margin: 6px 0; max-width: 80ch; }
+  .controles { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 13px; margin-bottom: 10px; }
+  .controles label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .controles select, .controles input[type="search"] { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.vivo td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .nivel { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #fff; white-space: nowrap; }
+  .nivel.bajo { background: var(--bajo); } .nivel.medio { background: var(--medio); color: #222; }
+  .nivel.alto { background: var(--alto); } .nivel.muy-alto { background: var(--muy-alto); }
+  .nivel.guardia-pill { background: var(--accent); }
+  .prob { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .celda-dist { white-space: nowrap; }
+  .origen { color: var(--muted); font-size: 12px; }
+  td.origen { min-width: 200px; }
+  .acciones a { margin-right: 10px; white-space: nowrap; }
+  .vacio { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 6px; }
+  .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 8px; }
+  .cifra { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .cifra .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cifra .l { color: var(--muted); font-size: 12px; }
+  dl.paginas { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; max-width: 100ch; }
+  dl.paginas dt { font-weight: 600; } dl.paginas dd { margin: 0; color: var(--muted); }
+  code { font-family: var(--mono); font-size: 12px; background: var(--bg); padding: 1px 4px; border-radius: 3px; }
+  pre { font-family: var(--mono); font-size: 12px; background: var(--bg); padding: 8px 10px; border-radius: 4px; overflow: auto; max-width: 100ch; }
+  footer { padding: 16px 24px; color: var(--muted); font-size: 12px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<nav class="menu" aria-label="Páginas del cuadro de mando">
+  <a class="marca" href="index.html">GridPredict</a>
+  <a href="index.html">Riesgo de mañana</a>
+  <a href="dias.html" class="actual">Días archivados</a>
+  <a href="historial.html">Día a día 2022 - 2026</a>
+  <a href="negocio.html">Negocio y cifras</a>
+  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
+</nav>
+<header>
+  <h1>Días archivados: lo que dijo el sistema cada tarde</h1>
+  <div class="fuentes" id="fuentes">Cargando data/indice.json...</div>
+</header>
+<main id="main">
+  <section id="resumen">
+    <h2>Lo que hay guardado</h2>
+    <div class="cifras" id="cifras"></div>
+    <p class="texto">Cada tarde a las 20:30 el sistema guarda el riesgo del día siguiente con fecha (<code>riesgo_AAAAMMDD.json</code>) y su parte de guardia. Los días repetidos desde Gold (una tormenta pasada, vista con la previsión y los avisos que había aquella tarde) se guardan igual y se distinguen en la columna "Cómo se hizo". Al abrir un día se ve el mismo cuadro de mando que vio la guardia aquella tarde.</p>
+  </section>
+  <section id="dias">
+    <h2>Días</h2>
+    <div class="controles">
+      <label>Año: <select id="anio"><option value="">todos</option></select></label>
+      <label>Nivel: <select id="nivel"><option value="">cualquiera</option><option value="muy alto">muy alto en alguna red</option><option value="alto">alto o más en alguna red</option><option value="guardia">guardia reforzada en alguna red</option><option value="repetido">solo días repetidos</option><option value="vivo">solo ejecuciones de las 20:30</option></select></label>
+      <label>Buscar: <input type="search" id="buscar" placeholder="fecha, run, municipio..."></label>
+      <span class="origen" id="contador"></span>
+    </div>
+    <div id="tabla"></div>
+  </section>
+  <section id="ayuda">
+    <h2>Qué hay en cada página</h2>
+    <dl class="paginas">
+      <dt><a href="index.html">Riesgo de mañana</a></dt><dd>El cuadro de mando en vivo: nivel y probabilidad por distribuidora, franja horaria, líneas, municipios y CT por riesgo, bases de las brigadas, rayos y estaciones durante el día, y la verificación del día anterior. Con <code>?dia=AAAAMMDD</code> muestra un día archivado (los enlaces "Ver" de esta página).</dd>
+      <dt><a href="dias.html">Días archivados</a></dt><dd>Esta página: todos los días con riesgo guardado, de las ejecuciones de las 20:30 y de los días repetidos, con su parte de guardia.</dd>
+      <dt><a href="historial.html">Día a día 2022 - 2026</a></dt><dd>Un calendario por distribuidora y año con el nivel que habría dado el sistema cada tarde y las averías que hubo (<code>historico.json</code>, del caso de negocio).</dd>
+      <dt><a href="negocio.html">Negocio y cifras</a></dt><dd>Lo que habría pasado con el sistema en marcha: horas-cliente cubiertas, los peores días, la guardia a igual presupuesto, el sector (GECOS) y la retribución.</dd>
+      <dt><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></dt><dd>Los trabajos programados: <code>dag_riesgo_manana</code> (20:30), <code>dag_observacion_vivo</code> (cada hora: estaciones, verificación, parte de la mañana, avisos de AEMET durante el día) y <code>dag_rayos_vivo</code> (cada 15 min).</dd>
+    </dl>
+    <h3>Repetir un día que no está</h3>
+    <p class="texto">Desde PowerShell en el portátil (los días desde enero de 2024, que es cuando empieza la previsión guardada de ICON-EU):</p>
+    <pre>docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml exec -T spark-master /opt/spark/bin/spark-submit --driver-memory 4g /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json --fecha 2026-01-28 --desde-gold --solo-archivo</pre>
+    <p class="texto">Al terminar, el día aparece en esta lista y se abre con "Ver". El detalle está en <code>docs/operacion-diaria.md</code>, apartado 3b.</p>
+  </section>
+</main>
+<footer id="pie"></footer>
+<script>
+(function () {
+  "use strict";
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const pct = (x, d = 1) => (x == null || isNaN(x)) ? "" : (100 * x).toFixed(d).replace(".", ",") + " %";
+  const cls = (nivel) => (nivel || "bajo").replace(" ", "-");
+  const ORDER = { "bajo": 0, "medio": 1, "alto": 2, "muy alto": 3 };
+  const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const WARN = { 1: "amarillo", 2: "naranja", 3: "rojo" };
+  let index = null;
+
+  function weekday(iso) {
+    const d = new Date(iso + "T00:00:00");
+    return isNaN(d) ? "" : DIAS[d.getDay()];
+  }
+
+  function worst(day) {
+    return Math.max(-1, ...(day.distribuidoras || []).map((d) => ORDER[d.nivel] == null ? -1 : ORDER[d.nivel]));
+  }
+
+  function origen(day, live) {
+    if (day.repetido) return `día repetido desde Gold (${esc(day.generado || "")})`;
+    const run = String(day.run_id || "");
+    const kind = run.startsWith("scheduled") ? "ejecución de las 20:30" : run.startsWith("manual") ? "ejecución lanzada a mano" : run ? "ejecución " + esc(run) : "ejecución";
+    const isLive = live && live.fecha === day.fecha;
+    return kind + (day.generado ? " del " + esc(day.generado) : "") + (isLive ? " (es el día en vivo)" : "");
+  }
+
+  function celda(d) {
+    const guard = d.guardia_reforzada ? ` <span class="nivel guardia-pill" title="${esc(d.guardia_motivo || "guardia reforzada")}">guardia</span>` : "";
+    const warn = d.aviso_max_nivel >= 1 ? ` <span class="prob" title="aviso de AEMET">aviso ${esc(WARN[Math.round(d.aviso_max_nivel)] || d.aviso_max_nivel)}</span>` : "";
+    return `<td class="celda-dist"><span class="nivel ${cls(d.nivel)}">${esc(d.nivel || "?")}</span> <span class="prob">${pct(d.probabilidad)}</span>${guard}${warn}<br><span class="prob">${esc(d.franja || "")}</span></td>`;
+  }
+
+  function fila(day, names, live) {
+    const by = {};
+    for (const d of day.distribuidoras || []) by[d.nombre] = d;
+    const cells = names.map((n) => by[n] ? celda(by[n]) : "<td></td>").join("");
+    const files = day.ficheros || {};
+    const links = [`<a href="index.html?dia=${esc(day.dia)}">Ver el cuadro de mando</a>`];
+    if (files.parte_guardia) links.push(`<a href="data/${esc(files.parte_guardia)}">Parte de guardia (xlsx)</a>`);
+    links.push(`<a href="data/${esc(day.fichero)}" title="el JSON completo">JSON</a>`);
+    const isLive = live && live.fecha === day.fecha;
+    return `<tr class="${isLive ? "vivo" : ""}"><td><b>${esc(day.fecha_texto || day.fecha)}</b><br><span class="origen">${esc(weekday(day.fecha))}</span></td>${cells}<td class="origen">${origen(day, live)}</td><td class="acciones">${links.join("")}</td></tr>`;
+  }
+
+  function matches(day, filters) {
+    if (filters.anio && !String(day.fecha).startsWith(filters.anio)) return false;
+    const dists = day.distribuidoras || [];
+    if (filters.nivel === "muy alto" && !dists.some((d) => d.nivel === "muy alto")) return false;
+    if (filters.nivel === "alto" && !dists.some((d) => ORDER[d.nivel] >= 2)) return false;
+    if (filters.nivel === "guardia" && !dists.some((d) => d.guardia_reforzada)) return false;
+    if (filters.nivel === "repetido" && !day.repetido) return false;
+    if (filters.nivel === "vivo" && day.repetido) return false;
+    if (filters.texto) {
+      const hay = [day.fecha, day.fecha_texto, day.run_id, day.generado, ...dists.map((d) => `${d.nombre} ${d.nivel} ${d.franja || ""} ${d.guardia_motivo || ""}`)].join(" ").toLowerCase();
+      if (!hay.includes(filters.texto)) return false;
+    }
+    return true;
+  }
+
+  function render() {
+    const days = index.dias || [];
+    const names = [];
+    for (const day of days) for (const d of day.distribuidoras || []) if (!names.includes(d.nombre)) names.push(d.nombre);
+    const filters = {
+      anio: document.getElementById("anio").value,
+      nivel: document.getElementById("nivel").value,
+      texto: document.getElementById("buscar").value.trim().toLowerCase(),
+    };
+    const shown = days.filter((d) => matches(d, filters));
+    document.getElementById("contador").textContent = `${shown.length} de ${days.length} días`;
+    const holder = document.getElementById("tabla");
+    if (!shown.length) { holder.innerHTML = `<div class="vacio">Ningún día cumple el filtro.</div>`; return; }
+    holder.innerHTML = `<table><thead><tr><th>Día</th>${names.map((n) => `<th>${esc(n)}</th>`).join("")}<th>Cómo se hizo</th><th>Abrir</th></tr></thead><tbody>${shown.map((d) => fila(d, names, index.vivo)).join("")}</tbody></table>`;
+  }
+
+  function cifras() {
+    const days = index.dias || [];
+    const live = index.vivo;
+    const replayed = days.filter((d) => d.repetido).length;
+    const worstDays = days.filter((d) => worst(d) >= 2).length;
+    const guard = days.filter((d) => (d.distribuidoras || []).some((x) => x.guardia_reforzada)).length;
+    const first = days.length ? days[days.length - 1].fecha_texto : "-", last = days.length ? days[0].fecha_texto : "-";
+    document.getElementById("cifras").innerHTML = [
+      [days.length, "días con riesgo guardado"],
+      [days.length - replayed, "ejecuciones de la tarde"],
+      [replayed, "días repetidos desde Gold"],
+      [worstDays, "días con alguna red en alto o muy alto"],
+      [guard, "días con guardia reforzada"],
+      [live ? esc(live.fecha_texto || live.fecha) : "-", "día en vivo (riesgo.json)"],
+    ].map(([v, l]) => `<div class="cifra"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+    document.getElementById("fuentes").textContent = `Índice generado el ${index.generado || "?"}; días del ${first} al ${last}.`;
+    const years = [...new Set(days.map((d) => String(d.fecha).slice(0, 4)))].sort().reverse();
+    const select = document.getElementById("anio");
+    for (const y of years) { const o = document.createElement("option"); o.value = y; o.textContent = y; select.appendChild(o); }
+  }
+
+  function start(data) {
+    index = data;
+    cifras();
+    render();
+    for (const id of ["anio", "nivel"]) document.getElementById(id).addEventListener("change", render);
+    document.getElementById("buscar").addEventListener("input", render);
+    document.getElementById("pie").textContent = "El índice (data/indice.json) lo escribe el propio trabajo del riesgo cada vez que guarda un día; si falta un día reciente, mira dag_riesgo_manana en Airflow.";
+  }
+
+  fetch("data/indice.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(start)
+    .catch((e) => {
+      document.getElementById("fuentes").textContent = "Todavía no hay índice (data/indice.json): se escribe en la próxima ejecución de las 20:30 o al repetir un día. " + e;
+      document.getElementById("tabla").innerHTML = `<div class="vacio">Sin índice. Mientras tanto, el día en vivo está en <a href="index.html">Riesgo de mañana</a>.</div>`;
+    });
+})();
+</script>
+</body>
+</html>

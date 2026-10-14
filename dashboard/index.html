@@ -21,6 +21,14 @@
     --accent: #7fb3dd; --grid: #2a3040; color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); padding-block: 0 32px; }
+  /* The same menu on every page of the dashboard: nobody needs to know the names of the files. */
+  nav.menu { display: flex; flex-wrap: wrap; gap: 2px 18px; align-items: center; padding: 8px 24px; background: var(--panel);
+    border-bottom: 1px solid var(--line); font-size: 13px; }
+  nav.menu .marca { font-weight: 700; color: var(--fg); text-decoration: none; margin-right: 6px; letter-spacing: .02em; }
+  nav.menu a { color: var(--accent); text-decoration: none; padding: 4px 0; border-bottom: 2px solid transparent; }
+  nav.menu a.actual { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+  nav.menu .derecha { margin-left: auto; color: var(--muted); display: flex; gap: 14px; }
+  @media (max-width: 700px) { nav.menu { padding-left: 16px; padding-right: 16px; } nav.menu .derecha { margin-left: 0; } }
   header { padding: 18px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px;
     align-items: baseline; }
   header h1 { font-size: 22px; margin: 0; font-weight: 600; }
@@ -79,6 +87,14 @@
 </style>
 </head>
 <body>
+<nav class="menu" aria-label="Páginas del cuadro de mando">
+  <a class="marca" href="index.html">GridPredict</a>
+  <a href="index.html" class="actual">Riesgo de mañana</a>
+  <a href="dias.html">Días archivados</a>
+  <a href="historial.html">Día a día 2022 - 2026</a>
+  <a href="negocio.html">Negocio y cifras</a>
+  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
+</nav>
 <header>
   <h1 id="titulo">Riesgo de mañana</h1>
   <div class="fuentes" id="fuentes">Cargando datos...</div>
@@ -110,10 +126,10 @@
     if (!aviso) { aviso = document.createElement("div"); aviso.id = "vejez"; aviso.className = "rayos vejez"; document.getElementById("main").insertAdjacentElement("beforebegin", aviso); }
     if (DIA) {
       document.getElementById("titulo").textContent = "Riesgo del " + (data.fecha_texto || data.fecha) + ", visto la tarde anterior";
-      aviso.innerHTML = `<b>Día repetido</b>: lo que el sistema habría dicho la tarde del día anterior con la previsión de ICON-EU y los avisos de AEMET que había entonces (${esc(DIA.slice(6, 8))}.${esc(DIA.slice(4, 6))}.${esc(DIA.slice(0, 4))}). Lo vivo (rayos, estaciones, próximas horas) no aplica a este día. <a href="index.html">Volver al riesgo de mañana</a>.`;
+      aviso.innerHTML = `<b>Día repetido</b>: lo que el sistema habría dicho la tarde del día anterior con la previsión de ICON-EU y los avisos de AEMET que había entonces (${esc(DIA.slice(6, 8))}.${esc(DIA.slice(4, 6))}.${esc(DIA.slice(0, 4))}). Lo vivo (rayos, estaciones, próximas horas) no aplica a este día. <a href="index.html">Volver al riesgo de mañana</a> · <a href="dias.html">Otros días archivados</a>.`;
       aviso.style.display = "";
     } else if (diff < 0) {
-      aviso.innerHTML = `<b>Este riesgo es del ${esc(data.fecha_texto || data.fecha)}</b>: la ejecución de anoche no ha dejado un riesgo nuevo. Mira dag_riesgo_manana en Airflow (http://localhost:8080) o lanza la tarea a mano.`;
+      aviso.innerHTML = `<b>Este riesgo es del ${esc(data.fecha_texto || data.fecha)}</b>: la ejecución de anoche no ha dejado un riesgo nuevo. Mira dag_riesgo_manana en <a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a> o lanza la tarea a mano. Los días anteriores están en <a href="dias.html">Días archivados</a>.`;
       aviso.style.display = "";
     } else {
       aviso.style.display = "none";

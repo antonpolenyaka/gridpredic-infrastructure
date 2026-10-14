@@ -1200,13 +1200,88 @@ def attach_second_opinions(payload: dict, folder: str) -> dict:
     return payload
 
 
+INDEX_FILE = "indice.json"
+DATED_FILE = re.compile(r"riesgo_(\d{8})\.json")
+
+
+def day_summary(payload: dict, name: str, dashboard: str) -> dict:
+    """One entry of the index of the dashboard: the day, how it was made and the level of every distribuidora."""
+    stamp = DATED_FILE.fullmatch(name).group(1)
+    sources = payload.get("fuentes") or {}
+    forecast = str(sources.get("prevision_pedida") or "")
+    files = {kind: f"{kind}_{stamp}.{ext}" for kind, ext in (("parte_guardia", "xlsx"), ("ensemble", "json"),
+                                                            ("aemet", "json"))}
+    dists = []
+    for d in payload.get("distribuidoras") or []:
+        guard = d.get("guardia") or {}
+        dists.append({
+            "id": d.get("id"), "nombre": d.get("nombre"), "nivel": d.get("nivel"), "probabilidad": d.get("probabilidad"),
+            "percentil": d.get("percentil"), "aviso_max_nivel": d.get("aviso_max_nivel"),
+            "guardia_reforzada": bool(guard.get("reforzar")), "guardia_motivo": guard.get("motivo"),
+            "franja": (d.get("franja") or {}).get("texto"), "racha_max_kmh": d.get("racha_max_kmh"),
+        })
+    return {
+        "fecha": payload.get("fecha") or f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}",
+        "fecha_texto": payload.get("fecha_texto") or f"{stamp[6:]}.{stamp[4:6]}.{stamp[:4]}",
+        "dia": stamp, "fichero": name, "generado": payload.get("generado"), "run_id": payload.get("run_id"),
+        "repetido": "repetido" in forecast or "Gold" in forecast, "prevision": forecast,
+        "modelo": (payload.get("modelo") or {}).get("descripcion"),
+        "distribuidoras": dists,
+        "ficheros": {kind: file for kind, file in files.items() if os.path.exists(os.path.join(dashboard, file))},
+    }
+
+
+def dashboard_index(dashboard: str) -> dict:
+    """
+    The index of the days the dashboard keeps (riesgo_<day>.json, newest
+    first) and the live day (riesgo.json), for dias.html: the pages never
+    need to know the names of the files.
+    """
+    days = []
+    for name in sorted(os.listdir(dashboard)):
+        if not DATED_FILE.fullmatch(name):
+            continue
+        try:
+            with open(os.path.join(dashboard, name), encoding="utf-8") as file:
+                payload = json.load(file)
+        except (OSError, ValueError) as error:
+            logger.warning("Index of the dashboard: %s not read (%s)", name, error)
+            continue
+        days.append(day_summary(payload, name, dashboard))
+    live = None
+    live_path = os.path.join(dashboard, "riesgo.json")
+    if os.path.exists(live_path):
+        try:
+            with open(live_path, encoding="utf-8") as file:
+                payload = json.load(file)
+            live = {"fecha": payload.get("fecha"), "fecha_texto": payload.get("fecha_texto"),
+                    "generado": payload.get("generado"), "run_id": payload.get("run_id")}
+        except (OSError, ValueError) as error:
+            logger.warning("Index of the dashboard: riesgo.json not read (%s)", error)
+    others = {name: os.path.exists(os.path.join(dashboard, name))
+              for name in ("historico.json", "sector.json", "verificacion.json", "observado.json", "rayos.json",
+                           "avisos_hoy.json")}
+    return {"generado": rz.now_text(), "vivo": live, "dias": sorted(days, key=lambda d: d["fecha"], reverse=True),
+            "otros": [name for name, present in others.items() if present]}
+
+
+def write_index(dashboard: str):
+    """indice.json of the dashboard folder; a failure is logged, never fatal."""
+    try:
+        rz.write_json(dashboard_index(dashboard), os.path.join(dashboard, INDEX_FILE))
+        logger.info("Dashboard index written in %s", os.path.join(dashboard, INDEX_FILE))
+    except OSError as error:
+        logger.error("Dashboard index not written in %s: %s", dashboard, error)
+
+
 def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day: pd.Timestamp, dated_only: bool = False):
     """
     riesgo.json for the dashboard (dashboard_dir, when the folder exists)
     and a copy in the export folder, and parte_guardia.xlsx (the same
     tables for the shift, to print or send) next to each of them. With
     dated_only the dashboard gets riesgo_<day>.json only (a past day played
-    again must not replace the live day).
+    again must not replace the live day). The dashboard also gets its index
+    (indice.json) rebuilt from the files it has.
     """
     targets = []
     folder = config.get("exportar_dir")
@@ -1234,6 +1309,8 @@ def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day
                 logger.warning("openpyxl not installed: no shift sheet")
         except Exception as error:  # noqa: BLE001
             logger.error("Shift sheet not written in %s: %s", sheet, error)
+    if dashboard and os.path.isdir(dashboard):
+        write_index(dashboard)
 
 
 def main(argv=None):

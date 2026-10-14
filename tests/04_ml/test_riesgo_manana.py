@@ -612,6 +612,19 @@ def test_a_past_day_is_played_again_from_gold_without_touching_the_live_day(firs
     payload = json.load(open(dated, encoding="utf-8"))
     assert payload["fecha"] == f"{storm_day:%Y-%m-%d}" and "Gold" in payload["fuentes"]["prevision_pedida"]
     assert os.path.exists(os.path.join(workdir, "dashboard", f"parte_guardia_{storm_day:%Y%m%d}.xlsx"))
+    # The index of the dashboard lists the live day and the days played again, newest first, with the files each has.
+    index = json.load(open(os.path.join(workdir, "dashboard", "indice.json"), encoding="utf-8"))
+    live_day = json.loads(before)["fecha"]
+    assert index["vivo"]["fecha"] == live_day and [d["fecha"] for d in index["dias"]] == sorted(
+        [d["fecha"] for d in index["dias"]], reverse=True)
+    played_entry = next(d for d in index["dias"] if d["dia"] == f"{storm_day:%Y%m%d}")
+    assert played_entry["repetido"] and played_entry["run_id"] == "repetido"
+    assert played_entry["ficheros"]["parte_guardia"] == f"parte_guardia_{storm_day:%Y%m%d}.xlsx"
+    assert "ensemble" not in played_entry["ficheros"]
+    entry_1 = next(d for d in played_entry["distribuidoras"] if d["id"] == 1)
+    assert entry_1["nivel"] in ("alto", "muy alto") and entry_1["guardia_reforzada"] is True and entry_1["franja"]
+    live_entry = next(d for d in index["dias"] if d["dia"] == live_day.replace("-", ""))
+    assert not live_entry["repetido"] and "historico.json" not in index["otros"]
 
 
 def test_without_the_forecast_there_is_nothing_to_score(config_path, workdir):
@@ -636,3 +649,24 @@ def test_the_second_opinions_of_the_evening_are_attached_to_the_payload(tmp_path
     assert rm.attach_second_opinions({"fecha": "2026-10-15", "distribuidoras": [{"id": 3}]}, str(tmp_path / "no")) == {"fecha": "2026-10-15", "distribuidoras": [{"id": 3}]}
     sheets = rm.rz.shift_sheets({**out, "fecha_texto": "15.10.2026"})
     assert sheets["Resumen"]["escenarios de ICON-EU EPS"].tolist() == ["40 escenarios", None]
+
+
+def test_the_index_of_the_dashboard_survives_a_broken_file(tmp_path):
+    folder = str(tmp_path)
+    good = {"fecha": "2026-02-03", "fecha_texto": "03.02.2026", "generado": "02.02.2026 18:31 UTC", "run_id": "scheduled__x",
+            "fuentes": {"prevision_pedida": "02.02.2026 18:31 UTC"}, "modelo": {"descripcion": "regresión logística"},
+            "distribuidoras": [{"id": 3, "nombre": "EOSA", "nivel": "alto", "probabilidad": 0.12, "percentil": 0.95,
+                                "aviso_max_nivel": 1.0, "guardia": {"reforzar": True, "motivo": "nivel alto"},
+                                "franja": {"texto": "de 6:00 a 14:00"}, "racha_max_kmh": 88.0}]}
+    with open(os.path.join(folder, "riesgo_20260203.json"), "w", encoding="utf-8") as file:
+        json.dump(good, file)
+    with open(os.path.join(folder, "riesgo_20260101.json"), "w", encoding="utf-8") as file:
+        file.write("{ not json")
+    with open(os.path.join(folder, "riesgo_prueba.json"), "w", encoding="utf-8") as file:
+        json.dump({}, file)
+    rm.write_index(folder)
+    index = json.load(open(os.path.join(folder, "indice.json"), encoding="utf-8"))
+    assert [d["dia"] for d in index["dias"]] == ["20260203"] and index["vivo"] is None
+    entry = index["dias"][0]
+    assert entry["fecha_texto"] == "03.02.2026" and not entry["repetido"] and entry["ficheros"] == {}
+    assert entry["distribuidoras"][0]["guardia_motivo"] == "nivel alto"
