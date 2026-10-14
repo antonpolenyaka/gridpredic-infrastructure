@@ -201,6 +201,43 @@
     return out + "</svg>";
   }
 
+  function coverageCurve(days, pol) {
+    // Customer-hours covered against days reinforced per year: the system at every threshold (the top k days of
+    // every distribuidora and year by probability), with the fixed calendars and the warnings of AEMET as points.
+    const groups = new Map();
+    for (const d of days) { const k = d.id + "|" + d.anio; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
+    const years = Math.max(0.01, pol.anios), total = pol.total || 1;
+    const sorted = [...groups.values()].map((g) => [...g].sort((a, b) => b.p - a.p));
+    const curve = [];
+    for (let k = 0; k <= 150; k += 2) {
+      let h = 0, n = 0;
+      for (const g of sorted) { const top = g.slice(0, Math.round(k * g.length / 365)); n += top.length; for (const d of top) h += d.h; }
+      curve.push([n / years, h / total]);
+    }
+    const points = [["fines de semana de invierno", pol.invierno], ["todos los fines de semana", pol.findes]];
+    if (pol.conAvisos) points.push(["aviso amarillo o más", pol.aviso], ["aviso de viento", pol.avisoViento], ["aviso de viento o tormenta", pol.avisoVientoTormenta],
+                                   ["aviso naranja o rojo", pol.avisoNaranja]);
+    points.push(["GridPredict en alerta", pol.sistema]);
+    const W = 520, H = 260, L = 46, R = 14, T = 12, B = 40, maxX = 150;
+    const x = (v) => L + (W - L - R) * Math.min(v, maxX) / maxX, y = (v) => T + (H - T - B) * (1 - v);
+    let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cobertura de las horas-cliente según los días reforzados al año">`;
+    for (let k = 0; k <= 4; k++) {
+      out += `<line x1="${L}" x2="${W - R}" y1="${y(k / 4).toFixed(1)}" y2="${y(k / 4).toFixed(1)}" stroke="var(--grid)"/><text x="${L - 4}" y="${(y(k / 4) + 4).toFixed(1)}" font-size="10" text-anchor="end" fill="var(--muted)">${pct(k / 4)}</text>`;
+    }
+    for (const v of [0, 30, 60, 90, 120, 150]) out += `<text x="${x(v).toFixed(1)}" y="${H - B + 14}" font-size="10" text-anchor="middle" fill="var(--muted)">${v}</text>`;
+    out += `<polyline fill="none" stroke="var(--accent)" stroke-width="2.5" points="${curve.map(([a, b]) => `${x(a).toFixed(1)},${y(b).toFixed(1)}`).join(" ")}"/>`;
+    out += `<line x1="${x(0).toFixed(1)}" y1="${y(0).toFixed(1)}" x2="${x(maxX).toFixed(1)}" y2="${y(maxX / 365).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="4 3"/>`;
+    const legend = [];
+    points.forEach(([label, p], i) => {
+      const px = x(p.dias / years), py = y(p.h / total), system = label.startsWith("GridPredict");
+      out += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="7" fill="${system ? "var(--accent)" : "var(--muy-alto)"}" stroke="#fff" stroke-width="1"><title>${esc(label)}: ${num(p.dias / years)} días al año, ${pct(p.h / total)}</title></circle>`;
+      out += `<text x="${px.toFixed(1)}" y="${(py + 3.5).toFixed(1)}" font-size="9" font-weight="600" text-anchor="middle" fill="#fff">${i + 1}</text>`;
+      legend.push(`<b>${i + 1}</b> ${esc(label)} (${num(p.dias / years)} días, ${pct(p.h / total)})`);
+    });
+    out += `<text x="${L}" y="${H - 4}" font-size="10" fill="var(--muted)">días reforzados al año por distribuidora, frente a la parte de las horas-cliente cubiertas</text>`;
+    return `<div style="max-width:640px">${out}</svg><p class="notas">Línea azul: el sistema a cada umbral (los k días de más riesgo de cada año); discontinua: lo que cubrirían k días al azar. Puntos: ${legend.join(" · ")}.</p></div>`;
+  }
+
   function render() {
     const mode = document.querySelector('input[name="modo"]:checked').value;
     const winsor = document.getElementById("winsor").checked;
@@ -243,6 +280,8 @@
         <span class="notas">Cámbialo por el coste real de tu retén (horas extra, segunda brigada, material preparado). Las horas-cliente y los días salen de los datos.</span>
       </div>
       <table id="tabla-guardia"></table>
+      <h3>La misma comparación a cualquier presupuesto</h3>
+      ${coverageCurve(days, pol)}
       <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. Los avisos de AEMET son los que ya se habían emitido para el día antes de las 20:00 de la víspera, en las celdas de la red: lo que hoy mira un jefe de brigadas. "Mismo número de días" toma, cada año, tantos días como la política con la que se compara pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. Las averías de estas redes las trae el tiempo, no el calendario: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días.</p>
       </section>`;
 
