@@ -488,6 +488,14 @@
       "campo": "text",
       "timeout_s": 30
     },
+    "observacion": {
+      "api": "https://opendata.aemet.es/opendata/api/observacion/convencional/todas",
+      "clave_env": "AEMET_API_KEY",
+      "horario": "20 * * * *",
+      "caja": [38.1, -7.3, 40.6, -5.4],
+      "radio_km": 25.0,
+      "timeout_s": 120
+    },
     "rayos": {
       "api": "https://api.eumetsat.int",
       "coleccion": "EO:EUM:DAT:0691",

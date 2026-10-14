@@ -407,6 +407,8 @@ El cuadro de mando es una página estática (`dashboard/index.html`, Leaflet sob
 docker compose up -d dashboard
 ```
 
+**Las estaciones de AEMET, cada hora.** `dag_observacion_vivo` corre cada hora (`riesgo_manana.observacion.horario`): pide a AEMET OpenData las últimas 24 horas de todas las estaciones convencionales (`observacion/convencional/todas`, con la misma clave que los avisos), guarda las de la caja de estudio en `s3://datalake/00_landing/vivo/observacion/<día>/obs_<HHMM>.json` y escribe `dashboard/data/observado.json`: por distribuidora, la racha máxima y la lluvia de cada hora del día medidas por las estaciones a menos de 25 km de sus municipios, y las estaciones con su último dato. El cuadro de mando pinta la racha observada en rojo sobre el perfil previsto del mismo día (si la previsión se queda corta se ve a media mañana) y las estaciones sobre el mapa.
+
 **Lo que habría dicho el sistema.** `job_ml_caso_negocio.py` repite la operación de cada tarde sobre los años pasados (`caso_negocio` de `config_ml.json`: años, brigadas por distribuidora, movilización fuera del horario laboral, recorte de los cortes largos) y deja `l3_gold.caso_negocio_dia`, `l3_gold.caso_negocio_resumen`, los CSV y `resumen.md` en la carpeta de exportación y `historico.json` en `dashboard/data`, que pinta `historial.html` (http://localhost:8086/historial.html). Los resultados y lo que valen para una distribuidora están en [caso-de-negocio.md](caso-de-negocio.md).
 
 ```powershell

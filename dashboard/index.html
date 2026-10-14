@@ -109,10 +109,11 @@
     document.getElementById("pie").textContent = "Generado el " + (data.generado || "") + ". Mapa: OpenStreetMap (ODbL). " + (data.reglas && data.reglas.texto ? data.reglas.texto : "");
   }
 
-  function perfilSvg(perfil, franja) {
+  function perfilSvg(perfil, franja, observado) {
     if (!perfil || !perfil.length) return '<div class="vacio">Sin perfil horario</div>';
     const W = 720, H = 140, L = 34, R = 8, T = 10, B = 24;
-    const max = Math.max(10, ...perfil.map((p) => p.racha_max || 0));
+    const obs = (observado || []).filter((o) => o.racha_kmh != null);
+    const max = Math.max(10, ...perfil.map((p) => p.racha_max || 0), ...obs.map((o) => o.racha_kmh));
     const x = (h) => L + (h / 24) * (W - L - R);
     const y = (v) => T + (1 - v / max) * (H - T - B);
     let out = `<svg class="perfil" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Racha prevista por horas">`;
@@ -129,6 +130,11 @@
       out += `<rect x="${x(h) + 1}" y="${y(p.racha_max || 0)}" width="${bw}" height="${H - B - y(p.racha_max || 0)}" fill="var(--accent)" opacity="0.85"><title>${h}:00 racha máx. ${num(p.racha_max)} km/h, media ${num(p.racha_media)} km/h, lluvia ${num(p.lluvia, 1)} mm</title></rect>`;
       if (p.lluvia > 0) out += `<rect x="${x(h) + 1}" y="${H - B - Math.min(40, p.lluvia * 6)}" width="${bw}" height="${Math.min(40, p.lluvia * 6)}" fill="#3b82c4" opacity="0.5"/>`;
       if (h % 3 === 0) out += `<text x="${x(h) + bw / 2}" y="${H - 8}" font-size="10" text-anchor="middle" fill="var(--muted)">${h}h</text>`;
+    }
+    if (obs.length) {
+      const pts = obs.map((o) => `${(x(o.hora) + bw / 2).toFixed(1)},${y(o.racha_kmh).toFixed(1)}`).join(" ");
+      out += `<polyline points="${pts}" fill="none" stroke="#b8302f" stroke-width="2"/>`;
+      for (const o of obs) out += `<circle cx="${(x(o.hora) + bw / 2).toFixed(1)}" cy="${y(o.racha_kmh).toFixed(1)}" r="3" fill="#b8302f"><title>${o.hora}:00 observado: racha ${num(o.racha_kmh)} km/h${o.lluvia_mm != null ? ", lluvia " + num(o.lluvia_mm, 1) + " mm" : ""} (${o.estaciones} estaciones)</title></circle>`;
     }
     out += "</svg>";
     return out;
@@ -230,6 +236,36 @@
     if (r.regla && !pie.textContent.includes("rayos")) pie.textContent += " Rayos: " + r.fuente + ". " + r.regla;
   }
 
+  // Observations of the stations of AEMET (observado.json, dag_observacion_vivo every hour): the gust measured
+  // hour by hour over the forecast profile of the same day, and the stations on the map.
+  function pintarObservado(data, o) {
+    if (!o || o.fecha !== data.fecha) return;
+    (data.distribuidoras || []).forEach((d, idx) => {
+      const block = (o.distribuidoras || []).find((b) => String(b.id) === String(d.id));
+      const sec = document.getElementById("dist-" + idx);
+      if (!sec || !block) return;
+      const holder = sec.querySelector(".perfil-holder");
+      if (holder && block.horas && block.horas.length) {
+        holder.innerHTML = perfilSvg(d.perfil, d.franja || {}, block.horas);
+        const title = sec.querySelector(".perfil-titulo");
+        if (title) title.textContent = `Hoy: racha prevista por horas (barras, km/h; azul: lluvia) y observada por las estaciones de AEMET (rojo, hasta las ${esc(o.generado.slice(11, 16))} UTC)`;
+      }
+      const map = maps[idx];
+      if (!map || map._estaciones) return;
+      const layer = L.layerGroup();
+      for (const st of (o.estaciones || [])) {
+        L.circleMarker([st.lat, st.lon], { radius: 5, color: "#b8302f", weight: 1, fillColor: "#fff", fillOpacity: 0.9 })
+          .bindTooltip(`Estación AEMET ${esc(st.nombre)} (${esc(st.hora)}): racha ${num(st.racha_kmh)} km/h, viento ${num(st.viento_kmh)} km/h${st.lluvia_mm != null ? ", lluvia " + num(st.lluvia_mm, 1) + " mm" : ""}${st.temp_c != null ? ", " + num(st.temp_c, 1) + " °C" : ""}`).addTo(layer);
+      }
+      layer.addTo(map); map._estaciones = layer;
+    });
+  }
+
+  function cargarObservado(data) {
+    fetch("data/observado.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+      .then((o) => pintarObservado(data, o)).catch(() => {});
+  }
+
   function cargarRayos(data) {
     fetch("data/rayos.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((r) => pintarRayos(data, r)).catch(() => {});
@@ -266,8 +302,8 @@
             <h3>Brigadas</h3>${brigadas(d.brigadas)}
           </div>
           <div><div class="map" id="map-${idx}"></div>
-            <div class="leyenda" style="margin-top:6px"><span><i style="background:${COLORS.bajo}"></i>bajo</span><span><i style="background:${COLORS.medio}"></i>medio</span><span><i style="background:${COLORS.alto}"></i>alto</span><span><i style="background:${COLORS["muy alto"]}"></i>muy alto</span><span>círculo: municipio, tamaño por CT</span><span>marcador: base de brigada</span></div>
-            <h3>Perfil de mañana (racha máxima prevista por horas, km/h; azul: lluvia)</h3>${perfilSvg(d.perfil, fr)}
+            <div class="leyenda" style="margin-top:6px"><span><i style="background:${COLORS.bajo}"></i>bajo</span><span><i style="background:${COLORS.medio}"></i>medio</span><span><i style="background:${COLORS.alto}"></i>alto</span><span><i style="background:${COLORS["muy alto"]}"></i>muy alto</span><span>círculo: municipio, tamaño por CT</span><span>marcador: base de brigada</span><span>círculo blanco: estación de AEMET</span></div>
+            <h3 class="perfil-titulo">Perfil de mañana (racha máxima prevista por horas, km/h; azul: lluvia)</h3><div class="perfil-holder">${perfilSvg(d.perfil, fr)}</div>
           </div>
           <div><h3>Zonas (líneas) por riesgo</h3>${tablaZonas(d, idx)}${tablaCts(d)}</div>
         </div>`;
@@ -286,7 +322,8 @@
     if (seg) main.insertAdjacentHTML("beforeend", seg);
     if (data.notas && data.notas.length) main.insertAdjacentHTML("beforeend", `<section class="dist"><h2>Notas</h2><ul class="notas">${data.notas.map((n) => "<li>" + esc(n) + "</li>").join("")}</ul></section>`);
     cargarRayos(data);
-    setInterval(() => cargarRayos(data), 5 * 60 * 1000);
+    cargarObservado(data);
+    setInterval(() => { cargarRayos(data); cargarObservado(data); }, 5 * 60 * 1000);
   }
 
   fetch("data/riesgo.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(render)
