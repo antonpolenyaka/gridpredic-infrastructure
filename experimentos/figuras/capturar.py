@@ -11,7 +11,7 @@ regeneran con una orden cuando cambian.
 Qué deja (cuando la página tiene los datos):
 - index_<n>_<distribuidora>.png: la sección de cada distribuidora del riesgo de mañana (cifras, mapa, perfil, líneas).
 - index_seguimiento.png: la tabla de lo que dijimos cada tarde y lo que pasó con el viento.
-- historial.png: el día a día desde 2022.
+- historial.png: el día a día desde 2022, e historial_<distribuidora>.png para cada red.
 - negocio_<bloque>.png: cada sección de la página de cifras (director, guardia, por año, peores días,
   retribución, sector, producción, límites), con todas las distribuidoras y con cada una por separado.
 """
@@ -68,12 +68,17 @@ async def capture(base: str, out: str, width: int, theme: str):
         if follow:
             await shot(follow, "index_seguimiento")
 
-        # The day by day since 2022.
+        # The day by day since 2022: the whole page and every distributor alone.
         await page.goto(f"{base}/historial.html", wait_until="networkidle")
         await page.wait_for_timeout(1500)
         main = await page.query_selector("main")
         if main:
             await shot(main, "historial")
+        for sec in await page.query_selector_all("main section"):
+            if not await sec.query_selector("h2"):
+                continue
+            title = await sec.eval_on_selector("h2", "e => e.textContent.trim()")
+            await shot(sec, f"historial_{slug(title)}")
 
         # The figures page, all the distributors together and each one alone.
         await page.goto(f"{base}/negocio.html", wait_until="networkidle")
