@@ -14,6 +14,15 @@ forecast of the day said against what is happening), and the stations with
 their last values for the map. The free key of opendata.aemet.es goes in a
 header and is never written in the log.
 
+Every run also verifies the forecast: for yesterday and today, the peak gust
+that riesgo_<day>.json of the dashboard folder (what dag_riesgo_manana left
+the evening before) forecast for every network against the peak the stations
+near it measured, with the hour of both and whether the observed peak fell in
+the forecast window. verificacion.json keeps the last verificacion_dias days
+and a summary per distribuidora (bias and absolute error of the peak, share
+of days with the peak inside the window), so the dashboard can say how much
+the forecast of the evening before is worth.
+
     docker compose exec airflow python /app/jobs/00_landing/job_landing_observacion.py
 """
 
@@ -22,7 +31,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -46,8 +55,11 @@ DEFAULTS = {
     "caja": [38.1, -7.3, 40.6, -5.4],
     "radio_km": 25.0,
     "timeout_s": 120,
+    "verificacion_dias": 60,      # days kept in verificacion.json
+    "horas_dia_completo": 20,     # a day counts in the summary with at least this many observed hours
 }
 FIELDS = {"vmax": "racha_ms", "vv": "viento_ms", "prec": "lluvia_mm", "ta": "temp_c", "hr": "humedad"}
+COLUMNS = ["idema", "nombre", "lat", "lon", "ts_utc"] + list(FIELDS.values())
 
 
 def observation_settings(config: dict) -> dict:
@@ -97,11 +109,34 @@ def inside(records: list, box: list) -> pd.DataFrame:
             except (TypeError, ValueError):
                 row[name] = np.nan
         rows.append(row)
-    out = pd.DataFrame(rows, columns=["idema", "nombre", "lat", "lon", "ts_utc"] + list(FIELDS.values()))
+    out = pd.DataFrame(rows, columns=COLUMNS)
     if len(out):
         out["ts_utc"] = pd.to_datetime(out["ts_utc"], utc=True, errors="coerce")
         out = out.dropna(subset=["ts_utc"]).sort_values(["idema", "ts_utc"]).reset_index(drop=True)
     return out
+
+
+def landed_frame(fs, path: str) -> pd.DataFrame:
+    """A file of the Landing back as a frame (the records already carry the FIELDS names and ts_utc)."""
+    with fs.open(path, "r") as file:
+        saved = json.load(file)
+    out = pd.DataFrame(saved.get("registros", []), columns=COLUMNS)
+    if len(out):
+        out["ts_utc"] = pd.to_datetime(out["ts_utc"], utc=True, errors="coerce")
+        out = out.dropna(subset=["ts_utc"])
+    return out
+
+
+def last_landed(fs, cfg: dict, day: datetime) -> pd.DataFrame:
+    """The last file landed on a UTC day (empty when there is none)."""
+    folder = f"{cfg['landing'].rstrip('/')}/observacion/{day:%Y%m%d}"
+    try:
+        files = sorted(f for f in fs.ls(folder, detail=False) if str(f).endswith(".json"))
+    except FileNotFoundError:
+        return pd.DataFrame(columns=COLUMNS)
+    if not files:
+        return pd.DataFrame(columns=COLUMNS)
+    return landed_frame(fs, files[-1])
 
 
 def land(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> str:
@@ -180,6 +215,122 @@ def write_dashboard(payload: dict, folder: str) -> bool:
     return True
 
 
+def archived_forecast(folder: str, day: date) -> dict:
+    """riesgo_<day>.json of the dashboard folder: what the evening before said about that day (None without it)."""
+    path = os.path.join(folder or "", f"riesgo_{day:%Y%m%d}.json")
+    if not folder or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as file:
+        return json.load(file)
+
+
+def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date) -> list:
+    """
+    One record per distribuidora of riesgo_<day>.json: the peak gust it forecast
+    (hour and km/h) against the peak the stations near the network measured
+    that local day, and whether the observed peak fell in the forecast window.
+    """
+    zone = ZoneInfo(cfg["zona_horaria"])
+    out = []
+    if not risk:
+        return out
+    f = frame.copy() if len(frame) else pd.DataFrame(columns=COLUMNS)
+    if len(f):
+        f["ts_local"] = f["ts_utc"].dt.tz_convert(zone)
+        f["racha_kmh"] = f["racha_ms"] * 3.6
+        f = f[f["ts_local"].dt.date == day]
+    by_dist = stations_of(frame, risk, float(cfg["radio_km"])) if len(frame) else {}
+    for dist in risk.get("distribuidoras", []):
+        ids = by_dist.get(dist.get("id"), [])
+        mine = f[f["idema"].isin(ids)] if len(f) else f
+        hours = mine.assign(h=mine["ts_local"].dt.hour).groupby("h")["racha_kmh"].max().dropna() if len(mine) else pd.Series(dtype=float)
+        rec = {"id": dist.get("id"), "nombre": dist.get("nombre"), "nivel": dist.get("nivel"), "probabilidad": dist.get("probabilidad"),
+               "estaciones": len(ids), "horas_observadas": int(len(hours))}
+        profile = [(int(p["hora"]), float(p["racha_max"])) for p in (dist.get("perfil") or []) if p.get("racha_max") is not None]
+        if profile:
+            hour, value = max(profile, key=lambda t: t[1])
+            rec["racha_prevista_max"], rec["hora_prevista"] = round(value), hour
+        if len(hours):
+            rec["racha_observada_max"], rec["hora_observada"] = round(float(hours.max())), int(hours.idxmax())
+        window = dist.get("franja") or {}
+        if "racha_prevista_max" in rec and "racha_observada_max" in rec:
+            rec["error_kmh"] = rec["racha_observada_max"] - rec["racha_prevista_max"]
+            if window.get("inicio") is not None and window.get("fin") is not None:
+                rec["pico_en_franja"] = bool(int(window["inicio"]) <= rec["hora_observada"] <= int(window["fin"]))
+        out.append(rec)
+    return out
+
+
+def verification_summary(days: dict, minimum_hours: int) -> list:
+    """Per distribuidora, over the complete days: bias and absolute error of the peak and the share of peaks inside the window."""
+    rows = []
+    for records in days.values():
+        for r in records:
+            if r.get("horas_observadas", 0) >= minimum_hours and r.get("error_kmh") is not None:
+                rows.append(r)
+    if not rows:
+        return []
+    table = pd.DataFrame(rows)
+    out = []
+    for dist, g in table.groupby("id", sort=False):
+        block = {"id": dist, "nombre": g["nombre"].iloc[0], "dias": int(len(g)), "sesgo_kmh": round(float(g["error_kmh"].mean()), 1),
+                 "error_abs_kmh": round(float(g["error_kmh"].abs().mean()), 1),
+                 "dias_prevision_mayor": round(float((g["error_kmh"] < 0).mean()), 2)}
+        if "pico_en_franja" in g.columns and g["pico_en_franja"].notna().any():
+            block["pico_en_franja"] = round(float(g["pico_en_franja"].dropna().astype(bool).mean()), 2)
+        days_text = "el último día completo" if block["dias"] == 1 else f"los últimos {block['dias']} días completos"
+        block["texto"] = (f"en {days_text}, la previsión de la víspera dio de media {abs(block['sesgo_kmh']):g} km/h "
+                          f"{'más' if block['sesgo_kmh'] < 0 else 'menos'} que las estaciones (error medio {block['error_abs_kmh']:g} km/h)"
+                          + (f"; el pico observado cayó en la franja prevista el {100 * block['pico_en_franja']:.0f} % de los días" if "pico_en_franja" in block else ""))
+        out.append(block)
+    return out
+
+
+def verify(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> dict:
+    """
+    verificacion.json: yesterday and today (local) of every riesgo_<day>.json
+    found, merged with the days already kept, and the summary. Yesterday is
+    complete only with the last file landed the UTC day before, so both are
+    read; a missing archive or Landing day just leaves that day out.
+    """
+    folder = cfg["dashboard_dir"]
+    zone = ZoneInfo(cfg["zona_horaria"])
+    today = now.astimezone(zone).date()
+    yesterday = today - timedelta(days=1)
+    path = os.path.join(folder or "", "verificacion.json")
+    kept = {}
+    if folder and os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as file:
+                kept = {k: v for k, v in (json.load(file).get("dias") or {}).items()}
+        except (OSError, ValueError):
+            kept = {}
+    both = pd.concat([frame, last_landed(fs, cfg, now - timedelta(days=1))], ignore_index=True) if len(frame) else last_landed(fs, cfg, now - timedelta(days=1))
+    if len(both):
+        both = both.drop_duplicates(["idema", "ts_utc"])
+    today_records = []
+    for day in (yesterday, today):
+        risk = archived_forecast(folder, day)
+        if not risk:
+            continue
+        records = verify_day(both, risk, cfg, day)
+        if day == today:
+            today_records = records
+        else:
+            kept[day.isoformat()] = records
+    keep = int(cfg["verificacion_dias"])
+    kept = dict(sorted(kept.items())[-keep:])
+    payload = {"generado": now.strftime("%Y-%m-%dT%H:%MZ"), "fuente": "previsión de la víspera (riesgo_<día>.json) frente a la racha máxima de las estaciones de AEMET a menos de "
+               f"{float(cfg['radio_km']):g} km de la red", "hoy": {"fecha": today.isoformat(), "distribuidoras": today_records},
+               "ayer": {"fecha": yesterday.isoformat(), "distribuidoras": kept.get(yesterday.isoformat(), [])},
+               "dias": kept, "resumen": verification_summary(kept, int(cfg["horas_dia_completo"]))}
+    if folder and os.path.isdir(folder):
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, indent=1)
+        logger.info("verificacion.json written in %s (%s days kept)", path, len(kept))
+    return payload
+
+
 def main(argv=None, fs=None, now: datetime = None, records: list = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
@@ -211,6 +362,12 @@ def main(argv=None, fs=None, now: datetime = None, records: list = None) -> int:
     write_dashboard(payload, cfg["dashboard_dir"])
     for block in payload["distribuidoras"]:
         logger.info("%s: %s", block["nombre"], block["texto"])
+    try:
+        checked = verify(fs, cfg, frame, now)
+        for block in checked.get("resumen", []):
+            logger.info("Verificación %s: %s", block["nombre"], block["texto"])
+    except Exception as error:  # noqa: BLE001
+        logger.warning("The forecast could not be verified: %s", str(error)[:200])
     return 0
 
 
