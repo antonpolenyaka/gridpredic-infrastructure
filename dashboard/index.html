@@ -123,7 +123,7 @@
       if (r.ok) document.getElementById("fuentes").insertAdjacentHTML("beforeend", ' · <a href="data/parte_guardia.xlsx">Parte de guardia (Excel)</a>');
     }).catch(() => {});
     document.getElementById("pie").textContent = "Generado el " + (data.generado || "") + ". Mapa: OpenStreetMap (ODbL). " + (data.reglas && data.reglas.texto ? data.reglas.texto : "")
-      + " Próximas 3 h por línea: regla sobre la probabilidad del día (el 74 % de las averías de los días de alerta empiezan en la franja; en el pico de racha, el 62 % de las averías por tiempo a menos de 3 h; rayos a menos de 10 km en la hora previa, 15 veces más averías): ordena las líneas para las próximas horas, no es una probabilidad calibrada.";
+      + " Próximas 3 h por línea: regla sobre la probabilidad del día (el 84 % de las averías de los días de alerta de 2024 - 2026 empiezan en la franja; en el pico de racha, el 62 % de las averías por tiempo a menos de 3 h; rayos a menos de 10 km en la hora previa, 15 veces más averías): ordena las líneas para las próximas horas, no es una probabilidad calibrada.";
   }
 
   function perfilSvg(perfil, franja, observado, banda, aemet) {
@@ -198,12 +198,12 @@
   }
 
   // The risk of the next three hours of a line: a rule over the probability of the day. Inside the window of the
-  // day the incidents concentrate (74 % of the incidents of the alert days start inside it); at the peak of the
+  // day the incidents concentrate (84 % of the incidents of the alert days of 2024 - 2026 start inside it); at the peak of the
   // gust, 62 % of the weather incidents start within 3 hours of it; flashes within 10 km in the previous hour
   // precede 17 % of the incidents against 1.1 % of the control windows (15 times). The constants are the ones
   // measured in causas-incidencias.md; the result ranks the lines for the next hours, it is not a calibrated
   // probability.
-  const RULE = { enFranja: 0.74, enPico: 0.31, rayos: 15, tope: 0.95 };
+  const RULE = { enFranja: 0.84, enPico: 0.31, rayos: 15, tope: 0.95 };
   function nextHoursRisk(z, franja, hour, storm, atPeak) {
     const p = z.probabilidad || 0;
     if (!p) return 0;
