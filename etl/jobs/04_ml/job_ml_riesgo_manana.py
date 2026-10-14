@@ -1087,6 +1087,38 @@ def report_text(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out: dict
       + (["## Notas\n\n" + "\n".join(f"- {n}" for n in notes)] if notes else [])) + "\n"
 
 
+def attach_second_opinions(payload: dict, folder: str) -> dict:
+    """
+    What the other tasks of the evening left in the dashboard folder for the
+    same day: the ensemble of ICON-EU EPS (ensemble.json) and the forecast of
+    AEMET by municipality (aemet.json), attached to every distribuidora as
+    escenarios and aemet (texto, pico, ...) so the shift sheet and the message
+    of the evening carry them. Missing or older files leave nothing.
+    """
+    if not folder or not os.path.isdir(folder):
+        return payload
+    for name, key, fields in (("ensemble.json", "escenarios", ("texto", "pico", "supera", "miembros", "modelo")),
+                              ("aemet.json", "aemet", ("texto", "pico", "elaborado", "municipios"))):
+        path = os.path.join(folder, name)
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as file:
+                other = json.load(file)
+        except (OSError, ValueError) as error:
+            logger.warning("%s not read: %s", name, error)
+            continue
+        if other.get("fecha") != payload.get("fecha"):
+            logger.info("%s is of %s, not of %s: not attached", name, other.get("fecha"), payload.get("fecha"))
+            continue
+        blocks = {str(b.get("id")): b for b in other.get("distribuidoras", [])}
+        for d in payload.get("distribuidoras", []):
+            block = blocks.get(str(d.get("id")))
+            if block and block.get("horas"):
+                d[key] = {f: block.get(f) for f in fields if block.get(f) is not None}
+    return payload
+
+
 def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day: pd.Timestamp):
     """
     riesgo.json for the dashboard (dashboard_dir, when the folder exists)
@@ -1291,7 +1323,7 @@ def main(argv=None):
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
     seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"])
     notes = report_notes(out, info)
-    payload = dashboard_payload(day, out, info, zone_out, seguimiento, args.run_id, notes)
+    payload = attach_second_opinions(dashboard_payload(day, out, info, zone_out, seguimiento, args.run_id, notes), rcfg.get("dashboard_dir"))
     export(config, folder_id, report_text(day, out, info, zone_out), {"prediccion": out, "zonas": zone_rows})
     write_dashboard(config, rcfg, folder_id, payload, day)
 
