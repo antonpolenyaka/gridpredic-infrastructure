@@ -17,6 +17,15 @@ config_ml.json.
   (avisos_cap/ultimoelaborado), as AEMET gives them (a tar of CAP messages).
   It needs the free key of opendata.aemet.es in the environment variable
   clave_env, which goes in a header and is never written in the log.
+- aemet_municipios: the hourly forecast of AEMET for every municipality of
+  the reference (prediccion/especifica/municipio/horaria, the forecast a
+  distribuidora reads on the web of AEMET, from its own model): gusts, rain
+  and the chance of thunderstorms hour by hour for the day to predict. The
+  raw answers go to the Landing and aemet.json (and aemet_<day>.json) to the
+  dashboard: per distribuidora and hour the strongest gust of its
+  municipalities, the peak of the day and a sentence. A second forecast,
+  independent of ICON-EU, that the dashboard draws over the profile and the
+  verification compares with the stations like the first one.
 - ensemble: the ensemble forecast (ICON-EU EPS, 40 perturbed runs, from the
   Open-Meteo Ensemble API, free, no key) of the gusts of a few points of every
   network (ensemble.puntos), hourly, for the day to predict. The deterministic
@@ -69,7 +78,17 @@ CONFIG_CANDIDATES = [
     "/opt/airflow/config/04_ml/config_ml.json",
     os.path.join(HERE, "..", "..", "config", "04_ml", "config_ml.json"),
 ]
-SOURCES = ("prevision", "avisos", "ensemble")
+SOURCES = ("prevision", "avisos", "ensemble", "aemet_municipios")
+AEMET_MUNICIPIOS_DEFAULTS = {
+    "api": "https://opendata.aemet.es/opendata/api/prediccion/especifica/municipio/horaria/{ine}",
+    "clave_env": "AEMET_API_KEY",
+    "referencia_distribuidoras": {},   # {number of the reference sheet: distribuidora id}
+    "pausa_s": 1.3,
+    "reintentos": 2,
+    "espera_reintento_s": 20,
+    "timeout_s": 60,
+    "max_fallos": 0.3,
+}
 ENSEMBLE_DEFAULTS = {
     "api": "https://ensemble-api.open-meteo.com/v1/ensemble",
     "modelos": ["icon_eu", "icon_seamless", "gfs025"],  # tried in this order until one answers
@@ -338,6 +357,151 @@ def land_ensemble(fs, cfg: dict, folder: str, day: date) -> tuple:
     return done, failed, out
 
 
+def aemet_settings(cfg: dict) -> dict:
+    return {**AEMET_MUNICIPIOS_DEFAULTS, **(cfg.get("aemet_municipios") or {})}
+
+
+def decode_aemet(raw: bytes) -> str:
+    if raw[:3] == b"\xef\xbb\xbf":
+        raw = raw[3:]
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("iso-8859-15", "replace")
+
+
+def ask_aemet_municipality(ine: str, acfg: dict, key: str) -> dict:
+    """The hourly forecast of a municipality (two requests: the pointer and the data); the first element of the list."""
+    timeout, retries, wait = float(acfg["timeout_s"]), int(acfg["reintentos"]), float(acfg["espera_reintento_s"])
+    answer = json.loads(fetch(acfg["api"].format(ine=ine), headers={"api_key": key, "Accept": "application/json"}, retries=retries,
+                              wait_s=wait, timeout=timeout, label=f"AEMET municipio {ine}").decode("utf-8", "replace"))
+    if int(answer.get("estado", 0)) != 200 or not answer.get("datos"):
+        raise RuntimeError(f"unexpected answer {str(answer)[:160]}")
+    data = json.loads(decode_aemet(fetch(answer["datos"], headers={"api_key": key}, retries=retries, wait_s=wait, timeout=timeout,
+                                         label=f"AEMET datos municipio {ine}")))
+    if isinstance(data, list):
+        if not data:
+            raise RuntimeError("empty answer")
+        data = data[0]
+    return data
+
+
+def aemet_value(text) -> float:
+    """A value of AEMET as a number: "" is unknown, "Ip" (inapreciable) is a trace of rain."""
+    if text is None:
+        return np.nan
+    text = str(text).strip()
+    if not text:
+        return np.nan
+    if text.lower() == "ip":
+        return 0.1
+    try:
+        return float(text.replace(",", "."))
+    except ValueError:
+        return np.nan
+
+
+def aemet_day(payload: dict, day: date) -> dict:
+    """{hour: {"racha_kmh", "lluvia_mm", "tormenta_pct"}} of the day in the forecast of a municipality (empty without the day)."""
+    out = {}
+    for block in (payload.get("prediccion") or {}).get("dia") or []:
+        if str(block.get("fecha", ""))[:10] != day.isoformat():
+            continue
+        for item in block.get("vientoAndRachaMax") or []:
+            if "value" in item and str(item.get("periodo", "")).isdigit():
+                out.setdefault(int(item["periodo"]), {})["racha_kmh"] = aemet_value(item["value"])
+        for item in block.get("precipitacion") or []:
+            if str(item.get("periodo", "")).isdigit():
+                out.setdefault(int(item["periodo"]), {})["lluvia_mm"] = aemet_value(item.get("value"))
+        for item in block.get("probTormenta") or []:
+            period = str(item.get("periodo", ""))
+            if len(period) == 4 and period.isdigit():
+                start, end = int(period[:2]), int(period[2:])
+                for hour in range(start, end if end > start else 24):
+                    cell = out.setdefault(hour, {})
+                    cell["tormenta_pct"] = max(cell.get("tormenta_pct", 0.0), aemet_value(item.get("value")))
+    return out
+
+
+def land_aemet_municipios(fs, cfg: dict, folder: str, day: date) -> tuple:
+    """(municipalities saved, failed, aemet.json payload): the forecast of every municipality in <folder>/aemet/<ine>.json."""
+    acfg = aemet_settings(cfg)
+    key = os.environ.get(acfg["clave_env"], "").strip()
+    names = {str(k): str(v) for k, v in (cfg.get("nombres") or {}).items()}
+    out = {"generado": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "fecha": day.isoformat(),
+           "fuente": "AEMET OpenData, predicción horaria por municipios", "distribuidoras": []}
+    if not key:
+        logger.error("No %s in the environment: the forecast of AEMET by municipality needs the free key of opendata.aemet.es", acfg["clave_env"])
+        return 0, 0, out
+    meteo = load_meteo_config()["openmeteo"]
+    places = municipality_cells(read_reference(fs, meteo["referencia_municipios"]), float(meteo["celda_grados"]))
+    mapping = {str(k): str(v) for k, v in (acfg.get("referencia_distribuidoras") or {}).items()}
+    done = failed = 0
+    by_dist, elaborated = {}, None
+    for place in places:
+        ine, dist = str(place.get("codigo_ine") or "").zfill(5), mapping.get(str(place.get("distribuidora_ref") or "").strip())
+        if not ine.strip("0") or not dist:
+            continue
+        try:
+            payload = ask_aemet_municipality(ine, acfg, key)
+        except Exception as error:  # noqa: BLE001
+            failed += 1
+            logger.error("Forecast of AEMET for %s (%s) not downloaded: %s", place.get("municipio"), ine, str(error)[:200])
+            continue
+        payload["_peticion"] = {"distribuidora_id": dist, "codigo_ine": ine, "municipio": place.get("municipio"),
+                                "pedido_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        with fs.open(f"{folder}/aemet/{ine}.json", "w") as file:
+            json.dump(payload, file, ensure_ascii=False)
+        done += 1
+        elaborated = elaborated or payload.get("elaborado")
+        hours = aemet_day(payload, day)
+        if hours:
+            by_dist.setdefault(dist, []).append((place.get("municipio"), hours))
+        time.sleep(float(acfg["pausa_s"]))
+    for dist, items in by_dist.items():
+        block = {"id": int(dist) if str(dist).isdigit() else dist, "nombre": names.get(str(dist), str(dist)), "municipios": len(items),
+                 "elaborado": elaborated, "horas": []}
+        peak, peak_hour, peak_place = -1.0, None, None
+        for hour in range(24):
+            gusts = [(h[hour].get("racha_kmh", np.nan), name) for name, h in items if hour in h]
+            rain = [h[hour].get("lluvia_mm", np.nan) for name, h in items if hour in h]
+            storm = [h[hour].get("tormenta_pct", np.nan) for name, h in items if hour in h]
+            if not gusts:
+                continue
+            best = max((g for g in gusts if not np.isnan(g[0])), default=(np.nan, None))
+            row = {"hora": hour, "racha_kmh": None if np.isnan(best[0]) else round(float(best[0])),
+                   "lluvia_mm": None if np.all(np.isnan(rain)) else round(float(np.nanmax(rain)), 1),
+                   "tormenta_pct": None if np.all(np.isnan(storm)) else round(float(np.nanmax(storm)))}
+            block["horas"].append(row)
+            if row["racha_kmh"] is not None and row["racha_kmh"] > peak:
+                peak, peak_hour, peak_place = row["racha_kmh"], hour, best[1]
+        if peak >= 0:
+            block["pico"] = {"racha_kmh": round(float(peak)), "hora": peak_hour, "municipio": peak_place}
+            storms = [r["tormenta_pct"] for r in block["horas"] if r["tormenta_pct"] is not None]
+            rain_total = sum(r["lluvia_mm"] for r in block["horas"] if r["lluvia_mm"] is not None)
+            block["texto"] = (f"AEMET por municipios ({len(items)} municipios, elaborada {str(elaborated or '')[11:16]}): pico de racha "
+                              f"{round(float(peak))} km/h a las {peak_hour}:00 en {peak_place}"
+                              + (f"; hasta {round(float(rain_total), 1):g} mm de lluvia" if rain_total > 0 else "")
+                              + (f"; probabilidad de tormenta hasta el {max(storms):.0f} %" if storms and max(storms) > 0 else ""))
+        else:
+            block["texto"] = "AEMET por municipios: sin rachas para el día"
+        out["distribuidoras"].append(block)
+    logger.info("AEMET by municipality: %s saved, %s failed", done, failed)
+    return done, failed, out
+
+
+def write_json_pair(payload: dict, folder: str, name: str) -> bool:
+    """<name>.json for the page and <name>_<day>.json for the verification, in the dashboard folder."""
+    if not folder or not os.path.isdir(folder):
+        logger.warning("Dashboard folder %s not found: %s.json not written", folder, name)
+        return False
+    for file_name in (f"{name}.json", f"{name}_{payload['fecha'].replace('-', '')}.json"):
+        with open(os.path.join(folder, file_name), "w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, indent=1)
+    logger.info("%s.json written in %s", name, folder)
+    return True
+
+
 def write_ensemble(payload: dict, folder: str) -> bool:
     if not folder or not os.path.isdir(folder):
         logger.warning("Dashboard folder %s not found: ensemble.json not written", folder)
@@ -372,6 +536,16 @@ def main(argv=None, fs=None) -> int:
             for block in payload["distribuidoras"]:
                 logger.info("%s: %s", block["nombre"], block["texto"])
         return 0 if done and not failed else (2 if not done else 1)
+
+    if args.fuente == "aemet_municipios":
+        done, failed, payload = land_aemet_municipios(fs, cfg, folder, day)
+        if done:
+            write_json_pair(payload, args.dashboard_dir or cfg.get("dashboard_dir", "/app/dashboard/data"), "aemet")
+            for block in payload["distribuidoras"]:
+                logger.info("%s: %s", block["nombre"], block["texto"])
+        if not done:
+            return 2
+        return 1 if failed > float(aemet_settings(cfg)["max_fallos"]) * (done + failed) else 0
 
     if args.fuente == "prevision":
         cells = study_cells(fs, load_meteo_config()["openmeteo"])
