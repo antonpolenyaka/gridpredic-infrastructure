@@ -22,6 +22,14 @@
     color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); padding-block: 0 32px; }
+  /* The same menu on every page of the dashboard: nobody needs to know the names of the files. */
+  nav.menu { display: flex; flex-wrap: wrap; gap: 2px 18px; align-items: center; padding: 8px 24px; background: var(--panel);
+    border-bottom: 1px solid var(--line); font-size: 13px; }
+  nav.menu .marca { font-weight: 700; color: var(--fg); text-decoration: none; margin-right: 6px; letter-spacing: .02em; }
+  nav.menu a { color: var(--accent); text-decoration: none; padding: 4px 0; border-bottom: 2px solid transparent; }
+  nav.menu a.actual { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+  nav.menu .derecha { margin-left: auto; color: var(--muted); display: flex; gap: 14px; }
+  @media (max-width: 700px) { nav.menu { padding-left: 16px; padding-right: 16px; } nav.menu .derecha { margin-left: 0; } }
   header { padding: 18px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; }
   header h1 { font-size: 22px; margin: 0; font-weight: 600; }
   header .fuentes { color: var(--muted); font-size: 13px; }
@@ -56,6 +64,14 @@
 </style>
 </head>
 <body>
+<nav class="menu" aria-label="Páginas del cuadro de mando">
+  <a class="marca" href="index.html">GridPredict</a>
+  <a href="index.html">Riesgo de mañana</a>
+  <a href="dias.html">Días archivados</a>
+  <a href="historial.html" class="actual">Día a día 2022 - 2026</a>
+  <a href="negocio.html">Negocio y cifras</a>
+  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
+</nav>
 <header>
   <h1>Lo que habría dicho el sistema, día a día</h1>
   <div class="fuentes" id="fuentes">Cargando data/historico.json... <a href="index.html">Volver al riesgo de mañana</a> · <a href="negocio.html">GridPredict en cifras</a></div>

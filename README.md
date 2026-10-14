@@ -594,6 +594,8 @@ FROM lakehouse.l3_gold.riesgo_zona_siguiente
 ORDER BY fecha DESC, probabilidad DESC;
 ```
 
+El cuadro de mando son cuatro páginas con el mismo menú arriba: `index.html` (el riesgo de mañana), `dias.html` (todos los días con riesgo guardado, de las ejecuciones de la tarde y de los días repetidos, cada uno con su enlace y su parte de guardia; lee `data/indice.json`, que el job reescribe cada vez que guarda un día), `historial.html` (día a día desde 2022) y `negocio.html` (las cifras).
+
 Con las credenciales del Data Store de EUMETSAT en `.env`, `dag_rayos_vivo` añade cada 15 minutos los rayos que ve el satélite MTG sobre la red (`dashboard/data/rayos.json`), que el cuadro de mando pinta sobre el mapa con una franja por distribuidora.
 
 La tarea `ensemble` del mismo DAG pide los 40 escenarios de ICON-EU EPS (Open-Meteo, sin clave) para las celdas de cada red y deja `dashboard/data/ensemble.json`: el cuadro de mando pinta la banda p10 - p90 de la racha sobre el perfil y dice qué parte de los escenarios supera 50, 70 y 90 km/h. La tarea `aemet_municipios` trae la predicción horaria por municipios de AEMET (segunda previsión, línea verde sobre el perfil, verificada frente a las estaciones como la de ICON-EU). `dag_observacion_vivo` añade cada hora lo que miden las estaciones de AEMET (`dashboard/data/observado.json`): la racha observada se pinta en rojo sobre el perfil previsto del día y, con `dashboard/data/verificacion.json`, el cuadro de mando dice lo que valió la previsión de la víspera (pico previsto frente a observado, sesgo y error medio de los últimos días). Con `AVISO_WEBHOOK_URL` en `.env` (un webhook de Slack, Teams o similar), el DAG manda además el aviso de la tarde cuando alguna distribuidora queda en alto o muy alto.
