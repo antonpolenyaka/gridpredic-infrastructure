@@ -253,6 +253,9 @@ services:
 
     environment:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      # SQLite waits up to 60 s for a lock instead of 5 (etl/config/airflow_sqlite.py): the dag-processor died
+      # with "database is locked" when the scheduler held the file.
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONNECT_ARGS: "airflow_sqlite.CONNECT_ARGS"
       AIRFLOW_CONN_SPARK_DEFAULT: "spark://spark-master:7077"
 
       SPARK_CONF_DIR: "/app/conf"
