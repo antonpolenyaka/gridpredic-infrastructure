@@ -15,10 +15,12 @@ import os
 import sys
 import urllib.request
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("aviso")
 
-DEFAULTS = {"url_env": "AVISO_WEBHOOK_URL", "nivel_minimo": "alto", "campo": "text", "timeout_s": 30, "rayos_cada_min": 60}
+DEFAULTS = {"url_env": "AVISO_WEBHOOK_URL", "nivel_minimo": "alto", "campo": "text", "timeout_s": 30, "rayos_cada_min": 60,
+            "parte_manana_hora": 7}
 ORDER = ["bajo", "medio", "alto", "muy alto"]
 
 
@@ -185,6 +187,122 @@ def send_storm(payload: dict, rcfg: dict, state_path: str, now: datetime = None)
         except OSError as error:
             logger.warning("Storm state not written in %s: %s", state_path, error)
     logger.info("Storm message sent\n%s", message)
+    return "enviado"
+
+
+def day_text(iso: str) -> str:
+    """'2026-10-15' -> '15.10.2026'; anything else as it comes."""
+    try:
+        return datetime.strptime(str(iso)[:10], "%Y-%m-%d").strftime("%d.%m.%Y")
+    except ValueError:
+        return str(iso or "")
+
+
+def morning_message(verification: dict, risk: dict = None) -> str:
+    """
+    The text of the morning: what we said for yesterday and what the stations
+    measured (verificacion.json, block ayer), and what the system says for
+    today (riesgo.json when its fecha is today, else the block hoy of the
+    verification). Empty when there is nothing of yesterday nor of today.
+    """
+    yesterday = (verification or {}).get("ayer") or {}
+    today = (verification or {}).get("hoy") or {}
+    lines = []
+    if yesterday.get("distribuidoras"):
+        parts = []
+        for d in yesterday["distribuidoras"]:
+            if d.get("racha_observada_max") is None:
+                continue
+            text = (f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %): "
+                    f"pico previsto {float(d.get('racha_prevista_max') or 0):.0f} km/h a las {d.get('hora_prevista')} h, "
+                    f"medido {float(d['racha_observada_max']):.0f} km/h a las {d.get('hora_observada')} h")
+            marks = []
+            if d.get("pico_en_franja") is not None:
+                marks.append("en la franja" if d["pico_en_franja"] else "fuera de la franja")
+            if d.get("pico_en_banda") is not None:
+                marks.append("en la banda de los escenarios" if d["pico_en_banda"] else "fuera de la banda de los escenarios")
+            if d.get("racha_aemet_max") is not None:
+                marks.append(f"AEMET decía {float(d['racha_aemet_max']):.0f} km/h")
+            if d.get("aviso_aemet"):
+                marks.append(f"aviso de AEMET de nivel {int(d['aviso_aemet'])}")
+            parts.append(text + (" (" + ", ".join(marks) + ")" if marks else ""))
+        if parts:
+            lines.append(f"Ayer {day_text(yesterday.get('fecha'))}: " + "; ".join(parts) + ".")
+    source = risk if (risk or {}).get("fecha") and risk.get("fecha") == today.get("fecha", risk.get("fecha")) else None
+    if source and source.get("distribuidoras"):
+        parts = []
+        for d in sorted(source["distribuidoras"], key=lambda b: -(b.get("probabilidad") or 0)):
+            fr = d.get("franja") or {}
+            text = f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
+            if fr.get("inicio") is not None:
+                text += f", franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico {float(fr.get('racha_pico') or 0):.0f} km/h"
+            if (d.get("aemet") or {}).get("pico"):
+                text += f", AEMET {float(d['aemet']['pico'].get('racha_kmh') or 0):.0f} km/h"
+            parts.append(text)
+        lines.append(f"Hoy {day_text(source.get('fecha'))}: " + "; ".join(parts) + ".")
+    elif today.get("distribuidoras"):
+        parts = [f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
+                 for d in today["distribuidoras"]]
+        lines.append(f"Hoy {day_text(today.get('fecha'))}: " + "; ".join(parts) + ".")
+    if not lines:
+        return ""
+    return "GridPredict, parte de la mañana.\n" + "\n".join(lines) + "\nCuadro de mando: http://localhost:8086"
+
+
+def send_morning(folder: str, rcfg: dict, state_path: str, now: datetime = None) -> str:
+    """
+    The morning report to the webhook once a day, in the run of
+    aviso.parte_manana_hora (local hour of the risk configuration) or the
+    first run after it; state_path remembers the last day sent. Returns
+    "enviado", "no es la hora", "ya enviado", "sin datos", "sin url" or
+    "error: ...".
+    """
+    cfg = alert_settings(rcfg)
+    zone = ZoneInfo(rcfg.get("zona_horaria", "Europe/Madrid"))
+    now = (now or datetime.now(timezone.utc)).astimezone(zone)
+    if now.hour < int(cfg.get("parte_manana_hora", 7)):
+        return "no es la hora"
+    state = {}
+    if state_path and os.path.exists(state_path):
+        try:
+            with open(state_path, encoding="utf-8") as file:
+                state = json.load(file)
+        except (OSError, ValueError):
+            state = {}
+    today = now.strftime("%Y-%m-%d")
+    if state.get("enviado") == today:
+        return "ya enviado"
+    verification, risk = {}, {}
+    for name, target in (("verificacion.json", "verification"), ("riesgo.json", "risk")):
+        path = os.path.join(folder, name)
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as file:
+                    if target == "verification":
+                        verification = json.load(file)
+                    else:
+                        risk = json.load(file)
+            except (OSError, ValueError):
+                pass
+    message = morning_message(verification, risk)
+    if not message:
+        return "sin datos"
+    url = os.environ.get(cfg["url_env"], "").strip()
+    if not url:
+        logger.info("No %s in the environment: the morning report is not sent\n%s", cfg["url_env"], message)
+        return "sin url"
+    try:
+        post(url, message, cfg["campo"], float(cfg["timeout_s"]))
+    except Exception as error:  # noqa: BLE001
+        logger.error("The webhook did not take the morning report: %s", type(error).__name__)
+        return f"error: {type(error).__name__}"
+    if state_path:
+        try:
+            with open(state_path, "w", encoding="utf-8") as file:
+                json.dump({"enviado": today}, file)
+        except OSError as error:
+            logger.warning("Morning state not written in %s: %s", state_path, error)
+    logger.info("Morning report sent\n%s", message)
     return "enviado"
 
 

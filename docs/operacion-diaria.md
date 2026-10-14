@@ -16,6 +16,7 @@ Este documento es el manual de la operación en marcha: los tres DAG de Airflow 
 | cada 15 min | `dag_rayos_vivo` / `rayos` | Rayos del Lightning Imager de MTG de la última hora y media (EUMETSAT, claves) | `00_landing/vivo/rayos/<día>/` y `dashboard/data/rayos.json` |
 | cada 15 min | `avisar_rayos` | Rayos a menos de 10 km de una red al webhook, una vez por distribuidora y hora | `dashboard/data/rayos_aviso.json` (cuándo se avisó) |
 | cada hora, a y 20 | `dag_observacion_vivo` / `observar` | Las últimas 24 horas de las estaciones de AEMET de la caja de estudio (clave de AEMET); verifica la previsión de ayer y de hoy frente a lo medido | `00_landing/vivo/observacion/<día>/obs_<hhmm>.json`, `dashboard/data/observado.json`, `dashboard/data/verificacion.json` |
+| 07:20 (la primera ejecución desde `aviso.parte_manana_hora`) | `parte_manana` | El parte de la mañana al webhook: lo que dijimos para ayer y lo que midieron las estaciones (pico previsto y medido, franja, banda, AEMET, aviso) y lo que dice el sistema para hoy (nivel, franja, pico), una vez al día | mensaje en el webhook; `dashboard/data/parte_manana.json` (el último día enviado) |
 
 Las tareas `ensemble`, `aemet_municipios` y `avisos` nunca bloquean la puntuación: sin respuesta se saltan y el día se puntúa sin ellas (la fila lo dice). Sin la previsión de ICON-EU no hay puntuación, y la tarea reintenta dos veces con diez minutos entre medias.
 
@@ -25,7 +26,7 @@ Las tareas `ensemble`, `aemet_municipios` y `avisos` nunca bloquean la puntuaci�
 - `historial.html`: lo que habría dicho el sistema cada tarde desde 2022, día a día, y lo que pasó.
 - `negocio.html`: las cifras para una distribuidora o un inversor, la guardia a igual presupuesto frente a los calendarios fijos y a los avisos de AEMET, y lo que vale la previsión medido en producción. Se imprime a PDF.
 - `data/parte_guardia.xlsx`: el parte de guardia de mañana, con los escenarios y la predicción de AEMET en la hoja Resumen.
-- El webhook (opcional, `AVISO_WEBHOOK_URL` en `.env`): el mensaje de la tarde cuando hay alerta, los rayos sobre la red durante el día y las tareas que fallan del todo.
+- El webhook (opcional, `AVISO_WEBHOOK_URL` en `.env`): el mensaje de la tarde cuando hay alerta, el parte de la mañana a las 07:20 (ayer frente a lo medido, y hoy), los rayos sobre la red durante el día y las tareas que fallan del todo.
 
 ## 3. Qué mirar si algo no sale
 
@@ -36,6 +37,7 @@ Las tareas `ensemble`, `aemet_municipios` y `avisos` nunca bloquean la puntuaci�
 | No hay línea roja de las estaciones | `dag_observacion_vivo` saltado (falta `AEMET_API_KEY`) o AEMET sin datos | Comprobar la clave en `.env` y `docker compose up -d airflow`; lanzar `job_landing_observacion.py` a mano |
 | Rayos ahora dice que el satélite no responde | `dag_rayos_vivo`, claves de EUMETSAT, red del portátil | Suele ser la red; el siguiente run reconstruye el JSON con lo que hay en la Landing |
 | El mensaje de la tarde no llega | `avisar` saltada ("sin url" o "sin alerta") | Sin URL no se manda; con URL, el log dice el estado HTTP del webhook |
+| El parte de la mañana no llega | `parte_manana` de `dag_observacion_vivo` ("sin url", "sin datos", "ya enviado") | Necesita `verificacion.json` con el bloque de ayer o `riesgo.json` de hoy; se manda en la primera ejecución desde las 7 (hora local) y una vez al día |
 | La tabla de los últimos días no crece | `verificacion.json` necesita `riesgo_<día>.json` de ayer y el archivo de observaciones de ayer | Comprobar que `dag_riesgo_manana` corrió anoche y que `dag_observacion_vivo` está activo |
 
 Los comandos de cada job, con sus opciones, están en el apartado 10 de [causas-incidencias.md](causas-incidencias.md); las claves y variables de entorno, en `.env.example`.

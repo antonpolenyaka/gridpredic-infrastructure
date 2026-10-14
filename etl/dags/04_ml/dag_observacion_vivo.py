@@ -1,7 +1,7 @@
 """
 What the stations of AEMET are measuring, every hour (riesgo_manana.observacion.horario).
 
-One task, observar, that runs job_landing_observacion in the airflow
+Two tasks. observar runs job_landing_observacion in the airflow
 container: the last 24 hours of the conventional stations of AEMET inside
 the study box to the Landing (<landing>/observacion/<day>/) and
 observado.json for the dashboard, with the strongest gust and the rain of
@@ -10,6 +10,11 @@ forecast said against what is happening) and the stations for the map.
 
 It needs AEMET_API_KEY in the environment of the airflow container; without
 it the run is skipped.
+
+parte_manana sends to the webhook, once a day from riesgo_manana.aviso
+.parte_manana_hora (local), the morning report: what we said for yesterday
+and what the stations measured, and what the system says for today
+(aviso_riesgo.send_morning). Silent without AVISO_WEBHOOK_URL.
 """
 
 import json
@@ -54,6 +59,17 @@ def observar() -> None:
         raise RuntimeError(f"job_landing_observacion ended with code {code}")
 
 
+@task(retries=0, trigger_rule="none_failed_min_one_success")
+def parte_manana() -> None:
+    if JOBS_DIR not in sys.path:
+        sys.path.insert(0, JOBS_DIR)
+    import aviso_riesgo
+
+    folder = settings.get("dashboard_dir", "/app/dashboard/data")
+    result = aviso_riesgo.send_morning(folder, settings, os.path.join(folder, "parte_manana.json"))
+    print(f"parte de la mañana: {result}")
+
+
 with DAG(
     dag_id="dag_observacion_vivo",
     description="Observaciones de las estaciones de AEMET cada hora para el cuadro de mando",
@@ -64,4 +80,4 @@ with DAG(
     dagrun_timeout=timedelta(minutes=30),
     tags=["landing", "riesgo"],
 ) as dag:
-    observar()
+    observar() >> parte_manana()
