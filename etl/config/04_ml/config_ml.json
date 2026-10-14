@@ -433,7 +433,8 @@
     "horario_laboral": [8, 17],
     "tabla_dias": "l3_gold.caso_negocio_dia",
     "tabla_resumen": "l3_gold.caso_negocio_resumen",
-    "peores_dias": 10
+    "peores_dias": 10,
+    "minimo_incidencias_nivel": 10
   },
   "riesgo_manana": {
     "variante": "operativa",

@@ -74,6 +74,7 @@ DEFAULTS = {
     "tabla_dias": "l3_gold.caso_negocio_dia",
     "tabla_resumen": "l3_gold.caso_negocio_resumen",
     "peores_dias": 10,
+    "minimo_incidencias_nivel": 10,  # a distribuidora enters the tables by level with at least this many incidents in the period
 }
 ALERT = ("alto", "muy alto")
 MODES = {"reanalisis": "tiempo del día del reanálisis (previsión perfecta)",
@@ -426,6 +427,19 @@ def history_payload(day_table: pd.DataFrame, levels: dict, names: dict) -> dict:
     return payload
 
 
+def level_table(d: pd.DataFrame) -> pd.DataFrame:
+    """Days, incidents and customer-hours (capped and raw) by the level of the evening before, as shown in the report."""
+    by = d.groupby("nivel").agg(dias=("fecha", "count"), con_averia=("incidencias", lambda s: int((s > 0).sum())),
+                                incidencias=("incidencias", "sum"), horas_cliente=("clientes_hora_recortadas", "sum"),
+                                sin_recortar=("clientes_hora", "sum")).reindex(["bajo", "medio", "alto", "muy alto"]).dropna(how="all")
+    by["parte de días"] = (by["dias"] / by["dias"].sum()).round(3)
+    by["tasa de avería"] = (by["con_averia"] / by["dias"]).round(3)
+    by["parte de horas-cliente"] = (by["horas_cliente"] / by["horas_cliente"].sum()).round(2) if by["horas_cliente"].sum() > 0 else 0.0
+    by["parte sin recortar"] = (by["sin_recortar"] / by["sin_recortar"].sum()).round(2) if by["sin_recortar"].sum() > 0 else 0.0
+    return by.reset_index().rename(columns={"nivel": "nivel previsto", "con_averia": "días con avería",
+                                            "horas_cliente": "horas-cliente (recortadas)"}).drop(columns=["sin_recortar"])
+
+
 def report_text(summary: pd.DataFrame, day_table: pd.DataFrame, ct_table: pd.DataFrame, ccfg: dict, run_id: str) -> str:
     parts = [f"# Lo que habría dicho el sistema: {run_id}",
              "Cada día se puntúa con el modelo de cada tarde entrenado solo con los años anteriores; las averías son las "
@@ -456,22 +470,20 @@ def report_text(summary: pd.DataFrame, day_table: pd.DataFrame, ct_table: pd.Dat
             "horas-cliente ganadas": s["clientes_hora_ganadas"].round(0), "TIEPI ganado (min)": s["tiepi_min_ganados"].round(2),
         })
         parts.append("### Brigadas\n\n" + ml_metrics.markdown_table(crews, 2))
-        # By level, the distribuidoras with some incident together: the levels are percentiles of each distribuidora,
-        # so the days of a network without incidents would only add zeros to every level.
+        # By level, the distribuidoras with enough incidents together: the levels are percentiles of each distribuidora,
+        # so the days of a network with one incident in years would only add zeros to every level.
         d = day_table[day_table["modo"] == mode]
-        with_incidents = sorted(d.loc[d["incidencias"] > 0, "distribuidora"].unique())
-        d = d[d["distribuidora"].isin(with_incidents)]
-        by = d.groupby("nivel").agg(dias=("fecha", "count"), con_averia=("incidencias", lambda s: int((s > 0).sum())),
-                                    incidencias=("incidencias", "sum"), horas_cliente=("clientes_hora_recortadas", "sum"),
-                                    sin_recortar=("clientes_hora", "sum")).reindex(["bajo", "medio", "alto", "muy alto"]).dropna(how="all")
-        by["parte de días"] = (by["dias"] / by["dias"].sum()).round(3)
-        by["tasa de avería"] = (by["con_averia"] / by["dias"]).round(3)
-        by["parte de horas-cliente"] = (by["horas_cliente"] / by["horas_cliente"].sum()).round(2) if by["horas_cliente"].sum() > 0 else 0.0
-        by["parte sin recortar"] = (by["sin_recortar"] / by["sin_recortar"].sum()).round(2) if by["sin_recortar"].sum() > 0 else 0.0
-        shown = by.reset_index().rename(columns={"nivel": "nivel previsto", "con_averia": "días con avería",
-                                                 "horas_cliente": "horas-cliente (recortadas)"}).drop(columns=["sin_recortar"])
-        parts.append(f"### Por nivel previsto ({', '.join(with_incidents) or 'sin incidencias'}; {len(d)} días de distribuidora)\n\n"
-                     + ml_metrics.markdown_table(shown, 3))
+        counts = d.groupby("distribuidora")["incidencias"].sum()
+        enough = sorted(counts[counts >= int(ccfg["minimo_incidencias_nivel"])].index)
+        d = d[d["distribuidora"].isin(enough)]
+        by = level_table(d)
+        parts.append(f"### Por nivel previsto ({', '.join(enough) or 'ninguna distribuidora'} con al menos "
+                     f"{int(ccfg['minimo_incidencias_nivel'])} incidencias en el periodo; {len(d)} días de distribuidora)\n\n"
+                     + ml_metrics.markdown_table(by, 3))
+        if len(enough) > 1:
+            per = pd.concat([level_table(d[d["distribuidora"] == name]).assign(distribuidora=name) for name in enough])
+            per = per[["distribuidora"] + [c for c in per.columns if c != "distribuidora"]]
+            parts.append("### Por nivel previsto y distribuidora\n\n" + ml_metrics.markdown_table(per, 3))
         worst = d[d["incidencias"] > 0].sort_values("clientes_hora_recortadas", ascending=False).head(int(ccfg["peores_dias"]))
         if len(worst):
             w = pd.DataFrame({"día": [f"{pd.Timestamp(f):%d.%m.%Y}" for f in worst["fecha"]], "distribuidora": worst["distribuidora"],
