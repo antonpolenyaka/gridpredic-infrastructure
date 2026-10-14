@@ -53,8 +53,9 @@ Una página con los números que sostienen el trabajo, de dónde sale cada uno (
 
 | Cifra | Valor | De dónde |
 | --- | --- | --- |
-| Cada tarde (20:30) | Previsión de ICON-EU, 40 escenarios de ICON-EU EPS, predicción de AEMET por municipios y avisos; reentrena y puntúa por distribuidora, línea, municipio y CT; franja, brigadas y bases; cuadro de mando, parte de guardia en Excel y aviso al webhook | [operacion-diaria.md](operacion-diaria.md) 1 |
-| Durante el día | Rayos del satélite cada 15 min (aviso de tormenta sobre la red una vez por hora), estaciones de AEMET cada hora, columnas "Ahora" y "Próx. 3 h" por línea | [operacion-diaria.md](operacion-diaria.md) 1 y 2 |
+| Cada tarde (20:30) | Previsión de ICON-EU, 40 escenarios de ICON-EU EPS, predicción de AEMET por municipios y avisos; reentrena y puntúa por distribuidora, línea, municipio y CT; franja, brigadas y bases; la orientación de pasado mañana; cuadro de mando, parte de guardia en Excel y aviso al webhook | [operacion-diaria.md](operacion-diaria.md) 1 |
+| Durante el día | Rayos del satélite cada 15 min (aviso de tormenta sobre la red una vez por hora), estaciones de AEMET cada hora, los avisos de AEMET releídos cada hora (la guardia sube si aparece uno de viento o tormenta), el parte de la mañana a las 07:20, columnas "Ahora" y "Próx. 3 h" por línea | [operacion-diaria.md](operacion-diaria.md) 1 y 2 |
+| Dónde se ve | Cuatro páginas con el mismo menú: el riesgo de mañana, los días archivados (todos los días guardados y repetidos, con su parte de guardia), el día a día desde 2022 y las cifras | [operacion-diaria.md](operacion-diaria.md) 2 |
 | Lo que no hace | No dice qué CT se quedará sin luz; no ve el estado de los equipos (una de cada cuatro horas-cliente cae en días bajos); con unas 25 incidencias al año por distribuidora la cobertura de un año se mueve entre el 30 % y el 70 % | `negocio.html`, [caso-de-negocio.md](caso-de-negocio.md) 5 |
 
 ## 5. Lo que probamos y descartamos
