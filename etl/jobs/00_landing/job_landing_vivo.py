@@ -83,9 +83,9 @@ AEMET_MUNICIPIOS_DEFAULTS = {
     "api": "https://opendata.aemet.es/opendata/api/prediccion/especifica/municipio/horaria/{ine}",
     "clave_env": "AEMET_API_KEY",
     "referencia_distribuidoras": {},   # {number of the reference sheet: distribuidora id}
-    "pausa_s": 1.3,
-    "reintentos": 2,
-    "espera_reintento_s": 20,
+    "pausa_s": 2.6,                    # two requests per municipality: AEMET answers 429 above about 50 requests a minute
+    "reintentos": 3,
+    "espera_reintento_s": 30,
     "timeout_s": 60,
     "max_fallos": 0.3,
 }

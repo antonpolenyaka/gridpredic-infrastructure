@@ -491,9 +491,9 @@
         "2": "2",
         "3": "1366"
       },
-      "pausa_s": 1.3,
-      "reintentos": 2,
-      "espera_reintento_s": 20,
+      "pausa_s": 2.6,
+      "reintentos": 3,
+      "espera_reintento_s": 30,
       "timeout_s": 60,
       "max_fallos": 0.3
     },
