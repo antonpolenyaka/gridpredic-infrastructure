@@ -421,6 +421,7 @@ def policy_masks(d: pd.DataFrame) -> list:
     return [("aviso de AEMET amarillo o más (cualquier fenómeno)", warn >= 1), ("aviso de AEMET de viento, amarillo o más", wind >= 1),
             ("aviso de AEMET de viento o tormenta, amarillo o más", (wind >= 1) | (storm >= 1)),
             ("aviso de AEMET naranja o rojo", warn >= 2), ("GridPredict en alerta (alto o muy alto)", d["alerta"].astype(bool)),
+            ("GridPredict en alerta o aviso de viento o tormenta", d["alerta"].astype(bool) | (wind >= 1) | (storm >= 1)),
             ("GridPredict en alerta o aviso naranja o rojo", d["alerta"].astype(bool) | (warn >= 2)),
             ("GridPredict con tantos días como avisos amarillos", same)]
 
