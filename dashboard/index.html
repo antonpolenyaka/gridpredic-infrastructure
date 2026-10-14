@@ -199,7 +199,7 @@
       <td class="num">${num(z.n_ct)}</td><td class="num">${num(z.abonados)}</td><td class="num">${num(z.clientes_esperados, 1)}</td><td class="num">${num(z.racha_max)}</td>
       <td class="num">${num(z.hist_365d)}</td><td class="ahora" data-dist="${idx}" data-zona="${i}"></td><td class="num prox3" data-dist="${idx}" data-zona="${i}"></td></tr>`;
     }).join("");
-    return `<div class="scroll"><table><thead><tr><th>Zona (línea)</th><th>Nivel</th><th class="num">Prob.</th><th class="num">Parte del riesgo</th><th class="num">CT</th><th class="num">Clientes</th><th class="num">Clientes esp.</th><th class="num">Racha (km/h)</th><th class="num">Inc. último año</th><th>Ahora</th><th class="num" title="Regla con lo que hay en vivo sobre el riesgo del día: ver el pie de página">Próx. 3 h</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div class="scroll"><table><thead><tr><th>Zona (línea)</th><th>Nivel</th><th class="num">Prob.</th><th class="num">Parte del riesgo</th><th class="num">CT</th><th class="num">Clientes</th><th class="num">Clientes esp.</th><th class="num">Racha (km/h)</th><th class="num">Inc. último año</th>${DIA ? "" : `<th>Ahora</th><th class="num" title="Regla con lo que hay en vivo sobre el riesgo del día: ver el pie de página">Próx. 3 h</th>`}</tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   // The risk of the next three hours of a line: a rule over the probability of the day. Inside the window of the
