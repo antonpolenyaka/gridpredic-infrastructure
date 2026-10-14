@@ -19,6 +19,10 @@ El sector como referencia, el cuaderno de las pruebas y la primera prueba descar
 - `job_ml_caso_negocio.py`: tabla "Detección y falsas alarmas por día" en `resumen.md`, las métricas de los trabajos que predicen los días con averías (día con alguna incidencia, con dos o más, los 10 peores de cada año por horas-cliente) para cada política de guardia; `policy_masks` comparte las políticas con la tabla de los avisos. Test unitario en `tests/04_ml/test_caso_negocio.py`.
 - `docs/caso-de-negocio.md`: la política "GridPredict en alerta o aviso naranja o rojo" en la tabla de 2b, la detección y las falsas alarmas frente al trabajo de Valencia y Albacete, y el sector como referencia en el apartado del dinero.
 
+### Cambiado
+
+- La regla "Próx. 3 h" de `index.html` reparte el riesgo del día con el 84 % dentro de la franja (la cifra de 2024 - 2026, antes el 74 % de 2024 - 2025); textos del pie y de los documentos al día.
+
 ### Decidido
 
 - El umbral de alerta sigue siendo el mismo todo el año: repartir las alertas por estación o por mes con la misma parte de días (`experimentos/umbral_estacion/analizar.py`) gana un punto de horas-cliente y ninguna incidencia; el modelo ya está calibrado por estación (verano 3,7 % previsto y 3,4 % real; invierno 4,6 % y 4,6 %).
