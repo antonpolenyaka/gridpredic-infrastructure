@@ -100,6 +100,9 @@
     if (f.calser_hasta) partes.push("Calser hasta el " + f.calser_hasta + (f.historia_al_dia ? "" : " (historia de incidencias no al día)"));
     if (data.modelo) partes.push(`Modelo ${data.modelo.descripcion || ""} entrenado con ${num(data.modelo.dias)} días de distribuidora hasta el ${data.modelo.entrenado_hasta}`);
     document.getElementById("fuentes").textContent = partes.join(" · ");
+    fetch("data/historico.json", { method: "HEAD", cache: "no-store" }).then((r) => {
+      if (r.ok) document.getElementById("fuentes").insertAdjacentHTML("beforeend", ' · <a href="historial.html">Lo que habría dicho el sistema en 2022 - 2025</a>');
+    }).catch(() => {});
     fetch("data/parte_guardia.xlsx", { method: "HEAD", cache: "no-store" }).then((r) => {
       if (r.ok) document.getElementById("fuentes").insertAdjacentHTML("beforeend", ' · <a href="data/parte_guardia.xlsx">Parte de guardia (Excel)</a>');
     }).catch(() => {});
