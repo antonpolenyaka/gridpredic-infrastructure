@@ -408,13 +408,20 @@
       {"nombre": "operativa_mas", "desde": "2018-06-25",
        "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "extension", "interacciones",
                    "pendiente_red"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_sequia", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "sequia"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_hielo", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "hielo"],
        "variables": ["ayer_racha_max", "ayer_lluvia_max"]}
     ],
     "modelos": ["tasa_base", "logistica", "xgboost", "logistica_equilibrada", "poisson"],
     "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "comun_avisos_detalle",
                            "comun_avisos_detalle_extremos", "operativa", "operativa_racha", "operativa_48h",
                            "operativa_72h", "operativa_extension", "operativa_interacciones",
-                           "operativa_pendiente_red", "operativa_direccion", "operativa_mas"],
+                           "operativa_pendiente_red", "operativa_direccion", "operativa_mas", "operativa_sequia",
+                           "operativa_hielo"],
     "anios_prevision": [2024, 2025],
     "comparaciones_prevision": [
       ["comun_avisos_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
@@ -440,6 +447,8 @@
       ["operativa_mas__logistica__prevision", "operativa__logistica__prevision"],
       ["operativa_mas__xgboost__prevision", "operativa__xgboost__prevision"],
       ["operativa_mas__rango__prevision", "operativa__rango__prevision"],
+      ["operativa_sequia__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_hielo__logistica__prevision", "operativa__logistica__prevision"],
       ["operativa__poisson__prevision", "operativa__logistica__prevision"],
       ["operativa__logistica_equilibrada__prevision", "operativa__logistica__prevision"],
       ["operativa__poisson__prevision_cuantiles", "operativa__logistica__prevision_cuantiles"]
@@ -472,6 +481,8 @@
       ["operativa_direccion__logistica", "operativa__logistica"],
       ["operativa_mas__logistica", "operativa__logistica"],
       ["operativa_mas__xgboost", "operativa__xgboost"],
+      ["operativa_sequia__logistica", "operativa__logistica"],
+      ["operativa_hielo__logistica", "operativa__logistica"],
       ["operativa__poisson", "operativa__logistica"],
       ["operativa__logistica_equilibrada", "operativa__logistica"]
     ]

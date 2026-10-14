@@ -192,6 +192,14 @@ Por cabecera, que es la unidad con la que se decide (revisar, podar, telemandar)
 
 **Lectura.** Va en la dirección de la literatura (los CT entre árboles altos salen mejor ordenados el año del temporal) pero con cinco años y unas 30 incidencias al año tres puntos por CT son ruido, y por cabecera no hay nada. La causa más probable es el grano: el arbolado está medido en la celda de 10 km del municipio del CT, no en el corredor de la línea, que es donde Wanik lo mide (15 m a cada lado, con LiDAR). Sin las coordenadas de cada CT y el trazado de las líneas (TedisNet las tiene como topología, no como geometría; Calser solo tiene el municipio) no se puede hacer mejor. Decisión: el bloque y el CSV se quedan en el job (entran en el ranking de 2026 como parte de "todo", como el resto de bloques públicos), el resultado se apunta como indicio, y lo que haría falta para una prueba de verdad es la geometría de las líneas de la distribuidora piloto, que es lo primero que pediremos en el piloto. Las capas de Copernicus HRL y el LiDAR del PNOA no cambiarían esta conclusión mientras el grano sea el municipio.
 
+## 3i. Prueba: la sequía de los meses anteriores y la precipitación helada (en marcha, 15.10.2026)
+
+**De dónde sale.** Dos filas más de la tabla de fuentes de la revisión que se pueden medir sin bajar nada nuevo. La sequía: Arora y Ceferino (NHESS 2023) meten el SPI de seis meses en sus modelos de cortes y la literatura de incendios usa el SPEI como sequedad del combustible y mortalidad del arbolado; nosotros probamos la lluvia de 7 y 30 días (apartado 3) y no aportó, pero una sequía de meses es otra cosa, y Gold ya tiene la lluvia y la evapotranspiración de referencia de cada celda. La precipitación helada: los sistemas de aviso de nieve húmeda (Bonelli y otros, NHESS 2011) y la climatología de lluvia engelante de Kämäräinen y otros (2017) la señalan como la causa de las caídas de conductores en el norte; en Extremadura es rara, pero el norte de Cáceres la tiene.
+
+**Diseño.** En `job_ml_riesgo_dia.py`: `seq_3m` y `seq_6m` (bloque `sequia`), el balance hídrico (lluvia menos evapotranspiración de referencia, del reanálisis) de los 90 y 180 días que acaban en D - 1, como z-score de su mes del calendario con la media y la desviación de los años anteriores a 2022, por distribuidora; y `hie_horas` (bloque `hielo`), las CT-horas de D con precipitación a 0,5 grados o menos, del reanálisis, con su gemelo desde la previsión del día anterior (`prev_hie_horas`, ICON-EU da temperatura y lluvia) para medirlo con la previsión real. Variantes `operativa_sequia` y `operativa_hielo` frente a `operativa`, mismo banco que 3f.
+
+**Resultados.** [Pendientes: cola `52_dia_sequia_hielo.ps1`, después de la cadena de las 02:10.]
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
