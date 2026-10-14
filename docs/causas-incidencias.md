@@ -407,6 +407,12 @@ El cuadro de mando es una página estática (`dashboard/index.html`, Leaflet sob
 docker compose up -d dashboard
 ```
 
+**Lo que habría dicho el sistema.** `job_ml_caso_negocio.py` repite la operación de cada tarde sobre los años pasados (`caso_negocio` de `config_ml.json`: años, brigadas por distribuidora, movilización fuera del horario laboral, recorte de los cortes largos) y deja `l3_gold.caso_negocio_dia`, `l3_gold.caso_negocio_resumen`, los CSV y `resumen.md` en la carpeta de exportación y `historico.json` en `dashboard/data`, que pinta `historial.html` (http://localhost:8086/historial.html). Los resultados y lo que valen para una distribuidora están en [caso-de-negocio.md](caso-de-negocio.md).
+
+```powershell
+docker compose exec -T spark-master /opt/spark/bin/spark-submit --driver-memory 6g --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py,/app/jobs/04_ml/job_ml_horas_riesgo.py,/app/jobs/04_ml/job_ml_meteo_historia.py,/app/jobs/04_ml/job_ml_riesgo_dia.py,/app/jobs/04_ml/job_ml_riesgo_manana.py,/app/jobs/04_ml/riesgo_zonas.py,/app/jobs/04_ml/calendario.py /app/jobs/04_ml/job_ml_caso_negocio.py --config /app/config/04_ml/config_ml.json
+```
+
 **Los rayos en vivo.** `dag_rayos_vivo` corre cada 15 minutos (`riesgo_manana.rayos.horario`): pide al Data Store de EUMETSAT los productos del Lightning Imager de MTG (LI-2-LFL, uno cada 10 minutos) de la última hora y media que aún no están en la Landing, guarda los flashes de la caja de estudio en `s3://datalake/00_landing/vivo/rayos/<día>/flashes_<inicio>_<fin>.csv` (un fichero por producto, vacío cuando no hubo rayos, para no volver a pedirlo) y escribe `dashboard/data/rayos.json`: los rayos de la última hora y, con los municipios de `riesgo.json`, cuántos cayeron a menos de 10 y de 20 km de la red de cada distribuidora y qué líneas tocan. El cuadro de mando los pinta sobre el mapa (más pálidos cuanto más antiguos) con una franja por distribuidora ("tormenta sobre la red", "tormenta cerca" o "sin tormenta") y los vuelve a leer cada 5 minutos. Hace falta la cuenta gratuita del Data Store (`EUMETSAT_CONSUMER_KEY` y `EUMETSAT_CONSUMER_SECRET` en `.env`); sin ella el DAG se salta. Es la señal de la hora siguiente que el modelo por horas no tiene: antes del 17 % de las incidencias de 2024 - 2025 hubo rayos a menos de 10 km de la red en la hora anterior, frente al 1,1 % de las ventanas sin incidencias.
 
 ```powershell

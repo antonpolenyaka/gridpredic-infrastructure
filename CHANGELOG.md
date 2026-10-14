@@ -2,6 +2,16 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.12.0] - sin publicar
+
+Lo que habría dicho el sistema cada tarde de 2022 a 2025 y lo que pasó: el caso de negocio con los datos reales y una página del cuadro de mando que lo enseña día a día.
+
+### Añadido
+
+- `etl/jobs/04_ml/job_ml_caso_negocio.py` (`caso_negocio` en `config_ml.json`): repite la operación de cada tarde sobre los años pasados con el modelo del día entrenado solo con los años anteriores (reanálisis como previsión perfecta y, desde 2024, la previsión real de ICON-EU), las incidencias de causa local con los clientes y la duración real de cada corte de CT, el reparto por líneas y las brigadas (bases fijas por clientes frente a las bases del día, minutos por carretera, movilización fuera del horario laboral). Deja `l3_gold.caso_negocio_dia` y `l3_gold.caso_negocio_resumen`, `resumen.md`, `dias.csv`, `cts.csv` y `resumen_anual.csv`, e `historico.json` en `dashboard/data`. Test en `tests/04_ml/test_caso_negocio.py`.
+- `dashboard/historial.html`: cuatro años en una pantalla por distribuidora, con el nivel que habría dado el sistema la víspera en color y las averías en puntos, la tabla por niveles y los peores días; selector de previsión real o reanálisis y recorte de los cortes largos. Enlazada desde el cuadro de mando cuando hay `historico.json`.
+- `docs/caso-de-negocio.md`: los resultados de 2022 - 2025 (un día muy alto tiene avería 10 veces más a menudo que uno bajo; el 12 % de días en alerta concentra el 57 % de las horas-cliente perdidas por causas locales; 7 de los 12 peores días de 2024 - 2025 estaban en alerta la víspera), lo que dicen los datos de las brigadas (tres de cada cuatro cortes de CT los repone el reenganche o el telemando antes de que llegue nadie; mover las bases gana menos de un minuto de TIEPI al año) y lo que vale con la retribución regulada de 2022 y la Circular 8/2025.
+
 ## [0.11.0] - sin publicar
 
 El riesgo de mañana baja de la distribuidora a las líneas, los municipios y los CT, dice cuándo, por qué y cuánto, propone dónde dejar las brigadas y se ve en un cuadro de mando sobre un mapa.

@@ -1,0 +1,87 @@
+"""
+Test of the replay of the daily operation (job_ml_caso_negocio) on the
+synthetic Gold of the risk of tomorrow: the days of 2024 and 2025 scored by
+a model that only saw the years before, with the reanalysis and with the
+forecast, the incidents with their CT cuts, the crews and the outputs
+(tables, CSVs, historico.json).
+
+    python -m pytest tests/04_ml/test_caso_negocio.py -q
+"""
+
+import json
+import os
+import sys
+
+import pandas as pd
+import pytest
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+ML_DIR = os.path.join(ROOT, "etl", "jobs", "04_ml")
+if ML_DIR not in sys.path:
+    sys.path.insert(0, ML_DIR)
+
+import job_ml_caso_negocio as cn  # noqa: E402
+from test_riesgo_manana import config_path, spark, tables, workdir  # noqa: E402,F401
+
+RUN_ID = "caso_test"
+
+
+@pytest.fixture(scope="module")
+def replayed(spark, tables, config_path, workdir):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    config["caso_negocio"] = {"anios": [2024, 2025], "brigadas": {"1": [1, 2], "2": [1]}, "movilizacion_min": 30.0,
+                              "recorte_min": 110.0}
+    path = os.path.join(workdir, "config_caso.json")
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(config, file)
+    code = cn.main(["--run-id", RUN_ID, "--config", path, "--landing", os.path.join(workdir, "vivo")])
+    return code, config
+
+
+def test_the_replay_scores_every_day_with_the_past_only(replayed, spark):
+    code, config = replayed
+    assert code == 0
+    days = spark.table("l3_gold.caso_negocio_dia").toPandas()
+    assert set(days["modo"]) == {"reanalisis", "prevision"}
+    assert sorted(days["anio"].unique()) == [2024, 2025]
+    one = days[(days["modo"] == "reanalisis") & (days["distribuidora_id"] == 1)]
+    assert len(one) == 2 * 365 - 1 or len(one) == 2 * 365 or len(one) == 2 * 365 + 1
+    assert set(one["nivel"]) <= {"bajo", "medio", "alto", "muy alto"}
+    # The storms of the synthetic data (gusts of 85 - 110 km/h with incidents) are the days in alert.
+    assert one["alerta"].mean() < 0.3
+    incident_days = one[one["incidencias"] > 0]
+    assert len(incident_days) > 10
+    assert incident_days["alerta"].mean() > one["alerta"].mean()
+    assert (incident_days["clientes_hora"] > 0).all()
+    # With the forecast, the same days are scored (the synthetic forecast exists from 2024).
+    two = days[(days["modo"] == "prevision") & (days["distribuidora_id"] == 1)]
+    assert len(two) == len(one)
+    assert (days["probabilidad"].between(0, 1)).all()
+
+
+def test_the_summary_the_files_and_the_history(replayed, spark, workdir):
+    summary = spark.table("l3_gold.caso_negocio_resumen").toPandas()
+    first = summary[(summary["distribuidora_id"] == 1) & (summary["modo"] == "reanalisis")]
+    assert sorted(first["brigadas"].unique()) == [1.0, 2.0] and sorted(first["anio"].unique()) == [2024, 2025]
+    row = first[(first["brigadas"] == 2.0) & (first["anio"] == 2024)].iloc[0]
+    assert row["incidencias"] >= row["incidencias_en_alerta"] >= 0
+    assert row["clientes_hora"] >= row["clientes_hora_en_alerta"] >= 0
+    assert row["cortes_ct"] >= row["cortes_ct_esperaron_brigada"] >= 0
+    assert row["dias_alerta"] >= row["dias_alerta_con_incidencia"]
+    assert first[(first["brigadas"] == 1.0)]["llegada_fija_media_min"].iloc[0] >= first[(first["brigadas"] == 2.0)]["llegada_fija_media_min"].iloc[0]
+    folder = os.path.join(workdir, "resultados", RUN_ID)
+    for name in ("resumen.md", "dias.csv", "cts.csv", "resumen_anual.csv", "historico.json"):
+        assert os.path.getsize(os.path.join(folder, name)) > 0
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "## tiempo del día del reanálisis" in text and "### Brigadas" in text and "### Por nivel previsto" in text
+    cts = pd.read_csv(os.path.join(folder, "cts.csv"))
+    assert (cts["min_ganados_total"].abs() <= cts["dur_min"] + 1e-9).all()
+    assert cts.loc[~cts["espero_brigada"], "min_ganados_total"].eq(0).all()
+    history = json.load(open(os.path.join(workdir, "dashboard", "historico.json"), encoding="utf-8"))
+    assert [d["id"] for d in history["distribuidoras"]] == [1, 2]
+    first_days = history["distribuidoras"][0]["dias"]["prevision"]
+    assert len(first_days) > 700 and {"f", "n", "p", "i", "ch", "c", "m", "b"} <= set(first_days[0])
+    assert any(d["b"] for d in first_days if d["n"] in ("alto", "muy alto"))
+    runs = spark.table("l3_gold.ml_runs").toPandas()
+    assert RUN_ID in set(runs["run_id"])
