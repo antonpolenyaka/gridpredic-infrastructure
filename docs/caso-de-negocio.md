@@ -60,6 +60,22 @@ Los diez peores días de 2024 - 2025 y lo que decía el sistema la tarde anterio
 
 La noche del incendio de Jarilla (13.08.2025, el corte más largo de los cuatro años) EOSA estaba en alto desde la tarde anterior.
 
+## 2b. Frente a los avisos de AEMET, que es lo que hoy mira un jefe de brigadas
+
+Los avisos de AEMET son una previsión real con archivo desde 2018 y lo que una distribuidora consulta cada tarde. Con los mismos días (previsión real, 2024 - 2025, EOSA y Pitarch; avisos para el día siguiente emitidos antes de las 20:00 de la víspera, en las celdas de cada red):
+
+| política de guardia | días al año por distribuidora | parte de los días | incidencias cubiertas | horas-cliente cubiertas (recortadas) | sin recortar |
+| --- | --- | --- | --- | --- | --- |
+| aviso de AEMET amarillo o más, de cualquier fenómeno | 80 | 22 % | 45 % | 60 % | 76 % |
+| aviso de AEMET de viento, amarillo o más | 8 | 2 % | 18 % | 21 % | 13 % |
+| aviso de AEMET naranja o rojo | 18 | 5 % | 16 % | 18 % | 51 % |
+| GridPredict en alerta (alto o muy alto) | 44 | 12 % | 49 % | 57 % | 73 % |
+| GridPredict con tantos días como avisos amarillos | 80 | 22 % | 65 % | 77 % | 85 % |
+
+- Los avisos de viento, que es lo que uno miraría para las averías de red, cubren una de cada cinco horas-cliente: la mayor parte de las averías de causa local llegan sin aviso de viento.
+- Cualquier aviso amarillo (viento, lluvia, tormentas, calor) cubre el 60 % de las horas-cliente, pero reforzando la guardia 80 días al año. Con esos mismos 80 días elegidos por el sistema se cubre el 77 %; con 44 días de alerta, el 57 %. Dicho al revés: para cubrir lo que cubren los avisos, el sistema necesita la mitad de los días.
+- Con el reanálisis en 2022 - 2025 el orden es el mismo (avisos amarillos 47 % de las horas-cliente con el 21 % de los días; GridPredict 45 % con el 13 % y 52 % con los mismos días que los avisos), con la cota optimista que ya hemos dicho.
+
 ## 3. Las brigadas: lo que dicen los datos
 
 | distribuidora | brigadas | año | cortes de CT | más largos que la llegada de la brigada | horas-cliente de esos cortes | llegada media con bases fijas (min) | en alerta, con las bases del día (min) | minutos de TIEPI ganados |
@@ -96,7 +112,7 @@ Lo que no podemos afirmar con estos datos: una cifra en euros del incentivo de c
 - `negocio.html` en el cuadro de mando (http://localhost:8086/negocio.html): la página para una distribuidora o un inversor, calculada en el navegador a partir de `historico.json`: las cuatro cifras (veces más averías un día muy alto, parte de las horas-cliente en los días de alerta, peores días avisados, días de alerta al año), la tasa de avería por nivel y dónde cayeron las horas-cliente, la guardia a igual presupuesto (fines de semana de invierno, todos los fines de semana, el sistema con los mismos días, solo los días en alerta, con el coste por día que ponga quien la mira), la tabla por distribuidora y año, los diez peores días, la retribución y la licencia, y lo que el sistema no hace. Se imprime o se guarda en PDF desde el enlace de la cabecera.
 - `historial.html` en el cuadro de mando (http://localhost:8086/historial.html): cuatro años en una pantalla por distribuidora, con el selector de previsión real o reanálisis y el recorte del incendio. Al pasar el ratón por un día salen el nivel, la probabilidad, las incidencias, los clientes y las bases propuestas.
 - El cuadro de mando de mañana (`index.html`): el mismo producto en vivo, con los rayos del satélite cada 15 minutos.
-- Para una reunión: la tabla por niveles (10 veces más averías un día muy alto), los 10 peores días con lo que decía el sistema y la noche del incendio de Jarilla.
+- Para una reunión: la tabla por niveles (10 veces más averías un día muy alto), la guardia a igual presupuesto frente a los calendarios fijos y a los avisos de AEMET (apartado 2b y `negocio.html`), los 10 peores días con lo que decía el sistema y la noche del incendio de Jarilla.
 
 ## 6. Límites
 
