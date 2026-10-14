@@ -79,6 +79,7 @@ def test_the_summary_the_files_and_the_history(replayed, spark, workdir):
     text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
     assert "## tiempo del día del reanálisis" in text and "### Brigadas" in text and "### Por nivel previsto (" in text
     assert "horas-cliente (recortadas)" in text and "| sin recortar |" in text
+    assert "| probabilidad media |" in text and "Probabilidad de la víspera frente a los días con avería: AUC 0." in text
     cts = pd.read_csv(os.path.join(folder, "cts.csv"))
     assert (cts["min_ganados_total"].abs() <= cts["dur_min"] + 1e-9).all()
     assert cts.loc[~cts["espero_brigada"], "min_ganados_total"].eq(0).all()
