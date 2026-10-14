@@ -556,7 +556,7 @@
     }
     const dists = data.distribuidoras || [];
     let html = `<h2>Lo que dijimos cada tarde y lo que pasó con el viento (últimos ${days.length} días)</h2>
-      <p class="notas">Por distribuidora: el nivel de la víspera (y el aviso de AEMET que había para el día), el pico de racha previsto y el medido por las estaciones de AEMET a menos de ${num(v.radio_km || 25)} km de la red (hora del pico medido). Las averías de cada día llegan con la carga de Calser y se ven en el historial.</p>
+      <p class="notas">Por distribuidora: el nivel de la víspera (y el aviso de AEMET que había para el día, y lo que decía la orientación a dos días cuando la hay), el pico de racha previsto y el medido por las estaciones de AEMET a menos de ${num(v.radio_km || 25)} km de la red (hora del pico medido). Las averías de cada día llegan con la carga de Calser y se ven en el historial.</p>
       <table><thead><tr><th>día</th>${dists.map((d) => `<th>${esc(d.nombre)}</th>`).join("")}</tr></thead><tbody>`;
     for (const f of days) {
       const recs = v.dias[f] || [];
@@ -565,7 +565,8 @@
         const r = recs.find((x) => String(x.id) === String(d.id));
         if (!r) { html += "<td></td>"; continue; }
         const AVISO = ["", "aviso amarillo", "aviso naranja", "aviso rojo"];
-        const level = (r.nivel ? `<span class="nivel ${cls(r.nivel)}">${r.nivel}</span>` : "") + (r.aviso_aemet ? ` <span class="notas">(${AVISO[r.aviso_aemet] || "aviso"} de AEMET)</span>` : "");
+        const level = (r.nivel ? `<span class="nivel ${cls(r.nivel)}">${r.nivel}</span>` : "") + (r.aviso_aemet ? ` <span class="notas">(${AVISO[r.aviso_aemet] || "aviso"} de AEMET)</span>` : "")
+          + (r.nivel_dos_dias ? ` <span class="notas" title="lo que decía la orientación a dos días, dos tardes antes">(a dos días: ${esc(r.nivel_dos_dias)}${r.probabilidad_dos_dias != null ? ", " + pct(r.probabilidad_dos_dias, 0) : ""})</span>` : "");
         const forecast = r.racha_prevista_max != null ? `${num(r.racha_prevista_max)}` : "-";
         const observed = r.racha_observada_max != null ? `${num(r.racha_observada_max)} km/h a las ${r.hora_observada}:00` : "sin estaciones";
         const marks = [r.pico_en_franja === true ? "en la franja" : r.pico_en_franja === false ? "fuera de la franja" : "",
