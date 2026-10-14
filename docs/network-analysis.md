@@ -26,6 +26,17 @@ Los parámetros están en `config_ml.json` (`analisis_red`, `riesgo_ct`, `horas_
 | Pitarch | 0,30 h | 0,76 h | 0,25 h | 0,39 h | 0,30 h | 0,28 h |
 | Valle de Santa Ana | 0,29 h | 0,68 h | 3,20 h | 0,40 h | 0,27 h | 0,27 h |
 
+**Frente al sector.** El Ministerio publica en GECOS el TIEPI oficial de todo el sector por tipo de zona y por causa, para España, cada comunidad y cada provincia (de 2003 a 2021; publica con varios años de retraso). Lo cargamos como `l1_bronze.gecos_indice_zonal` (`extract_gecos_indices.py`, fuente `calidad_sector`) y la sección 1b del análisis compara nuestro TIEPI imprevisto por zona con el oficial (`tiepi_sector.csv`, `sector_series.csv` y `sector.json` para `negocio.html`):
+
+| zona | clientes | EOSA 2023-2025 | Pitarch 2023-2025 | Cáceres 2019-2021 | Extremadura 2019-2021 | España 2019-2021 |
+| --- | --- | --- | --- | --- | --- | --- |
+| urbana | Pitarch 4.310 | - | 0,03 h | 0,16 h | 0,47 h | 0,59 h |
+| semiurbana | EOSA 6.146, Pitarch 7.293 | 0,22 h | 0,07 h | 0,41 h | 0,57 h | 0,89 h |
+| rural concentrada | EOSA 30.658, Pitarch 16.664 | 0,38 h | 0,20 h | 1,06 h | 1,26 h | 1,67 h |
+| rural dispersa | EOSA 581, Pitarch 470 | 0,46 h | 0,24 h | 1,43 h | 1,96 h | 2,55 h |
+
+Con su mezcla de zonas, el TIEPI imprevisto de EOSA (0,34 h al año) es un tercio del que tendría el sector de Cáceres con esa misma red (0,92 h) y menos de un cuarto del de España (1,51 h); el de Pitarch (0,12 h) es un quinto del de Cáceres (0,63 h). En los mismos años que el sector (2019-2021) EOSA estaba en la media de Cáceres en rural concentrada (1,12 h frente a 1,06 h) por un solo año, 2019, en el que el 92 % de su TIEPI fue fuerza mayor; Pitarch, en 0,31 h. Dos salvedades: nuestro TIEPI queda entre un 2 % y un 16 % por debajo del declarado (arriba) y la tendencia del sector es a la baja, así que la distancia real es algo menor que la de la tabla. Sobre el TIEPI de incentivo (programadas, transporte y propias) la referencia de la CNMC para 2026-2028 (1,0648 h en rural concentrada) está en la línea del valor nacional de 2021 (1,11 h); EOSA (0,40 h en 2023-2025) y Pitarch (0,33 h) quedan muy por debajo, que es lo que les da la bonificación del apartado 6. Y la serie nacional dice lo mismo que nuestras redes: el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (0,88 h en 2009 con Klaus y 1,06 h en 2010 con Xynthia, frente a 0,04 h en 2008) y vuelve a casi cero al siguiente.
+
 **Por factor** (2015-2025): las imprevistas propias son el 46,8 % de los kVA·h que cuentan para el TIEPI, las programadas de distribución el 28,2 %, las de terceros el 13,9 % y las de fuerza mayor el 11,1 %.
 
 **Por equipo**: las líneas aéreas de media tensión se llevan el 62 % de los kVA·h (propias 39,1 %, terceros 12,0 %, fuerza mayor 11,1 %), las subterráneas el 4,4 % y los propios CT el 3,5 %. Casi todo el problema está en la línea aérea; el centro de transformación pesa poco.
@@ -124,6 +135,7 @@ Para la propuesta del MVP sacamos de aquí una cifra de trabajo: entre 10 y 12 d
 | Plataforma de Contratación del Sector Público | Licitaciones de obra de las dos provincias desde 2018: órgano, objeto, CPV, importe, plazo, adjudicación y lugar | Ficheros anuales abiertos (ATOM CODICE, hasta 2,2 GB por año), filtrados a la zona al descargarlos | `l1_bronze.placsp_licitacion_obra` -> `l2_silver.f_licitacion_obra` |
 | Catastro, INSPIRE Buildings | Edificios de cada municipio con año de construcción, uso, viviendas y superficie | Descarga ATOM por municipio, sin clave | `l1_bronze.catastro_edificio` -> `l2_silver.f_edificacion_municipio` |
 | Instituto de Estadística de Extremadura | Proyección de población 2024-2039 por agrupación de municipios (AME) y la AME de cada municipio | Excel 97 en 7z y un mapa en PDF, pasados una vez a CSV con `extract_ieex_proyecciones.py` | `l1_bronze.ieex_proyeccion_ame` -> `l2_silver.f_proyeccion_ame`, `d_ame_municipio` |
+| GECOS (MITECO), calidad de suministro | TIEPI y NIEPI oficiales del sector por tipo de zona y causa: España, comunidades y provincias, 2003-2021 | Páginas públicas de GECOS, pasadas una vez al año a CSV con `extract_gecos_indices.py` (fuente `calidad_sector`) | `l1_bronze.gecos_indice_zonal` (lo lee `job_analisis_red.py`, sección 1b) |
 
 Gold las junta en `l3_gold.contexto_ct_anio`: una fila por CT y año con la población del municipio a 1 de enero del año anterior (la que estaba publicada), su variación en uno y en cinco años, la densidad, la potencia y los clientes del municipio por habitante, la altitud y el entorno de su celda, las obras licitadas el año anterior y los meses de obra previstos para el año, y las viviendas construidas según el Catastro. El riesgo anual las usa en dos bloques, `publicos` y `obras`. Aparte, `l3_gold.obras_municipio_anio` guarda por municipio y año las obras publicadas y en ejecución y la edificación, para el cruce con las averías del apartado siguiente.
 

@@ -54,6 +54,12 @@ the APIs return them:
   emergency services and to damaged insulators. The axis order of the WFS
   versions differs, so the request tries the variants of the configuration
   and keeps the first one whose polygons fall in the study area.
+- GECOS (MITECO), the official TIEPI and NIEPI of the sector by zone type
+  and cause for Spain, the communities and the provinces, 2003 onwards: the
+  reference the CNMC incentive compares every distributor with.
+  extract_gecos_indices.py asks the public pages once a year and leaves one
+  CSV next to the configuration, which this source copies to Landing
+  (.../calidad_sector/).
 - AEMET OpenData, archive of the warnings of adverse weather (CAP messages,
   from 18.06.2018, CC BY 4.0): wind, rain, thunderstorms, snow and heat by
   warning zone, with the level (yellow, orange, red), the time it was issued
@@ -126,7 +132,7 @@ CONFIG_CANDIDATES = [
 ]
 
 SOURCES = ["ine", "wikidata", "elevacion", "osm", "obras", "catastro", "proyecciones", "aves", "incendios", "avisos",
-           "focos", "fwi"]
+           "focos", "fwi", "calidad_sector"]
 PARTIAL_EXIT = 4
 
 
@@ -701,24 +707,31 @@ def land_catastro(fs, cfg: dict, landing: str, places: list, provinces: list, fo
 
 # IEEX projections -----------------------------------------------------------
 
-def land_projections(fs, cfg: dict, landing: str) -> int:
-    """Copies the CSV files of the IEEX projections from the configuration folder to Landing."""
-    pr = cfg["proyecciones"]
+def land_config_files(fs, cfg: dict, landing: str, source: str, label: str) -> int:
+    """Copies the CSV files of a source prepared next to the configuration (IEEX, GECOS) to Landing."""
+    block = cfg[source]
     folders = [os.path.dirname(c) for c in CONFIG_CANDIDATES]
     done = 0
-    for name in pr["ficheros"]:
-        source = next((os.path.join(f, name) for f in folders if os.path.exists(os.path.join(f, name))), None)
-        if source is None:
+    for name in block["ficheros"]:
+        path = next((os.path.join(f, name) for f in folders if os.path.exists(os.path.join(f, name))), None)
+        if path is None:
             raise FileNotFoundError(f"{name} not found next to config_bronze_publicos.json")
-        with open(source, "rb") as file:
+        with open(path, "rb") as file:
             raw = file.read()
-        with fs.open(f"{landing}/proyecciones/{name}", "wb") as file:
+        with fs.open(f"{landing}/{source}/{name}", "wb") as file:
             file.write(raw)
         done += 1
-    save_json(fs, f"{landing}/proyecciones/peticion.json",
-              stamp("ieex-proyecciones", origen=pr.get("origen"), ficheros=pr["ficheros"]))
-    logger.info("IEEX projections: %s files in Landing", done)
+    save_json(fs, f"{landing}/{source}/peticion.json", stamp(label, origen=block.get("origen"), ficheros=block["ficheros"]))
+    logger.info("%s: %s files in Landing", label, done)
     return done
+
+
+def land_projections(fs, cfg: dict, landing: str) -> int:
+    return land_config_files(fs, cfg, landing, "proyecciones", "ieex-proyecciones")
+
+
+def land_sector_quality(fs, cfg: dict, landing: str) -> int:
+    return land_config_files(fs, cfg, landing, "calidad_sector", "gecos-calidad-sector")
 
 
 # GBIF ----------------------------------------------------------------------
@@ -1212,6 +1225,7 @@ def main(argv=None):
         "avisos": lambda: land_warnings(fs, cfg, landing, cells, args.forzar),
         "focos": lambda: land_hotspots(fs, cfg, landing, cells, args.forzar),
         "fwi": lambda: land_fwi(fs, cfg, landing, cells, args.forzar),
+        "calidad_sector": lambda: land_sector_quality(fs, cfg, landing),
     }
     for source in SOURCES:
         if source not in sources:

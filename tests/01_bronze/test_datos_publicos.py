@@ -316,6 +316,38 @@ def test_ieex_projections_are_copied_to_landing():
     assert fs.exists("memory://landing/publicos/proyecciones/peticion.json")
 
 
+def test_gecos_sector_indices_are_copied_to_landing_and_parsed():
+    import fsspec
+    import pandas as pd
+
+    fs = fsspec.filesystem("memory")
+    cfg = landing.load_config()["publicos"]
+    assert landing.land_sector_quality(fs, cfg, "memory://landing/publicos") == 1
+    with fs.open("memory://landing/publicos/calidad_sector/gecos_indices_zonales.csv", "rb") as file:
+        sector = pd.read_csv(file)
+    assert set(sector["ambito"]) == {"espana", "comunidad", "provincia"} and set(sector["zona"]) == {"U", "S", "RC", "RD", "TOTAL"}
+    assert set(sector["indice"]) == {"tiepi", "tiepie", "niepi", "niepie"} and sector["anio"].min() == 2003
+    # Spain 2021, rural concentrated: 1,678 h of TIEPI, of which 0,354 by force majeure and 0,895 own.
+    spain = sector[(sector["ambito"] == "espana") & (sector["indice"] == "tiepi") & (sector["anio"] == 2021)].set_index("zona")
+    assert spain.loc["RC", "valor"] == pytest.approx(1.678) and spain.loc["RC", "imp_fuerza_mayor"] == pytest.approx(0.354)
+    assert spain.loc["RC", "prog_total"] + spain.loc["RC", "imp_total"] == pytest.approx(spain.loc["RC", "valor"], abs=0.002)
+    # The two provinces of the study every year, and the storm years of the national force majeure.
+    both = sector[(sector["ambito"] == "provincia") & (sector["nombre"].isin(["Cáceres", "Badajoz"])) & (sector["indice"] == "tiepi")]
+    assert both.groupby("nombre")["anio"].nunique().eq(19).all()
+    total = sector[(sector["ambito"] == "espana") & (sector["indice"] == "tiepi") & (sector["zona"] == "TOTAL")].set_index("anio")
+    assert total.loc[2009, "imp_fuerza_mayor"] > 10 * total.loc[2008, "imp_fuerza_mayor"]
+    assert fs.exists("memory://landing/publicos/calidad_sector/peticion.json")
+    # The parser of the fragments of the site, on a minimal fragment.
+    import extract_gecos_indices as gecos
+
+    html = ('<table><tbody><tr><td>2021</td><td>U</td><td class="x">1.288,477</td><td>221.964</td><td>0,000</td><td>0,148</td>'
+            '<td>0,148</td><td>0,000</td><td>0,000</td><td>0,090</td><td>0,026</td><td>0,404</td><td>0,530</td><td>0,664</td></tr>'
+            '<tr><td colspan="14">sin datos</td></tr></tbody></table>')
+    rows = gecos.parse_national(html, "tiepi")
+    assert len(rows) == 1 and rows[0]["potencia_mva"] == pytest.approx(1288.477) and rows[0]["suministros"] == 221964
+    assert rows[0]["valor"] == pytest.approx(0.664) and rows[0]["anio"] == 2021 and rows[0]["zona"] == "U"
+
+
 def test_gbif_query_and_counts():
     cfg = landing.load_config()["publicos"]["aves"]
     params = landing.gbif_params({"scientificName": "Ciconia ciconia"}, 39.4, -6.3, 0.05, cfg)
