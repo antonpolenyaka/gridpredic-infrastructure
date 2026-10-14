@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Riesgo de mañana</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<style>
+  /* Layout: a header with the day and the sources, one block per distribuidora (summary, map and zones side by
+     side), then the hourly profile, causes, crews and the follow-up. */
+  :root {
+    --bg: #f6f7f4; --panel: #ffffff; --fg: #1d2230; --muted: #5d6675; --line: #d9ddd3; --accent: #1f5f8b;
+    --bajo: #7fb27f; --medio: #e3b53a; --alto: #e0772f; --muy-alto: #b8302f; --grid: #e6e8e2;
+    --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif; --mono: Consolas, "Courier New", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
+      --accent: #7fb3dd; --grid: #2a3040; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
+    --accent: #7fb3dd; --grid: #2a3040; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); padding-block: 0 32px; }
+  header { padding: 18px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px;
+    align-items: baseline; }
+  header h1 { font-size: 22px; margin: 0; font-weight: 600; }
+  header .fuentes { color: var(--muted); font-size: 13px; }
+  main { padding: 0 24px; display: grid; gap: 20px; margin-top: 16px; }
+  section.dist { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
+  section.dist h2 { margin: 0 0 10px; font-size: 18px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .nivel { display: inline-block; padding: 2px 10px; border-radius: 12px; color: #fff; font-size: 13px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; }
+  .nivel.bajo { background: var(--bajo); } .nivel.medio { background: var(--medio); color: #222; }
+  .nivel.alto { background: var(--alto); } .nivel.muy-alto { background: var(--muy-alto); }
+  .cols { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 16px; }
+  @media (max-width: 1100px) { .cols { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } header, main { padding-left: 16px; padding-right: 16px; } }
+  .cols > div { min-width: 0; }
+  .cifras { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .cifra { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .cifra .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cifra .l { color: var(--muted); font-size: 12px; }
+  .map { height: 360px; border-radius: 6px; border: 1px solid var(--line); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow: auto; max-height: 380px; }
+  h3 { font-size: 14px; margin: 14px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  p.texto { margin: 6px 0; max-width: 70ch; }
+  .perfil { width: 100%; height: 140px; display: block; }
+  .leyenda { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; align-items: center; }
+  .leyenda i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  .barra { display: flex; height: 18px; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+  .barra span { display: block; height: 100%; }
+  .notas { color: var(--muted); font-size: 13px; }
+  .notas li { margin: 2px 0; }
+  .vacio { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 6px; }
+  .zona-sel { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  tr.fila-zona { cursor: pointer; }
+  details.cts { margin-top: 10px; }
+  details.cts summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  details.cts p.notas { max-width: 60ch; }
+  .rayos { margin: 8px 0 4px; padding: 8px 10px; border-radius: 6px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
+  .rayos.tormenta { border-color: #e3b53a; background: color-mix(in srgb, #e3b53a 18%, var(--panel)); }
+  .rayos.cerca { border-color: #e3b53a; }
+  .rayos b { font-weight: 600; }
+  .brigada { font-size: 13px; }
+  .brigada b { font-weight: 600; }
+  .seguimiento .ok { color: var(--bajo); font-weight: 600; } .seguimiento .fallo { color: var(--muy-alto); font-weight: 600; }
+  footer { padding: 16px 24px; color: var(--muted); font-size: 12px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="titulo">Riesgo de mañana</h1>
+  <div class="fuentes" id="fuentes">Cargando datos...</div>
+</header>
+<main id="main"></main>
+<footer id="pie"></footer>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script>
+(function () {
+  "use strict";
+  const COLORS = { bajo: "#7fb27f", medio: "#e3b53a", alto: "#e0772f", "muy alto": "#b8302f" };
+  const cls = (nivel) => (nivel || "bajo").replace(" ", "-");
+  const pct = (x, d = 1) => (x == null || isNaN(x)) ? "" : (100 * x).toFixed(d).replace(".", ",") + " %";
+  const num = (x, d = 0) => (x == null || isNaN(x)) ? "" : Number(x).toFixed(d).replace(".", ",");
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function nivelPill(nivel) { return `<span class="nivel ${cls(nivel)}">${esc(nivel || "bajo")}</span>`; }
+
+  function cabecera(data) {
+    const f = data.fuentes || {};
+    document.getElementById("titulo").textContent = "Riesgo de mañana: " + (data.fecha_texto || data.fecha);
+    const partes = [];
+    if (f.prevision_pedida) partes.push("Previsión de ICON-EU pedida el " + f.prevision_pedida);
+    if (f.avisos_texto) partes.push(f.avisos_texto);
+    if (f.calser_hasta) partes.push("Calser hasta el " + f.calser_hasta + (f.historia_al_dia ? "" : " (historia de incidencias no al día)"));
+    if (data.modelo) partes.push(`Modelo ${data.modelo.descripcion || ""} entrenado con ${num(data.modelo.dias)} días de distribuidora hasta el ${data.modelo.entrenado_hasta}`);
+    document.getElementById("fuentes").textContent = partes.join(" · ");
+    fetch("data/parte_guardia.xlsx", { method: "HEAD", cache: "no-store" }).then((r) => {
+      if (r.ok) document.getElementById("fuentes").insertAdjacentHTML("beforeend", ' · <a href="data/parte_guardia.xlsx">Parte de guardia (Excel)</a>');
+    }).catch(() => {});
+    document.getElementById("pie").textContent = "Generado el " + (data.generado || "") + ". Mapa: OpenStreetMap (ODbL). " + (data.reglas && data.reglas.texto ? data.reglas.texto : "");
+  }
+
+  function perfilSvg(perfil, franja) {
+    if (!perfil || !perfil.length) return '<div class="vacio">Sin perfil horario</div>';
+    const W = 720, H = 140, L = 34, R = 8, T = 10, B = 24;
+    const max = Math.max(10, ...perfil.map((p) => p.racha_max || 0));
+    const x = (h) => L + (h / 24) * (W - L - R);
+    const y = (v) => T + (1 - v / max) * (H - T - B);
+    let out = `<svg class="perfil" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Racha prevista por horas">`;
+    if (franja && franja.inicio != null) {
+      out += `<rect x="${x(franja.inicio)}" y="${T}" width="${x(franja.fin + 1) - x(franja.inicio)}" height="${H - T - B}" fill="${COLORS.alto}" opacity="0.18"/>`;
+    }
+    for (const v of [max / 2, max]) {
+      out += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>`;
+      out += `<text x="${L - 4}" y="${y(v) + 4}" font-size="10" text-anchor="end" fill="var(--muted)">${Math.round(v)}</text>`;
+    }
+    const bw = (W - L - R) / 24 - 2;
+    for (const p of perfil) {
+      const h = p.hora;
+      out += `<rect x="${x(h) + 1}" y="${y(p.racha_max || 0)}" width="${bw}" height="${H - B - y(p.racha_max || 0)}" fill="var(--accent)" opacity="0.85"><title>${h}:00 racha máx. ${num(p.racha_max)} km/h, media ${num(p.racha_media)} km/h, lluvia ${num(p.lluvia, 1)} mm</title></rect>`;
+      if (p.lluvia > 0) out += `<rect x="${x(h) + 1}" y="${H - B - Math.min(40, p.lluvia * 6)}" width="${bw}" height="${Math.min(40, p.lluvia * 6)}" fill="#3b82c4" opacity="0.5"/>`;
+      if (h % 3 === 0) out += `<text x="${x(h) + bw / 2}" y="${H - 8}" font-size="10" text-anchor="middle" fill="var(--muted)">${h}h</text>`;
+    }
+    out += "</svg>";
+    return out;
+  }
+
+  function causasBarra(causas) {
+    if (!causas || !causas.length) return "";
+    const palette = ["#1f5f8b", "#7fb27f", "#e3b53a", "#e0772f", "#b8302f", "#8e7cc3", "#9aa3b2"];
+    let bar = '<div class="barra">', leg = '<div class="leyenda">';
+    causas.forEach((c, i) => {
+      bar += `<span style="width:${(100 * c.parte).toFixed(1)}%;background:${palette[i % palette.length]}" title="${esc(c.familia)} ${pct(c.parte, 0)}"></span>`;
+      leg += `<span><i style="background:${palette[i % palette.length]}"></i>${esc(c.familia)} ${pct(c.parte, 0)}</span>`;
+    });
+    return bar + "</div>" + leg + "</div>";
+  }
+
+  function tablaZonas(d, idx) {
+    const zonas = (d.zonas || []).slice().sort((a, b) => (b.probabilidad || 0) - (a.probabilidad || 0));
+    if (!zonas.length) return '<div class="vacio">Sin zonas</div>';
+    let rows = zonas.map((z, i) => {
+      const inName = new Set(String(z.nombre || "").split(" / "));
+      const more = (z.municipios || []).filter((m) => !inName.has(m));
+      const extra = more.length ? `<br><span class="notas">y ${esc(more.slice(0, 3).join(", "))}${more.length > 3 ? " y " + (more.length - 3) + " más" : ""}</span>` : "";
+      return `<tr class="fila-zona" data-dist="${idx}" data-zona="${i}" title="Línea ${esc(z.zona)}: ${num(z.hist_365d)} incidencias en el último año, la última hace ${num(z.hist_dias_desde)} días">
+      <td>${esc(z.nombre)}${extra}</td>
+      <td>${nivelPill(z.nivel)}</td><td class="num">${pct(z.probabilidad)}</td><td class="num">${pct(z.parte, 0)}</td>
+      <td class="num">${num(z.n_ct)}</td><td class="num">${num(z.abonados)}</td><td class="num">${num(z.clientes_esperados, 1)}</td><td class="num">${num(z.racha_max)}</td>
+      <td class="num">${num(z.hist_365d)}</td></tr>`;
+    }).join("");
+    return `<div class="scroll"><table><thead><tr><th>Zona (línea)</th><th>Nivel</th><th class="num">Prob.</th><th class="num">Parte del riesgo</th><th class="num">CT</th><th class="num">Clientes</th><th class="num">Clientes esp.</th><th class="num">Racha (km/h)</th><th class="num">Inc. último año</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  function tablaCts(d) {
+    const cts = (d.cts || []).slice().sort((a, b) => (b.probabilidad || 0) - (a.probabilidad || 0)).slice(0, 10);
+    if (!cts.length) return "";
+    const rows = cts.map((c) => `<tr><td>${esc(c.ct_id)}</td><td>${esc(c.municipio || "")}</td><td class="num">${num(c.abonados)}</td><td class="num">${pct(c.probabilidad)}</td></tr>`).join("");
+    return `<details class="cts"><summary>Los 10 CT con más probabilidad de corte</summary><div class="scroll"><table><thead><tr><th>CT</th><th>Municipio</th><th class="num">Clientes</th><th class="num">Prob.</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="notas">La probabilidad de cada CT es la de su línea por la parte de las incidencias de la línea que lo cortan; dentro del día no sabemos qué línea romperá, así que sirve para ordenar, no para esperar la avería en ese CT.</p></details>`;
+  }
+
+  function brigadas(b) {
+    if (!b || !b.bases || !b.bases.length) return "";
+    const bases = b.bases.map((x) => `<li><b>${esc(x.municipio)}</b>: cubre ${num(x.cubre_ct)} CT (${pct(x.parte_riesgo, 0)} del riesgo), llegada media ${num(x.llegada_media_min)} min${x.llegada_max_min != null ? ", máxima " + num(x.llegada_max_min) : ""}` + (x.municipios && x.municipios.length ? `<br><span class="notas">cubre ${esc(x.municipios.slice(0, 8).join(", "))}${x.municipios.length > 8 ? " y " + (x.municipios.length - 8) + " más" : ""}</span>` : "") + "</li>").join("");
+    const curve = (b.curva || []).map((c) => `${c.n}: ${num(c.llegada_media_min)} min`).join(" · ");
+    return `<div class="brigada"><p class="texto">Con ${b.n} brigada${b.n > 1 ? "s" : ""}, las bases que minimizan la llegada al riesgo de mañana (tiempos: ${esc(b.tiempos || ("carretera a " + b.velocidad_kmh + " km/h"))}):</p><ul>${bases}</ul>
+      <p class="texto">Llegada media ponderada por el riesgo: <b>${num(b.llegada_media_min)} min</b>; el ${pct(b.riesgo_30min, 0)} del riesgo a menos de 30 min y el ${pct(b.riesgo_45min, 0)} a menos de 45.${b.fijas ? " Con las bases fijas de la configuración: " + num(b.fijas.llegada_media_min) + " min." : ""}</p>
+      ${b.posicionamiento ? `<p class="texto"><b>Posicionamiento:</b> ${esc(b.posicionamiento)}.</p>` : ""}
+      ${curve ? `<p class="notas">Llegada media según el número de brigadas: ${esc(curve)}.</p>` : ""}</div>`;
+  }
+
+  function mapa(d, idx, el) {
+    const map = L.map(el, { scrollWheelZoom: false });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    const pts = [];
+    const muni = d.municipios || [];
+    for (const m of muni) {
+      if (m.lat == null) continue;
+      const r = 4 + Math.sqrt(m.n_ct || 1) * 1.6;
+      const c = L.circleMarker([m.lat, m.lon], { radius: r, color: "#333", weight: 0.6, fillColor: COLORS[m.nivel] || COLORS.bajo, fillOpacity: 0.75 });
+      c.bindTooltip(`<b>${esc(m.nombre)}</b><br>${num(m.n_ct)} CT, ${num(m.abonados)} clientes<br>Probabilidad de corte: ${pct(m.probabilidad)}<br>Racha prevista ${num(m.racha_max)} km/h` + (m.zonas ? "<br>Zonas: " + esc(m.zonas.join(", ")) : ""));
+      c.addTo(map); pts.push([m.lat, m.lon]); m._marker = c;
+    }
+    for (const b of ((d.brigadas || {}).bases || [])) {
+      if (b.lat == null) continue;
+      L.marker([b.lat, b.lon], { title: "Base de brigada: " + b.municipio }).addTo(map).bindTooltip("Brigada: " + esc(b.municipio));
+    }
+    if (pts.length) map.fitBounds(pts, { padding: [16, 16], maxZoom: 11 }); else map.setView([39.5, -6.3], 8);
+    return map;
+  }
+
+  // Lightning of the last hour (rayos.json, dag_rayos_vivo every 15 minutes): a banner per distribuidora and the
+  // flashes on its map, the older ones paler. Optional: without the file nothing is shown.
+  const maps = {};
+  function pintarRayos(data, r) {
+    const hora = r.generado ? r.generado.slice(11, 16) + " UTC" : "";
+    (data.distribuidoras || []).forEach((d, idx) => {
+      const block = (r.distribuidoras || []).find((b) => String(b.id) === String(d.id)) || null;
+      const sec = document.getElementById("dist-" + idx);
+      if (!sec) return;
+      const level = block ? block.nivel : "sin tormenta";
+      const klass = level === "tormenta sobre la red" ? "tormenta" : (level === "tormenta cerca" ? "cerca" : "");
+      const text = block ? block.texto : `sin rayos en la caja de estudio en la última hora (${r.n_rayos || 0} en total)`;
+      let banner = sec.querySelector(".rayos");
+      if (!banner) { banner = document.createElement("div"); banner.className = "rayos"; sec.querySelector("h2").insertAdjacentElement("afterend", banner); }
+      banner.className = "rayos " + klass;
+      banner.innerHTML = `<b>Rayos ahora</b> (satélite MTG, actualizado a las ${esc(hora)}): ${esc(text)}.` + (block && block.municipios && block.municipios.length ? ` Municipios bajo la tormenta: ${esc(block.municipios.slice(0, 6).join(", "))}${block.municipios.length > 6 ? ", ..." : ""}.` : "");
+      const map = maps[idx];
+      if (!map) return;
+      if (map._rayos) map._rayos.remove();
+      const layer = L.layerGroup();
+      for (const f of (r.rayos || [])) {
+        const age = Math.min(1, Math.max(0, (f.minutos || 0) / Math.max(1, r.ventana_min || 60)));
+        L.circleMarker([f.lat, f.lon], { radius: 4, color: "#8a6d00", weight: 0.5, fillColor: "#f1c40f", fillOpacity: 0.95 - 0.7 * age })
+          .bindTooltip(`Rayo hace ${f.minutos} min (${esc(f.ts)})`).addTo(layer);
+      }
+      layer.addTo(map); map._rayos = layer;
+    });
+    const pie = document.getElementById("pie");
+    if (r.regla && !pie.textContent.includes("rayos")) pie.textContent += " Rayos: " + r.fuente + ". " + r.regla;
+  }
+
+  function cargarRayos(data) {
+    fetch("data/rayos.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+      .then((r) => pintarRayos(data, r)).catch(() => {});
+  }
+
+  function seguimiento(s) {
+    if (!s || !s.dias || !s.dias.length) return "";
+    const r = s.resumen || {};
+    let rows = s.dias.slice(-30).reverse().map((x) => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.distribuidora)}</td><td>${nivelPill(x.nivel)}</td><td class="num">${pct(x.probabilidad)}</td><td>${x.averias == null ? "<span class='notas'>sin datos aún</span>" : (x.averias > 0 ? "<span class='fallo'>" + x.averias + " avería" + (x.averias > 1 ? "s" : "") + "</span>" : "<span class='ok'>sin averías</span>")}</td></tr>`).join("");
+    return `<section class="dist seguimiento"><h2>Seguimiento de las predicciones</h2>
+      <p class="texto">${r.dias_con_resultado ? `De los ${r.dias_con_resultado} días ya contrastados con Calser, hubo avería en ${r.dias_con_averia}. En los días marcados alto o muy alto hubo avería el ${pct(r.acierto_alto, 0)} de las veces; en los marcados bajo, el ${pct(r.averia_en_bajo, 0)}.` : "Todavía no hay días contrastados con las incidencias de Calser."}</p>
+      <div class="scroll"><table><thead><tr><th>Día</th><th>Distribuidora</th><th>Nivel previsto</th><th class="num">Prob.</th><th>Qué pasó</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  }
+
+  function render(data) {
+    cabecera(data);
+    const main = document.getElementById("main");
+    main.innerHTML = "";
+    (data.distribuidoras || []).forEach((d, idx) => {
+      const sec = document.createElement("section");
+      sec.className = "dist";
+      sec.id = "dist-" + idx;
+      const imp = d.impacto || {}, fr = d.franja || {};
+      sec.innerHTML = `<h2>${esc(d.nombre)} ${nivelPill(d.nivel)} <span class="notas">${esc(d.motivos || "")}</span></h2>
+        <div class="cols">
+          <div>
+            <div class="cifras">
+              <div class="cifra"><div class="v">${pct(d.probabilidad)}</div><div class="l">probabilidad de alguna interrupción (${num(d.veces_tasa_base, 1)} veces su tasa base, percentil ${num(100 * d.percentil)})</div></div>
+              <div class="cifra"><div class="v">${num(d.esperadas, 2)}</div><div class="l">averías esperadas</div></div>
+              <div class="cifra"><div class="v">${num(imp.clientes_esperados)}</div><div class="l">clientes esperados sin luz (${num(imp.ct_esperados, 1)} CT, ${num(imp.kva_esperados)} kVA)</div></div>
+              <div class="cifra"><div class="v">${fr.inicio != null ? fr.inicio + "-" + (fr.fin + 1) + " h" : "-"}</div><div class="l">franja de más riesgo (pico de racha a las ${fr.pico != null ? fr.pico + " h" : "-"}, ${num(fr.racha_pico)} km/h)</div></div>
+            </div>
+            <h3>Si hay avería, por qué</h3>${causasBarra(d.causas)}
+            <h3>Brigadas</h3>${brigadas(d.brigadas)}
+          </div>
+          <div><div class="map" id="map-${idx}"></div>
+            <div class="leyenda" style="margin-top:6px"><span><i style="background:${COLORS.bajo}"></i>bajo</span><span><i style="background:${COLORS.medio}"></i>medio</span><span><i style="background:${COLORS.alto}"></i>alto</span><span><i style="background:${COLORS["muy alto"]}"></i>muy alto</span><span>círculo: municipio, tamaño por CT</span><span>marcador: base de brigada</span></div>
+            <h3>Perfil de mañana (racha máxima prevista por horas, km/h; azul: lluvia)</h3>${perfilSvg(d.perfil, fr)}
+          </div>
+          <div><h3>Zonas (líneas) por riesgo</h3>${tablaZonas(d, idx)}${tablaCts(d)}</div>
+        </div>`;
+      main.appendChild(sec);
+      const map = mapa(d, idx, sec.querySelector("#map-" + idx));
+      maps[idx] = map;
+      sec.querySelectorAll("tr.fila-zona").forEach((tr) => tr.addEventListener("click", () => {
+        sec.querySelectorAll("tr.fila-zona").forEach((o) => o.classList.remove("zona-sel"));
+        tr.classList.add("zona-sel");
+        const z = (d.zonas || []).slice().sort((a, b) => (b.probabilidad || 0) - (a.probabilidad || 0))[Number(tr.dataset.zona)];
+        const set = new Set(z.municipios || []);
+        for (const m of (d.municipios || [])) if (m._marker) m._marker.setStyle({ weight: set.has(m.nombre) ? 3 : 0.6, color: set.has(m.nombre) ? "#1f5f8b" : "#333" });
+      }));
+    });
+    const seg = seguimiento(data.seguimiento);
+    if (seg) main.insertAdjacentHTML("beforeend", seg);
+    if (data.notas && data.notas.length) main.insertAdjacentHTML("beforeend", `<section class="dist"><h2>Notas</h2><ul class="notas">${data.notas.map((n) => "<li>" + esc(n) + "</li>").join("")}</ul></section>`);
+    cargarRayos(data);
+    setInterval(() => cargarRayos(data), 5 * 60 * 1000);
+  }
+
+  fetch("data/riesgo.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(render)
+    .catch((e) => { document.getElementById("fuentes").textContent = "No hay datos todavía (data/riesgo.json): " + e; });
+})();
+</script>
+</body>
+</html>

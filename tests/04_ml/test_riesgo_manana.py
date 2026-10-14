@@ -270,6 +270,33 @@ def test_the_windiest_places_of_every_distribuidora():
     assert rm.windiest_places(hours, places, DAY + pd.Timedelta(days=1), 3) == {}
 
 
+def test_the_road_minutes_are_asked_once_and_kept(tmp_path, monkeypatch):
+    municipalities = pd.DataFrame({"municipio": ["Zafra", "Montánchez", "Torre"], "lat": [38.42, 39.22, 39.3],
+                                   "lon": [-6.42, -6.15, -6.1], "n_ct": [3, 2, 1], "probabilidad": [0.1, 0.2, 0.1]})
+    asked = []
+
+    def fake_osrm(points, api, timeout):
+        asked.append((points, api, timeout))
+        n = len(points)
+        return np.where(np.eye(n) == 1, 0.0, 33.0)
+
+    monkeypatch.setattr(rm.rz, "osrm_table", fake_osrm)
+    zcfg = {"rutas": {"activo": True, "api": "https://osrm.example", "timeout_s": 7, "cache": str(tmp_path / "rutas")}}
+    fs = rm.LocalFiles()
+    first = rm.road_minutes(fs, zcfg, municipalities, 3)
+    assert list(first.index) == ["Montánchez", "Torre", "Zafra"] and first.loc["Zafra", "Torre"] == 33.0
+    assert asked[0][1:] == ("https://osrm.example", 7.0) and asked[0][0][0] == (39.22, -6.15)
+    # The second time it comes from the cache, with the same values.
+    second = rm.road_minutes(fs, zcfg, municipalities, 3)
+    assert len(asked) == 1 and second.equals(first)
+    assert len(list((tmp_path / "rutas").glob("3_*.json"))) == 1
+    # Off, or a service that fails: None, and the crews use straight lines.
+    assert rm.road_minutes(fs, {"rutas": {"activo": False}}, municipalities, 3) is None
+    monkeypatch.setattr(rm.rz, "osrm_table", lambda *a: (_ for _ in ()).throw(RuntimeError("down")))
+    assert rm.road_minutes(fs, {"rutas": {**zcfg["rutas"], "cache": str(tmp_path / "otra")}}, municipalities, 3) is None
+    assert rm.road_minutes(None, zcfg, municipalities, 3) is None
+
+
 # ---------------------------------------------------------------------------
 # The whole job on a local Spark
 # ---------------------------------------------------------------------------
@@ -358,16 +385,29 @@ def synthetic():
 def tables(spark):
     weather, events, warnings, p98 = synthetic()
     save(spark, weather, "l3_gold.meteo_celda_hora")
-    places = [(1, CELLS[1], "Montánchez")] * 3 + [(1, CELLS[1], "Torre de Santa María")] + [(2, CELLS[2], "Zafra")] * 3
-    save(spark, pd.DataFrame([{"distribuidora_id": d, "ct_id": f"{d}-{i}", "celda_id": c, "municipio_nombre": m}
-                              for i, (d, c, m) in enumerate(places)]), "l3_gold.map_ct_celda")
+    # CT i of every distribuidora: three in the first municipality of the cell and, in the first one, a fourth in another.
+    places = [(1, 0, CELLS[1], "Montánchez"), (1, 1, CELLS[1], "Montánchez"), (1, 2, CELLS[1], "Montánchez"),
+              (1, 3, CELLS[1], "Torre de Santa María"), (2, 0, CELLS[2], "Zafra"), (2, 1, CELLS[2], "Zafra"),
+              (2, 2, CELLS[2], "Zafra")]
+    save(spark, pd.DataFrame([{"distribuidora_id": d, "ct_id": f"{d}-{i}", "celda_id": c, "municipio_nombre": m,
+                               "ct_lat_municipio": 39.3 + 0.3 * (d == 2) + 0.1 * (m == "Torre de Santa María"),
+                               "ct_lon_municipio": -6.1 - 0.3 * (d == 2), "codigo_ine": f"100{d}{i}"}
+                              for d, i, c, m in places]), "l3_gold.map_ct_celda")
+    # The lines of TedisNet: two in the first distribuidora (the incidents cut the first one), one in the second.
+    save(spark, pd.DataFrame([{"distribuidora_id": d, "ct_id": f"{d}-{i}", "grupo_red_id": (10 if i < 2 else 11) if d == 1 else 20,
+                               "municipio_nombre": m, "potencia_kva": 250.0, "num_abonados": 40 + i,
+                               "tipo_zona_codigo": 4 if d == 1 else 3, "en_estudio": True}
+                              for d, i, c, m in places]), "l3_gold.dim_ct")
     facts, causes = [], []
     names = {1: "Calser_EOSA", 2: "Calser_Pitarch"}
     for k, (dist, start, cause) in enumerate(events):
         period, inc = start.strftime("%Y%m"), f"E{k}"
-        facts.append({"distribuidora_id": dist, "source_database": names[dist], "periodo_id": period,
-                      "incidencia_id": inc, "ct_id": f"{dist}-0", "inicio_ts": start,
-                      "conocido_ts": start + pd.Timedelta(days=2), "variante": "principal"})
+        # The incidents of the first distribuidora cut the CTs of its first line (two CTs), every third one also the third CT.
+        cts = [f"{dist}-0", f"{dist}-1"] + ([f"{dist}-2"] if k % 3 == 0 else []) if dist == 1 else [f"{dist}-0"]
+        for ct_id in cts:
+            facts.append({"distribuidora_id": dist, "source_database": names[dist], "periodo_id": period,
+                          "incidencia_id": inc, "ct_id": ct_id, "inicio_ts": start, "duracion_winsor_s": 5400.0,
+                          "conocido_ts": start + pd.Timedelta(days=2), "variante": "principal"})
         causes.append({"distribuidora_id": dist, "periodo_id": period, "id": inc, "causa": cause})
     save(spark, pd.DataFrame(facts), "l3_gold.fact_interrupciones_mt")
     save(spark, pd.DataFrame(causes), "l2_silver.f_incidencia_causa")
@@ -385,6 +425,9 @@ def config_path(workdir):
         config = json.load(file)
     config["exportar_dir"] = os.path.join(workdir, "resultados")
     config["spark_conf"] = {}
+    config["riesgo_manana"]["dashboard_dir"] = os.path.join(workdir, "dashboard")
+    config["riesgo_manana"]["riesgo_zonas"] = {"brigadas": {"1": 1, "2": 1}, "bases_fijas": {"1": ["Torre de Santa María"]}}
+    os.makedirs(config["riesgo_manana"]["dashboard_dir"])
     config["meteo_dia"] = {
         **config.get("meteo_dia", {}),
         "desde": "2021-01-08",
@@ -461,6 +504,41 @@ def test_the_storm_with_a_warning_is_the_riskiest_day(first):
     # Labels, weather and warnings: the archive of warnings ends first.
     assert str(storm["entrenado_hasta"]) <= "2025-12-29"
     assert storm["dias_entreno"] > 1500 and storm["modelo"] == "logistica" and storm["variante"] == "operativa"
+
+
+def test_the_zones_split_the_risk_of_the_day(first, spark, workdir):
+    _, rows, _ = first
+    zones = spark.table("l3_gold.riesgo_zona_siguiente").toPandas()
+    assert sorted(zones["distribuidora_id"].unique()) == [1, 2]
+    one = zones[zones["distribuidora_id"] == 1].sort_values("probabilidad", ascending=False)
+    assert len(one) == 2 and set(one["zona"]) == {"10", "11"}
+    # The probability that some line fails is the probability of the day of the distribuidora.
+    assert 1 - np.prod(1 - one["probabilidad"].to_numpy()) == pytest.approx(rows.loc[1, "probabilidad"], rel=1e-3)
+    assert one["parte"].sum() == pytest.approx(1.0)
+    # The line that every incident cuts carries more risk than the one cut by one in three.
+    assert one.iloc[0]["zona"] == "10" and one.iloc[0]["parte"] > 0.5
+    assert rows.loc[1, "incidencias_esperadas"] == pytest.approx(one["probabilidad"].sum())
+    assert rows.loc[1, "clientes_esperados"] > 0 and rows.loc[1, "hora_pico"] == 10 or rows.loc[1, "hora_pico"] in (10, 11, 12, 13, 14, 15)
+    assert rows.loc[1, "franja_inicio"] <= 10 and rows.loc[1, "franja_fin"] >= 15
+    payload = json.load(open(os.path.join(workdir, "dashboard", "riesgo.json"), encoding="utf-8"))
+    assert payload["fecha"] == "2026-01-15" and len(payload["distribuidoras"]) == 2
+    eosa = next(d for d in payload["distribuidoras"] if d["id"] == 1)
+    assert [z["zona"] for z in eosa["zonas"]][0] == "10"
+    assert eosa["municipios"][0]["nombre"] == "Montánchez" and eosa["municipios"][0]["probabilidad"] > 0
+    assert eosa["brigadas"]["n"] == 1 and eosa["brigadas"]["bases"][0]["municipio"] in ("Montánchez", "Torre de Santa María")
+    # The base of the configuration is farther from the risk than the best one.
+    assert eosa["brigadas"]["fijas"]["municipios"] == ["Torre de Santa María"]
+    assert eosa["brigadas"]["fijas"]["llegada_media_min"] >= eosa["brigadas"]["llegada_media_min"]
+    assert eosa["franja"]["inicio"] is not None and eosa["causas"] and eosa["impacto"]["ct_esperados"] > 0
+    assert len(eosa["cts"]) == 4 and eosa["cts"][0]["probabilidad"] >= eosa["cts"][-1]["probabilidad"]
+    assert payload["reglas"]["cascada"]["n"] > 0 and "pico de racha" in payload["reglas"]["texto"]
+    assert os.path.exists(os.path.join(workdir, "dashboard", "riesgo_20260115.json"))
+    assert eosa["brigadas"]["posicionamiento"].startswith("brigadas en sus bases a las")
+    assert [c["n"] for c in eosa["brigadas"]["curva"]][:2] == [1, 2] and eosa["brigadas"]["bases"][0]["municipios"]
+    for name in ("parte_guardia.xlsx", "parte_guardia_20260115.xlsx"):
+        assert os.path.getsize(os.path.join(workdir, "dashboard", name)) > 5000
+    text = open(os.path.join(workdir, "resultados", RUN_ID, "resumen.md"), encoding="utf-8").read()
+    assert "## EOSA: dónde, cuándo, por qué y cuánto" in text and "### Brigadas" in text
 
 
 def test_the_summary_and_the_run(first, spark, workdir):
