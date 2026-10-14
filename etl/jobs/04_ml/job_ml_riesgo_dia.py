@@ -92,6 +92,15 @@ Features, every one known before D starts except the block dia:
   that anomaly times the excess of the gust. There is no forecast of the
   direction, so these stay from the reanalysis in the forecast comparison
   (an upper bound).
+- seq_* (block sequia): the water balance of the 90 and 180 days before D
+  (rain minus the reference evapotranspiration of the reanalysis, per
+  distribuidora, ending on D - 1, known that evening) as a z-score of its
+  calendar month over the years before sequia_clima_hasta: a long dry spell
+  (dead trees, dry fuel) or a long wet one (soaked ground), the SPEI of the
+  drought literature computed from what Gold already has.
+- hie_horas (block hielo): the CT-hours of D with precipitation at a
+  temperature of 0,5 degrees or less (freezing rain or wet snow on the
+  conductors), from the reanalysis, with its forecast twin prev_hie_horas.
 - Two and three days ahead (HORIZONS): Gold also keeps what ICON-EU forecast
   two days before (metp2_*, gusts and rain) and, once landed, three days
   before (metp3_*). They give prev2_* / prev3_* (the daily weather and the
@@ -235,6 +244,13 @@ FORECAST_EXTREME_DAILY = {
     "ext_fraccion_72_max": ("metd_media_metp1_racha_72_1h", "max"),
     "ext_fraccion_72_horas": ("metd_media_metp1_racha_72_1h", "sum"),
 }
+# Precipitation at or below ICE_TEMP_C (derived_extent): the CT weighted share of the cells with it, summed over the
+# hours of the day (CT-hours), from the reanalysis and from the forecast of the day before (it has temperature).
+ICE_DAILY = {"hie_horas": ("metd_media_met_hielo_1h", "sum")}
+FORECAST_ICE_DAILY = {"hie_horas": ("metd_media_metp1_hielo_1h", "sum")}
+ICE_TEMP_C = 0.5
+# The water balance windows (days) of the drought features and the first year kept out of their climatology.
+DROUGHT_WINDOWS = {"seq_3m": 90, "seq_6m": 180}
 # A strong gust in km/h (20 m/s: from here on some fault is almost certain in the British overhead networks of
 # Dunn et al. 2018) and the share of the p98 from which the interactions and the direction count.
 STRONG_GUST_KMH = 72.0
@@ -306,7 +322,56 @@ def derived_extent(weather):
             weather = weather.withColumn(f"{prefix}_racha_72_1h",
                                          F.when(F.col(gust).isNotNull(),
                                                 (F.col(gust) >= STRONG_GUST_KMH).cast("double")))
+        rain, temp = f"{prefix}_lluvia_1h", f"{prefix}_temp_1h"
+        if rain in columns and temp in columns and f"{prefix}_hielo_1h" not in columns:
+            weather = weather.withColumn(f"{prefix}_hielo_1h",
+                                         F.when(F.col(rain).isNotNull() & F.col(temp).isNotNull(),
+                                                ((F.col(rain) > 0) & (F.col(temp) <= ICE_TEMP_C)).cast("double")))
     return weather
+
+
+def drought_features(spark, weather, start: pd.Timestamp, end: pd.Timestamp, climatology_until: pd.Timestamp,
+                     windows: dict = None) -> pd.DataFrame:
+    """
+    (distribuidora_id, fecha, seq_3m, seq_6m): the rain minus the reference
+    evapotranspiration of the windows days before D (ending on D - 1, what
+    is known that evening) as a z-score of its calendar month, with the mean
+    and the spread of the days before climatology_until, per distribuidora.
+    Empty without the rain or the evapotranspiration in Gold.
+    """
+    windows = windows or DROUGHT_WINDOWS
+    rain, et0 = "metd_media_met_lluvia_1h", "metd_media_met_et0_7d"
+    if rain not in weather.columns or et0 not in weather.columns:
+        return pd.DataFrame(columns=["distribuidora_id", "fecha"])
+    longest = max(windows.values())
+    frame = (weather.where((F.col("hora") >= F.lit(start - pd.Timedelta(days=longest + 10))) & (F.col("hora") < F.lit(end)))
+             .select("distribuidora_id", "hora", rain, et0).toPandas())
+    if frame.empty:
+        return pd.DataFrame(columns=["distribuidora_id", "fecha"])
+    frame["distribuidora_id"] = frame["distribuidora_id"].astype("int64")
+    frame["fecha"] = pd.to_datetime(frame["hora"]).dt.floor("D")
+    daily = frame.groupby(["distribuidora_id", "fecha"]).agg(lluvia=(rain, "sum"), et0_7d=(et0, "max")).reset_index()
+    # The 7 day sum of Gold at the end of the day, a seventh of it as the evapotranspiration of the day.
+    daily["balance"] = daily["lluvia"] - daily["et0_7d"] / 7.0
+    parts = []
+    for dist, g in daily.groupby("distribuidora_id"):
+        series = g.set_index("fecha")["balance"].sort_index()
+        series = series.reindex(pd.date_range(series.index.min(), series.index.max(), freq="D"))
+        out = pd.DataFrame({"fecha": series.index, "distribuidora_id": dist})
+        for name, days in windows.items():
+            # The sum up to D - 1, so the evening before D already knows it.
+            out[name] = series.rolling(days, min_periods=int(days * 0.9)).sum().shift(1).to_numpy()
+        parts.append(out)
+    out = pd.concat(parts, ignore_index=True)
+    out["_mes"] = out["fecha"].dt.month
+    climate = out[out["fecha"] < climatology_until]
+    for name in windows:
+        stats = climate.groupby(["distribuidora_id", "_mes"])[name].agg(["mean", "std"]).reset_index()
+        out = out.merge(stats, on=["distribuidora_id", "_mes"], how="left")
+        out[name] = (out[name] - out["mean"]) / out["std"].where(out["std"] > 0)
+        out = out.drop(columns=["mean", "std"])
+    out = out.drop(columns="_mes")
+    return out[(out["fecha"] >= start) & (out["fecha"] < end)].reset_index(drop=True)
 
 
 def derived_direction(weather):
@@ -650,7 +715,8 @@ def block_of(name: str) -> str:
                           ("aviso72_det_", "avisos_detalle_72h"), ("aviso72_", "avisos_72h"),
                           ("prev_", "prevision"), ("prev2_", "prevision_48h"), ("prev3_", "prevision_72h"),
                           ("ext_fraccion_", "extension"), ("ext_int_", "interacciones"),
-                          ("ext_pend_", "pendiente_red"), ("ext_dir_", "direccion"), ("ext_", "extremos")):
+                          ("ext_pend_", "pendiente_red"), ("ext_dir_", "direccion"), ("ext_", "extremos"),
+                          ("seq_", "sequia"), ("hie_", "hielo")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -669,7 +735,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     # The daily weather of every forecast of Gold: horizon -> (daily mapping, extremes mapping).
     mappings = {h: (forecast_mapping(FORECAST_DAILY, spec["gold"]), forecast_mapping(FORECAST_EXTREME_DAILY, spec["gold"]))
                 for h, spec in HORIZONS.items()}
-    sources = list(DAILY.values()) + list(EXTREME_DAILY.values())
+    sources = list(DAILY.values()) + list(EXTREME_DAILY.values()) + list(ICE_DAILY.values()) + list(FORECAST_ICE_DAILY.values())
     for daily_map, extreme_map in mappings.values():
         sources += list(daily_map.values()) + list(extreme_map.values())
     wanted = [c for c in {spec[0] for spec in sources} if c in names]
@@ -705,6 +771,20 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     extreme = extremes(hourly, daily, float(cfg["calor_umbral_c"]), int(cfg["horas_minimas_dia"]))
     extreme_names = [c for c in extreme.columns if c.startswith("ext_")]
     pdf = pdf.merge(extreme, on=["distribuidora_id", "fecha"], how="left")
+    # Freezing precipitation of D (hie_horas) and its forecast twin (prev_hie_horas); the drought of the months before.
+    ice_names = []
+    ice = daily_weather(hourly, int(cfg["horas_minimas_dia"]), ICE_DAILY)
+    if "hie_horas" in ice.columns:
+        pdf = pdf.merge(ice, on=["distribuidora_id", "fecha"], how="left")
+        ice_names = ["hie_horas"]
+        ice_forecast = daily_weather(hourly, int(cfg["horas_minimas_dia"]), FORECAST_ICE_DAILY)
+        if "hie_horas" in ice_forecast.columns:
+            pdf = pdf.merge(ice_forecast.rename(columns={"hie_horas": "prev_hie_horas"}),
+                            on=["distribuidora_id", "fecha"], how="left")
+    drought = drought_features(spark, weather, start, end, pd.Timestamp(cfg.get("sequia_clima_hasta", "2022-01-01")))
+    drought_names = [c for c in drought.columns if c.startswith("seq_")]
+    if drought_names:
+        pdf = pdf.merge(drought, on=["distribuidora_id", "fecha"], how="left")
     # A day with gusts but none strong enough to measure the direction: no anomaly, not a missing one.
     if "ext_dir_anomalia" in pdf.columns:
         pdf["ext_dir_anomalia"] = pdf["ext_dir_anomalia"].where(
@@ -780,8 +860,8 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     blocks = {}
     features = ([f"dist_{d}" for d in dists] + list(cal.columns) + history
                 + [name for horizon in sorted(before) for name in before[horizon]]
-                + [f"dia_{c}" for c in weather_names] + extreme_names + interaction_names + warning_names
-                + forecast_columns)
+                + [f"dia_{c}" for c in weather_names] + extreme_names + interaction_names + ice_names + drought_names
+                + warning_names + forecast_columns + (["prev_hie_horas"] if "prev_hie_horas" in pdf.columns else []))
     for name in features:
         blocks.setdefault(block_of(name), []).append(name)
     # The weather of the day that the forecast of each horizon also gives: the fair reference of the real forecast.
@@ -1015,9 +1095,9 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     prefix = HORIZONS[horizon]["prev"]
     common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
     swap = [(f"dia_{name}", f"{prefix}_{name}") for name in common]
-    swap += [(c, f"{prefix}_{c}") for c in features if c.startswith("ext_") and f"{prefix}_{c}" in pdf.columns]
+    swap += [(c, f"{prefix}_{c}") for c in features if c.startswith(("ext_", "hie_")) and f"{prefix}_{c}" in pdf.columns]
     swapped = {column for column, _ in swap}
-    perfect = [c for c in features if (c.startswith("dia_") or c.startswith("ext_")) and c not in swapped]
+    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_")) and c not in swapped]
     if perfect:
         logger.warning("Variant %s at %s day(s): %s stay from the reanalysis (no forecast of them at this horizon)",
                        variant["nombre"], horizon, perfect)
