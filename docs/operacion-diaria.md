@@ -42,6 +42,19 @@ Las tareas `ensemble`, `aemet_municipios` y `avisos` nunca bloquean la puntuaci�
 
 Los comandos de cada job, con sus opciones, están en el apartado 10 de [causas-incidencias.md](causas-incidencias.md); las claves y variables de entorno, en `.env.example`.
 
+## 3b. Repetir un día pasado (la demo de un temporal)
+
+Para enseñar lo que el sistema habría dicho la tarde anterior a un día conocido, sin tocar lo vivo:
+
+```
+docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g \
+    --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py,/app/jobs/04_ml/job_ml_horas_riesgo.py,/app/jobs/04_ml/job_ml_meteo_historia.py,/app/jobs/04_ml/job_ml_riesgo_dia.py,/app/jobs/04_ml/riesgo_zonas.py,/app/jobs/04_ml/calendario.py \
+    /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json \
+    --fecha 2026-01-28 --desde-gold --solo-archivo --run-id demo_20260128
+```
+
+`--desde-gold` toma la previsión que ICON-EU hizo la víspera de Gold (`metp1_*` de `meteo_celda_hora`, desde enero de 2024) y los avisos de AEMET enviados antes de las 20:00 de la víspera del archivo de Silver, entrena solo con los días anteriores y deja lo mismo que una tarde cualquiera: la fila en `l3_gold.riesgo_dia_siguiente`, las zonas, `resumen.md` y, con `--solo-archivo`, solo las copias con fecha en el cuadro de mando (`riesgo_20260128.json`, `parte_guardia_20260128.xlsx`), sin pisar `riesgo.json`. `http://localhost:8086/index.html?dia=20260128` lo enseña con la cabecera "día repetido"; la misma dirección sirve para cualquier día archivado por la operación (`riesgo_<día>.json`, con sus `ensemble_<día>.json` y `aemet_<día>.json` si los hay).
+
 ## 4. Lo que se acumula y para qué sirve
 
 - `riesgo_<día>.json`, `ensemble_<día>.json` y `aemet_<día>.json` guardan lo que se dijo cada tarde; `verificacion.json` compara cada día las tres previsiones con las estaciones (pico previsto y medido, hora, franja, banda, umbrales) y resume por distribuidora el sesgo y el error de cada previsión y qué parte de los días el pico cayó en la banda. Con tres semanas en marcha se puede decir con datos cuál de las previsiones se acerca más al viento medido y si los escenarios están bien calibrados.
