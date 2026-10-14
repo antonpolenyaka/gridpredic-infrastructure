@@ -56,12 +56,14 @@ from job_ml_riesgo_manana import (  # noqa: E402
     DEFAULTS as RISK_DEFAULTS,
     DIM_TABLE,
     WEATHER_TABLE,
+    calser_until,
     fit_zone_model,
     gold_cell_days,
     live_filesystem,
     number,
     risk_settings,
     road_minutes,
+    warnings_until,
 )
 from job_ml_train import RUNS_TABLE, get_spark, load_config, logger, save_frame  # noqa: E402
 
@@ -596,13 +598,25 @@ def main(argv=None):
     variant = next((v for v in cfg["variantes"] if v["nombre"] == rcfg["variante"]), None)
     if variant is None:
         raise ValueError(f"Variant {rcfg['variante']} not in meteo_dia.variantes")
+    # The current year too, up to the last day whose label is known (Calser minus the margin, the weather, the warnings).
+    today = pd.Timestamp(created.date())
+    if max(years) >= pd.Timestamp(cfg["hasta"]).year:
+        cfg["hasta"] = f"{today:%Y-%m-%d}"
     pdf, blocks, _ = build_dataset(spark, config, cfg)
+    events, _ = read_events(spark, cfg)
+    ends = [calser_until(spark, events, today).floor("D") - pd.Timedelta(days=int(rcfg["margen_etiquetas_dias"])), today - pd.Timedelta(days=1)]
+    if "dia_racha_max" in pdf.columns:
+        ends.append(pdf.loc[pdf["dia_racha_max"].notna(), "fecha"].max())
+    if "avisos" in variant["bloques"]:
+        ends.append(warnings_until(spark).floor("D"))
+    labelled_until = min(e for e in ends if pd.notna(e))
+    pdf = pdf[pdf["fecha"] <= labelled_until].reset_index(drop=True)
+    logger.info("Days with a known label up to %s", labelled_until.date())
     days = day_scores(pdf, blocks, variant, years, config, cfg, rcfg["niveles"])
     if days.empty:
         raise ValueError(f"No day of {years} could be scored")
 
     ct = network(spark)
-    events, _ = read_events(spark, cfg)
     cuts = ct_cuts(spark, events, ct)
     cuts = cuts[cuts["fecha"].dt.year.isin(years)]
     inc = incidents_of(cuts)
