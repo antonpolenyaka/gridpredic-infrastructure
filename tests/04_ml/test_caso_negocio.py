@@ -64,6 +64,25 @@ def test_the_replay_scores_every_day_with_the_past_only(replayed, spark):
     assert (days["probabilidad"].between(0, 1)).all()
 
 
+def test_detection_and_false_alarms_of_the_policies():
+    days = pd.DataFrame({
+        "distribuidora_id": [1] * 20, "anio": [2024] * 20, "fecha": [f"2024-01-{i + 1:02d}" for i in range(20)],
+        "probabilidad": [0.9, 0.8, 0.7, 0.6] + [0.05] * 16, "alerta": [True] * 4 + [False] * 16,
+        "incidencias": [2, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "clientes_hora_recortadas": [500.0, 100.0, 0, 0, 50.0] + [0.0] * 15, "clientes_hora": [500.0, 100.0, 0, 0, 50.0] + [0.0] * 15,
+        "aviso_max_nivel": [2, 0, 1, 0, 0] + [0] * 15, "aviso_viento_nivel": [2] + [0] * 19,
+    })
+    table = cn.detection_table(days).set_index("política")
+    alert = table.loc["GridPredict en alerta (alto o muy alto)"]
+    # Three days with an incident, two of them in alert; of the 17 other days, two are in alert.
+    assert alert["detección: día con alguna incidencia"] == pytest.approx(2 / 3, abs=0.01)
+    assert alert["falsas alarmas: día con alguna incidencia"] == pytest.approx(2 / 17, abs=0.001)
+    assert alert["detección: día con dos incidencias o más"] == 1.0 and alert["parte de días marcados"] == 0.2
+    orange = table.loc["aviso de AEMET naranja o rojo"]
+    assert orange["detección: día con alguna incidencia"] == pytest.approx(1 / 3, abs=0.01) and orange["falsas alarmas: día con alguna incidencia"] == 0.0
+    assert table.attrs["positivos"]["los 10 peores días del año por horas-cliente"] == 3
+
+
 def test_the_summary_the_files_and_the_history(replayed, spark, workdir):
     summary = spark.table("l3_gold.caso_negocio_resumen").toPandas()
     first = summary[(summary["distribuidora_id"] == 1) & (summary["modo"] == "reanalisis")]
@@ -82,6 +101,7 @@ def test_the_summary_the_files_and_the_history(replayed, spark, workdir):
     assert "horas-cliente (recortadas)" in text and "| sin recortar |" in text
     assert "| probabilidad media |" in text and "Probabilidad de la víspera frente a los días con avería: AUC 0." in text
     assert "### Frente a los avisos de AEMET" in text and "| GridPredict en alerta (alto o muy alto) |" in text
+    assert "### Detección y falsas alarmas por día" in text and "| detección: día con alguna incidencia |" in text
     cts = pd.read_csv(os.path.join(folder, "cts.csv"))
     assert (cts["min_ganados_total"].abs() <= cts["dur_min"] + 1e-9).all()
     assert cts.loc[~cts["espero_brigada"], "min_ganados_total"].eq(0).all()
