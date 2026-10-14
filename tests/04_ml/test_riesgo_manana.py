@@ -586,3 +586,21 @@ def test_without_the_forecast_there_is_nothing_to_score(config_path, workdir):
     with pytest.raises(FileNotFoundError):
         rm.main(["--run-id", "sin_prevision", "--config", config_path, "--fecha", "2026-06-01",
                  "--landing", os.path.join(workdir, "vivo")])
+
+
+def test_the_second_opinions_of_the_evening_are_attached_to_the_payload(tmp_path):
+
+    payload = {"fecha": "2026-10-15", "distribuidoras": [{"id": 3, "nombre": "EOSA"}, {"id": 2, "nombre": "Pitarch"}]}
+    with open(tmp_path / "ensemble.json", "w", encoding="utf-8") as file:
+        json.dump({"fecha": "2026-10-15", "distribuidoras": [{"id": 3, "horas": [{"hora": 0, "p10": 1, "p50": 2, "p90": 3}], "texto": "40 escenarios", "pico": {"p10": 30, "p50": 40, "p90": 55},
+                                                             "supera": {"50": 0.2}, "miembros": 40, "modelo": "icon_eu"},
+                                                            {"id": 2, "horas": [], "texto": "sin previsión por conjuntos para el día"}]}, file)
+    with open(tmp_path / "aemet.json", "w", encoding="utf-8") as file:
+        json.dump({"fecha": "2026-10-14", "distribuidoras": [{"id": 3, "horas": [{"hora": 0, "racha_kmh": 10}], "texto": "de ayer"}]}, file)
+    out = rm.attach_second_opinions(payload, str(tmp_path))
+    eosa, pitarch = out["distribuidoras"]
+    assert eosa["escenarios"] == {"texto": "40 escenarios", "pico": {"p10": 30, "p50": 40, "p90": 55}, "supera": {"50": 0.2}, "miembros": 40, "modelo": "icon_eu"}
+    assert "escenarios" not in pitarch and "aemet" not in eosa  # no hours for Pitarch; the AEMET file is of another day
+    assert rm.attach_second_opinions({"fecha": "2026-10-15", "distribuidoras": [{"id": 3}]}, str(tmp_path / "no")) == {"fecha": "2026-10-15", "distribuidoras": [{"id": 3}]}
+    sheets = rm.rz.shift_sheets({**out, "fecha_texto": "15.10.2026"})
+    assert sheets["Resumen"]["escenarios de ICON-EU EPS"].tolist() == ["40 escenarios", None]
