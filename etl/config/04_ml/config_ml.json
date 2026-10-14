@@ -383,10 +383,20 @@
        "bloques": ["calendario", "historia", "ayer", "avisos", "avisos_detalle", "dia_comun", "extremos"]},
       {"nombre": "operativa", "desde": "2018-06-25",
        "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos"],
-       "variables": ["ayer_racha_max", "ayer_lluvia_max"]}
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_racha", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun_48h", "extremos_racha"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"], "horizonte": 1},
+      {"nombre": "operativa_48h", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos_48h", "dia_comun_48h", "extremos_racha"],
+       "variables": ["hace2_racha_max", "hace2_lluvia_max"], "horizonte": 2},
+      {"nombre": "operativa_72h", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos_72h", "dia_comun_72h", "extremos_racha"],
+       "variables": ["hace3_racha_max", "hace3_lluvia_max"], "horizonte": 3}
     ],
     "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "comun_avisos_detalle",
-                           "comun_avisos_detalle_extremos", "operativa"],
+                           "comun_avisos_detalle_extremos", "operativa", "operativa_racha", "operativa_48h",
+                           "operativa_72h"],
     "anios_prevision": [2024, 2025],
     "comparaciones_prevision": [
       ["comun_avisos_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
@@ -399,7 +409,12 @@
       ["comun_avisos_detalle__rango__prevision", "comun_avisos__rango__prevision"],
       ["comun_avisos_detalle_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
       ["comun_avisos_detalle_extremos__rango__prevision", "comun_avisos__rango__prevision"],
-      ["operativa__logistica__prevision", "comun_avisos_extremos__logistica__prevision"]
+      ["operativa__logistica__prevision", "comun_avisos_extremos__logistica__prevision"],
+      ["operativa_racha__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_48h__logistica__prevision", "operativa_racha__logistica__prevision"],
+      ["operativa_48h__logistica__prevision_cuantiles", "operativa_racha__logistica__prevision_cuantiles"],
+      ["operativa_48h__rango__prevision", "operativa_racha__rango__prevision"],
+      ["operativa_72h__logistica__prevision", "operativa_48h__logistica__prevision"]
     ],
     "comparaciones": [
       ["ayer__logistica", "calendario_historia__logistica"],

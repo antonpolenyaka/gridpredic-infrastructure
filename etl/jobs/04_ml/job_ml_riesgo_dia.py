@@ -66,6 +66,20 @@ Features, every one known before D starts except the block dia:
   and the run of heat with the forecast hottest hour of D) and take the
   place of ext_* the same way. meteo_dia.comparaciones_prevision compares
   variants on the same weather of the day.
+- Two and three days ahead (HORIZONS): Gold also keeps what ICON-EU forecast
+  two days before (metp2_*, gusts and rain) and, once landed, three days
+  before (metp3_*). They give prev2_* / prev3_* (the daily weather and the
+  extremes of the forecast, prev2_ext_*, computed here from the climate of
+  each cell when Gold has no metp2_racha_clima_1h), the blocks dia_comun_48h
+  and dia_comun_72h (the dia_* those forecasts also give), the warnings of
+  AEMET sent before aviso_corte_h of D - 2 and D - 3 (aviso48_*, aviso72_*,
+  blocks avisos_48h and avisos_72h) and the last day of weather known that
+  evening (hace2_*, hace3_*, the weather of D - 2 and D - 3). A variant with
+  "horizonte": 2 (or 3) is scored in the forecast comparison with those
+  forecasts and warnings in place of the ones of the day before: what the
+  operator would have had two or three evenings before. The history
+  (hist_*) is the one known when D starts, a day or two later than that
+  evening; with retraso_conocido_dias of a week the difference is small.
 
 Variants (meteo_dia.variantes): blocks, single variables of other blocks
 (variables) and first day of training. The variant operativa is the one that
@@ -185,6 +199,53 @@ FORECAST_EXTREME_DAILY = {
     "ext_racha_ku": ("metd_media_metp1_racha_ku_1h", "sum"),
 }
 
+# How many days ahead the forecast was made -> the prefix of its hourly
+# columns in Gold, of its daily features (prev_*, prev2_*, prev3_*), of the
+# warnings sent before aviso_corte_h of D - horizon and of the last day of
+# weather known that evening (ayer_* is D - 1, hace2_* is D - 2...).
+HORIZONS = {
+    1: {"gold": "metp1", "prev": "prev", "aviso": "aviso", "ultimo": "ayer"},
+    2: {"gold": "metp2", "prev": "prev2", "aviso": "aviso48", "ultimo": "hace2"},
+    3: {"gold": "metp3", "prev": "prev3", "aviso": "aviso72", "ultimo": "hace3"},
+}
+
+
+def horizon_of(variant: dict) -> int:
+    return int(variant.get("horizonte", 1))
+
+
+def common_block(horizon: int) -> str:
+    """The block of the dia_* that the forecast of the horizon also gives."""
+    return "dia_comun" if horizon == 1 else f"dia_comun_{24 * horizon}h"
+
+
+def forecast_mapping(mapping: dict, gold_prefix: str) -> dict:
+    """FORECAST_DAILY or FORECAST_EXTREME_DAILY read from another forecast of Gold (metp2_, metp3_)."""
+    return {name: (column.replace("metp1_", f"{gold_prefix}_", 1), how) for name, (column, how) in mapping.items()}
+
+
+def derived_forecast_extremes(weather):
+    """
+    The frame of Gold with metp2_racha_clima_1h / metp2_racha_ku_1h (and
+    metp3_*) when it has the forecast gusts of two (three) days before but
+    not their extremes: the same climate of each cell that Gold used for
+    met_racha_clima_1h (the gust of the hour over that ratio), so the
+    forecasts of every horizon go over the same p98.
+    """
+    columns = set(weather.columns)
+    if "met_racha_clima_1h" not in columns or "met_racha_1h" not in columns:
+        return weather
+    climate = F.when(F.col("met_racha_clima_1h") > 0, F.col("met_racha_1h") / F.col("met_racha_clima_1h"))
+    for spec in HORIZONS.values():
+        prefix = spec["gold"]
+        if f"{prefix}_racha_1h" not in columns or f"{prefix}_racha_clima_1h" in columns:
+            continue
+        ratio = F.col(f"{prefix}_racha_1h") / climate
+        weather = (weather.withColumn(f"{prefix}_racha_clima_1h", ratio)
+                   .withColumn(f"{prefix}_racha_ku_1h",
+                               F.pow(F.greatest(ratio - F.lit(1.0), F.lit(0.0)), 3)))
+    return weather
+
 DEFAULTS = {
     "desde": "2017-01-08",
     "hasta": "2026-01-01",
@@ -293,16 +354,18 @@ def extremes(hourly: pd.DataFrame, daily: pd.DataFrame, heat_c: float, min_hours
 
 
 def forecast_extremes(hourly: pd.DataFrame, forecast: pd.DataFrame, extreme: pd.DataFrame, heat_c: float,
-                      min_hours: int) -> pd.DataFrame:
+                      min_hours: int, mapping: dict = None, prefix: str = "prev") -> pd.DataFrame:
     """
     (distribuidora_id, fecha, prev_ext_*): the extremes of the day from the
     forecast of ICON-EU of the day before (FORECAST_EXTREME_DAILY) and the
     days in a row of heat with the forecast temp_max of the day (forecast)
     on top of the run of the reanalysis up to the day before (ext_dias_calor
-    of extreme on D - 1), what is known the evening before.
+    of extreme on D - 1), what is known the evening before. With mapping and
+    prefix, the same from another forecast of Gold (prev2_ext_* from metp2_);
+    the run of heat only when that forecast has the temperature.
     """
-    out = daily_weather(hourly, min_hours, FORECAST_EXTREME_DAILY)
-    out = out.rename(columns={c: f"prev_{c}" for c in out.columns if c not in ("distribuidora_id", "fecha")})
+    out = daily_weather(hourly, min_hours, mapping or FORECAST_EXTREME_DAILY)
+    out = out.rename(columns={c: f"{prefix}_{c}" for c in out.columns if c not in ("distribuidora_id", "fecha")})
     if "temp_max" in forecast.columns and "ext_dias_calor" in extreme.columns:
         before = extreme[["distribuidora_id", "fecha", "ext_dias_calor"]].assign(
             fecha=extreme["fecha"] + pd.Timedelta(days=1))
@@ -311,9 +374,9 @@ def forecast_extremes(hourly: pd.DataFrame, forecast: pd.DataFrame, extreme: pd.
         hot = (heat["temp_max"] >= heat_c).to_numpy()
         run = np.where(hot, heat["ext_dias_calor"].to_numpy(dtype=np.float64) + 1.0, 0.0)
         run[heat["temp_max"].isna().to_numpy() | (hot & heat["ext_dias_calor"].isna().to_numpy())] = np.nan
-        heat["prev_ext_dias_calor"] = run
-        out = out.merge(heat[["distribuidora_id", "fecha", "prev_ext_dias_calor"]], on=["distribuidora_id", "fecha"],
-                        how="outer")
+        heat[f"{prefix}_ext_dias_calor"] = run
+        out = out.merge(heat[["distribuidora_id", "fecha", f"{prefix}_ext_dias_calor"]],
+                        on=["distribuidora_id", "fecha"], how="outer")
     return out
 
 
@@ -352,11 +415,12 @@ def day_labels(grid: pd.DataFrame, events: pd.DataFrame, excluded: list, several
     return grid
 
 
-def warning_days(warnings: pd.DataFrame, cells: pd.DataFrame, cutoff_h: int) -> tuple:
+def warning_days(warnings: pd.DataFrame, cells: pd.DataFrame, cutoff_h: int, lead_days: int = 1) -> tuple:
     """
     (aviso_* by (distribuidora_id, fecha), first day of the archive): the
     highest level of the warnings that cover some hour of the day in a cell
-    of the distribuidora and were sent before cutoff_h of the day before.
+    of the distribuidora and were sent before cutoff_h of the day before
+    (of lead_days days before: 2 for what was known two evenings before).
     Cancellations and green levels do not count. Also the details of those
     warnings (WARNING_DETAILS): the strongest gust and the most rain they
     announce (in 12 h and in one hour), the most hours of the day under a
@@ -387,8 +451,8 @@ def warning_days(warnings: pd.DataFrame, cells: pd.DataFrame, cutoff_h: int) -> 
         # A warning that ends exactly at midnight does not cover the next day.
         last = (record.fin_ts - pd.Timedelta(seconds=1)).floor("D")
         for day in pd.date_range(first, max(first, last), freq="D"):
-            # Known the evening before: sent before cutoff_h of D - 1.
-            if record.enviado_ts <= day - pd.Timedelta(hours=24 - int(cutoff_h)):
+            # Known the evening before: sent before cutoff_h of D - lead_days.
+            if record.enviado_ts <= day - pd.Timedelta(hours=24 * int(lead_days) - int(cutoff_h)):
                 hours = (min(record.fin_ts, day + pd.Timedelta(days=1)) - max(record.inicio_ts, day)) / pd.Timedelta(hours=1)
                 rows.append((record.celda_id, day, record.fenomeno_codigo, float(record.nivel_num), record.valor,
                              record.clave, max(0.0, float(hours))))
@@ -428,8 +492,12 @@ def warning_days(warnings: pd.DataFrame, cells: pd.DataFrame, cutoff_h: int) -> 
 
 def block_of(name: str) -> str:
     for prefix, block in (("cal_", "calendario"), ("hist_", "historia"), ("dist_", "distribuidora"),
-                          ("ayer_", "ayer"), ("dia_", "dia"), ("aviso_det_", "avisos_detalle"), ("aviso_", "avisos"),
-                          ("prev_", "prevision"), ("ext_", "extremos")):
+                          ("ayer_", "ayer"), ("hace2_", "hace2"), ("hace3_", "hace3"), ("dia_", "dia"),
+                          ("aviso_det_", "avisos_detalle"), ("aviso_", "avisos"),
+                          ("aviso48_det_", "avisos_detalle_48h"), ("aviso48_", "avisos_48h"),
+                          ("aviso72_det_", "avisos_detalle_72h"), ("aviso72_", "avisos_72h"),
+                          ("prev_", "prevision"), ("prev2_", "prevision_48h"), ("prev3_", "prevision_72h"),
+                          ("ext_", "extremos")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -438,46 +506,63 @@ def block_of(name: str) -> str:
 def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     """(pdf, {block: feature names}, first day of the warnings) of the distribuidora-day history."""
     start, end = pd.Timestamp(cfg["desde"]), pd.Timestamp(cfg["hasta"])
+    gold_prefixes = tuple(f"{spec['gold']}_" for spec in HORIZONS.values())
     weather, names = distributor_weather(spark, {**config.get("meteo", {}), "activo": True},
-                                         prefixes=("met_", "metp1_"))
+                                         prefixes=("met_",) + gold_prefixes, derive=derived_forecast_extremes)
     if weather is None:
         raise ValueError("No weather in Gold (meteo_celda_hora and map_ct_celda): nothing to learn from")
 
-    sources = (list(DAILY.values()) + list(FORECAST_DAILY.values()) + list(EXTREME_DAILY.values())
-               + list(FORECAST_EXTREME_DAILY.values()))
+    # The daily weather of every forecast of Gold: horizon -> (daily mapping, extremes mapping).
+    mappings = {h: (forecast_mapping(FORECAST_DAILY, spec["gold"]), forecast_mapping(FORECAST_EXTREME_DAILY, spec["gold"]))
+                for h, spec in HORIZONS.items()}
+    sources = list(DAILY.values()) + list(EXTREME_DAILY.values())
+    for daily_map, extreme_map in mappings.values():
+        sources += list(daily_map.values()) + list(extreme_map.values())
     wanted = [c for c in {spec[0] for spec in sources} if c in names]
-    # The day before the first day needs its weather too.
-    hourly = weather.where((F.col("hora") >= F.lit(start - pd.Timedelta(days=1))) & (F.col("hora") < F.lit(end)))
+    # The days before the first day need their weather too (ayer_*, hace2_*, hace3_*).
+    hourly = weather.where((F.col("hora") >= F.lit(start - pd.Timedelta(days=max(HORIZONS))))
+                           & (F.col("hora") < F.lit(end)))
     hourly = hourly.select("distribuidora_id", "hora", *wanted).toPandas()
     hourly["distribuidora_id"] = hourly["distribuidora_id"].astype("int64")
     hourly["hora"] = pd.to_datetime(hourly["hora"])
     daily = daily_weather(hourly, int(cfg["horas_minimas_dia"]))
     weather_names = [c for c in daily.columns if c not in ("distribuidora_id", "fecha")]
-    forecast = daily_weather(hourly, int(cfg["horas_minimas_dia"]), FORECAST_DAILY)
-    forecast_names = [c for c in forecast.columns if c not in ("distribuidora_id", "fecha")]
+    forecasts = {}
+    for horizon, (daily_map, _) in mappings.items():
+        frame = daily_weather(hourly, int(cfg["horas_minimas_dia"]), daily_map)
+        found = [c for c in frame.columns if c not in ("distribuidora_id", "fecha")]
+        if found:
+            forecasts[horizon] = (frame, found)
 
     today = daily.rename(columns={c: f"dia_{c}" for c in weather_names})
-    yesterday = daily.assign(fecha=daily["fecha"] + pd.Timedelta(days=1)).rename(
-        columns={c: f"ayer_{c}" for c in weather_names})
 
     days = pd.date_range(start, end - pd.Timedelta(days=1), freq="D")
     dists = sorted(daily["distribuidora_id"].unique())
     pdf = pd.MultiIndex.from_product([dists, days], names=["distribuidora_id", "fecha"]).to_frame(index=False)
     pdf = pdf[~pdf["fecha"].isin(pd.to_datetime(cfg["dias_excluidos"]))].reset_index(drop=True)
     pdf = pdf.merge(today, on=["distribuidora_id", "fecha"], how="left")
-    pdf = pdf.merge(yesterday, on=["distribuidora_id", "fecha"], how="left")
+    # The last day of weather known the evening of each horizon: ayer_* (D - 1), hace2_* (D - 2), hace3_* (D - 3).
+    before = {}
+    for horizon, spec in HORIZONS.items():
+        shifted = daily.assign(fecha=daily["fecha"] + pd.Timedelta(days=horizon)).rename(
+            columns={c: f"{spec['ultimo']}_{c}" for c in weather_names})
+        pdf = pdf.merge(shifted, on=["distribuidora_id", "fecha"], how="left")
+        before[horizon] = [f"{spec['ultimo']}_{c}" for c in weather_names]
     extreme = extremes(hourly, daily, float(cfg["calor_umbral_c"]), int(cfg["horas_minimas_dia"]))
     extreme_names = [c for c in extreme.columns if c.startswith("ext_")]
     pdf = pdf.merge(extreme, on=["distribuidora_id", "fecha"], how="left")
-    forecast_extreme_names = []
-    if forecast_names:
-        pdf = pdf.merge(forecast.rename(columns={c: f"prev_{c}" for c in forecast_names}),
+    forecast_columns = []
+    for horizon, (frame, found) in forecasts.items():
+        prefix = HORIZONS[horizon]["prev"]
+        pdf = pdf.merge(frame.rename(columns={c: f"{prefix}_{c}" for c in found}),
                         on=["distribuidora_id", "fecha"], how="left")
-        forecast_extreme = forecast_extremes(hourly, forecast, extreme, float(cfg["calor_umbral_c"]),
-                                             int(cfg["horas_minimas_dia"]))
-        forecast_extreme_names = [c for c in forecast_extreme.columns if c.startswith("prev_ext_")]
-        if forecast_extreme_names:
+        forecast_columns += [f"{prefix}_{c}" for c in found]
+        forecast_extreme = forecast_extremes(hourly, frame, extreme, float(cfg["calor_umbral_c"]),
+                                             int(cfg["horas_minimas_dia"]), mappings[horizon][1], prefix)
+        extreme_found = [c for c in forecast_extreme.columns if c.startswith(f"{prefix}_ext_")]
+        if extreme_found:
             pdf = pdf.merge(forecast_extreme, on=["distribuidora_id", "fecha"], how="left")
+            forecast_columns += extreme_found
 
     events, known = read_events(spark, cfg)
     pdf = day_labels(pdf, events, cfg["causas_no_meteo"], int(cfg["incidencias_dia_varias"]))
@@ -503,15 +588,26 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
         cells = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
                  .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
                  .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
-        table, warnings_first = warning_days(warnings, cells, int(cfg["aviso_corte_h"]))
-        if warnings_first is not None:
-            pdf = pdf.merge(table, on=["distribuidora_id", "fecha"], how="left")
-            warning_names = ["aviso_max_nivel"] + [f"aviso_{name}_nivel" for name in WARNING_GROUPS] + WARNING_DETAILS
-            for name in warning_names:
+        base_names = ["aviso_max_nivel"] + [f"aviso_{name}_nivel" for name in WARNING_GROUPS] + WARNING_DETAILS
+        # The warnings known the evening before (aviso_*) and two or three evenings before (aviso48_*, aviso72_*).
+        for horizon, spec in HORIZONS.items():
+            if horizon > 1 and horizon not in forecasts:
+                continue
+            table, first = warning_days(warnings, cells, int(cfg["aviso_corte_h"]), horizon)
+            if first is None:
+                continue
+            warnings_first = warnings_first or first
+            renamed = {c: c.replace("aviso_", f"{spec['aviso']}_", 1) for c in table.columns
+                       if c not in ("distribuidora_id", "fecha")}
+            pdf = pdf.merge(table.rename(columns=renamed), on=["distribuidora_id", "fecha"], how="left")
+            for base in base_names:
+                name = base.replace("aviso_", f"{spec['aviso']}_", 1)
                 if name not in pdf.columns:
                     pdf[name] = np.nan
                 # 0 without warning once the archive exists, null before it.
-                pdf[name] = pdf[name].where(pdf["fecha"] < warnings_first, pdf[name].fillna(0.0))
+                pdf[name] = pdf[name].where(pdf["fecha"] < first, pdf[name].fillna(0.0))
+                warning_names.append(name)
+        if warnings_first is not None:
             logger.info("Warnings of AEMET from %s", warnings_first.date())
     else:
         logger.info("%s not found: no warnings of AEMET in the daily model", WARNINGS_TABLE)
@@ -521,13 +617,17 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     pdf["split"] = "train"
 
     blocks = {}
-    features = ([f"dist_{d}" for d in dists] + list(cal.columns) + history + [f"ayer_{c}" for c in weather_names]
-                + [f"dia_{c}" for c in weather_names] + extreme_names + warning_names
-                + [f"prev_{c}" for c in forecast_names] + forecast_extreme_names)
+    features = ([f"dist_{d}" for d in dists] + list(cal.columns) + history
+                + [name for horizon in sorted(before) for name in before[horizon]]
+                + [f"dia_{c}" for c in weather_names] + extreme_names + warning_names + forecast_columns)
     for name in features:
         blocks.setdefault(block_of(name), []).append(name)
-    # The weather of the day that the forecast also gives: the fair reference of the real forecast.
-    blocks["dia_comun"] = [f"dia_{c}" for c in forecast_names if c in weather_names]
+    # The weather of the day that the forecast of each horizon also gives: the fair reference of the real forecast.
+    for horizon, (_, found) in forecasts.items():
+        blocks[common_block(horizon)] = [f"dia_{c}" for c in found if c in weather_names]
+    blocks.setdefault("dia_comun", [])
+    # The extremes of the gusts alone, the ones every forecast gives (the run of heat needs the temperature).
+    blocks["extremos_racha"] = [c for c in extreme_names if "racha" in c]
 
     return pdf.sort_values(["distribuidora_id", "fecha"]).reset_index(drop=True), blocks, warnings_first
 
@@ -713,20 +813,24 @@ def quantile_map(fit_forecast, fit_reanalysis, values) -> np.ndarray:
     return np.interp(values, qa, qb)
 
 
-def forecast_years(pdf: pd.DataFrame, cfg: dict) -> list:
-    """Years of anios_prevision where the forecast covers enough days of every distribuidora."""
-    if "prev_racha_max" not in pdf.columns:
+def forecast_years(pdf: pd.DataFrame, cfg: dict, prefix: str = "prev") -> list:
+    """
+    Years of anios_prevision where the forecast (prev_* by default, prev2_*
+    for two days ahead) covers enough days of every distribuidora.
+    """
+    column = f"{prefix}_racha_max"
+    if column not in pdf.columns:
         return []
     minimum = float(cfg["cobertura_minima_prevision"])
     years = []
     for year in [int(y) for y in cfg["anios_prevision"]]:
         part = pdf[pdf["anio"] == year]
-        covered = part.groupby("distribuidora_id")["prev_racha_max"].apply(lambda v: float(v.notna().mean()))
+        covered = part.groupby("distribuidora_id")[column].apply(lambda v: float(v.notna().mean()))
         if len(part) and len(covered) and covered.min() >= minimum:
             years.append(year)
         else:
-            logger.warning("Year %s left out of the forecast comparison: coverage by distribuidora %s", year,
-                           covered.round(3).to_dict())
+            logger.warning("Year %s left out of the forecast comparison (%s): coverage by distribuidora %s", year,
+                           column, covered.round(3).to_dict())
     return years
 
 
@@ -739,12 +843,22 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     the day before (__prevision) and from that forecast mapped by quantiles
     (__prevision_cuantiles). The extremes of the variant (ext_*) go with the
     forecast too when it has them (prev_ext_*). Only the days with a forecast
-    of the weather of the day.
+    of the weather of the day. A variant with horizonte 2 (3) takes the
+    forecast of two (three) days before (prev2_*, prev3_*) in place of the
+    one of the day before; a dia_* of the variant that this forecast does
+    not give stays from the reanalysis and is logged as a perfect forecast.
     """
     features = variant_features(variant, blocks)
-    common = [c[len("dia_"):] for c in blocks.get("dia_comun", [])]
-    swap = [(f"dia_{name}", f"prev_{name}") for name in common]
-    swap += [(c, f"prev_{c}") for c in features if c.startswith("ext_") and f"prev_{c}" in pdf.columns]
+    horizon = horizon_of(variant)
+    prefix = HORIZONS[horizon]["prev"]
+    common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
+    swap = [(f"dia_{name}", f"{prefix}_{name}") for name in common]
+    swap += [(c, f"{prefix}_{c}") for c in features if c.startswith("ext_") and f"{prefix}_{c}" in pdf.columns]
+    swapped = {column for column, _ in swap}
+    perfect = [c for c in features if (c.startswith("dia_") or c.startswith("ext_")) and c not in swapped]
+    if perfect:
+        logger.warning("Variant %s at %s day(s): %s stay from the reanalysis (no forecast of them at this horizon)",
+                       variant["nombre"], horizon, perfect)
     rows = pdf[pdf["fecha"] >= pd.Timestamp(variant["desde"])]
     parts = []
 
@@ -770,7 +884,7 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
             X = frame[features].to_numpy(dtype=np.float32, na_value=np.nan)
             for model, scorer in scorers.items():
                 out[f"p_{model}__{source}"] = scorer.score(X)
-        out["con_prevision"] = target[[f"prev_{n}" for n in common]].notna().all(axis=1).to_numpy()
+        out["con_prevision"] = target[[f"{prefix}_{n}" for n in common]].notna().all(axis=1).to_numpy()
         parts.append(out)
 
     if not parts:
@@ -779,6 +893,17 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     found = found[found["con_prevision"]].drop(columns="con_prevision").reset_index(drop=True)
     return add_rank_mean(found, {f"p_rango__{source}": (f"p_logistica__{source}", f"p_xgboost__{source}")
                                  for source in ("reanalisis", "prevision", "prevision_cuantiles")})
+
+
+def horizons_text(references: list, cfg: dict) -> str:
+    """The sentence of the report about the variants scored two or three days ahead, empty without them."""
+    far = [r for r in references if horizon_of(r) > 1]
+    if not far:
+        return ""
+    names = ", ".join(f"{r['nombre']} ({24 * horizon_of(r)} h)" for r in far)
+    return (f" Las variantes {names} puntúan con lo que preveía ICON-EU dos o tres días antes (racha y lluvia), los "
+            f"avisos de AEMET enviados antes de las {int(cfg['aviso_corte_h'])}:00 de ese día y el tiempo del último día "
+            "conocido esa tarde: lo que habría tenido el operador con esa antelación.")
 
 
 # ---------------------------------------------------------------------------
@@ -877,11 +1002,14 @@ def main(argv=None):
     chosen = cfg.get("variante_prevision", "perfecta_comun")
     chosen = [chosen] if isinstance(chosen, str) else list(chosen)
     references = [v for v in variants if v["nombre"] in chosen]
-    years_forecast = forecast_years(pdf, cfg) if references else []
+    years_by_reference = {r["nombre"]: forecast_years(pdf, cfg, HORIZONS[horizon_of(r)]["prev"]) for r in references}
+    references = [r for r in references if years_by_reference[r["nombre"]]]
+    years_forecast = sorted({y for years in years_by_reference.values() for y in years})
     if years_forecast:
         found = pd.DataFrame()
         for reference in references:
-            part = forecast_evaluation(pdf, reference, blocks, config, run_cfg, years_forecast, args.sin_busqueda)
+            part = forecast_evaluation(pdf, reference, blocks, config, run_cfg, years_by_reference[reference["nombre"]],
+                                       args.sin_busqueda)
             if part.empty:
                 continue
             part = part.rename(columns={c: f"p_{reference['nombre']}__{c[2:]}" for c in part.columns
@@ -919,6 +1047,7 @@ def main(argv=None):
 
     variant_rows = pd.DataFrame([{
         "variante": v["nombre"], "desde": v["desde"], "bloques": "+".join(v["bloques"]),
+        "horizonte_dias": horizon_of(v),
         "anios": ",".join(str(y) for y in variant_years(v, cfg)), "n_features": len(variant_features(v, blocks)),
     } for v in variants])
     per_dist = by_distribuidora(metrics)
@@ -956,14 +1085,15 @@ def main(argv=None):
         f"Los modelos de {', '.join(r['nombre'] for r in references)} se entrenan con el reanálisis y puntúan los "
         "días con previsión tres veces: con el tiempo del día sacado del reanálisis (reanalisis), con lo que preveía ICON-EU el "
         "día anterior (prevision) y con esa previsión llevada por cuantiles a la escala del reanálisis "
-        "(prevision_cuantiles). ayer es la variante que solo sabe el tiempo del día anterior.\n\n"
+        "(prevision_cuantiles). ayer es la variante que solo sabe el tiempo del día anterior."
+        + horizons_text(references, cfg) + "\n\n"
         + ml_metrics.markdown_table(forecast_table, digits=4)
         + "\n\n" + ml_metrics.markdown_table(forecast_differences, digits=4),
     ] if not forecast_table.empty else [])) + "\n"
     export(config, args.run_id, report, {"metricas": metrics, "comparacion": comparison, "anios": by_year(metrics),
                                          "distribuidoras": per_dist, "intervalos": intervals,
                                          "diferencias": differences, "filas": sizes, "prevision": forecast_table,
-                                         "prevision_diferencias": forecast_differences})
+                                         "prevision_diferencias": forecast_differences, "variantes": variant_rows})
 
     summary = metrics[(metrics["split"] == "cv_comun") & (metrics["segmento"] == "total")
                       & (metrics["etiqueta"] == MAIN_LABEL) & (metrics["metrica"] == "pr_auc")]

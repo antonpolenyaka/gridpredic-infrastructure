@@ -28,8 +28,9 @@ hour), with the same rules as the rest of the layer:
   January 2024, cells of 0.1 degrees like the reanalysis, FORECAST): what
   ICON-EU forecast for the hour one day before (racha_prev1_kmh,
   viento_prev1_kmh, precipitacion_prev1_mm, nieve_prev1_cm,
-  temperatura_prev1_c, humedad_prev1_pct) and two days before
-  (racha_prev2_kmh, precipitacion_prev2_mm), and its run of the same day
+  temperatura_prev1_c, humedad_prev1_pct), two days before (racha_prev2_kmh,
+  precipitacion_prev2_mm), three days before (racha_prev3_kmh,
+  precipitacion_prev3_mm, once landed) and its run of the same day
   (racha_icon_kmh, precipitacion_icon_mm). Null before the archive starts.
 
 The table is small (a few million rows) and is rebuilt whole in every run.
@@ -79,8 +80,8 @@ EXTRA = {
     "shortwave_radiation": ("radiacion_wm2", 0.0, 1500.0),
 }
 
-# Forecasts of ICON-EU made one and two days before the hour and its run of
-# the same day (Previous Runs API), in the cells of the reanalysis.
+# Forecasts of ICON-EU made one, two and three days before the hour and its
+# run of the same day (Previous Runs API), in the cells of the reanalysis.
 FORECAST = {
     "wind_gusts_10m_previous_day1": ("racha_prev1_kmh", 0.0, 300.0),
     "wind_speed_10m_previous_day1": ("viento_prev1_kmh", 0.0, 250.0),
@@ -90,6 +91,8 @@ FORECAST = {
     "relative_humidity_2m_previous_day1": ("humedad_prev1_pct", 0.0, 100.0),
     "wind_gusts_10m_previous_day2": ("racha_prev2_kmh", 0.0, 300.0),
     "precipitation_previous_day2": ("precipitacion_prev2_mm", 0.0, 200.0),
+    "wind_gusts_10m_previous_day3": ("racha_prev3_kmh", 0.0, 300.0),
+    "precipitation_previous_day3": ("precipitacion_prev3_mm", 0.0, 200.0),
     "wind_gusts_10m": ("racha_icon_kmh", 0.0, 300.0),
     "precipitation": ("precipitacion_icon_mm", 0.0, 200.0),
 }
