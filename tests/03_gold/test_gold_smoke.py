@@ -104,6 +104,7 @@ def spark(workdir):
         .config("spark.sql.shuffle.partitions", "4")
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.ui.enabled", "false")
+        .config("spark.sql.autoBroadcastJoinThreshold", "-1")  # no broadcast builds in the driver heap of the runner
     )
 
     session = configure_spark_with_delta_pip(builder).getOrCreate()
