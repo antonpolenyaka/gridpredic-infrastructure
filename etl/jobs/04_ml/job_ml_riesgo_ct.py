@@ -148,6 +148,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--config", default=None)
     parser.add_argument("--causas", default=None, help="Only the incidents of these cause families (comma separated)")
+    parser.add_argument("--bloques", default=None, help="Only these blocks of riesgo_ct.bloques (comma separated)")
+    parser.add_argument("--sin-causas", action="store_true", help="Without the models per family of causes")
     args, _ = parser.parse_known_args(argv)
     if not args.run_id:
         suffix = "_" + "-".join(c.strip() for c in args.causas.split(",")) if args.causas else ""
@@ -536,6 +538,10 @@ def main(argv=None):
     config = load_config(args.config)
     cfg = dict(DEFAULTS)
     cfg.update(config.get("riesgo_ct", {}))
+    if args.bloques:
+        cfg["bloques"] = [b.strip() for b in args.bloques.split(",") if b.strip()]
+    if args.sin_causas:
+        cfg["familias_causa"] = {}
     spark = get_spark(config)
     seed = int(config.get("semilla", 20261005))
 
