@@ -276,3 +276,34 @@ def test_the_hourly_forecast_of_aemet_by_municipality(fs, cfg, monkeypatch, tmp_
     assert eosa["texto"] == "AEMET por municipios (2 municipios, elaborada 18:55): pico de racha 58 km/h a las 13:00 en Hervás; hasta 0.2 mm de lluvia; probabilidad de tormenta hasta el 40 %"
     assert (tmp_path / "aemet_20261015.json").exists()
     assert vivo.aemet_value("Ip") == 0.1 and vivo.aemet_value("") != vivo.aemet_value("") and vivo.aemet_value("12,5") == 12.5
+
+
+def test_the_evening_does_not_wait_for_aemet_beyond_its_budget(fs, monkeypatch, tmp_path):
+    config = vivo.load_config()
+    config["riesgo_manana"]["landing"] = "/vivo"
+    config["riesgo_manana"]["aemet_municipios"]["tiempo_max_s"] = 5
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+    day = date(2026, 10, 15)
+    rows = [{"codigo_ine": f"101{k:02d}", "municipio": f"M{k}", "distribuidora": "1", "latitud": "40.0", "longitud": "-6.0"} for k in range(6)]
+    monkeypatch.setattr(vivo, "load_meteo_config", lambda: {"openmeteo": {"referencia_municipios": "x", "celda_grados": 0.1}})
+    monkeypatch.setattr(vivo, "read_reference", lambda fs, path: rows)
+    clock = {"t": 0.0}
+    monkeypatch.setattr(vivo.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(vivo.time, "sleep", lambda s: clock.__setitem__("t", clock["t"] + 3.0))  # every municipality costs 3 "seconds"
+
+    def fake_fetch(url, **kwargs):
+        if "/municipio/horaria/" in url:
+            return json.dumps({"estado": 200, "datos": "https://opendata.aemet.es/opendata/sh/" + url.rsplit("/", 1)[1]}).encode()
+        ine = url.rsplit("/", 1)[1]
+        return json.dumps(aemet_municipality(ine, "M", day, 40, 12), ensure_ascii=False).encode("utf-8")
+
+    monkeypatch.setattr(vivo, "fetch", fake_fetch)
+    monkeypatch.setenv("AEMET_API_KEY", "k")
+    code = vivo.main(["--fuente", "aemet_municipios", "--fecha", day.isoformat(), "--config", str(path), "--dashboard-dir", str(tmp_path)], fs=fs)
+    assert code == 1  # the municipalities left unasked count as failed, above max_fallos
+    landed = fs.ls("/vivo/20261015/aemet", detail=False)
+    assert 2 <= len(landed) <= 3
+    with open(tmp_path / "aemet.json", encoding="utf-8") as file:
+        out = json.load(file)
+    assert out["distribuidoras"][0]["municipios"] == len(landed) and out["distribuidoras"][0]["pico"]["racha_kmh"] == 40

@@ -249,6 +249,11 @@ def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: 
         hours = mine.assign(h=mine["ts_local"].dt.hour).groupby("h")["racha_kmh"].max().dropna() if len(mine) else pd.Series(dtype=float)
         rec = {"id": dist.get("id"), "nombre": dist.get("nombre"), "nivel": dist.get("nivel"), "probabilidad": dist.get("probabilidad"),
                "estaciones": len(ids), "horas_observadas": int(len(hours))}
+        if dist.get("aviso_max_nivel") is not None:
+            try:
+                rec["aviso_aemet"] = int(float(dist["aviso_max_nivel"]))  # 0 none, 1 yellow, 2 orange, 3 red, sent before the evening
+            except (TypeError, ValueError):
+                pass
         profile = [(int(p["hora"]), float(p["racha_max"])) for p in (dist.get("perfil") or []) if p.get("racha_max") is not None]
         if profile:
             hour, value = max(profile, key=lambda t: t[1])
