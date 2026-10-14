@@ -2,7 +2,7 @@
 
 Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic con Docker Compose.
 
-GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka en el Máster en Data Science and Engineering de la UPC School (2025-2026): un sistema que predice, con 1 a 3 horas de antelación, las interrupciones de suministro en la red de media tensión de una distribuidora eléctrica, a partir del histórico de interrupciones (aplicación Calser) y de la telemetría del SCADA TedisNet. Este repositorio contiene la plataforma de datos y el pipeline que construye el dataset de entrenamiento, de Landing a Gold, y el entrenamiento y la evaluación de los modelos sobre ese dataset.
+GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka en el Máster en Data Science and Engineering de la UPC School (2025-2026): un sistema que dice cada tarde qué riesgo de interrupción de suministro tiene al día siguiente la red de media tensión de una distribuidora eléctrica, en qué franja horaria, en qué líneas y dónde dejar las brigadas, a partir del histórico de interrupciones (aplicación Calser), de la telemetría del SCADA TedisNet, de la previsión meteorológica y de los avisos de AEMET; la pregunta original, el aviso de 1 a 3 horas por CT, se midió y se descartó como alerta (ver [docs/model_card.md](docs/model_card.md)). Este repositorio contiene la plataforma de datos y el pipeline que construye el dataset, de Landing a Gold, el entrenamiento y la evaluación de los modelos, la operación diaria en Airflow con su cuadro de mando y el caso de negocio con los datos reales de 2022 - 2026.
 
 ## Documentación
 
