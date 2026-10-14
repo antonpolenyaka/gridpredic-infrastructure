@@ -126,7 +126,23 @@ def tables(spark):
                              "celda_pct_bosque": 0.1 * (int(d["grupo_red_id"][1:]) % 3)}
                             for d in dim for y in range(2016, 2028)])
     save(spark, context, "l3_gold.contexto_ct_anio")
+    # The cell of every CT (one per municipality) for the trees of the cell.
+    cells = pd.DataFrame([{"distribuidora_id": 1, "ct_id": d["ct_id"], "celda_id": f"39.{int(d['municipio_id'][-1]) + 1}0_-6.10"}
+                          for d in dim])
+    save(spark, cells, "l3_gold.map_ct_celda")
     return dim
+
+
+def trees_csv(workdir: str) -> str:
+    """The trees of the three cells of the fixture, as bajar_arbolado.py writes them."""
+    path = os.path.join(workdir, "arbolado_celdas.csv")
+    pd.DataFrame([{"celda_id": f"39.{k + 1}0_-6.10", "lat": 39.1 + 0.1 * k, "lon": -6.1, "municipios": 2,
+                   "pct_arbol": 0.1 * (k + 1), "pct_matorral": 0.05, "pct_pastizal": 0.4, "pct_cultivo": 0.3,
+                   "pct_construido": 0.02, "pixeles_cubierta": 1000000, "pct_dosel": 0.2 * (k + 1),
+                   "dosel_media_m": 4.0 + k, "dosel_p90_m": 8.0 + 2 * k, "pct_dosel_5m": 0.1 * (k + 1),
+                   "pct_dosel_8m": 0.05 * (k + 1), "pct_dosel_12m": 0.01 * (k + 1), "pixeles_dosel": 60000}
+                  for k in range(3)]).to_csv(path, index=False)
+    return path
 
 
 @pytest.fixture(scope="module")
@@ -140,8 +156,8 @@ def result(spark, tables, workdir):
     config["riesgo_ct"] = {"anios_evaluacion": [2023, 2024, 2025],
                            "xgboost": {"n_estimators": 60, "max_depth": 3, "learning_rate": 0.1,
                                        "objective": "reg:tweedie", "tweedie_variance_power": 1.3},
-                           "bloques": ["historia", "historia+estructura+scada", "todo"],
-                           "bloques_por_causa": ["historia"]}
+                           "bloques": ["historia", "historia+estructura+scada", "historia+estructura+arbolado", "todo"],
+                           "bloques_por_causa": ["historia"], "arbolado_csv": trees_csv(workdir)}
     path = os.path.join(workdir, "config.json")
     with open(path, "w", encoding="utf-8") as file:
         json.dump(config, file)
@@ -168,6 +184,22 @@ def test_capture_is_a_share_and_beats_chance(result):
     # Feeders that fail every year: the top 20 % of the feeders holds far more than 20 % of the kVA·h.
     feeder = metrics[(metrics["nivel"] == "cabecera") & (metrics["modelo"] == "todo") & (metrics["top"] == 0.2)]
     assert feeder["captura"].mean() > 0.3
+
+
+def test_the_trees_of_the_cell_are_a_block(result, workdir):
+    import job_ml_riesgo_ct as rc
+
+    _, folder = result
+    metrics = pd.read_csv(os.path.join(folder, "captura.csv"))
+    assert "historia+estructura+arbolado" in set(metrics["modelo"])
+    assert set(rc.TREES) <= set(rc.block_columns(pd.DataFrame(columns=["anios_desde_ultima"]))["arbolado"])
+    # The merge by the cell of the CT, and nothing without the file.
+    grid = pd.DataFrame({"distribuidora_id": [1, 1, 1], "ct_id": ["C000", "C001", "C002"],
+                         "celda_id": ["39.10_-6.10", "39.30_-6.10", "39.90_-6.10"]})
+    out = rc.add_trees(grid, trees_csv(workdir))
+    assert out["celda_pct_arbol"].tolist()[:2] == [pytest.approx(0.1), pytest.approx(0.3)]
+    assert np.isnan(out["celda_pct_dosel_8m"].iloc[2]) and "celda_pixeles_dosel" not in out.columns
+    assert rc.add_trees(grid, os.path.join(workdir, "no_existe.csv")).columns.tolist() == grid.columns.tolist()
 
 
 def test_ranking_for_next_year(result, spark):
