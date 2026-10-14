@@ -483,6 +483,10 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
         Xv, yv = to_arrays(check_part, features, label)
         inner = {"X": X, "y": y, "w": np.ones(len(y)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)),
                  "feature_names": features}
+        # The counts of the rows (the number of incidents of the day) for the models of counts, when the frame has them.
+        count = cfg.get("etiqueta_conteo")
+        if count and count in fit_part.columns:
+            inner["n"] = fit_part[count].fillna(0).to_numpy(dtype=np.float64)
         logger.info("Year %s: choosing on %s hours (%s positive) and %s hours from %s (%s positive)", year,
                     len(y), int(y.sum()), len(yv), pd.Timestamp(cut), int(yv.sum()))
 
@@ -490,9 +494,12 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
         search_all += [{**row, "anio": year} for row in search]
 
         del X, y, fit_part
-        Xa, ya = to_arrays(sample_negatives(before, label, negative_share, seed + year + 1), features, label)
+        whole = sample_negatives(before, label, negative_share, seed + year + 1)
+        Xa, ya = to_arrays(whole, features, label)
         full = {"X": Xa, "y": ya, "w": np.ones(len(ya)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)),
                 "feature_names": features}
+        if count and count in whole.columns:
+            full["n"] = whole[count].fillna(0).to_numpy(dtype=np.float64)
 
         for name in [n for n in scorers if n in ml_models.TRAINED]:
             scorers[name] = refit(name, scorers[name], full, seed, n_jobs, negative_share)
