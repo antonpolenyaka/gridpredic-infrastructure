@@ -453,7 +453,7 @@
   },
   "riesgo_manana": {
     "variante": "operativa",
-    "variante_pasado_manana": "operativa_48h",
+    "variante_pasado_manana": null,
     "tabla_pasado_manana": "l3_gold.riesgo_pasado_manana",
     "modelo": "logistica",
     "zona_horaria": "Europe/Madrid",

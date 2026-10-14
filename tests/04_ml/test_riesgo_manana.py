@@ -430,6 +430,8 @@ def config_path(workdir):
     config["exportar_dir"] = os.path.join(workdir, "resultados")
     config["spark_conf"] = {}
     config["riesgo_manana"]["dashboard_dir"] = os.path.join(workdir, "dashboard")
+    # The outlook of pasado manana is off in production until the 72 h backtest is in; the tests keep it on.
+    config["riesgo_manana"]["variante_pasado_manana"] = "operativa_48h"
     config["riesgo_manana"]["riesgo_zonas"] = {"brigadas": {"1": 1, "2": 1}, "bases_fijas": {"1": ["Torre de Santa María"]}}
     os.makedirs(config["riesgo_manana"]["dashboard_dir"])
     config["meteo_dia"] = {
