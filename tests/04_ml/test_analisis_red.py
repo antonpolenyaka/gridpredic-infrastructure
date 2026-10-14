@@ -379,6 +379,22 @@ def test_transformer_load(result):
     assert voltage["horas_bajo_93"].sum() > 0
 
 
+def test_sector_benchmark_from_the_official_indices(result):
+    """Without l1_bronze.gecos_indice_zonal the section reads the CSV next to the configuration."""
+    _, folder = result
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "## 1b. Frente al sector" in text and "imprevista_caceres_h" in text
+    sector = read(folder, "tiepi_sector.csv")
+    assert {"Calser_EOSA"} <= set(sector["distribuidora"]) and sector["anios_sector"].iloc[0] == "2019-2021"
+    rural = sector[sector["zona"] == "rural_concentrada"].iloc[0]
+    # Caceres, rural concentrated, 2019 - 2021: unplanned TIEPI of 1,06 h and 0,88 h of incentive TIEPI.
+    assert rural["imprevista_caceres_h"] == pytest.approx(1.06, abs=0.01) and rural["incentivo_caceres_h"] == pytest.approx(0.88, abs=0.01)
+    assert rural["imprevista_espana_h"] > rural["imprevista_caceres_h"]
+    assert (sector["imprevista_nuestra_h"] >= 0).all() and sector["anios_nuestros"].iloc[0] == "2023-2025"
+    series = read(folder, "sector_series.csv")
+    assert set(series["nombre"]) == {"Cáceres", "Badajoz", "Extremadura", "España"} and series["anio"].min() == 2003
+
+
 def test_money_and_tables(result, spark):
     _, folder = result
     incentive = read(folder, "economia_incentivo.csv")

@@ -1,0 +1,68 @@
+# Investigación continua: lo que probamos, lo que entró y lo que descartamos
+
+Este documento es el cuaderno de laboratorio del proyecto desde que el sistema está en marcha. Recoge cada hipótesis que probamos con los datos en la mano, cómo la probamos, qué salió y qué decidimos, incluidas las que no funcionaron. La regla es la misma que en clase: mirar los datos, hacer el gráfico o la tabla, formular la hipótesis, medirla con una prueba que no se pueda engañar (años rodantes, el mismo conjunto de días para todas las variantes) y decidir. Una fuente que no aporta se descarta explicando por qué, y queda escrito para no volver a probarla sin motivo.
+
+Los documentos de resultados son [caso-de-negocio.md](caso-de-negocio.md) (el valor), [causas-incidencias.md](causas-incidencias.md) (el porqué de cada pieza) y [network-analysis.md](network-analysis.md) (la red y el dinero). Aquí solo está el camino.
+
+## 1. Cómo medimos si algo aporta
+
+Todas las pruebas sobre el modelo del día usan el mismo banco: los días de 2022 a 2026 de EOSA y Pitarch que puntúa el replay de `job_ml_caso_negocio.py` (3.348 días, 143 con alguna incidencia de causa local, un 4,3 %), con la probabilidad que el sistema habría dado la víspera. Una variable candidata se añade a esa probabilidad (en escala logit) en una regresión logística y miramos tres cosas:
+
+- el coeficiente y su p-valor con todos los días (si no es distinto de cero, no hay nada que rascar);
+- el AUC y el Brier por años rodantes: cada año se puntúa con el modelo ajustado a los años anteriores, igual que en la operación real; es la cifra que cuenta;
+- una tabla de contraste con los días partidos por la variable, para ver el efecto a ojo y con un test exacto.
+
+Si el AUC rodante no sube y el Brier no baja, la variable no entra, aunque la literatura la respalde: con 143 días positivos el modelo no tiene sitio para variables que solo añaden ruido.
+
+## 2. Lo que dice la literatura y lo que ya teníamos
+
+- **Modelos de interrupciones por tormenta en EE. UU.** El modelo de la Universidad de Connecticut para Eversource (Cerrai, Wanik, Bhuiyan, Zhang, Yang, Frediani y Anagnostou, "Predicting Storm Outages Through New Representations of Weather and Vegetation", IEEE Access 7, 2019, 29639-29654, https://doi.org/10.1109/ACCESS.2019.2902558) predice el número de cortes por tormenta a partir de la previsión numérica del tiempo (máximos y duraciones de racha, lluvia), los activos de la red, la cubierta del suelo junto a las líneas y el estado de las hojas; con un clasificador de tormentas y la combinación de varios modelos bajan el error mediano de las predicciones por tormenta del 130 % al 59 %. Es el mismo planteamiento que el nuestro a escala de una gran compañía (120 tormentas, miles de cortes): el tiempo manda, la vegetación y los activos matizan. Lo que no podemos copiar es el tamaño de la muestra.
+- **Caída de árboles con viento.** Lorenz, Becker, Gardiner, Ulbrich, Hanewinkel y Schmitz, "Tree fall along railway lines: modelling the impact of wind and other meteorological factors", Natural Hazards and Earth System Sciences 25, 2025, 2179-2196, https://doi.org/10.5194/nhess-25-2179-2025: con los árboles caídos sobre las vías de Alemania, el predictor más fuerte es la anomalía de la racha frente a lo habitual del lugar, después la duración del viento por encima del percentil 90 local y su interacción con la racha; el factor de racha (racha entre viento medio) baja el riesgo; la anomalía de humedad del suelo y la lluvia relativa al percentil 90 suben el riesgo pero pesan poco. Brier skill score de 0,069. Nuestro modelo del día ya tenía la racha frente al percentil 98 local y el índice de Klawa y Ulbrich (NHESS 3, 2003, 725-732), que pondera por la duración, y habíamos probado sin éxito las horas por encima de umbrales fijos de 40 a 70 km/h y la lluvia de 3 y 30 días (apartado 8 de [causas-incidencias.md](causas-incidencias.md)); la humedad del suelo está en Gold como variable horaria para el modelo por horas (fuente `openmeteo_extra`), pero nunca la habíamos puesto en el modelo del día. Lo que faltaba por probar era el suelo, la duración relativa al clima del punto y el factor de racha. Es la prueba del apartado 3.
+- **El mismo problema en España.** Prieto-Godino, Peláez-Rodríguez, Pérez-Aracil, Pastor-Soriano y Salcedo-Sanz (Universidad de Alcalá), "Predicting weather-related power outages in large scale distribution grids with deep learning ensembles", International Journal of Electrical Power and Energy Systems 170, 2025, 110811: incidencias diarias de las redes de distribución de Valencia y Albacete a partir del reanálisis, con conjuntos de redes neuronales; los mejores modelos detectan el 38 % y el 73 % de los días extremos con un 1 % y un 3 % de falsas alarmas. Es la referencia más cercana a la nuestra: mismo país, mismo grano (el día), misma fuente meteorológica. Nuestras cifras del caso de negocio (el 12,5 % de los días en alerta recoge el 53 % de las incidencias y el 72 % de las horas-cliente con la previsión real) están en el mismo orden con una red cien veces más pequeña y un modelo que cabe en una hoja.
+
+## 3. Prueba: humedad del suelo, duración del viento y factor de racha (14.10.2026)
+
+**Hipótesis.** Si los árboles caen más con el suelo empapado y con el viento que dura horas (Lorenz et al.), los días con esas condiciones deberían tener más incidencias que lo que dice el viento solo, y una variable de suelo o de duración debería mejorar la probabilidad de la víspera.
+
+**Datos.** Serie horaria de ERA5-Land a través del archivo de Open-Meteo (sin clave) para cinco puntos de las dos redes (Plasencia, Hervás y Aldea del Cano en EOSA; Casar de Cáceres y Alcántara en Pitarch), del 01.10.2021 al 05.08.2026: racha y viento a 10 m, lluvia, humedad del suelo a 0-7 y 7-28 cm y temperatura. Por día y red: pico de racha, horas con racha por encima del percentil 90 del punto, factor de racha en la hora del pico, lluvia, humedad media del suelo y su anomalía frente a la media de esa fecha en todos los años, lluvia acumulada de 7 y 30 días. El código está en `experimentos/suelo_humedad/` (`bajar_suelo.py` y `analizar.py`) y se reproduce con el `dias.csv` del replay.
+
+**Resultado** (replay `caso_v9_20261014_1351`, modo reanálisis, 3.348 días, 143 con incidencia):
+
+| variable añadida a la probabilidad de la víspera | coeficiente (por desviación típica) | p-valor | AUC rodante | Brier rodante |
+| --- | --- | --- | --- | --- |
+| ninguna (la probabilidad sola) | - | - | 0,685 | 0,0388 |
+| humedad del suelo 0-7 cm | -0,045 | 0,63 | 0,684 | 0,0388 |
+| humedad del suelo 7-28 cm | -0,062 | 0,48 | 0,683 | 0,0388 |
+| anomalía de humedad del suelo | +0,037 | 0,68 | 0,685 | 0,0388 |
+| horas con racha sobre el percentil 90 | +0,145 | 0,09 | 0,669 | 0,0390 |
+| factor de racha en el pico | +0,032 | 0,65 | 0,683 | 0,0388 |
+| lluvia de 7 días | -0,033 | 0,69 | 0,683 | 0,0388 |
+| lluvia de 30 días | -0,033 | 0,71 | 0,683 | 0,0388 |
+| horas sobre el percentil 90 x anomalía de suelo | +0,067 | 0,30 | 0,659 | 0,0389 |
+
+Las tablas de contraste van en la misma dirección que el artículo, pero sin fuerza: en el 5 % de días con más viento, el 18,0 % de los que tenían el suelo más húmedo de lo normal tuvieron incidencia (23 de 128) frente al 12,2 % de los que lo tenían más seco (5 de 41); test exacto de Fisher p = 0,48. Las horas de viento fuerte sí ordenan los días (2,9 % de días con incidencia sin ninguna hora, 3,9 % con 1-3, 5,2 % con 4-8 y 8,8 % con más de 8), pero esa información ya la lleva el índice de Klawa y Ulbrich: añadida al modelo, la variable empeora el AUC rodante (0,669 frente a 0,685).
+
+**Decisión.** Descartamos la humedad del suelo, la lluvia acumulada y el factor de racha como variables del modelo del día, y no añadimos las horas de viento fuerte por separado. Lo que Lorenz et al. encuentran con decenas de miles de árboles caídos no se ve con 143 días de incidencias: no es que el suelo no importe, es que con nuestra muestra no se puede medir y una variable que no se puede medir solo añade ruido. Se vuelve a probar cuando haya más años etiquetados o si entra una tercera red grande.
+
+## 4. Datos públicos de España que revisamos
+
+| Fuente | Qué es | Qué hicimos | Decisión |
+| --- | --- | --- | --- |
+| GECOS (MITECO), índices zonales de calidad de suministro | TIEPI y NIEPI oficiales por tipo de zona (urbana, semiurbana, rural concentrada, rural dispersa) y por causa (programadas; imprevistas por generación, transporte, terceros, fuerza mayor y propias) para España, cada comunidad y cada provincia, de 2003 a 2021 (el Ministerio publica con varios años de retraso) | `extract_gecos_indices.py` los pide a las páginas públicas y deja un CSV (13.400 filas) que entra en el lakehouse como `l1_bronze.gecos_indice_zonal`; `job_analisis_red.py` añade la sección "Frente al sector" y deja `sector.json` para `negocio.html` | **Entra, como referencia, no como variable.** No sirve para predecir (es anual y de todo el sector), pero es la referencia con la que la CNMC compara a cada distribuidora para el incentivo y el contexto que un comprador mira primero. Con la mezcla de zonas de EOSA, su TIEPI imprevisto de 2023-2025 (0,34 h) es un tercio del de Cáceres de 2019-2021 (0,92 h) y menos de un cuarto del de España (1,51 h); el de Pitarch (0,12 h) es un quinto del de Cáceres. En 2019-2021, los mismos años, EOSA estaba en la media de Cáceres (1,12 h frente a 1,06 h en zona rural concentrada) por un solo año, 2019, en el que el 92 % de su TIEPI fue fuerza mayor (ese año el 43 % del TIEPI imprevisto de la zona rural concentrada de Cáceres también lo fue). La serie nacional confirma lo que vemos en nuestras redes: el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (0,88 h en 2009 con Klaus, 1,06 h en 2010 con Xynthia, frente a 0,04 h en 2008) |
+| datos.gob.es, "Calidad eléctrica zonal" | El mismo conjunto, catalogado en el portal de datos abiertos | Comprobado que apunta a GECOS | Cubierto con lo anterior |
+| CNMC, retribución de la distribución y Circular 8/2025 | Retribución de cada distribuidora y la fórmula del incentivo de calidad | Ya estaba en el caso de negocio (artículos 15, 24 y 25) | Sin cambios |
+| AEMET OpenData, avisos y predicción por municipios | Avisos desde 2018 y la predicción horaria del propio modelo de AEMET | Ya en el sistema: los avisos como variable y como política de comparación, la predicción municipal como segunda opinión cada tarde | Sin cambios |
+
+## 5. Datos de los dispositivos de los clientes
+
+Preguntamos qué datos de los equipos instalados en los clientes podrían cruzarse con las incidencias. Lo que hay y lo que no:
+
+- **Contadores inteligentes (telegestión).** Las distribuidoras tienen la telegestión desplegada (la digitalización de la red y la telegestión aparecen en Calser como 30 cortes programados desde 2016), y un contador registra los cortes que sufre, lo que daría el mapa de los cortes de baja tensión que no llegan a Calser. Esos datos no están en ninguna de las copias que tenemos (Calser y TedisNet) y pedirlos exige un acuerdo con cada empresa y anonimizarlos cliente a cliente. No se puede probar en este trabajo; queda como la primera fuente a pedir si el sistema se implanta.
+- **El SCADA ya ve lo que importa para la media tensión.** TedisNet registra las señales de defecto, los disparos y los cortes deducidos por topología de cada CT y cabecera. Las probamos a fondo en el modelo por horas (246 variables, ver [ml-training.md](ml-training.md)) y la conclusión fue que la meteorología aporta más que las señales eléctricas para anticipar una avería con una a tres horas de margen; sirven para saber que el corte ya ha ocurrido, no para verlo venir.
+
+## 6. Lo que queda en la lista
+
+- Volver a probar el suelo y la duración del viento cuando haya dos temporadas más etiquetadas (2027), con el mismo banco de pruebas.
+- Pedir los cortes de los contadores de telegestión a una de las distribuidoras para medir cuántos cortes de baja tensión no vemos.
+- Comparar nuestras tasas de detección y falsas alarmas con las del trabajo de la Universidad de Alcalá en las mismas métricas (días extremos detectados, falsas alarmas por día) para la memoria.
+- Con los avisos de AEMET, una política mixta por fenómeno (viento y tormenta sí, calor no) frente a la unión que ya medimos.

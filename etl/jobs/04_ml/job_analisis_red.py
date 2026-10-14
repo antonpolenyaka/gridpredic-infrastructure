@@ -71,6 +71,7 @@ ranking tables l3_gold.analisis_red_* with the run_id, for the notebooks.
 
 import argparse
 import math
+import json
 import os
 import re
 import sys
@@ -105,6 +106,7 @@ WORKS_TABLE = f"{GOLD}.obras_municipio_anio"
 CONTEXT_TABLE = f"{GOLD}.contexto_ct_anio"
 PROJECTION_TABLE = "l2_silver.f_proyeccion_ame"
 AME_TABLE = "l2_silver.d_ame_municipio"
+SECTOR_TABLE = "l1_bronze.gecos_indice_zonal"
 
 RANKING_TABLE = f"{GOLD}.analisis_red_prioridades"
 LOAD_TABLE = f"{GOLD}.analisis_red_carga_trafo"
@@ -148,6 +150,10 @@ DEFAULTS = {
     # CNMC Circular 8/2025: TIEPI of the sector by zone type for 2026 - 2028,
     # +-4 % of the remuneration, bonus at -0,7 and penalty at +0,5.
     "tiepi_sector_h": {"1": 0.4888, "2": 0.6, "3": 1.0648, "4": 1.7393},
+    # Official indices of the sector (GECOS, MITECO) to compare with: the
+    # places and the number of last published years that are averaged.
+    "sector_ambitos": [["provincia", "Cáceres"], ["provincia", "Badajoz"], ["comunidad", "Extremadura"], ["espana", "España"]],
+    "sector_anios_media": 3,
     "incentivo_pct": 0.04,
     "incentivo_tope_bonificacion": -0.7,
     "incentivo_tope_penalizacion": 0.5,
@@ -221,8 +227,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--config", default=None)
     parser.add_argument("--secciones", default=None,
-                        help="Comma separated subset: tiepi,limites,causas,cuando,donde,reposicion,meteo,carga,edad,"
-                             "economia,obras")
+                        help="Comma separated subset: tiepi,sector,limites,causas,cuando,donde,reposicion,meteo,carga,"
+                             "edad,economia,obras")
+    parser.add_argument("--dashboard-dir", default=None, help="folder of dashboard/data to leave sector.json in")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -347,6 +354,11 @@ class Report:
     def csv(self, name: str, pdf: pd.DataFrame):
         if self.folder and pdf is not None:
             pdf.to_csv(os.path.join(self.folder, name), index=False)
+
+    def json(self, name: str, payload: dict):
+        if self.folder and payload is not None:
+            with open(os.path.join(self.folder, name), "w", encoding="utf-8") as file:
+                json.dump(payload, file, ensure_ascii=False, indent=1)
 
     def write(self) -> str:
         text = "\n".join(self.parts)
@@ -708,6 +720,185 @@ def section_tiepi(data: Data, report: Report, state: dict):
         + md_table(excluded)
         + "\nComprobación con el TIEPI medio de tres años que usó la CNMC para el incentivo de 2019 (Orden "
         "TED/749/2022):\n\n" + md_table(check)
+    )
+
+
+# ---------------------------------------------------------------------------
+# 1b. The sector: the official TIEPI and NIEPI by zone type (GECOS, MITECO)
+# ---------------------------------------------------------------------------
+
+ZONE_CODES = {"U": 1, "S": 2, "RC": 3, "RD": 4}
+
+
+def sector_frame(spark, cfg: dict) -> pd.DataFrame:
+    """The official indices of the sector from Bronze or, without the table, from the CSV next to the configuration."""
+    df = read_table(spark, SECTOR_TABLE)
+    if df is not None:
+        pdf = df.toPandas()
+    else:
+        candidates = [os.path.join(HERE, "..", "..", "config", "01_bronze", "gecos_indices_zonales.csv"),
+                      "/app/config/01_bronze/gecos_indices_zonales.csv", "/opt/airflow/config/01_bronze/gecos_indices_zonales.csv"]
+        path = next((c for c in candidates if os.path.exists(c)), None)
+        if path is None:
+            return pd.DataFrame()
+        pdf = pd.read_csv(path)
+    if pdf.empty:
+        return pdf
+    for column in ("potencia_mva", "suministros", "prog_total", "imp_transporte", "imp_terceros", "imp_fuerza_mayor",
+                   "imp_propias", "imp_total", "valor"):
+        if column in pdf.columns:
+            pdf[column] = pd.to_numeric(pdf[column], errors="coerce")
+    pdf["anio"] = pd.to_numeric(pdf["anio"], errors="coerce").astype("Int64")
+    pdf["zona_codigo"] = pdf["zona"].map(ZONE_CODES)
+    pdf["tiepi_incentivo_h"] = pdf["prog_total"].fillna(0.0) + pdf["imp_transporte"].fillna(0.0) + pdf["imp_propias"].fillna(0.0)
+    return pdf
+
+
+def clean(value):
+    """A JSON-friendly number (None when missing)."""
+    try:
+        return None if value is None or pd.isna(value) else round(float(value), 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def sector_payload(data: Data, official: pd.DataFrame, ours_last: pd.DataFrame, ours_same: pd.DataFrame,
+                   series: pd.DataFrame, scopes: list, years_ours: list, years_sector: list) -> dict:
+    """sector.json for negocio.html: our TIEPI by zone next to the official one, and the yearly series of the sector."""
+    distributors = []
+    for dist, g in ours_last.groupby("distribuidora_id"):
+        same = ours_same[ours_same["distribuidora_id"] == dist].set_index("zona")
+        weights = g.set_index("zona")["p_total_kva"] / g["p_total_kva"].sum()
+        zones = []
+        for _, z in g.iterrows():
+            zone = int(z["zona"])
+            sector = {}
+            for _, o in official[official["zona_codigo"] == zone].iterrows():
+                sector[o["ambito"]] = {"imprevista": clean(o["tiepi_imprevista_h"]), "incentivo": clean(o["tiepi_incentivo_h"]),
+                                       "fuerza_mayor": clean(o["fuerza_mayor_h"])}
+            zones.append({"zona": ZONE_NAMES.get(zone, str(zone)), "abonados": int(z["abonados"]) if pd.notna(z["abonados"]) else None,
+                          "peso": clean(weights.get(zone)), "imprevista": clean(z["tiepi_imprevista_h"]),
+                          "incentivo": clean(z["tiepi_incentivo_h"]),
+                          "imprevista_mismos_anios": clean(same["tiepi_imprevista_h"].get(zone)),
+                          "incentivo_mismos_anios": clean(same["tiepi_incentivo_h"].get(zone)), "sector": sector})
+        mix = {"nuestra": clean((g.set_index("zona")["tiepi_imprevista_h"] * weights).sum())}
+        for _, name in scopes:
+            o = official[official["ambito"] == name].set_index("zona_codigo")["tiepi_imprevista_h"]
+            if not o.empty:
+                mix[name] = clean(sum(weights.get(z, 0.0) * o.get(int(z), np.nan) for z in weights.index))
+        distributors.append({"id": int(dist), "nombre": data.databases.get(dist, str(dist)), "zonas": zones, "mezcla": mix})
+    yearly = {}
+    for (name, zone), g in series.groupby(["nombre", "zona"]):
+        yearly.setdefault(name, {})[zone] = [
+            {"anio": int(r["anio"]), "tiepi": clean(r["valor"]), "imprevista": clean(r["imp_total"]),
+             "fuerza_mayor": clean(r["imp_fuerza_mayor"]), "propias": clean(r["imp_propias"]), "incentivo": clean(r["tiepi_incentivo_h"])}
+            for _, r in g.sort_values("anio").iterrows()]
+    return {"generado": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "fuente": "GECOS (MITECO), índices zonales oficiales de calidad de suministro",
+            "anios_sector": years_sector, "anios_nuestros": [min(years_ours), max(years_ours)],
+            "ambitos": [name for _, name in scopes], "distribuidoras": distributors, "serie": yearly}
+
+
+def section_sector(data: Data, report: Report, state: dict):
+    """Our TIEPI by zone type next to the official one of the province, the community and Spain."""
+    zones = state.get("tiepi_zona")
+    sector = sector_frame(data.spark, data.cfg)
+    if zones is None or zones.empty or sector.empty:
+        report.section("1b. Frente al sector", "_Sin TIEPI por zona o sin los índices oficiales (l1_bronze.gecos_indice_zonal)._")
+        return
+    tiepi = sector[(sector["indice"] == "tiepi") & sector["zona_codigo"].notna()].copy()
+    last_year = int(tiepi["anio"].max())
+    window = int(data.cfg.get("sector_anios_media", 3))
+    first_year = last_year - window + 1
+    scopes = [tuple(a) for a in data.cfg.get("sector_ambitos", [])]
+    recent = tiepi[tiepi["anio"].between(first_year, last_year)]
+
+    # The sector in the last published years, by place and zone.
+    official = []
+    for scope, name in scopes:
+        g = recent[(recent["ambito"] == scope) & (recent["nombre"] == name)]
+        if g.empty:
+            continue
+        agg = g.groupby("zona_codigo").agg(tiepi_h=("valor", "mean"), tiepi_imprevista_h=("imp_total", "mean"),
+                                          tiepi_incentivo_h=("tiepi_incentivo_h", "mean"),
+                                          fuerza_mayor_h=("imp_fuerza_mayor", "mean"), anios=("anio", "nunique")).reset_index()
+        agg["ambito"] = name
+        official.append(agg)
+    if not official:
+        report.section("1b. Frente al sector", "_Los ámbitos de sector_ambitos no están en los índices oficiales._")
+        return
+    official = pd.concat(official, ignore_index=True)
+
+    # Ours in the same years (when we have them) and in our last three years.
+    years_incentive = [int(y) for y in data.cfg["anios_incentivo"]]
+    ours_same = zones[zones["anio"].between(first_year, last_year)].groupby(["distribuidora_id", "zona"]).agg(
+        tiepi_imprevista_h=("tiepi_imprevista_h", "mean"), tiepi_incentivo_h=("tiepi_incentivo_h", "mean"),
+        p_total_kva=("p_total_kva", "last"), abonados=("abonados", "last"), anios=("anio", "nunique")).reset_index()
+    ours_last = zones[zones["anio"].isin(years_incentive)].groupby(["distribuidora_id", "zona"]).agg(
+        tiepi_imprevista_h=("tiepi_imprevista_h", "mean"), tiepi_incentivo_h=("tiepi_incentivo_h", "mean"),
+        p_total_kva=("p_total_kva", "last"), abonados=("abonados", "last"), anios=("anio", "nunique")).reset_index()
+
+    rows = []
+    for dist, g in ours_last.groupby("distribuidora_id"):
+        db = data.databases.get(dist, str(dist))
+        same = ours_same[ours_same["distribuidora_id"] == dist].set_index("zona")
+        for _, z in g.iterrows():
+            zone = int(z["zona"])
+            row = {"distribuidora": db, "zona": ZONE_NAMES.get(zone, zone), "p_total_kva": z["p_total_kva"],
+                   "abonados": z["abonados"], "anios_nuestros": f"{min(years_incentive)}-{max(years_incentive)}",
+                   "imprevista_nuestra_h": z["tiepi_imprevista_h"], "incentivo_nuestro_h": z["tiepi_incentivo_h"],
+                   "anios_sector": f"{first_year}-{last_year}",
+                   "imprevista_nuestra_mismos_anios_h": same["tiepi_imprevista_h"].get(zone, np.nan),
+                   "incentivo_nuestro_mismos_anios_h": same["tiepi_incentivo_h"].get(zone, np.nan)}
+            for _, o in official[official["zona_codigo"] == zone].iterrows():
+                key = o["ambito"].lower().replace("á", "a").replace("ñ", "n").replace(" ", "_")
+                row[f"imprevista_{key}_h"] = o["tiepi_imprevista_h"]
+                row[f"incentivo_{key}_h"] = o["tiepi_incentivo_h"]
+                row[f"fuerza_mayor_{key}_h"] = o["fuerza_mayor_h"]
+            rows.append(row)
+    table = pd.DataFrame(rows)
+    report.csv("tiepi_sector.csv", table)
+    state["tiepi_sector"] = {"tabla": table, "oficial": official, "anios": [first_year, last_year]}
+
+    # The whole series of the sector for the document: Spain and the places, every year, TIEPI and its force majeure.
+    all_zones = sector[sector["indice"] == "tiepi"]
+    series = all_zones[all_zones["ambito"].isin([a for a, _ in scopes]) & all_zones["nombre"].isin([n for _, n in scopes])]
+    report.csv("sector_series.csv", series[["ambito", "nombre", "anio", "zona", "valor", "prog_total", "imp_total",
+                                            "imp_propias", "imp_terceros", "imp_fuerza_mayor", "tiepi_incentivo_h"]])
+
+    # Weighted by our mix of zones: what the sector would have with our network.
+    lines = []
+    for dist, g in ours_last.groupby("distribuidora_id"):
+        db = data.databases.get(dist, str(dist))
+        weights = g.set_index("zona")["p_total_kva"] / g["p_total_kva"].sum()
+        ours = float((g.set_index("zona")["tiepi_imprevista_h"] * weights).sum())
+        parts = []
+        for scope, name in scopes:
+            o = official[official["ambito"] == name].set_index("zona_codigo")["tiepi_imprevista_h"]
+            if o.empty:
+                continue
+            mixed = float(sum(weights.get(z, 0.0) * o.get(int(z), np.nan) for z in weights.index))
+            parts.append(f"{name} {fmt(mixed, 2)} h")
+        lines.append(f"- {db}: TIEPI imprevisto de {min(years_incentive)}-{max(years_incentive)} {fmt(ours, 2)} h al año; "
+                     f"el sector con la misma mezcla de zonas ({first_year}-{last_year}): " + ", ".join(parts))
+
+    state["sector_json"] = sector_payload(data, official, ours_last, ours_same, series, scopes, years_incentive,
+                                          [first_year, last_year])
+    report.json("sector.json", state["sector_json"])
+
+    shown = table.copy()
+    for column in shown.columns:
+        if column.endswith("_h"):
+            shown[column] = shown[column].map(lambda v: fmt(v, 2) if pd.notna(v) else "-")
+    columns = ["distribuidora", "zona", "abonados", "imprevista_nuestra_h", "incentivo_nuestro_h"]
+    columns += [c for c in shown.columns if c.startswith("imprevista_") and c not in columns and "mismos" not in c]
+    report.section(
+        "1b. Frente al sector (índices oficiales de GECOS, MITECO)",
+        f"TIEPI imprevisto por tipo de zona: el nuestro de {min(years_incentive)}-{max(years_incentive)} frente a la media "
+        f"oficial de {first_year}-{last_year} (los últimos años publicados) de la provincia, la comunidad y España. Las columnas "
+        "incentivo son la parte que cuenta para el incentivo de la CNMC (programadas, transporte y propias); el fichero "
+        "tiepi_sector.csv lleva también la fuerza mayor del sector y nuestro TIEPI en los mismos años.\n\n"
+        + md_table(shown, columns) + "\n" + "\n".join(lines)
     )
 
 
@@ -2087,6 +2278,7 @@ def section_works(data: Data, report: Report, state: dict):
 
 SECTIONS = [
     ("tiepi", section_tiepi),
+    ("sector", section_sector),
     ("limites", section_limits),
     ("causas", section_causes),
     ("cuando", section_when),
@@ -2148,6 +2340,13 @@ def main(argv=None):
             report.section(f"Error en {name}", f"`{type(error).__name__}: {error}`")
 
     save_tables(spark, args.run_id, state)
+    if args.dashboard_dir and state.get("sector_json"):
+        if os.path.isdir(args.dashboard_dir):
+            with open(os.path.join(args.dashboard_dir, "sector.json"), "w", encoding="utf-8") as file:
+                json.dump(state["sector_json"], file, ensure_ascii=False, indent=1)
+            logger.info("sector.json left in %s", args.dashboard_dir)
+        else:
+            logger.warning("Dashboard folder %s not found: sector.json only in the export folder", args.dashboard_dir)
     text = report.write()
     logger.info("Summary of %s\n%s", args.run_id, text)
     logger.info("Network analysis finished in %.0f s; failed sections: %s",
