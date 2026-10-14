@@ -305,9 +305,8 @@ def verify(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> dict:
                 kept = {k: v for k, v in (json.load(file).get("dias") or {}).items()}
         except (OSError, ValueError):
             kept = {}
-    both = pd.concat([frame, last_landed(fs, cfg, now - timedelta(days=1))], ignore_index=True) if len(frame) else last_landed(fs, cfg, now - timedelta(days=1))
-    if len(both):
-        both = both.drop_duplicates(["idema", "ts_utc"])
+    pieces = [f for f in (frame, last_landed(fs, cfg, now - timedelta(days=1))) if len(f)]
+    both = pd.concat(pieces, ignore_index=True).drop_duplicates(["idema", "ts_utc"]) if pieces else pd.DataFrame(columns=COLUMNS)
     today_records = []
     for day in (yesterday, today):
         risk = archived_forecast(folder, day)
