@@ -158,6 +158,7 @@ def ensemble_answer(day: date, peak_by_member: list, peak_hour_utc: int = 10) ->
 def test_the_ensemble_of_every_network(fs, cfg, monkeypatch, tmp_path):
     config = vivo.load_config()
     config["riesgo_manana"]["landing"] = "/vivo"
+    config["riesgo_manana"]["ensemble"]["usar_celdas"] = False
     config["riesgo_manana"]["ensemble"]["puntos"] = {"3": [{"nombre": "Hervás", "lat": 40.27, "lon": -5.87}, {"nombre": "Plasencia", "lat": 40.03, "lon": -6.09}],
                                                       "2": [{"nombre": "Casar de Cáceres", "lat": 39.56, "lon": -6.42}]}
     path = tmp_path / "config.json"
@@ -190,8 +191,24 @@ def test_the_ensemble_of_every_network(fs, cfg, monkeypatch, tmp_path):
     assert noon["p50"] == 60 and noon["p10"] == 52 and noon["p90"] == 92
     assert eosa["pico"] == {"p10": 52, "p50": 60, "p90": 92}
     assert eosa["supera"] == {"50": 1.0, "70": 0.4, "90": 0.2}
-    assert eosa["texto"] == "5 escenarios de icon_eu: el 80 % central da el pico de racha entre 52 y 92 km/h (mediana 60); el 100 % supera 50 km/h, el 40 % supera 70 km/h, el 20 % supera 90 km/h; escenarios muy repartidos; más de la mitad supera 50 km/h"
+    assert eosa["texto"] == "5 escenarios de icon_eu en 2 puntos de la red: el 80 % central da el pico de racha entre 52 y 92 km/h (mediana 60); el 100 % supera 50 km/h, el 40 % supera 70 km/h, el 20 % supera 90 km/h; escenarios muy repartidos; más de la mitad supera 50 km/h"
     assert pitarch["modelo"] == "icon_seamless" and pitarch["pico"] == {"p10": 50, "p50": 50, "p90": 50} and "muy de acuerdo" in pitarch["texto"]
     # Without any answer the source fails with 2 and writes nothing.
     monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: (_ for _ in ()).throw(RuntimeError("HTTP 500")))
     assert vivo.main(["--fuente", "ensemble", "--fecha", "2026-10-16", "--config", str(path), "--dashboard-dir", str(tmp_path)], fs=fs) == 2
+
+
+def test_the_points_of_the_ensemble_from_the_cells_of_the_reference(fs, monkeypatch):
+    rows = [{"codigo_ine": "10001", "municipio": "Abadía", "distribuidora": "1", "latitud": "40.259", "longitud": "-5.978"},
+            {"codigo_ine": "10006", "municipio": "Ahigal", "distribuidora": "1", "latitud": "40.190", "longitud": "-6.188"},
+            {"codigo_ine": "10007", "municipio": "Albalá", "distribuidora": "1", "latitud": "40.255", "longitud": "-5.981"},  # same cell as Abadía
+            {"codigo_ine": "10037", "municipio": "Brozas", "distribuidora": "2", "latitud": "39.613", "longitud": "-6.778"},
+            {"codigo_ine": "06143", "municipio": "Valle de Santa Ana", "distribuidora": "3", "latitud": "38.366", "longitud": "-6.789"},
+            {"codigo_ine": "", "municipio": "TOTAL", "distribuidora": "", "latitud": None, "longitud": None}]
+    monkeypatch.setattr(vivo, "load_meteo_config", lambda: {"openmeteo": {"referencia_municipios": "x", "celda_grados": 0.1}})
+    monkeypatch.setattr(vivo, "read_reference", lambda fs, path: rows)
+    points = vivo.ensemble_points(fs, {"usar_celdas": True, "referencia_distribuidoras": {"1": "3", "2": "2", "3": "1366"}})
+    assert sorted(points) == ["1366", "2", "3"]
+    assert [p["nombre"] for p in points["3"]] == ["40.30_-6.00", "40.20_-6.20"] and points["3"][0]["lat"] == 40.3 and points["3"][0]["lon"] == -6.0
+    assert points["2"] == [{"nombre": "39.60_-6.80", "lat": 39.6, "lon": -6.8}] and len(points["1366"]) == 1
+    assert vivo.ensemble_points(fs, {"usar_celdas": False, "puntos": {"3": [{"nombre": "a", "lat": 1, "lon": 2}]}}) == {"3": [{"nombre": "a", "lat": 1, "lon": 2}]}

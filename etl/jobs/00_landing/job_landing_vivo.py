@@ -76,7 +76,9 @@ ENSEMBLE_DEFAULTS = {
     "variable": "wind_gusts_10m",
     "dias_futuros": 3,
     "umbrales_kmh": [50, 70, 90],
-    "puntos": {},
+    "puntos": {},                      # {distribuidora id: [{nombre, lat, lon}, ...]} when usar_celdas is false
+    "usar_celdas": True,               # the cells of the reanalysis of every network, like racha_max of the profile
+    "referencia_distribuidoras": {},   # {number of the reference sheet: distribuidora id}, e.g. {"1": "3", "2": "2", "3": "1366"}
     "pausa_s": 0.5,
     "reintentos": 3,
     "espera_reintento_s": 20,
@@ -254,6 +256,28 @@ def ask_ensemble(point: dict, ecfg: dict) -> tuple:
     raise RuntimeError(f"no ensemble model answered: {last}")
 
 
+def ensemble_points(fs, ecfg: dict) -> dict:
+    """
+    {distribuidora id: [{nombre, lat, lon}, ...]}: the cells of the reanalysis of the municipalities of every
+    network (usar_celdas, the same cells whose maximum is racha_max of the profile) or the points of the
+    configuration.
+    """
+    if not ecfg.get("usar_celdas"):
+        return {str(k): list(v) for k, v in (ecfg.get("puntos") or {}).items()}
+    meteo = load_meteo_config()["openmeteo"]
+    places = municipality_cells(read_reference(fs, meteo["referencia_municipios"]), float(meteo["celda_grados"]))
+    mapping = {str(k): str(v) for k, v in (ecfg.get("referencia_distribuidoras") or {}).items()}
+    out, seen = {}, set()
+    for place in places:
+        ref = str(place.get("distribuidora_ref") or "").strip()
+        dist = mapping.get(ref, ref)
+        if not dist or (dist, place["celda_id"]) in seen:
+            continue
+        seen.add((dist, place["celda_id"]))
+        out.setdefault(dist, []).append({"nombre": place["celda_id"], "lat": place["celda_latitud"], "lon": place["celda_longitud"]})
+    return out
+
+
 def land_ensemble(fs, cfg: dict, folder: str, day: date) -> tuple:
     """(points saved, points failed, ensemble.json payload): the members of every point in <folder>/ensemble/<punto>.json."""
     ecfg = ensemble_settings(cfg)
@@ -262,7 +286,7 @@ def land_ensemble(fs, cfg: dict, folder: str, day: date) -> tuple:
     out = {"generado": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "fecha": day.isoformat(), "fuente": "Open-Meteo Ensemble API",
            "variable": ecfg["variable"], "umbrales_kmh": [float(u) for u in ecfg["umbrales_kmh"]], "distribuidoras": []}
     done = failed = 0
-    for dist, points in (ecfg.get("puntos") or {}).items():
+    for dist, points in ensemble_points(fs, ecfg).items():
         stacks = []
         for point in points:
             try:
@@ -303,7 +327,8 @@ def land_ensemble(fs, cfg: dict, folder: str, day: date) -> tuple:
             block["supera"] = {f"{float(u):g}": round(float(np.mean(peaks >= float(u))), 2) for u in ecfg["umbrales_kmh"]}
             above = [u for u in ecfg["umbrales_kmh"] if block["supera"][f"{float(u):g}"] >= 0.5]
             spread = "escenarios muy de acuerdo" if hi - lo <= 15 else ("escenarios bastante de acuerdo" if hi - lo <= 30 else "escenarios muy repartidos")
-            block["texto"] = (f"{depth} escenarios de {block['modelo']}: el 80 % central da el pico de racha entre {round(float(lo))} y {round(float(hi))} km/h "
+            where = f"{len(stacks)} celdas de la red" if ecfg.get("usar_celdas") else f"{len(stacks)} puntos de la red"
+            block["texto"] = (f"{depth} escenarios de {block['modelo']} en {where}: el 80 % central da el pico de racha entre {round(float(lo))} y {round(float(hi))} km/h "
                               f"(mediana {round(float(mid))}); " + ", ".join(f"el {100 * block['supera'][f'{float(u):g}']:.0f} % supera {float(u):g} km/h" for u in ecfg["umbrales_kmh"])
                               + f"; {spread}" + (f"; más de la mitad supera {float(above[-1]):g} km/h" if above else ""))
         else:
