@@ -145,13 +145,15 @@ def dataset_key(version: str, source: str, frac_prefixes: list, meteo_cfg: dict,
     return hashlib.sha1(json.dumps(settings, sort_keys=True).encode("utf-8")).hexdigest()[:12]
 
 
-def distributor_weather(spark, meteo_cfg: dict, prefixes: tuple = ("met_", "metprev_")):
+def distributor_weather(spark, meteo_cfg: dict, prefixes: tuple = ("met_", "metprev_"), derive=None):
     """
     (distribuidora_id, hora, metd_media_*, metd_max_*): the weather of every
     distribuidora, the mean of its cells weighted by the number of CTs of
     each cell and the worst cell. None without the weather tables. Only the
-    columns of Gold with one of prefixes: the forecasts of the day before
-    (metp1_, metp2_) are for the model of the next day.
+    columns of Gold with one of prefixes: the forecasts of the days before
+    (metp1_, metp2_, metp3_) are for the model of the next days. derive, when
+    given, takes the frame of Gold (one row per cell and hour) and returns it
+    with more columns, computed per cell before the aggregation.
     """
     if not meteo_cfg.get("activo"):
         return None, []
@@ -169,6 +171,8 @@ def distributor_weather(spark, meteo_cfg: dict, prefixes: tuple = ("met_", "metp
         .agg(F.count(F.lit(1)).cast("double").alias("_n"))
     )
     weather = spark.table(weather_table)
+    if derive is not None:
+        weather = derive(weather)
     names = [c for c in weather.columns if c.startswith(tuple(prefixes))]
 
     # The next hours (metprev_*) are always stored; meteo.prevision false
