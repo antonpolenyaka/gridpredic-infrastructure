@@ -164,30 +164,38 @@ def network(spark) -> pd.DataFrame:
 
 
 def ct_cuts(spark, events: pd.DataFrame, ct: pd.DataFrame) -> pd.DataFrame:
-    """Every CT cut of the incidents of a local cause with its duration (duracion_s, or the winsorised one)."""
+    """
+    Every CT cut of the incidents of a local cause, one row per interruption
+    of a CT (a CT cut twice in the same incident counts twice in the
+    customer-hours), with its duration (duracion_s, or the winsorised one),
+    the cause of its incident and the CT.
+    """
     facts = spark.table(FACTS_TABLE).where(F.col("variante") == "principal")
     extra = [c for c in ("duracion_s", "duracion_winsor_s") if c in facts.columns]
-    durations = facts.select(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "periodo_id",
-                             "incidencia_id", "ct_id", *extra).toPandas()
-    durations["ct_id"] = durations["ct_id"].astype(str)
-    ev = events.assign(ct_id=events["ct_id"].astype(str)).merge(
-        durations, on=["distribuidora_id", "periodo_id", "incidencia_id", "ct_id"], how="left")
-    ev = ev[~ev["causa"].fillna("").isin(rz.LOCAL_EXCLUDED)]
-    ev = ev.merge(ct[["distribuidora_id", "ct_id", "municipio", "zona", "num_abonados", "potencia_kva"]],
-                  on=["distribuidora_id", "ct_id"])
-    seconds = ev["duracion_s"] if "duracion_s" in ev.columns else ev.get("duracion_winsor_s")
-    ev["dur_min"] = pd.to_numeric(seconds, errors="coerce") / 60.0
-    ev["fecha"] = ev["inicio_ts"].dt.floor("D")
-    return ev.reset_index(drop=True)
+    cuts = facts.select(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "periodo_id", "incidencia_id",
+                        "ct_id", "inicio_ts", *extra).toPandas()
+    cuts["ct_id"] = cuts["ct_id"].astype(str)
+    cuts["inicio_ts"] = pd.to_datetime(cuts["inicio_ts"])
+    causes = (events[["distribuidora_id", "periodo_id", "incidencia_id", "causa"]]
+              .drop_duplicates(["distribuidora_id", "periodo_id", "incidencia_id"]))
+    cuts = cuts.merge(causes, on=["distribuidora_id", "periodo_id", "incidencia_id"], how="left")
+    cuts = cuts[~cuts["causa"].fillna("").isin(rz.LOCAL_EXCLUDED)]
+    cuts = cuts.merge(ct[["distribuidora_id", "ct_id", "municipio", "zona", "num_abonados", "potencia_kva"]],
+                      on=["distribuidora_id", "ct_id"])
+    seconds = cuts["duracion_s"] if "duracion_s" in cuts.columns else cuts.get("duracion_winsor_s")
+    cuts["dur_min"] = pd.to_numeric(seconds, errors="coerce") / 60.0
+    cuts["fecha"] = cuts["inicio_ts"].dt.floor("D")
+    return cuts.reset_index(drop=True)
 
 
 def incidents_of(cuts: pd.DataFrame) -> pd.DataFrame:
     keys = ["distribuidora_id", "periodo_id", "incidencia_id"]
-    inc = cuts.groupby(keys).agg(inicio_ts=("inicio_ts", "min"), causa=("causa", "first"), n_ct=("ct_id", "nunique"),
+    once = cuts.drop_duplicates(keys + ["ct_id"])
+    inc = once.groupby(keys).agg(inicio_ts=("inicio_ts", "min"), causa=("causa", "first"), n_ct=("ct_id", "nunique"),
                                  clientes=("num_abonados", "sum"), kva=("potencia_kva", "sum"),
-                                 duracion_max_min=("dur_min", "max"),
                                  municipio=("municipio", lambda s: s.value_counts().index[0]),
                                  zona=("zona", lambda s: s.value_counts().index[0])).reset_index()
+    inc = inc.merge(cuts.groupby(keys)["dur_min"].max().rename("duracion_max_min").reset_index(), on=keys, how="left")
     inc["fecha"] = inc["inicio_ts"].dt.floor("D")
     inc["anio"] = inc["fecha"].dt.year
     return inc
