@@ -267,6 +267,7 @@ def replay(days: pd.DataFrame, zone_days: pd.DataFrame, ct: pd.DataFrame, cuts: 
     """(day_table, ct_table): the replay of every mode, distribuidora and day."""
     speed, factor = float(zcfg["velocidad_kmh"]), float(zcfg["factor_carretera"])
     mobilisation = float(ccfg["movilizacion_min"])
+    cap = float(ccfg["recorte_min"])
     work_from, work_to = [int(h) for h in ccfg["horario_laboral"]]
     munis = ct.groupby(["distribuidora_id", "municipio"]).agg(lat=("ct_lat_municipio", "mean"), lon=("ct_lon_municipio", "mean"),
                                                              n_ct=("ct_id", "count"), abonados=("num_abonados", "sum")).reset_index()
@@ -324,17 +325,19 @@ def replay(days: pd.DataFrame, zone_days: pd.DataFrame, ct: pd.DataFrame, cuts: 
                         bases[n] = [b["municipio"] for b in plan["bases"]]
             today = inc_by_day.get((dist, day))
             n_inc = len(today) if today is not None else 0
-            hours = 0.0
+            hours, hours_cut = 0.0, 0.0
             if today is not None:
                 for i in today.itertuples():
                     c = cuts_by_inc.get((dist, i.periodo_id, i.incidencia_id))
-                    hours += float((c["num_abonados"] * c["dur_min"]).sum() / 60.0) if c is not None else 0.0
+                    if c is not None:
+                        hours += float((c["num_abonados"] * c["dur_min"]).sum() / 60.0)
+                        hours_cut += float((c["num_abonados"] * c["dur_min"].clip(upper=cap)).sum() / 60.0)
             day_rows.append({"modo": mode, "distribuidora_id": dist, "distribuidora": names.get(dist, str(dist)), "fecha": day.date(),
                              "anio": year, "probabilidad": float(getattr(r, pcol)), "percentil": float(getattr(r, pcol.replace("p_", "pct_"))),
                              "nivel": level, "alerta": bool(alert), "franja_inicio": window.get("inicio"), "franja_fin": window.get("fin"),
                              "bases": "; ".join(bases[max(bases)]) if bases else "", "incidencias": int(n_inc),
                              "clientes_afectados": float(today["clientes"].sum()) if today is not None else 0.0,
-                             "clientes_hora": hours,
+                             "clientes_hora": hours, "clientes_hora_recortadas": hours_cut,
                              "corte_max_min": float(today["duracion_max_min"].max()) if today is not None else 0.0})
             if today is None:
                 continue
@@ -416,7 +419,8 @@ def history_payload(day_table: pd.DataFrame, levels: dict, names: dict) -> dict:
         for mode in MODES:
             x = day_table[(day_table["modo"] == mode) & (day_table["distribuidora_id"] == dist)].sort_values("fecha")
             block["dias"][mode] = [{"f": str(r.fecha), "n": r.nivel, "p": round(float(r.probabilidad), 4), "i": int(r.incidencias),
-                                    "ch": round(float(r.clientes_hora)), "c": int(r.clientes_afectados), "m": round(float(r.corte_max_min)),
+                                    "ch": round(float(r.clientes_hora)), "chr": round(float(r.clientes_hora_recortadas)),
+                                    "c": int(r.clientes_afectados), "m": round(float(r.corte_max_min)),
                                     "b": r.bases if r.alerta else None} for r in x.itertuples()]
         payload["distribuidoras"].append(block)
     return payload
@@ -452,21 +456,29 @@ def report_text(summary: pd.DataFrame, day_table: pd.DataFrame, ct_table: pd.Dat
             "horas-cliente ganadas": s["clientes_hora_ganadas"].round(0), "TIEPI ganado (min)": s["tiepi_min_ganados"].round(2),
         })
         parts.append("### Brigadas\n\n" + ml_metrics.markdown_table(crews, 2))
-        # By level, all the distribuidoras together.
+        # By level, the distribuidoras with some incident together: the levels are percentiles of each distribuidora,
+        # so the days of a network without incidents would only add zeros to every level.
         d = day_table[day_table["modo"] == mode]
+        with_incidents = sorted(d.loc[d["incidencias"] > 0, "distribuidora"].unique())
+        d = d[d["distribuidora"].isin(with_incidents)]
         by = d.groupby("nivel").agg(dias=("fecha", "count"), con_averia=("incidencias", lambda s: int((s > 0).sum())),
-                                    incidencias=("incidencias", "sum"), horas_cliente=("clientes_hora", "sum")).reindex(["bajo", "medio", "alto", "muy alto"]).dropna(how="all")
+                                    incidencias=("incidencias", "sum"), horas_cliente=("clientes_hora_recortadas", "sum"),
+                                    sin_recortar=("clientes_hora", "sum")).reindex(["bajo", "medio", "alto", "muy alto"]).dropna(how="all")
         by["parte de días"] = (by["dias"] / by["dias"].sum()).round(3)
         by["tasa de avería"] = (by["con_averia"] / by["dias"]).round(3)
         by["parte de horas-cliente"] = (by["horas_cliente"] / by["horas_cliente"].sum()).round(2) if by["horas_cliente"].sum() > 0 else 0.0
-        parts.append("### Por nivel previsto\n\n" + ml_metrics.markdown_table(by.reset_index().rename(columns={"nivel": "nivel previsto"}), 3))
-        worst = d[d["incidencias"] > 0].sort_values("clientes_hora", ascending=False).head(int(ccfg["peores_dias"]))
+        by["parte sin recortar"] = (by["sin_recortar"] / by["sin_recortar"].sum()).round(2) if by["sin_recortar"].sum() > 0 else 0.0
+        shown = by.reset_index().rename(columns={"nivel": "nivel previsto", "con_averia": "días con avería",
+                                                 "horas_cliente": "horas-cliente (recortadas)"}).drop(columns=["sin_recortar"])
+        parts.append(f"### Por nivel previsto ({', '.join(with_incidents) or 'sin incidencias'}; {len(d)} días de distribuidora)\n\n"
+                     + ml_metrics.markdown_table(shown, 3))
+        worst = d[d["incidencias"] > 0].sort_values("clientes_hora_recortadas", ascending=False).head(int(ccfg["peores_dias"]))
         if len(worst):
             w = pd.DataFrame({"día": [f"{pd.Timestamp(f):%d.%m.%Y}" for f in worst["fecha"]], "distribuidora": worst["distribuidora"],
                               "nivel previsto": worst["nivel"], "probabilidad": worst["probabilidad"].round(3),
                               "incidencias": worst["incidencias"], "clientes": worst["clientes_afectados"].round(0),
-                              "horas-cliente": worst["clientes_hora"].round(0), "corte más largo (min)": worst["corte_max_min"].round(0),
-                              "bases del día": worst["bases"]})
+                              "horas-cliente (recortadas)": worst["clientes_hora_recortadas"].round(0), "sin recortar": worst["clientes_hora"].round(0),
+                              "corte más largo (min)": worst["corte_max_min"].round(0), "bases del día": worst["bases"]})
             parts.append(f"### Los {len(worst)} peores días\n\n" + ml_metrics.markdown_table(w, 3))
     return "\n\n".join(parts)
 
