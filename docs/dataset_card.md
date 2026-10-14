@@ -144,6 +144,7 @@ Todo el proceso es reproducible con `docker compose up -d --build --wait` y los 
 - Las RTU y los equipos de campo de las tres distribuidoras, que envían medidas y estados al SCADA TedisNet (SITEL). Los cortes no se miden: TedisNet los deduce por topología a partir de los tags de posición de los interruptores.
 - Los operadores de las distribuidoras, que registran o completan las interrupciones e incidencias en Calser. Desde noviembre de 2025 una parte de las interrupciones se importa automáticamente desde TedisNet.
 - El INE, a través del fichero de referencia de municipios (`data/reference_data/municipios.xlsx`).
+- Las fuentes públicas que acompañan al dataset en el lakehouse, cada una con su licencia de reutilización: Open-Meteo (reanálisis ERA5, previsión y escenarios de ICON-EU), AEMET OpenData (avisos desde 2018, predicción por municipios, estaciones), EUMETSAT (rayos del Lightning Imager de MTG), INE (padrón), Wikidata, OpenStreetMap, Catastro, PLACSP, IEEX, GBIF, EFFIS, FIRMS, CEMS y GECOS del MITECO (los índices oficiales de calidad de suministro del sector por tipo de zona, 2003 - 2021). La lista con lo que aporta cada una y sus tablas está en [network-analysis.md](network-analysis.md) (apartado 9) y en [causas-incidencias.md](causas-incidencias.md) (apartado 7).
 
 ### Annotations [optional]
 
