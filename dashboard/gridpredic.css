@@ -139,7 +139,10 @@ nav.menu a:focus-visible { box-shadow: 0 0 0 3px rgba(143, 177, 255, 0.5); }
 
 /* ---------------------------------------------------------------- page frame */
 .page, main, footer, .page-wrap { max-width: var(--page-max); margin-left: auto; margin-right: auto; }
-header.page { padding: var(--s-5) var(--gutter) var(--s-4); display: grid; gap: var(--s-3); }
+header.page { position: relative; isolation: isolate; overflow: clip; padding: var(--s-5) var(--gutter) var(--s-4); display: grid; gap: var(--s-3); }
+/* A decorative layer behind the header: the only thing that moves with a parallax, never the data. */
+header.page .aurora { position: absolute; inset: -20% -10%; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse at 18% 20%, rgba(36, 87, 197, 0.10), transparent 55%), radial-gradient(ellipse at 85% 70%, rgba(36, 87, 197, 0.06), transparent 50%); }
 header.page .page-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--s-3) var(--s-5); }
 header.page .titulo { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2) var(--s-3); }
 header.page h1 { font-size: var(--fs-6); }
@@ -301,13 +304,10 @@ section.seguimiento, section.notas-seccion, #diario { padding: var(--s-4) var(--
 footer { padding: var(--s-4) var(--gutter) var(--s-6); color: var(--muted); font-size: var(--fs-0); line-height: 1.5; max-width: var(--page-max); }
 
 /* ---------------------------------------------------------------- motion */
-.reveal { opacity: 0; transform: translateY(8px); transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease); }
-.reveal.visto { opacity: 1; transform: none; }
 details > *:not(summary) { animation: abrir var(--t-base) var(--ease); }
 @keyframes abrir { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
-  .reveal { opacity: 1; transform: none; }
 }
 
 /* ---------------------------------------------------------------- responsive */
