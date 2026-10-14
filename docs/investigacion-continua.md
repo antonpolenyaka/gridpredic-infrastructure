@@ -44,6 +44,23 @@ Las tablas de contraste van en la misma dirección que el artículo, pero sin fu
 
 **Decisión.** Descartamos la humedad del suelo, la lluvia acumulada y el factor de racha como variables del modelo del día, y no añadimos las horas de viento fuerte por separado. Lo que Lorenz et al. encuentran con decenas de miles de árboles caídos no se ve con 143 días de incidencias: no es que el suelo no importe, es que con nuestra muestra no se puede medir y una variable que no se puede medir solo añade ruido. Se vuelve a probar cuando haya más años etiquetados o si entra una tercera red grande.
 
+## 3b. Prueba: un umbral de alerta por estación (14.10.2026)
+
+**Hipótesis.** El umbral de alerta es el mismo todo el año (el percentil 90 de la probabilidad de los días de entrenamiento), y como la probabilidad media es menor en verano, en verano hay menos alertas (el 7,7 % de los días de abril a septiembre frente al 17,9 % del resto, con la previsión real de 2024-2026) aunque las tormentas y los incendios traen averías (junio es el mes con más días con incidencia). Repartir las alertas por estación o por mes, con la misma parte de días en alerta en total, podría cubrir más.
+
+**Resultado** (`experimentos/umbral_estacion/analizar.py` sobre el `dias.csv` del replay `caso_v9_20261014_1351`):
+
+| modo | regla | parte de días en alerta | horas-cliente cubiertas | incidencias cubiertas | días con incidencia cubiertos |
+| --- | --- | --- | --- | --- | --- |
+| previsión real | alerta actual (umbral fijo) | 12,5 % | 72,3 % | 53,1 % | 41,1 % |
+| previsión real | mismos días, por año y estación | 12,6 % | 73,5 % | 53,1 % | 41,1 % |
+| previsión real | mismos días, por año y mes | 13,1 % | 72,9 % | 53,1 % | 41,1 % |
+| reanálisis | alerta actual (umbral fijo) | 13,5 % | 59,0 % | 42,5 % | 32,2 % |
+| reanálisis | mismos días, por año y estación | 13,7 % | 60,3 % | 44,2 % | 32,9 % |
+| reanálisis | mismos días, por año y mes | 13,1 % | 59,7 % | 45,3 % | 35,0 % |
+
+**Decisión.** No cambiamos el umbral: el reparto por estación gana un punto de horas-cliente y ninguna incidencia, dentro del ruido de 73 días con incidencia. El modelo ya está calibrado por estación (en verano da de media un 3,7 % y pasa el 3,4 %; en invierno, 4,6 % y 4,6 %), así que las pocas alertas de verano no son un fallo del umbral sino el riesgo real: las averías de verano (tormentas, incendios, equipos con calor) llegan con menos aviso meteorológico que las de invierno. Lo que sí deja esta prueba es el argumento para la guardia de verano: ahí mandan los rayos en vivo y la franja de la tarde, no la alerta de la víspera.
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
