@@ -26,6 +26,7 @@
   <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
 </nav>
 <header class="page">
+  <div class="aurora" data-parallax-layer aria-hidden="true"></div>
   <div class="page-top">
     <div class="titulo"><h1 id="titulo">Riesgo de mañana</h1><span class="fecha-chip" id="fecha-chip" style="display:none"></span></div>
     <div class="acciones" id="acciones"></div>
@@ -37,6 +38,9 @@
 <main id="main"></main>
 <footer id="pie"></footer>
 <script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/gsap/gsap.min.js"></script>
+<script src="vendor/gsap/ScrollTrigger.min.js"></script>
+<script src="motion.js"></script>
 <script>
 (function () {
   "use strict";
@@ -497,7 +501,6 @@
       sec.id = "diario";
       sec.className = "dist panel seguimiento";
       document.getElementById("main").appendChild(sec);
-      revelar(sec);
     }
     const dists = data.distribuidoras || [];
     let html = `<h2>Lo que dijimos cada tarde y lo que pasó con el viento (últimos ${days.length} días)</h2>
@@ -567,11 +570,6 @@
       <div class="scroll"><table><thead><tr><th>Día</th><th>Distribuidora</th><th>Nivel previsto</th><th class="num">Prob.</th><th>Qué pasó</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }
 
-  // Sections appear once, when they enter the view; nothing waits for the animation (the content is there).
-  const revelador = ("IntersectionObserver" in window) ? new IntersectionObserver((entries) => {
-    for (const e of entries) if (e.isIntersecting) { e.target.classList.add("visto"); revelador.unobserve(e.target); }
-  }, { rootMargin: "0px 0px -5% 0px" }) : null;
-  function revelar(el) { el.classList.add("reveal"); if (revelador) revelador.observe(el); else el.classList.add("visto"); }
 
   function nivelTexto(nivel) { const n = String(nivel || "bajo"); return n.charAt(0).toUpperCase() + n.slice(1); }
 
@@ -594,7 +592,7 @@
           <div class="kpi"><div class="v">${fr.inicio != null ? fr.inicio + " - " + (fr.fin + 1) + " h" : "sin franja"}</div><div class="l">franja de más riesgo (pico de racha ${fr.pico != null ? "a las " + fr.pico + " h, " : ""}${num(fr.racha_pico)} km/h)</div></div>
         </div>
         ${pasadoBloque(data, d)}
-        <div class="dos">
+        <div class="dos mapa-perfil">
           <div class="panel sub mapa-panel">
             <div class="panel-h"><h3>Dónde: municipios por riesgo y bases de las brigadas</h3></div>
             <div class="panel-b"><div class="map" id="map-${idx}"></div>
@@ -617,7 +615,6 @@
           <div class="panel sub"><div class="panel-h"><h3>Brigadas</h3></div><div class="panel-b">${brigadas(d.brigadas) || '<p class="notas">Sin bases de brigadas calculadas.</p>'}</div></div>
         </div>`;
       main.appendChild(sec);
-      revelar(sec);
       const map = mapa(d, idx, sec.querySelector("#map-" + idx));
       maps[idx] = map;
       sec.querySelectorAll("tr.fila-zona").forEach((tr) => tr.addEventListener("click", () => {
@@ -631,7 +628,6 @@
     const seg = seguimiento(data.seguimiento);
     if (seg) main.insertAdjacentHTML("beforeend", seg);
     if (data.notas && data.notas.length) main.insertAdjacentHTML("beforeend", `<section class="dist panel notas-seccion"><h2>Notas</h2><ul class="notas">${data.notas.map((n) => "<li>" + esc(n) + "</li>").join("")}</ul></section>`);
-    main.querySelectorAll("section.seguimiento, section.notas-seccion").forEach(revelar);
     cargarRayos(data);
     cargarObservado(data);
     setInterval(() => { cargarRayos(data); cargarObservado(data); }, 5 * 60 * 1000);
