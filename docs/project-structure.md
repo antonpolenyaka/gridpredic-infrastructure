@@ -33,7 +33,7 @@ gridpredic-infrastructure/
 │   └── jobs/                    # Transformaciones con Spark (00_landing ... 03_gold) y entrenamiento (04_ml)
 ├── data/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
-├── dashboard/                   # Cuadro de mando estático: index.html (riesgo de mañana, Leaflet y OpenStreetMap), dias.html (días archivados, desde data/indice.json), historial.html y negocio.html (lo que habría dicho en 2022 - 2026), con el mismo menú; data/ recibe los JSON de los jobs
+├── dashboard/                   # Cuadro de mando estático: index.html (riesgo de mañana, Leaflet y OpenStreetMap), dias.html (días archivados, desde data/indice.json), historial.html y negocio.html (lo que habría dicho en 2022 - 2026); gridpredict.css es el sistema de diseño común y vendor/ lleva Leaflet y la tipografía (IBM Plex Sans, OFL); data/ recibe los JSON de los jobs
 ├── docs/                        # Documentación: cards, capas Silver y Gold, flujo de datos, este documento
 ├── experimentos/                # El código de cada prueba del cuaderno de laboratorio (docs/investigacion-continua.md), reproducible fuera de Spark
 ├── notebooks/                   # Exploración (convención de nombres en su README)
