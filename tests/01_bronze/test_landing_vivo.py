@@ -183,7 +183,7 @@ def test_the_ensemble_of_every_network(fs, cfg, monkeypatch, tmp_path):
         out = json.load(file)
     assert out["fecha"] == "2026-10-15" and out["umbrales_kmh"] == [50.0, 70.0, 90.0]
     eosa, pitarch = out["distribuidoras"]
-    assert eosa["id"] == 3 and eosa["nombre"] == "EOSA" and eosa["puntos"] == ["Hervás", "Plasencia"] and eosa["miembros"] == 5 and eosa["modelo"] == "icon_eu"
+    assert eosa["id"] == 3 and eosa["nombre"] == "Distribuidora 1" and eosa["puntos"] == ["Hervás", "Plasencia"] and eosa["miembros"] == 5 and eosa["modelo"] == "icon_eu"
     # The gust over the network is the worst of the points: the peak at 12:00 local (10:00 UTC) of every member.
     assert len(eosa["horas"]) == 24 and eosa["horas"][0]["hora"] == 0
     noon = next(h for h in eosa["horas"] if h["hora"] == 12)
@@ -268,7 +268,7 @@ def test_the_hourly_forecast_of_aemet_by_municipality(fs, cfg, monkeypatch, tmp_
         out = json.load(file)
     assert out["fecha"] == "2026-10-15" and [d["id"] for d in out["distribuidoras"]] == [3]
     eosa = out["distribuidoras"][0]
-    assert eosa["nombre"] == "EOSA" and eosa["municipios"] == 2 and len(eosa["horas"]) == 24 and eosa["elaborado"] == "2026-10-14T18:55:08"
+    assert eosa["nombre"] == "Distribuidora 1" and eosa["municipios"] == 2 and len(eosa["horas"]) == 24 and eosa["elaborado"] == "2026-10-14T18:55:08"
     assert eosa["pico"] == {"racha_kmh": 58, "hora": 13, "municipio": "Hervás"}
     noon = next(h for h in eosa["horas"] if h["hora"] == 12)
     assert noon["racha_kmh"] == 46 and noon["lluvia_mm"] == 0.1 and noon["tormenta_pct"] == 40

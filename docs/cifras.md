@@ -6,7 +6,7 @@ Una página con los números que sostienen el trabajo, de dónde sale cada uno (
 
 | Cifra | Valor | De dónde |
 | --- | --- | --- |
-| Distribuidoras | 3: EOSA (unos 37.400 clientes y 760 CT), Pitarch (28.700 y 570 CT) y Valle de Santa Ana (730 y 10 CT), en Extremadura | [network-analysis.md](network-analysis.md) 1 y 2 |
+| Distribuidoras | 3: la Distribuidora 1 (unos 37.400 clientes y 760 CT), la Distribuidora 2 (28.700 y 570 CT) y la Distribuidora 3 (730 y 10 CT), en Extremadura | [network-analysis.md](network-analysis.md) 1 y 2 |
 | Copias de origen | Calser (interrupciones y cálculo oficial de TIEPI y NIEPI) y TedisNet (SCADA): 61 GB de backups de SQL Server | [dataset_card.md](dataset_card.md) |
 | Lakehouse | Spark + Delta Lake + MinIO + Airflow en Docker; capas Landing, Bronze, Silver y Gold | [project-structure.md](project-structure.md), [gold-layer.md](gold-layer.md) |
 | Incidencias de CT (más de 180 s) desde 2016 | 563; unas 45 imprevistas al año entre las tres | [causas-incidencias.md](causas-incidencias.md) resumen |
@@ -21,7 +21,7 @@ Una página con los números que sostienen el trabajo, de dónde sale cada uno (
 | Un día muy alto frente a un día bajo (previsión real, 2024 - 2026) | 17,9 % de los días con avería frente a 1,9 %: 9 veces (10 con 2024 - 2025) | [caso-de-negocio.md](caso-de-negocio.md) 2, ejecución `caso_v10_20261014_1543` |
 | Días en alerta (alto o muy alto) | 12,5 % de los días; concentran el 72 % de las horas-cliente perdidas por causas locales (70 % sin recortar; 46 % sin el temporal del 28.01.2026) | [caso-de-negocio.md](caso-de-negocio.md) 2 |
 | Calibración de la probabilidad | Muy alto: dice 15,5 %, pasa 17,9 %; alto 7,3 % y 7,4 %; bajo 2,7 % y 1,9 % | [caso-de-negocio.md](caso-de-negocio.md) 2 |
-| AUC y Brier del día (previsión real) | AUC 0,72 (EOSA 0,76, Pitarch 0,66); Brier 0,036 frente a 0,038 de la tasa base (4,0 %) | [caso-de-negocio.md](caso-de-negocio.md) 2 |
+| AUC y Brier del día (previsión real) | AUC 0,72 (la Distribuidora 1 0,76, la Distribuidora 2 0,66); Brier 0,036 frente a 0,038 de la tasa base (4,0 %) | [caso-de-negocio.md](caso-de-negocio.md) 2 |
 | Los peores días | De los 10 peores de 2024 - 2026 (68 % de las horas-cliente), 7 estaban en alerta la víspera; el 28.01.2026, muy alto en las dos redes | [caso-de-negocio.md](caso-de-negocio.md) 2 |
 | Cuándo llegan los avisos de AEMET | El 79 % de los avisos de un día ya está emitido a las 20:00 de la víspera (viento 78 %, tormentas 57 %); el 21 % llega después, por eso la operación vuelve a leerlos cada hora durante el día | [investigacion-continua.md](investigacion-continua.md) 3d |
 | Antelación | El riesgo del día sale a las 20:30 de la víspera: entre 3,5 y 27,5 horas antes de cualquier hora del día siguiente, con la franja de más riesgo (12 - 14 horas) y las líneas; durante el día, "Ahora" y "Próx. 3 h" por línea se recalculan cada 15 minutos con los rayos del satélite y las estaciones | [operacion-diaria.md](operacion-diaria.md) 1 y 2 |
@@ -39,14 +39,15 @@ Una página con los números que sostienen el trabajo, de dónde sale cada uno (
 
 | Cifra | Valor | De dónde |
 | --- | --- | --- |
-| Retribución regulada (2022) | EOSA 11.821.045 EUR, Pitarch 10.541.790, Valle de Santa Ana 206.434 | [caso-de-negocio.md](caso-de-negocio.md) 4 |
-| Incentivo de calidad (Circular 8/2025, 2026 - 2031) | Del -4 % al +4 % de la retribución según el TIEPI de n-4 a n-2 frente a la referencia del sector (1,0648 h en rural concentrada en 2026 - 2028); cada décima de hora son 11.800 EUR al año en EOSA | [caso-de-negocio.md](caso-de-negocio.md) 4, [network-analysis.md](network-analysis.md) 6 |
-| Frente al sector (GECOS) | TIEPI imprevisto con su mezcla de zonas: EOSA 0,34 h (2023 - 2025) frente a 0,92 h en Cáceres y 1,51 h en España (2019 - 2021); Pitarch 0,12 h frente a 0,63 h | [network-analysis.md](network-analysis.md) 2 |
+| Retribución regulada (2022) | Distribuidora 1 11.821.045 EUR, la Distribuidora 2 10.541.790, la Distribuidora 3 206.434 | [caso-de-negocio.md](caso-de-negocio.md) 4 |
+| Incentivo de calidad (Circular 8/2025, 2026 - 2031) | Del -4 % al +4 % de la retribución según el TIEPI de n-4 a n-2 frente a la referencia del sector (1,0648 h en rural concentrada en 2026 - 2028); cada décima de punto porcentual de la retribución son 11.800 EUR al año en la Distribuidora 1 | [caso-de-negocio.md](caso-de-negocio.md) 4, [network-analysis.md](network-analysis.md) 6 |
+| Un minuto de corte de toda la red | 12.600 EUR de incentivo en la Distribuidora 1 y 14.900 en la Distribuidora 2 (un minuto de TIEPI, fórmula de la Circular 8/2025 con la retribución de 2023); para los clientes, 460 kWh no servidos en la Distribuidora 1 y 410 en la 2: 10.600 y 9.400 EUR al valor de carga perdida oficial (22.879 EUR/MWh, BOE-A-2025-14438), 3.700 y 3.200 al valor doméstico de CEPA para ACER (7,88 EUR/kWh) | [network-analysis.md](network-analysis.md) 6, [memoria-lo-que-pide-el-tutor.md](memoria-lo-que-pide-el-tutor.md) 3.7 |
+| Frente al sector (GECOS) | TIEPI imprevisto con su mezcla de zonas: la Distribuidora 1 0,34 h (2023 - 2025) frente a 0,92 h en Cáceres y 1,51 h en España (2019 - 2021); la Distribuidora 2 0,12 h frente a 0,63 h | [network-analysis.md](network-analysis.md) 2 |
 | Guardia a igual presupuesto | Reforzar los 46 días en alerta cubre el 72 % de las horas-cliente; los fines de semana de invierno (44 días al año, el 12 % de los días) cubren el 4 %; con los mismos días que los avisos amarillos, el 84 % frente al 80 % de los avisos | [caso-de-negocio.md](caso-de-negocio.md) 2b y `negocio.html` |
 | Mover las brigadas según el riesgo | Menos de un minuto de TIEPI al año (0,54 como máximo): el valor está en tener gente y material preparados el día y en la franja que toca, no en mover furgonetas | [caso-de-negocio.md](caso-de-negocio.md) 3 |
-| Telemando | El 33 % de los kVA·h imprevistos de EOSA y el 31 % de Pitarch fueron tiempo de maniobra (mediana 11 min por CT); en 8 cabeceras un interruptor telemandado se paga evitando el 25 % o menos | [network-analysis.md](network-analysis.md) 4 |
+| Telemando | El 33 % de los kVA·h imprevistos de la Distribuidora 1 y el 31 % de la Distribuidora 2 fueron tiempo de maniobra (mediana 11 min por CT); en 8 cabeceras un interruptor telemandado se paga evitando el 25 % o menos | [network-analysis.md](network-analysis.md) 4 |
 | Concentración | El 10 % de las cabeceras se lleva el 75 % de los kVA·h imprevistos; ordenadas por los dos años anteriores, su 10 % superior recoge el 60 % del año siguiente | [network-analysis.md](network-analysis.md) 3 |
-| Licencia frente a retribución | 18.000 EUR al año: el 0,15 % de la retribución de EOSA y el 0,17 % de la de Pitarch; implantación 20.000 EUR | [caso-de-negocio.md](caso-de-negocio.md) 4 |
+| Licencia frente a retribución | 18.000 EUR al año: el 0,15 % de la retribución de la Distribuidora 1 y el 0,17 % de la de la Distribuidora 2; implantación 20.000 EUR | [caso-de-negocio.md](caso-de-negocio.md) 4 |
 | El tiempo manda también en la estadística oficial | TIEPI nacional por fuerza mayor: 0,04 h en 2008, 0,88 h en 2009 (Klaus), 1,06 h en 2010 (Xynthia) | [network-analysis.md](network-analysis.md) 2 |
 
 ## 4. La operación

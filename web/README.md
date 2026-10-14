@@ -22,7 +22,7 @@ Lo que no hay, a propósito: paralaje sobre textos o figuras, secuencias de imá
 
 ## Antes de publicarla
 
-- Las capturas de `img/` salen del cuadro de mando con los datos reales de las tres distribuidoras y llevan sus nombres. Para la web pública hay que regenerarlas con los nombres anonimizados (o con una distribuidora de demostración) con `experimentos/figuras/capturar.py` sobre un `dashboard/data` preparado.
+- Las capturas de `img/` salen del cuadro de mando con los datos reales de las tres redes, que aparecen como Distribuidora 1, 2 y 3; los municipios y las líneas sí son los reales. Se regeneran con `experimentos/figuras/capturar.py` (`index_20260128_1_distribuidora_2.png` recortada, `negocio_la_guardia_a_igual_presupuesto_mas_cober.png` y `dias_archivados.png`, a la mitad de resolución).
 - El contacto es `hola@gridpredic.com`; el buzón tiene que existir antes de publicar.
 - Las cifras de la sección "Lo que habría pasado" son las de `docs/cifras.md` (2022 - 2026, `caso_v10_20261014_1543`); si se vuelve a ejecutar el caso de negocio, se actualizan aquí a mano.
 - Publicar es copiar la carpeta a cualquier hosting estático (GitHub Pages, Cloudflare Pages, Netlify o el propio nginx del proyecto); no hay build.

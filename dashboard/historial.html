@@ -179,7 +179,9 @@
 
   document.querySelectorAll('input[name="modo"]').forEach((el) => el.addEventListener("change", render));
   document.getElementById("winsor").addEventListener("change", render);
-  fetch("data/historico.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => { DATA = d; render(); })
+  // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
+  function ordenar(lista) { return (lista || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { numeric: true })); }
+  fetch("data/historico.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => { d.distribuidoras = ordenar(d.distribuidoras); DATA = d; render(); })
     .catch((e) => { document.getElementById("fuentes").textContent = "No hay data/historico.json (lo deja job_ml_caso_negocio): " + e; });
 })();
 </script>

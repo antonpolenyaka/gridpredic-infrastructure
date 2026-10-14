@@ -241,6 +241,10 @@ def parse_args(argv=None) -> argparse.Namespace:
 def settings(config: dict) -> dict:
     cfg = dict(DEFAULTS)
     cfg.update(config.get("analisis_red", {}))
+    # The names the outputs show for each distribuidora (the dashboard uses the
+    # same ones, from riesgo_manana.nombres); without them, the source database.
+    if "nombres" not in cfg:
+        cfg["nombres"] = dict(config.get("riesgo_manana", {}).get("nombres", {}))
     return cfg
 
 
@@ -397,7 +401,11 @@ class Data:
         self.dim = self._dim()
         self.events_all = self._events()
         self.events = self.events_all[~self.events_all["excluido"]]
-        self.databases = self._databases()
+        # sources: {distribuidora_id: Calser database} (the keys of the remuneration
+        # and of the official indices); databases: {distribuidora_id: name shown}.
+        self.sources = self._databases()
+        names = {str(k): str(v) for k, v in (cfg.get("nombres") or {}).items()}
+        self.databases = {d: names.get(str(int(d)), db) for d, db in self.sources.items()}
 
     def _dim(self) -> pd.DataFrame:
         df = read_table(self.spark, DIM_TABLE, DIM_COLUMNS)
@@ -644,7 +652,8 @@ def section_tiepi(data: Data, report: Report, state: dict):
     }
     table["computa_incentivo"] = [rules.get((g, f), False) for g, f in zip(table["grupo"], table["factor"])]
     table["computa_tiepi"] = table["grupo"].isin(["programada", "imprevista"])
-    table["source_database"] = table["distribuidora_id"].map(data.databases)
+    table["source_database"] = table["distribuidora_id"].map(data.sources)
+    table["distribuidora"] = table["distribuidora_id"].map(data.databases)
     report.csv("tiepi_anual.csv", table)
     by_zone = pd.concat(zones, ignore_index=True)
     report.csv("tiepi_incentivo_zona.csv", by_zone)
@@ -686,12 +695,14 @@ def section_tiepi(data: Data, report: Report, state: dict):
     report.csv("tiepi_dias_excluidos.csv", excluded)
     report.csv("sin_incidencia_duracion.csv", bands)
     check = []
+    label_of = {src: data.databases.get(d, src) for d, src in data.sources.items()}
     for window, values in data.cfg.get("tiepi_oficial_media3", {}).items():
         lo, hi = [int(x) for x in window.split("-")]
         for db, official in values.items():
-            ours = summary[(summary["distribuidora"] == db) & summary["anio"].between(lo, hi)]
+            label = label_of.get(db, db)
+            ours = summary[(summary["distribuidora"] == label) & summary["anio"].between(lo, hi)]
             if len(ours) == hi - lo + 1:
-                check.append({"distribuidora": db, "anios": window, "nuestro_h": ours["tiepi_incentivo_h"].mean(),
+                check.append({"distribuidora": label, "anios": window, "nuestro_h": ours["tiepi_incentivo_h"].mean(),
                               "cnmc_h": float(official)})
     check = pd.DataFrame(check)
     if not check.empty:
@@ -1849,7 +1860,7 @@ def incentive_by_distributor(data: Data, state: dict) -> pd.DataFrame:
         if g.empty:
             continue
         db = data.databases.get(dist, str(dist))
-        remuneration = float(cfg["retribucion_eur"].get(db, float("nan")))
+        remuneration = float(cfg["retribucion_eur"].get(data.sources.get(dist, db), float("nan")))
         last = g[g["anio"] == g["anio"].max()]
         p_total = last["p_total_kva"].sum()
         if p_total <= 0:

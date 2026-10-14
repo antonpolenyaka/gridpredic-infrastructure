@@ -94,9 +94,8 @@
   const CAP = 110, MIN_INCIDENTS = 10, WINTER = new Set([11, 12, 1, 2, 3]);
   // What the distribuidoras get and what the system costs: the resolution of the CNMC of 06.11.2025 (retribución de 2022)
   // and the business plan of the TFM. The names are those of the resolution.
-  const RETRIBUCION = { 3: { nombre: "Eléctrica del Oeste Distribución (EOSA)", codigo: "R1-035", euros: 11821045 },
-                        2: { nombre: "Eléctricas Pitarch Distribución", codigo: "R1-049", euros: 10541790 },
-                        1366: { nombre: "Distribución de Electricidad Valle de Santa Ana", codigo: "R1-164", euros: 206434 } };
+  // La retribución de 2022 de cada red (resolución de la CNMC de 6 de noviembre de 2025); el nombre que se enseña es el del JSON.
+  const RETRIBUCION = { 3: { euros: 11821045 }, 2: { euros: 10541790 }, 1366: { euros: 206434 } };
   const LICENCIA = 18000, IMPLANTACION = 20000;
   let DATA = null;
 
@@ -306,11 +305,11 @@
 
     html += `<section><h2>Cuánto cuesta y de qué depende la retribución</h2>
       <p>Las distribuidoras no facturan al cliente: cobran la retribución regulada que fija la CNMC. La Circular 8/2025 (metodología 2026 - 2031) liga parte de esa retribución a la calidad del suministro con un incentivo calculado sobre el TIEPI de los años n-4 a n-2 frente a una referencia sectorial (artículos 24 y 25) y permite reconocer, con cargo a los costes de distribución, inversiones en proyectos piloto con beneficio cuantificable, incluidos los de adaptación de la red al cambio climático (artículo 15).</p>
-      <table><thead><tr><th>distribuidora</th><th>código CNMC</th><th class="num">retribución 2022 (euros)</th><th class="num">licencia anual del sistema</th><th class="num">parte de la retribución</th><th class="num">implantación (una vez)</th></tr></thead><tbody>`;
+      <table><thead><tr><th>distribuidora</th><th class="num">retribución 2022 (euros)</th><th class="num">licencia anual del sistema</th><th class="num">parte de la retribución</th><th class="num">implantación (una vez)</th></tr></thead><tbody>`;
     for (const d of DATA.distribuidoras) {
       const r = RETRIBUCION[d.id];
       if (!r) continue;
-      html += `<tr><td>${esc(r.nombre)}</td><td>${r.codigo}</td><td class="num">${num(r.euros)}</td><td class="num">${num(LICENCIA)}</td><td class="num">${pct(LICENCIA / r.euros, 2)}</td><td class="num">${num(IMPLANTACION)}</td></tr>`;
+      html += `<tr><td>${esc(d.nombre)}</td><td class="num">${num(r.euros)}</td><td class="num">${num(LICENCIA)}</td><td class="num">${pct(LICENCIA / r.euros, 2)}</td><td class="num">${num(IMPLANTACION)}</td></tr>`;
     }
     html += `</tbody></table>
       <p class="notas">Retribución de 2022 según la resolución de la CNMC de 6 de noviembre de 2025 (el sector: 5.317 millones de euros). Licencia e implantación según el plan de negocio. Lo que no afirmamos con estos datos: una cifra en euros del incentivo de calidad de cada distribuidora, que depende de la referencia sectorial y de los límites que publique la CNMC, ni el ahorro en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
@@ -403,7 +402,7 @@
       sec.style.display = "";
     };
     if (SECTOR) { paint(SECTOR); return; }
-    fetch("data/sector.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); }).then((j) => { SECTOR = j; paint(j); }).catch(() => {});
+    fetch("data/sector.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); }).then((j) => { j.distribuidoras = ordenar(j.distribuidoras); SECTOR = j; paint(j); }).catch(() => {});
   }
 
   // The verification of the forecasts against the stations (verificacion.json), when there are complete days.
@@ -438,8 +437,11 @@
     envolverTablas(document.getElementById("tabla-guardia"));
   }
 
+  // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
+  function ordenar(lista) { return (lista || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { numeric: true })); }
   fetch("data/historico.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
     .then((data) => {
+      data.distribuidoras = ordenar(data.distribuidoras);
       DATA = data;
       document.getElementById("fuentes").innerHTML = `Calculado en el navegador a partir de data/historico.json (generado ${esc(data.generado || "")}). El método y los límites están en <a href="https://github.com/antonpolenyaka/gridpredic-infrastructure/blob/main/docs/caso-de-negocio.md">caso-de-negocio.md</a>.`;
       document.getElementById("pie").textContent = "Niveles: muy alto desde el percentil 95 de los días de entrenamiento de cada distribuidora, alto desde el 90, medio desde el 75. Averías: incidencias de causa local de Calser (equipos, meteorología, vegetación, fauna, terceros y causa desconocida) en los CT en estudio, con los clientes y la duración real de cada corte de CT. Las distribuidoras con menos de 10 incidencias en el periodo no entran en las cifras.";
