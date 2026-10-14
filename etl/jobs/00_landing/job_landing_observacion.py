@@ -215,21 +215,24 @@ def write_dashboard(payload: dict, folder: str) -> bool:
     return True
 
 
-def archived_forecast(folder: str, day: date) -> dict:
-    """riesgo_<day>.json of the dashboard folder: what the evening before said about that day (None without it)."""
-    path = os.path.join(folder or "", f"riesgo_{day:%Y%m%d}.json")
+def archived_forecast(folder: str, day: date, prefix: str = "riesgo") -> dict:
+    """<prefix>_<day>.json of the dashboard folder: what the evening before said about that day (None without it)."""
+    path = os.path.join(folder or "", f"{prefix}_{day:%Y%m%d}.json")
     if not folder or not os.path.exists(path):
         return None
     with open(path, encoding="utf-8") as file:
         return json.load(file)
 
 
-def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date) -> list:
+def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: dict = None, aemet: dict = None) -> list:
     """
     One record per distribuidora of riesgo_<day>.json: the peak gust it forecast
     (hour and km/h) against the peak the stations near the network measured
-    that local day, and whether the observed peak fell in the forecast window.
+    that local day, whether the observed peak fell in the forecast window and,
+    with ensemble_<day>.json, whether it fell inside the band of the runs.
     """
+    bands = {str(b.get("id")): b for b in (ensemble or {}).get("distribuidoras", [])}
+    second = {str(b.get("id")): b for b in (aemet or {}).get("distribuidoras", [])}
     zone = ZoneInfo(cfg["zona_horaria"])
     out = []
     if not risk:
@@ -257,6 +260,21 @@ def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date) -> list:
             rec["error_kmh"] = rec["racha_observada_max"] - rec["racha_prevista_max"]
             if window.get("inicio") is not None and window.get("fin") is not None:
                 rec["pico_en_franja"] = bool(int(window["inicio"]) <= rec["hora_observada"] <= int(window["fin"]))
+        peak2 = (second.get(str(dist.get("id"))) or {}).get("pico") or {}
+        if peak2.get("racha_kmh") is not None:
+            rec["racha_aemet_max"], rec["hora_aemet"] = peak2["racha_kmh"], peak2.get("hora")
+            if "racha_observada_max" in rec:
+                rec["error_aemet_kmh"] = rec["racha_observada_max"] - peak2["racha_kmh"]
+        band = (bands.get(str(dist.get("id"))) or {}).get("pico") or {}
+        if band.get("p10") is not None and band.get("p90") is not None:
+            rec["banda_p10"], rec["banda_p50"], rec["banda_p90"] = band["p10"], band.get("p50"), band["p90"]
+            if "racha_observada_max" in rec:
+                rec["pico_en_banda"] = bool(band["p10"] <= rec["racha_observada_max"] <= band["p90"])
+        above = (bands.get(str(dist.get("id"))) or {}).get("supera") or {}
+        if above and "racha_observada_max" in rec:
+            # The chance of every threshold that the runs gave, and whether the stations passed it: the calibration of the ensemble.
+            rec["supera"] = {k: float(v) for k, v in above.items()}
+            rec["supero"] = {k: bool(rec["racha_observada_max"] >= float(k)) for k in above}
         out.append(rec)
     return out
 
@@ -278,10 +296,32 @@ def verification_summary(days: dict, minimum_hours: int) -> list:
                  "dias_prevision_mayor": round(float((g["error_kmh"] < 0).mean()), 2)}
         if "pico_en_franja" in g.columns and g["pico_en_franja"].notna().any():
             block["pico_en_franja"] = round(float(g["pico_en_franja"].dropna().astype(bool).mean()), 2)
+        if "pico_en_banda" in g.columns and g["pico_en_banda"].notna().any():
+            block["dias_con_banda"] = int(g["pico_en_banda"].notna().sum())
+            block["pico_en_banda"] = round(float(g["pico_en_banda"].dropna().astype(bool).mean()), 2)
+        if "supera" in g.columns and g["supera"].notna().any():
+            thresholds = {}
+            for r in g.itertuples():
+                if isinstance(r.supera, dict) and isinstance(getattr(r, "supero", None), dict):
+                    for k, prob in r.supera.items():
+                        thresholds.setdefault(k, []).append((float(prob), 1.0 if r.supero.get(k) else 0.0))
+            block["umbrales"] = {k: {"dias": len(v), "probabilidad_media": round(float(np.mean([p for p, _ in v])), 2),
+                                     "parte_superada": round(float(np.mean([o for _, o in v])), 2),
+                                     "brier": round(float(np.mean([(p - o) ** 2 for p, o in v])), 3)} for k, v in thresholds.items() if v}
+        if "error_aemet_kmh" in g.columns and g["error_aemet_kmh"].notna().any():
+            e2 = g["error_aemet_kmh"].dropna()
+            block["dias_con_aemet"] = int(len(e2))
+            block["sesgo_aemet_kmh"] = round(float(e2.mean()), 1)
+            block["error_abs_aemet_kmh"] = round(float(e2.abs().mean()), 1)
         days_text = "el último día completo" if block["dias"] == 1 else f"los últimos {block['dias']} días completos"
         block["texto"] = (f"en {days_text}, la previsión de la víspera dio de media {abs(block['sesgo_kmh']):g} km/h "
                           f"{'más' if block['sesgo_kmh'] < 0 else 'menos'} que las estaciones (error medio {block['error_abs_kmh']:g} km/h)"
-                          + (f"; el pico observado cayó en la franja prevista el {100 * block['pico_en_franja']:.0f} % de los días" if "pico_en_franja" in block else ""))
+                          + (f"; el pico observado cayó en la franja prevista el {100 * block['pico_en_franja']:.0f} % de los días" if "pico_en_franja" in block else "")
+                          + (f"; dentro de la banda de los escenarios el {100 * block['pico_en_banda']:.0f} % de los {block['dias_con_banda']} días con banda" if "pico_en_banda" in block else "")
+                          + (f"; AEMET por municipios dio de media {abs(block['sesgo_aemet_kmh']):g} km/h {'más' if block['sesgo_aemet_kmh'] < 0 else 'menos'} "
+                             f"que las estaciones (error medio {block['error_abs_aemet_kmh']:g} km/h en {block['dias_con_aemet']} días)" if "sesgo_aemet_kmh" in block else "")
+                          + ("; " + ", ".join(f"los escenarios daban un {100 * u['probabilidad_media']:.0f} % de superar {float(k):g} km/h y pasó el {100 * u['parte_superada']:.0f} % de los días"
+                                              for k, u in block["umbrales"].items()) if block.get("umbrales") else ""))
         out.append(block)
     return out
 
@@ -312,7 +352,7 @@ def verify(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> dict:
         risk = archived_forecast(folder, day)
         if not risk:
             continue
-        records = verify_day(both, risk, cfg, day)
+        records = verify_day(both, risk, cfg, day, archived_forecast(folder, day, "ensemble"), archived_forecast(folder, day, "aemet"))
         if day == today:
             today_records = records
         else:
@@ -320,7 +360,7 @@ def verify(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> dict:
     keep = int(cfg["verificacion_dias"])
     kept = dict(sorted(kept.items())[-keep:])
     payload = {"generado": now.strftime("%Y-%m-%dT%H:%MZ"), "fuente": "previsión de la víspera (riesgo_<día>.json) frente a la racha máxima de las estaciones de AEMET a menos de "
-               f"{float(cfg['radio_km']):g} km de la red", "hoy": {"fecha": today.isoformat(), "distribuidoras": today_records},
+               f"{float(cfg['radio_km']):g} km de la red", "radio_km": float(cfg["radio_km"]), "hoy": {"fecha": today.isoformat(), "distribuidoras": today_records},
                "ayer": {"fecha": yesterday.isoformat(), "distribuidoras": kept.get(yesterday.isoformat(), [])},
                "dias": kept, "resumen": verification_summary(kept, int(cfg["horas_dia_completo"]))}
     if folder and os.path.isdir(folder):
