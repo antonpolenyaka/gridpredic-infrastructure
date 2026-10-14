@@ -11,6 +11,9 @@ Risk of tomorrow, every evening at riesgo_manana.horario (20:30 in Madrid).
   (the row says so).
 - puntuar: job_ml_riesgo_manana fits the model on every labelled day and
   writes the risk of every distribuidora in l3_gold.riesgo_dia_siguiente.
+- avisar: when some distribuidora reaches riesgo_manana.aviso.nivel_minimo,
+  the message of the evening goes to the webhook of AVISO_WEBHOOK_URL
+  (aviso_riesgo); skipped without URL or without alert.
 
 The warnings need AEMET_API_KEY in the environment of the airflow container
 (compose.yaml takes it from .env).
@@ -58,6 +61,24 @@ def dia() -> str:
         return date.fromisoformat(chosen).isoformat()
     evening = context["dag_run"].run_after.astimezone(ZoneInfo(ZONE))
     return (evening.date() + timedelta(days=1)).isoformat()
+
+
+@task(retries=1, retry_delay=timedelta(minutes=2))
+def avisar() -> None:
+    if JOBS_DIR not in sys.path:
+        sys.path.insert(0, JOBS_DIR)
+    import aviso_riesgo
+
+    path = os.path.join(settings.get("dashboard_dir", "/app/dashboard/data"), "riesgo.json")
+    if not os.path.exists(path):
+        raise AirflowSkipException(f"No {path}: nothing to send")
+    with open(path, encoding="utf-8") as file:
+        payload = json.load(file)
+    result = aviso_riesgo.send(payload, settings)
+    if result in ("sin alerta", "sin url"):
+        raise AirflowSkipException(f"Message of the evening not sent: {result}")
+    if result != "enviado":
+        raise RuntimeError(f"Message of the evening not sent: {result}")
 
 
 @task(retries=2, retry_delay=timedelta(minutes=10))
@@ -108,4 +129,4 @@ with DAG(
         trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,
     )
 
-    [prevision(day), avisos(day)] >> puntuar
+    [prevision(day), avisos(day)] >> puntuar >> avisar()

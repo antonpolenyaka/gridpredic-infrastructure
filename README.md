@@ -591,6 +591,10 @@ ORDER BY fecha DESC, probabilidad DESC;
 
 Con las credenciales del Data Store de EUMETSAT en `.env`, `dag_rayos_vivo` añade cada 15 minutos los rayos que ve el satélite MTG sobre la red (`dashboard/data/rayos.json`), que el cuadro de mando pinta sobre el mapa con una franja por distribuidora.
 
+`dag_observacion_vivo` añade cada hora lo que miden las estaciones de AEMET (`dashboard/data/observado.json`): la racha observada se pinta en rojo sobre el perfil previsto del día y, con `dashboard/data/verificacion.json`, el cuadro de mando dice lo que valió la previsión de la víspera (pico previsto frente a observado, sesgo y error medio de los últimos días). Con `AVISO_WEBHOOK_URL` en `.env` (un webhook de Slack, Teams o similar), el DAG manda además el aviso de la tarde cuando alguna distribuidora queda en alto o muy alto.
+
+`job_ml_caso_negocio.py` repite la operación de cada tarde sobre 2022 - 2025 (qué habría dicho el sistema cada víspera y qué pasó: incidencias, clientes, horas-cliente, brigadas) y deja `historico.json` para la página `historial.html` del cuadro de mando; los resultados y lo que valen para una distribuidora están en [docs/caso-de-negocio.md](docs/caso-de-negocio.md).
+
 Cómo se calcula, qué se puede predecir a cada escala y qué limitaciones tiene está en [docs/causas-incidencias.md](docs/causas-incidencias.md), apartado 8.
 
 ---
