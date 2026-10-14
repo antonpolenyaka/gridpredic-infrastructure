@@ -1,6 +1,6 @@
 # Caso de negocio con los datos reales: qué habría pasado en 2022 - 2025
 
-Hasta ahora medíamos el modelo con métricas de clasificación (PR-AUC, parte de días con avería en el 10 % de más riesgo). Para una distribuidora o un inversor la pregunta es otra: si el sistema hubiera estado en marcha estos cuatro años, qué habría dicho cada tarde y qué habría pasado al día siguiente. Este documento responde con los datos de EOSA y Pitarch de 2022 a 2025 (Valle de Santa Ana, con 10 CT, no tuvo incidencias de causa local en esos años). La página `historial.html` del cuadro de mando lo enseña día a día: el color es el nivel que habría dado el sistema la tarde anterior y los puntos, las averías que hubo.
+Hasta ahora medíamos el modelo con métricas de clasificación (PR-AUC, parte de días con avería en el 10 % de más riesgo). Para una distribuidora o un inversor la pregunta es otra: si el sistema hubiera estado en marcha estos cuatro años, qué habría dicho cada tarde y qué habría pasado al día siguiente. Este documento responde con los datos de EOSA y Pitarch de 2022 a 2025 (Valle de Santa Ana, con 10 CT, tuvo una sola incidencia de causa local en esos años, en 2023, y con una incidencia sus días no dicen nada del nivel). La página `historial.html` del cuadro de mando lo enseña día a día: el color es el nivel que habría dado el sistema la tarde anterior y los puntos, las averías que hubo.
 
 ## 1. Cómo lo hemos medido
 
@@ -9,7 +9,7 @@ Hasta ahora medíamos el modelo con métricas de clasificación (PR-AUC, parte d
 - Las averías: las incidencias de causa local de Calser (equipos, meteorología, vegetación, fauna, terceros y causa desconocida; fuera las de aguas arriba, los apagones, las programadas y las maniobras) en los CT en estudio, con los clientes de cada CT y la duración real de cada corte. Las horas-cliente son la suma, CT a CT, de clientes por horas sin suministro. Como un solo corte (el incendio de Jarilla del 13.08.2025, tres CT de Cabezabellosa sin luz 32 horas) pesa tanto como un año entero, las tablas recortan los cortes a 110 minutos (el percentil 99 de 2022 - 2025) y dan al lado la cifra sin recortar.
 - Las brigadas: las bases que minimizan la llegada (p-mediana sobre los municipios de los CT) con los minutos por carretera de OSRM sobre OpenStreetMap, 1 y 2 brigadas, y fuera del horario laboral (lunes a viernes de 8 a 17) una movilización de 30 minutos cuando la brigada está de retén.
 
-El cálculo está en el job `job_ml_caso_negocio.py` y deja `historico.json` para la página del cuadro de mando y las tablas de este documento.
+El cálculo está en el job `job_ml_caso_negocio.py` y deja `historico.json` para la página del cuadro de mando, las tablas de este documento (ejecución `caso_v4_20261014_1056` del lakehouse) y el Excel `2026-10-14 Caso_de_negocio_2022-2025.xlsx` de la carpeta de exportación del proyecto, con las tablas como fórmulas sobre los días y los cortes.
 
 ## 2. Lo que vería un director de distribución
 
@@ -17,45 +17,45 @@ Con la previsión real de la víspera, en 2024 y 2025 (EOSA y Pitarch juntas, 1.
 
 | nivel previsto la víspera | días | con avería | incidencias | horas-cliente (recortadas) | parte | parte sin recortar |
 | --- | --- | --- | --- | --- | --- | --- |
-| bajo | 1.047 (74 %) | 1,7 % | 19 | 6.316 | 25 % | 17 % |
+| bajo | 1.047 (74 %) | 1,7 % | 19 | 6.343 | 25 % | 17 % |
 | medio | 198 (14 %) | 4,5 % | 9 | 4.412 | 18 % | 10 % |
-| alto | 86 (6 %) | 9,3 % | 8 | 3.885 | 16 % | 47 % |
-| muy alto | 91 (6 %) | 17,6 % | 19 | 10.341 | 41 % | 26 % |
+| alto | 86 (6 %) | 9,3 % | 8 | 3.917 | 16 % | 47 % |
+| muy alto | 91 (6 %) | 17,6 % | 19 | 10.379 | 41 % | 26 % |
 
-- Un día muy alto tiene avería 10 veces más a menudo que un día bajo (17,6 % frente a 1,7 %).
+- Un día muy alto tiene avería 10 veces más a menudo que un día bajo (17,6 % frente a 1,7 %). Por separado se mantiene: en EOSA, 22,2 % frente a 1,5 % (45 días muy altos, 10 con avería); en Pitarch, 13,0 % frente a 1,9 % (46 días, 6 con avería).
 - Los días en alerta (alto o muy alto) son el 12 % de los días y concentran el 57 % de las horas-cliente perdidas por causas locales (el 73 % sin recortar el incendio).
-- De los 3 peores días de cada distribuidora y año de 2024 - 2025 (12 días que suman el 54 % de las horas-cliente), 7 estaban en alerta la víspera; de los 5 peores (20 días, el 72 %), 12. Con el reanálisis, en 2022 - 2025: 11 de 24 y 16 de 40.
+- De los 3 peores días de cada distribuidora y año de 2024 - 2025 (12 días que suman el 54 % de las horas-cliente), 7 estaban en alerta la víspera; de los 5 peores (20 días, el 73 %), 12. Con el reanálisis, en 2022 - 2025: 11 de 24 y 16 de 40. Mirando los 10 peores días de 2024 - 2025 sin separar por distribuidora ni año (la mitad de las horas-cliente), 8 estaban en alerta.
 - El 74 % de los días son bajos y en ellos cae una de cada cuatro horas-cliente: son las averías de equipos y de causa desconocida que el tiempo no anuncia.
 
 Por distribuidora y año:
 
 | distribuidora | año | tiempo que ve el modelo | días en alerta | incidencias | en días de alerta | horas-cliente | en días de alerta | sin recortar |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| EOSA | 2022 | reanálisis | 41 (11 %) | 30 | 13 (43 %) | 13.126 | 4.371 (33 %) | 34 % |
-| EOSA | 2023 | reanálisis | 36 (10 %) | 21 | 5 (24 %) | 16.692 | 10.871 (65 %) | 65 % |
-| EOSA | 2024 | previsión real | 38 (11 %) | 17 | 8 (47 %) | 7.519 | 3.864 (51 %) | 51 % |
-| EOSA | 2025 | previsión real | 54 (15 %) | 18 | 10 (56 %) | 9.595 | 5.323 (55 %) | 82 % |
-| Pitarch | 2022 | reanálisis | 50 (14 %) | 13 | 3 (23 %) | 8.100 | 244 (3 %) | 3 % |
+| EOSA | 2022 | reanálisis | 41 (11 %) | 30 | 13 (43 %) | 13.134 | 4.380 (33 %) | 34 % |
+| EOSA | 2023 | reanálisis | 36 (10 %) | 21 | 5 (24 %) | 16.693 | 10.871 (65 %) | 65 % |
+| EOSA | 2024 | previsión real | 38 (11 %) | 17 | 8 (47 %) | 7.543 | 3.867 (51 %) | 51 % |
+| EOSA | 2025 | previsión real | 54 (15 %) | 18 | 10 (56 %) | 9.670 | 5.388 (56 %) | 82 % |
+| Pitarch | 2022 | reanálisis | 50 (14 %) | 13 | 3 (23 %) | 8.101 | 244 (3 %) | 3 % |
 | Pitarch | 2023 | reanálisis | 35 (10 %) | 19 | 5 (26 %) | 3.916 | 1.298 (33 %) | 33 % |
 | Pitarch | 2024 | previsión real | 44 (13 %) | 11 | 5 (45 %) | 4.555 | 3.288 (72 %) | 72 % |
-| Pitarch | 2025 | previsión real | 41 (11 %) | 9 | 4 (44 %) | 3.285 | 1.752 (53 %) | 50 % |
+| Pitarch | 2025 | previsión real | 41 (11 %) | 9 | 4 (44 %) | 3.283 | 1.752 (53 %) | 50 % |
 
 Pitarch en 2022 es el año malo: sus dos peores días (6.300 horas-cliente, averías de equipos en días de calma) salieron bajos. Es el límite que ya conocíamos: el sistema ve el tiempo, no el estado de los equipos.
 
 Los diez peores días de 2024 - 2025 y lo que decía el sistema la tarde anterior:
 
-| día | distribuidora | nivel previsto | probabilidad | incidencias | clientes | horas-cliente (recortadas) | corte más largo (min) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 10.06.2024 | EOSA | muy alto | 11,9 % | 1 | 24.335 | 2.035 | 5 |
-| 05.11.2025 | EOSA | muy alto | 35,7 % | 2 | 1.971 | 1.861 | 169 |
-| 12.10.2024 | Pitarch | muy alto | 11,5 % | 1 | 313 | 1.431 | 75 |
-| 04.04.2025 | Pitarch | muy alto | 15,2 % | 1 | 365 | 1.262 | 58 |
-| 18.03.2025 | EOSA | alto | 10,2 % | 1 | 1.813 | 1.249 | 41 |
-| 28.05.2025 | EOSA | bajo | 2,6 % | 1 | 11.194 | 1.113 | 6 |
-| 17.06.2025 | EOSA | medio | 5,5 % | 1 | 1.269 | 1.108 | 77 |
-| 13.08.2025 | EOSA | alto | 7,9 % | 1 | 535 | 949 | 1.946 |
-| 19.09.2024 | Pitarch | muy alto | 6,9 % | 1 | 6.852 | 867 | 55 |
-| 27.03.2024 | EOSA | muy alto | 23,3 % | 1 | 12.308 | 831 | 4 |
+| día | distribuidora | nivel previsto | probabilidad | incidencias | clientes | horas-cliente (recortadas) | sin recortar | corte más largo (min) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10.06.2024 | EOSA | muy alto | 11,9 % | 1 | 24.381 | 2.039 | 2.039 | 5 |
+| 05.11.2025 | EOSA | muy alto | 35,7 % | 2 | 1.971 | 1.895 | 2.465 | 169 |
+| 12.10.2024 | Pitarch | muy alto | 11,5 % | 1 | 313 | 1.431 | 1.431 | 75 |
+| 04.04.2025 | Pitarch | muy alto | 15,2 % | 1 | 365 | 1.262 | 1.262 | 58 |
+| 18.03.2025 | EOSA | alto | 10,2 % | 1 | 1.813 | 1.249 | 1.249 | 41 |
+| 28.05.2025 | EOSA | bajo | 2,6 % | 1 | 11.194 | 1.113 | 1.113 | 6 |
+| 17.06.2025 | EOSA | medio | 5,5 % | 1 | 1.269 | 1.108 | 1.108 | 77 |
+| 13.08.2025 | EOSA | alto | 7,9 % | 1 | 535 | 981 | 17.349 | 1.946 |
+| 19.09.2024 | Pitarch | muy alto | 6,9 % | 1 | 6.852 | 867 | 867 | 55 |
+| 27.03.2024 | EOSA | muy alto | 23,3 % | 1 | 12.308 | 831 | 831 | 4 |
 
 La noche del incendio de Jarilla (13.08.2025, el corte más largo de los cuatro años) EOSA estaba en alto desde la tarde anterior.
 
@@ -63,17 +63,19 @@ La noche del incendio de Jarilla (13.08.2025, el corte más largo de los cuatro 
 
 | distribuidora | brigadas | año | cortes de CT | más largos que la llegada de la brigada | horas-cliente de esos cortes | llegada media con bases fijas (min) | en alerta, con las bases del día (min) | minutos de TIEPI ganados |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| EOSA | 1 | 2024 | 1.263 | 52 (4 %) | 517 (7 %) | 45 | 36 | 0,00 |
-| EOSA | 2 | 2024 | 1.263 | 67 (5 %) | 1.950 (25 %) | 25 | 25 | 0,00 |
-| EOSA | 1 | 2025 | 755 | 10 (1 %) | 962 (4 %) | 67 | 60 | 0,08 |
-| EOSA | 2 | 2025 | 755 | 177 (23 %) | 4.948 (18 %) | 21 | 24 | 0,08 |
-| Pitarch | 1 | 2024 | 633 | 15 (2 %) | 50 (1 %) | 47 | 43 | 0,53 |
-| Pitarch | 2 | 2024 | 633 | 15 (2 %) | 50 (1 %) | 32 | 27 | 0,53 |
-| Pitarch | 1 | 2025 | 319 | 16 (5 %) | 438 (13 %) | 39 | 37 | 0,20 |
-| Pitarch | 2 | 2025 | 319 | 16 (5 %) | 438 (13 %) | 39 | 32 | 0,20 |
+| EOSA | 1 | 2024 | 1.267 | 53 (4 %) | 1.103 (14 %) | 45 | 36 | 0,00 |
+| EOSA | 2 | 2024 | 1.267 | 67 (5 %) | 2.080 (27 %) | 25 | 25 | 0,00 |
+| EOSA | 1 | 2025 | 755 | 17 (2 %) | 19.752 (73 %) | 66 | 60 | 0,08 |
+| EOSA | 2 | 2025 | 755 | 74 (10 %) | 21.697 (80 %) | 23 | 25 | 0,08 |
+| Pitarch | 1 | 2024 | 634 | 15 (2 %) | 50 (1 %) | 47 | 45 | 0,54 |
+| Pitarch | 2 | 2024 | 634 | 15 (2 %) | 50 (1 %) | 32 | 27 | 0,54 |
+| Pitarch | 1 | 2025 | 319 | 16 (5 %) | 642 (18 %) | 39 | 37 | 0,21 |
+| Pitarch | 2 | 2025 | 319 | 16 (5 %) | 642 (18 %) | 39 | 30 | 0,31 |
 
-- Tres de cada cuatro cortes de CT duran menos de 15 minutos: los repone el reenganche o el telemando antes de que ninguna brigada pueda llegar. Solo entre el 1 % y el 5 % de los cortes (el 7 - 25 % de las horas-cliente) duran más que la llegada de la brigada, y son esos los que la brigada puede acortar.
-- Cambiar las bases según el riesgo del día apenas mueve la llegada media (de 2 a 7 minutos) y gana menos de un minuto de TIEPI al año: con dos brigadas, la base fija óptima ya cubre bien las dos mitades de cada red. El valor de la víspera no está en mover furgonetas, está en tener gente y material preparados los días que toca, y en la franja horaria en la que toca (el 72 % de las incidencias de los días de alerta empiezan dentro de la franja del pico de racha, y dos de cada tres incidencias empiezan fuera del horario laboral).
+Las horas-cliente de esta tabla van sin recortar: en EOSA en 2025 el incendio de Jarilla (17.349 horas-cliente en tres CT) es casi todo lo que esperó a la brigada.
+
+- Casi tres de cada cuatro cortes de CT (el 72 %) duran menos de 15 minutos, la mediana son 8: los repone el reenganche o el telemando antes de que ninguna brigada pueda llegar. Solo entre el 2 % y el 10 % de los cortes duran más que la llegada de la brigada, pero son los largos: en EOSA, el 14 - 27 % de las horas-cliente de 2024 y, con el incendio, el 73 - 80 % de las de 2025. Son esos los que la brigada puede acortar.
+- Cambiar las bases según el riesgo del día apenas mueve la llegada media (entre 0 y 9 minutos, y con dos brigadas en EOSA no la mejora) y gana menos de un minuto de TIEPI al año (0,54 como máximo, en Pitarch en 2024): con dos brigadas, la base fija óptima ya cubre bien las dos mitades de cada red. El valor de la víspera no está en mover furgonetas, está en tener gente y material preparados los días que toca, y en la franja horaria en la que toca (el 74 % de las incidencias de los días de alerta empiezan dentro de la franja del pico de racha, y el 64 % de las incidencias empiezan fuera del horario laboral).
 - Lo que sí acorta las horas-cliente en estas redes es el telemando: los cortes que esperan a la brigada son pocos pero largos. El ranking anual de CT y cabeceras ([network-analysis.md](network-analysis.md)) dice dónde ponerlo.
 
 ## 4. Cuánto vale
@@ -83,8 +85,8 @@ Las distribuidoras no facturan al cliente: cobran la retribución regulada que f
 Lo que el sistema aporta a esa cuenta, con los números de arriba:
 
 - Dónde está el TIEPI de causas locales: en EOSA, entre 16 y 35 minutos al año en los CT en estudio (2022 - 2025); en Pitarch, entre 5 y 19. Los días en alerta concentran más de la mitad. Es el TIEPI sobre el que actúan las brigadas y el telemando; el de aguas arriba y el apagón del 28.04.2025 (12.228 horas de CT, más que todas las causas locales de cuatro años juntas) no dependen de la distribuidora.
-- La guardia: en lugar de reforzar la guardia todos los fines de semana de invierno, reforzarla los 40 - 55 días de alerta al año, durante la franja de 13 - 14 horas que marca el sistema, con las bases y los municipios que cubre cada una. Son unas 600 - 750 horas de franja al año por distribuidora.
-- Las compensaciones a los clientes del Real Decreto 1955/2000 (descuentos cuando se superan los límites individuales de calidad) y el coste reputacional de un corte largo caen sobre los mismos días: los 20 peores días de 2024 - 2025 suman el 72 % de las horas-cliente y 12 estaban en alerta la víspera.
+- La guardia: en lugar de reforzar la guardia todos los fines de semana de invierno, reforzarla los 40 - 55 días de alerta al año, durante la franja de 12 - 14 horas que marca el sistema, con las bases y los municipios que cubre cada una. Son unas 500 - 750 horas de franja al año por distribuidora.
+- Las compensaciones a los clientes del Real Decreto 1955/2000 (descuentos cuando se superan los límites individuales de calidad) y el coste reputacional de un corte largo caen sobre los mismos días: los 20 peores días de 2024 - 2025 suman el 73 % de las horas-cliente y 12 estaban en alerta la víspera.
 
 Lo que no podemos afirmar con estos datos: una cifra en euros del incentivo de calidad para cada distribuidora (depende de la referencia sectorial y de los límites que publique la CNMC) ni el ahorro en horas extra, que depende de cómo organiza hoy cada empresa su retén.
 
