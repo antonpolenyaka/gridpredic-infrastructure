@@ -308,8 +308,42 @@
 
   // What the forecast of the evening before was worth (verificacion.json, written with the observations): yesterday's
   // forecast peak against the measured one and the summary of the last complete days.
+  // The log of the last days (verificacion.json): what the system said every evening and what the stations
+  // measured, one row per day, so the page shows its own record while it runs.
+  function pintarDiario(data, v) {
+    const days = Object.keys(v.dias || {}).sort().reverse().slice(0, 21);
+    if (!days.length) return;
+    let sec = document.getElementById("diario");
+    if (!sec) {
+      sec = document.createElement("section");
+      sec.id = "diario";
+      document.getElementById("main").appendChild(sec);
+    }
+    const dists = data.distribuidoras || [];
+    let html = `<h2>Lo que dijimos cada tarde y lo que pasó con el viento (últimos ${days.length} días)</h2>
+      <p class="notas">Por distribuidora: el nivel de la víspera, el pico de racha previsto y el medido por las estaciones de AEMET a menos de ${num(v.radio_km || 25)} km de la red (hora del pico medido). Las averías de cada día llegan con la carga de Calser y se ven en el historial.</p>
+      <table><thead><tr><th>día</th>${dists.map((d) => `<th>${esc(d.nombre)}</th>`).join("")}</tr></thead><tbody>`;
+    for (const f of days) {
+      const recs = v.dias[f] || [];
+      html += `<tr><td>${f.slice(8, 10)}.${f.slice(5, 7)}.${f.slice(0, 4)}</td>`;
+      for (const d of dists) {
+        const r = recs.find((x) => String(x.id) === String(d.id));
+        if (!r) { html += "<td></td>"; continue; }
+        const level = r.nivel ? `<span class="nivel ${cls(r.nivel)}">${r.nivel}</span>` : "";
+        const forecast = r.racha_prevista_max != null ? `${num(r.racha_prevista_max)}` : "-";
+        const observed = r.racha_observada_max != null ? `${num(r.racha_observada_max)} km/h a las ${r.hora_observada}:00` : "sin estaciones";
+        const marks = [r.pico_en_franja === true ? "en la franja" : r.pico_en_franja === false ? "fuera de la franja" : "",
+                       r.pico_en_banda === true ? "en la banda" : r.pico_en_banda === false ? "fuera de la banda" : ""].filter(Boolean).join(", ");
+        html += `<td>${level} previsto ${forecast}, medido ${observed}${marks ? " (" + marks + ")" : ""}</td>`;
+      }
+      html += "</tr>";
+    }
+    sec.innerHTML = html + "</tbody></table>";
+  }
+
   function pintarVerificacion(data, v) {
     if (!v) return;
+    pintarDiario(data, v);
     (data.distribuidoras || []).forEach((d, idx) => {
       const sec = document.getElementById("dist-" + idx);
       if (!sec) return;

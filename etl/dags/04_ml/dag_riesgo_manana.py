@@ -78,7 +78,7 @@ def avisar() -> None:
         raise AirflowSkipException(f"No {path}: nothing to send")
     with open(path, encoding="utf-8") as file:
         payload = json.load(file)
-    result = aviso_riesgo.send(payload, settings)
+    result = aviso_riesgo.send(payload, settings, aviso_riesgo.read_ensemble(os.path.dirname(path)))
     if result in ("sin alerta", "sin url"):
         raise AirflowSkipException(f"Message of the evening not sent: {result}")
     if result != "enviado":

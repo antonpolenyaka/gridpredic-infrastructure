@@ -331,7 +331,7 @@ def verify(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> dict:
     keep = int(cfg["verificacion_dias"])
     kept = dict(sorted(kept.items())[-keep:])
     payload = {"generado": now.strftime("%Y-%m-%dT%H:%MZ"), "fuente": "previsión de la víspera (riesgo_<día>.json) frente a la racha máxima de las estaciones de AEMET a menos de "
-               f"{float(cfg['radio_km']):g} km de la red", "hoy": {"fecha": today.isoformat(), "distribuidoras": today_records},
+               f"{float(cfg['radio_km']):g} km de la red", "radio_km": float(cfg["radio_km"]), "hoy": {"fecha": today.isoformat(), "distribuidoras": today_records},
                "ayer": {"fecha": yesterday.isoformat(), "distribuidoras": kept.get(yesterday.isoformat(), [])},
                "dias": kept, "resumen": verification_summary(kept, int(cfg["horas_dia_completo"]))}
     if folder and os.path.isdir(folder):

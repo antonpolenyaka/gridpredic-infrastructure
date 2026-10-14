@@ -46,6 +46,12 @@ def test_the_message_names_the_distribuidoras_in_alert_only():
     assert "motivos" not in av.message_from(PAYLOAD, "medio").split("- Pitarch")[1]
     assert av.message_from(PAYLOAD, "muy alto").count("\n- ") == 1
     assert av.message_from({"distribuidoras": [{"nombre": "x", "nivel": "bajo"}]}, "alto") == ""
+    # With the ensemble of the same day, the spread of the runs goes after the motives; of another day, nothing.
+    band = {"fecha": "2026-01-15", "distribuidoras": [{"id": 3, "horas": [{"hora": 0, "p10": 1, "p50": 2, "p90": 3}],
+                                                       "texto": "40 escenarios de icon_eu en 21 celdas de la red: el 80 % central da el pico de racha entre 70 y 95 km/h (mediana 84)"}]}
+    with_band = av.message_from(PAYLOAD, "alto", band)
+    assert "motivos: racha prevista de 1,6 veces el p98 (x12); escenarios: 40 escenarios de icon_eu en 21 celdas de la red: el 80 % central da el pico de racha entre 70 y 95 km/h (mediana 84)." in with_band
+    assert "escenarios" not in av.message_from(PAYLOAD, "alto", {**band, "fecha": "2026-01-14"})
     assert not av.reached("raro", "alto") and av.reached("muy alto", "alto") and not av.reached("medio", "alto")
 
 
