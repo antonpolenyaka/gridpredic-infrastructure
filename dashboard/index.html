@@ -476,6 +476,29 @@
       .then((a) => pintarAemet(data, a)).catch(() => {});
     if (!suffix) fetch("data/verificacion.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((v) => pintarVerificacion(data, v)).catch(() => {});
+    if (!suffix) fetch("data/avisos_hoy.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+      .then((a) => pintarAvisosHoy(data, a)).catch(() => {});
+  }
+
+  // The warnings of AEMET read during the day (avisos_hoy.json, task avisos_hoy of dag_observacion_vivo): the guard
+  // line of the header and the pill of every distribuidora follow the warnings that arrived after the evening run.
+  function pintarAvisosHoy(data, a) {
+    if (!a || a.fecha !== data.fecha || !(a.distribuidoras || []).length) return;
+    const byId = Object.fromEntries(a.distribuidoras.map((d) => [String(d.id), d]));
+    const guard = document.getElementById("guardia");
+    const changed = a.distribuidoras.filter((d) => d.subida || (d.nuevos || []).length);
+    (data.distribuidoras || []).forEach((d, idx) => {
+      const today = byId[String(d.id)];
+      if (!today || !today.subida) return;
+      const h2 = document.querySelector(`#dist-${idx} h2`);
+      if (h2 && !h2.querySelector(".guardia-pill")) {
+        h2.querySelector(".nivel").insertAdjacentHTML("afterend", ` <span class="nivel guardia-pill" title="${esc(today.guardia.motivo || "")}">guardia reforzada</span>`);
+      }
+    });
+    if (guard && changed.length) {
+      guard.insertAdjacentHTML("beforeend", ` <span class="notas">Avisos de AEMET leídos durante el día (${esc((a.generado || "").slice(11, 16))} UTC): ${changed.map((d) => esc(d.texto)).join("; ")}.</span>`);
+      guard.style.display = "";
+    }
   }
 
   // What the forecast of the evening before was worth (verificacion.json, written with the observations): yesterday's
