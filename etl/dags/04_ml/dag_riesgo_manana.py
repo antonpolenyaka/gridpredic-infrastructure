@@ -9,11 +9,19 @@ Risk of tomorrow, every evening at riesgo_manana.horario (20:30 in Madrid).
   forecast is needed: without it the run fails. Without an answer of AEMET
   after three tries avisos is skipped and the day is scored without warnings
   (the row says so).
+- ensemble: the 40 runs of ICON-EU EPS (Open-Meteo Ensemble API) for the
+  cells of every network go to the Landing and to dashboard/data/ensemble.json
+  (the band of the gust and the share of runs above every threshold). It is
+  not needed to score: without an answer the task is skipped.
+- aemet_municipios: the hourly forecast of AEMET for every municipality of
+  the reference (its own model, a second opinion) goes to the Landing and to
+  dashboard/data/aemet.json; skipped without key or answer.
 - puntuar: job_ml_riesgo_manana fits the model on every labelled day and
   writes the risk of every distribuidora in l3_gold.riesgo_dia_siguiente.
 - avisar: when some distribuidora reaches riesgo_manana.aviso.nivel_minimo,
   the message of the evening goes to the webhook of AVISO_WEBHOOK_URL
-  (aviso_riesgo); skipped without URL or without alert.
+  (aviso_riesgo); skipped without URL or without alert. A task that fails
+  for good goes to the same webhook (on_failure_callback).
 
 The warnings need AEMET_API_KEY in the environment of the airflow container
 (compose.yaml takes it from .env).
@@ -45,6 +53,15 @@ with open(CONFIG_PATH) as file:
 ZONE = settings.get("zona_horaria", "Europe/Madrid")
 
 
+def failed(context: dict) -> None:
+    """A task that failed for good goes to the webhook of the evening (silent without AVISO_WEBHOOK_URL)."""
+    if JOBS_DIR not in sys.path:
+        sys.path.insert(0, JOBS_DIR)
+    import aviso_riesgo
+
+    aviso_riesgo.notify_failure(context)
+
+
 def land(source: str, day: str) -> int:
     if LANDING_DIR not in sys.path:
         sys.path.insert(0, LANDING_DIR)
@@ -74,7 +91,7 @@ def avisar() -> None:
         raise AirflowSkipException(f"No {path}: nothing to send")
     with open(path, encoding="utf-8") as file:
         payload = json.load(file)
-    result = aviso_riesgo.send(payload, settings)
+    result = aviso_riesgo.send(payload, settings, aviso_riesgo.read_ensemble(os.path.dirname(path)))
     if result in ("sin alerta", "sin url"):
         raise AirflowSkipException(f"Message of the evening not sent: {result}")
     if result != "enviado":
@@ -85,6 +102,35 @@ def avisar() -> None:
 def prevision(day: str) -> None:
     if land("prevision", day) != 0:
         raise RuntimeError(f"The forecast of ICON-EU for {day} did not land")
+
+
+@task(retries=0)
+def aemet_municipios(day: str) -> None:
+    # The second forecast, from AEMET's own model; never a failure, the score does not need it.
+    variable = settings.get("aemet_municipios", {}).get("clave_env", "AEMET_API_KEY")
+    if not os.environ.get(variable):
+        raise AirflowSkipException(f"No {variable} in the airflow container: no forecast of AEMET by municipality")
+    try:
+        code = land("aemet_municipios", day)
+    except Exception as error:  # noqa: BLE001
+        raise AirflowSkipException(f"The forecast of AEMET by municipality did not land: {str(error)[:200]}") from error
+    if code == 2:
+        raise AirflowSkipException("AEMET did not answer for any municipality")
+    if code != 0:
+        raise AirflowSkipException("Too many municipalities without answer: the profile of AEMET uses the rest")
+
+
+@task(retries=0)
+def ensemble(day: str) -> None:
+    # Never a failure: the score does not need it, and a failed upstream would stop puntuar.
+    try:
+        code = land("ensemble", day)
+    except Exception as error:  # noqa: BLE001
+        raise AirflowSkipException(f"The ensemble did not land: {str(error)[:200]}") from error
+    if code == 2:
+        raise AirflowSkipException("The Ensemble API did not answer for any point: scored without the band of the gust")
+    if code != 0:
+        raise AirflowSkipException("Some points of the ensemble did not land: the band uses the rest")
 
 
 @task(retries=0)
@@ -107,7 +153,7 @@ with DAG(
     catchup=False,
     max_active_runs=1,
     params={"fecha": Param("", type="string", description="Día que se predice, AAAA-MM-DD (vacío: el día siguiente)")},
-    default_args={"retries": 1, "retry_delay": timedelta(minutes=5)},
+    default_args={"retries": 1, "retry_delay": timedelta(minutes=5), "on_failure_callback": failed},
     tags=["ml", "riesgo"],
 ) as dag:
 
@@ -129,4 +175,4 @@ with DAG(
         trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,
     )
 
-    [prevision(day), avisos(day)] >> puntuar >> avisar()
+    [prevision(day), avisos(day), ensemble(day), aemet_municipios(day)] >> puntuar >> avisar()

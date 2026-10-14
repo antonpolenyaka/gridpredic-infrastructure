@@ -608,6 +608,8 @@ def shift_sheets(payload: dict) -> dict:
             "bases": "; ".join(b.get("municipio", "") for b in plan.get("bases", [])),
             "llegada media (min)": plan.get("llegada_media_min"), "motivos": d.get("motivos"),
             "causas (días como mañana)": ", ".join(f"{c['familia']} {round(100 * c['parte'])} %" for c in d.get("causas", [])),
+            "escenarios de ICON-EU EPS": (d.get("escenarios") or {}).get("texto"),
+            "AEMET por municipios": (d.get("aemet") or {}).get("texto"),
         })
         for z in sorted(d.get("zonas", []), key=lambda z: -(z.get("probabilidad") or 0)):
             lines.append({"distribuidora": d.get("nombre"), "línea": z.get("nombre"), "id línea": z.get("zona"),

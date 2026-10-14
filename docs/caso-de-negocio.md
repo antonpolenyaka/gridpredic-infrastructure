@@ -1,11 +1,11 @@
 # Caso de negocio con los datos reales: qué habría pasado en 2022 - 2025
 
-Hasta ahora medíamos el modelo con métricas de clasificación (PR-AUC, parte de días con avería en el 10 % de más riesgo). Para una distribuidora o un inversor la pregunta es otra: si el sistema hubiera estado en marcha estos cuatro años, qué habría dicho cada tarde y qué habría pasado al día siguiente. Este documento responde con los datos de EOSA y Pitarch de 2022 a 2025 (Valle de Santa Ana, con 10 CT, tuvo una sola incidencia de causa local en esos años, en 2023, y con una incidencia sus días no dicen nada del nivel). La página `historial.html` del cuadro de mando lo enseña día a día: el color es el nivel que habría dado el sistema la tarde anterior y los puntos, las averías que hubo.
+Hasta ahora medíamos el modelo con métricas de clasificación (PR-AUC, parte de días con avería en el 10 % de más riesgo). Para una distribuidora o un inversor la pregunta es otra: si el sistema hubiera estado en marcha estos cuatro años, qué habría dicho cada tarde y qué habría pasado al día siguiente. Este documento responde con los datos de EOSA y Pitarch de 2022 al 02.08.2026, el último día con etiqueta conocida de la copia de Calser (Valle de Santa Ana, con 10 CT, tuvo una sola incidencia de causa local en esos años, en 2023, y con una incidencia sus días no dicen nada del nivel). La página `historial.html` del cuadro de mando lo enseña día a día: el color es el nivel que habría dado el sistema la tarde anterior y los puntos, las averías que hubo.
 
 ## 1. Cómo lo hemos medido
 
-- Cada día se puntúa con el mismo modelo que corre cada tarde (`job_ml_riesgo_manana`, variante `operativa`, regresión logística), entrenado solo con los años anteriores al que se puntúa: 2022 con 2018 - 2021, 2023 con 2018 - 2022 y así hasta 2025. El nivel sale como en el job: muy alto desde el percentil 95 de los días de entrenamiento de la distribuidora, alto desde el 90, medio desde el 75.
-- El tiempo del día: desde 2024, la previsión real de ICON-EU de la víspera, la misma que usa el job; en 2022 y 2023, el reanálisis, que hace de previsión perfecta y da una cota superior.
+- Cada día se puntúa con el mismo modelo que corre cada tarde (`job_ml_riesgo_manana`, variante `operativa`, regresión logística), entrenado solo con los años anteriores al que se puntúa: 2022 con 2018 - 2021, 2023 con 2018 - 2022 y así hasta 2026 (siete meses, hasta el 02.08.2026). El nivel sale como en el job: muy alto desde el percentil 95 de los días de entrenamiento de la distribuidora, alto desde el 90, medio desde el 75.
+- El tiempo del día: desde 2024, la previsión real de ICON-EU de la víspera, la misma que usa el job; en 2022 y 2023, el reanálisis, que hace de previsión perfecta y da una cota superior. Los avisos de AEMET para el día emitidos antes de las 20:00 de la víspera entran en el modelo y sirven además de política de comparación (apartado 2b).
 - Las averías: las incidencias de causa local de Calser (equipos, meteorología, vegetación, fauna, terceros y causa desconocida; fuera las de aguas arriba, los apagones, las programadas y las maniobras) en los CT en estudio, con los clientes de cada CT y la duración real de cada corte. Las horas-cliente son la suma, CT a CT, de clientes por horas sin suministro. Como un solo corte (el incendio de Jarilla del 13.08.2025, tres CT de Cabezabellosa sin luz 32 horas) pesa tanto como un año entero, las tablas recortan los cortes a 110 minutos (el percentil 99 de 2022 - 2025) y dan al lado la cifra sin recortar.
 - Las brigadas: las bases que minimizan la llegada (p-mediana sobre los municipios de los CT) con los minutos por carretera de OSRM sobre OpenStreetMap, 1 y 2 brigadas, y fuera del horario laboral (lunes a viernes de 8 a 17) una movilización de 30 minutos cuando la brigada está de retén.
 
@@ -13,20 +13,23 @@ El cálculo está en el job `job_ml_caso_negocio.py` y deja `historico.json` par
 
 ## 2. Lo que vería un director de distribución
 
-Con la previsión real de la víspera, en 2024 y 2025 (EOSA y Pitarch juntas, 1.422 días de distribuidora):
+Con la previsión real de la víspera, del 20.01.2024 al 02.08.2026 (EOSA y Pitarch juntas, 1.844 días de distribuidora):
 
 | nivel previsto la víspera | días | con avería | incidencias | horas-cliente (recortadas) | parte | parte sin recortar |
 | --- | --- | --- | --- | --- | --- | --- |
-| bajo | 1.047 (74 %) | 1,7 % | 19 | 6.343 | 25 % | 17 % |
-| medio | 198 (14 %) | 4,5 % | 9 | 4.412 | 18 % | 10 % |
-| alto | 86 (6 %) | 9,3 % | 8 | 3.917 | 16 % | 47 % |
-| muy alto | 91 (6 %) | 17,6 % | 19 | 10.379 | 41 % | 26 % |
+| bajo | 1.317 (71 %) | 1,9 % | 27 | 10.626 | 16 % | 22 % |
+| medio | 296 (16 %) | 6,1 % | 18 | 7.400 | 11 % | 8 % |
+| alto | 108 (6 %) | 7,4 % | 8 | 3.917 | 6 % | 22 % |
+| muy alto | 123 (7 %) | 17,9 % | 43 | 43.065 | 66 % | 47 % |
 
-- Un día muy alto tiene avería 10 veces más a menudo que un día bajo (17,6 % frente a 1,7 %). Por separado se mantiene: en EOSA, 22,2 % frente a 1,5 % (45 días muy altos, 10 con avería); en Pitarch, 13,0 % frente a 1,9 % (46 días, 6 con avería).
-- Los días en alerta (alto o muy alto) son el 12 % de los días y concentran el 57 % de las horas-cliente perdidas por causas locales (el 73 % sin recortar el incendio).
-- De los 3 peores días de cada distribuidora y año de 2024 - 2025 (12 días que suman el 54 % de las horas-cliente), 7 estaban en alerta la víspera; de los 5 peores (20 días, el 73 %), 12. Con el reanálisis, en 2022 - 2025: 11 de 24 y 16 de 40. Mirando los 10 peores días de 2024 - 2025 sin separar por distribuidora ni año (la mitad de las horas-cliente), 8 estaban en alerta.
-- El 74 % de los días son bajos y en ellos cae una de cada cuatro horas-cliente: son las averías de equipos y de causa desconocida que el tiempo no anuncia.
-- La probabilidad que ve el usuario es de fiar: en los días muy altos el modelo da de media un 14,5 % y pasa el 17,6 %; en los altos, 7,3 % y pasa el 9,3 %; en los bajos, 2,7 % y pasa el 1,7 %. Como separador de días, AUC 0,75 (EOSA 0,80, Pitarch 0,65) con una tasa base del 3,6 %; el Brier es 0,032 frente a 0,035 de la tasa base, una mejora modesta porque la mayor parte de las averías no la explica ningún dato meteorológico. El 10 % de días de más riesgo concentra el 41 % de los días con avería y el 53 % de las horas-cliente.
+Solo con 2024 y 2025 (1.422 días), que es lo que había antes de incorporar 2026: bajo 1.047 días y 1,7 % con avería; medio 198 y 4,5 %; alto 86 y 9,3 %; muy alto 91 y 17,6 %; los días en alerta eran el 12 % y llevaban el 57 % de las horas-cliente (el 73 % sin recortar).
+
+- Un día muy alto tiene avería 9 veces más a menudo que un día bajo (17,9 % frente a 1,9 %; con 2024 - 2025 solo, 10 veces: 17,6 % frente a 1,7 %). Por separado se mantiene: en EOSA, 22,2 % frente a 1,5 % en 2024 - 2025 (45 días muy altos, 10 con avería); en Pitarch, 13,0 % frente a 1,9 % (46 días, 6 con avería).
+- Los días en alerta (alto o muy alto) son el 12,5 % de los días y concentran el 72 % de las horas-cliente perdidas por causas locales (el 70 % sin recortar). El temporal del 28.01.2026 pesa mucho en esa cifra: las dos distribuidoras estaban en muy alto desde la tarde anterior (21 % y 18 % de probabilidad, 6 y 4 veces su tasa base de 2022 - 2025), tuvieron 20 incidencias, 73.485 clientes afectados y 31.795 horas-cliente, el 49 % de todas las de 2024 - 2026. Sin ese día, los días en alerta llevan el 46 % de las horas-cliente (53 % sin recortar).
+- De los 3 peores días de cada distribuidora y año de 2024 - 2026 (18 días que suman el 77 % de las horas-cliente), 9 estaban en alerta la víspera; de los 5 peores (30 días, el 87 %), 15. Con el reanálisis, en 2022 - 2026: 13 de 30 y 19 de 50. Mirando los 10 peores días de 2024 - 2026 sin separar por distribuidora ni año (el 68 % de las horas-cliente), 7 estaban en alerta; en 2024 - 2025, 8 de 10.
+- Dentro del día, en las 51 incidencias de los días de alerta de 2024 - 2026: el 84 % empezaron dentro de la franja horaria que daba el sistema, y la línea que falló estaba entre las 3 primeras del ranking de su distribuidora el 25 % de las veces (azar 9 %, con unas 35 líneas por distribuidora) y entre las 5 primeras el 41 % (azar 14 %). El sistema acierta el día y la franja mucho mejor que la línea.
+- El 71 % de los días son bajos y en ellos cae una de cada seis horas-cliente (una de cada cuatro en 2024 - 2025): son las averías de equipos y de causa desconocida que el tiempo no anuncia.
+- La probabilidad que ve el usuario es de fiar: en los días muy altos el modelo da de media un 15,5 % y pasa el 17,9 %; en los altos, 7,3 % y pasa el 7,4 %; en los bajos, 2,7 % y pasa el 1,9 %. Como separador de días, AUC 0,72 (EOSA 0,76, Pitarch 0,66) con una tasa base del 4,0 %; el Brier es 0,036 frente a 0,038 de la tasa base, una mejora modesta porque la mayor parte de las averías no la explica ningún dato meteorológico. En 2024 - 2025 el 10 % de días de más riesgo concentraba el 41 % de los días con avería y el 53 % de las horas-cliente.
 
 Por distribuidora y año:
 
@@ -36,29 +39,47 @@ Por distribuidora y año:
 | EOSA | 2023 | reanálisis | 36 (10 %) | 21 | 5 (24 %) | 16.693 | 10.871 (65 %) | 65 % |
 | EOSA | 2024 | previsión real | 38 (11 %) | 17 | 8 (47 %) | 7.543 | 3.867 (51 %) | 51 % |
 | EOSA | 2025 | previsión real | 54 (15 %) | 18 | 10 (56 %) | 9.670 | 5.388 (56 %) | 82 % |
+| EOSA | 2026 (hasta el 02.08) | previsión real | 27 (13 %) | 14 | 5 (36 %) | 17.726 | 13.032 (74 %) | 73 % |
 | Pitarch | 2022 | reanálisis | 50 (14 %) | 13 | 3 (23 %) | 8.101 | 244 (3 %) | 3 % |
 | Pitarch | 2023 | reanálisis | 35 (10 %) | 19 | 5 (26 %) | 3.916 | 1.298 (33 %) | 33 % |
 | Pitarch | 2024 | previsión real | 44 (13 %) | 11 | 5 (45 %) | 4.555 | 3.288 (72 %) | 72 % |
 | Pitarch | 2025 | previsión real | 41 (11 %) | 9 | 4 (44 %) | 3.283 | 1.752 (53 %) | 50 % |
+| Pitarch | 2026 (hasta el 02.08) | previsión real | 27 (13 %) | 27 | 19 (70 %) | 22.231 | 19.653 (88 %) | 63 % |
 
-Pitarch en 2022 es el año malo: sus dos peores días (6.300 horas-cliente, averías de equipos en días de calma) salieron bajos. Es el límite que ya conocíamos: el sistema ve el tiempo, no el estado de los equipos.
+Pitarch en 2022 es el año malo: sus dos peores días (6.300 horas-cliente, averías de equipos en días de calma) salieron bajos. Es el límite que ya conocíamos: el sistema ve el tiempo, no el estado de los equipos. 2026 es el año del temporal del 28 de enero: en Pitarch, 16 incidencias en un día, 35.782 clientes y 18.812 horas-cliente; el sistema lo tenía en muy alto desde la tarde anterior, y AEMET en aviso naranja.
 
-Los diez peores días de 2024 - 2025 y lo que decía el sistema la tarde anterior:
+Los diez peores días de 2024 - 2026 y lo que decía el sistema la tarde anterior:
 
 | día | distribuidora | nivel previsto | probabilidad | incidencias | clientes | horas-cliente (recortadas) | sin recortar | corte más largo (min) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 28.01.2026 | Pitarch | muy alto | 21,2 % | 16 | 35.782 | 18.812 | 18.875 | 116 |
+| 28.01.2026 | EOSA | muy alto | 18,2 % | 4 | 37.703 | 12.983 | 12.983 | 35 |
 | 10.06.2024 | EOSA | muy alto | 11,9 % | 1 | 24.381 | 2.039 | 2.039 | 5 |
 | 05.11.2025 | EOSA | muy alto | 35,7 % | 2 | 1.971 | 1.895 | 2.465 | 169 |
+| 24.01.2026 | EOSA | bajo | 2,5 % | 1 | 9.949 | 1.861 | 1.861 | 9 |
+| 01.08.2026 | Pitarch | bajo | 2,9 % | 2 | 794 | 1.455 | 10.531 | 800 |
 | 12.10.2024 | Pitarch | muy alto | 11,5 % | 1 | 313 | 1.431 | 1.431 | 75 |
 | 04.04.2025 | Pitarch | muy alto | 15,2 % | 1 | 365 | 1.262 | 1.262 | 58 |
 | 18.03.2025 | EOSA | alto | 10,2 % | 1 | 1.813 | 1.249 | 1.249 | 41 |
 | 28.05.2025 | EOSA | bajo | 2,6 % | 1 | 11.194 | 1.113 | 1.113 | 6 |
-| 17.06.2025 | EOSA | medio | 5,5 % | 1 | 1.269 | 1.108 | 1.108 | 77 |
-| 13.08.2025 | EOSA | alto | 7,9 % | 1 | 535 | 981 | 17.349 | 1.946 |
-| 19.09.2024 | Pitarch | muy alto | 6,9 % | 1 | 6.852 | 867 | 867 | 55 |
-| 27.03.2024 | EOSA | muy alto | 23,3 % | 1 | 12.308 | 831 | 831 | 4 |
 
-La noche del incendio de Jarilla (13.08.2025, el corte más largo de los cuatro años) EOSA estaba en alto desde la tarde anterior.
+La noche del incendio de Jarilla (13.08.2025, el corte más largo de estos años, 17.349 horas-cliente sin recortar en tres CT) EOSA estaba en alto desde la tarde anterior; con el recorte queda fuera de los diez peores.
+
+## 2b. Frente a los avisos de AEMET, que es lo que hoy mira un jefe de brigadas
+
+Los avisos de AEMET son una previsión real con archivo desde 2018 y lo que una distribuidora consulta cada tarde. Con los mismos días (previsión real, 2024 - 2026, EOSA y Pitarch; avisos para el día siguiente emitidos antes de las 20:00 de la víspera, en las celdas de cada red):
+
+| política de guardia | días al año por distribuidora | parte de los días | incidencias cubiertas | horas-cliente cubiertas (recortadas) | sin recortar |
+| --- | --- | --- | --- | --- | --- |
+| aviso de AEMET amarillo o más, de cualquier fenómeno | 85 | 23 % | 56 % | 80 % | 85 % |
+| aviso de AEMET de viento, amarillo o más | 10 | 3 % | 34 % | 58 % | 41 % |
+| aviso de AEMET naranja o rojo | 20 | 6 % | 32 % | 57 % | 59 % |
+| GridPredict en alerta (alto o muy alto) | 46 | 12 % | 53 % | 72 % | 70 % |
+| GridPredict con tantos días como avisos amarillos | 85 | 23 % | 69 % | 84 % | 78 % |
+
+- El temporal del 28.01.2026 lo vio todo el mundo (aviso naranja y muy alto), y por eso en 2024 - 2026 los avisos de viento y los naranjas cubren más de la mitad de las horas-cliente con muy pocos días. Sin ese día (2024 - 2025) los avisos de viento cubrían una de cada cinco horas-cliente con 8 días al año y los naranjas el 18 %: la mayor parte de las averías de causa local llegan sin aviso de viento.
+- Cualquier aviso amarillo (viento, lluvia, tormentas, calor) cubre el 80 % de las horas-cliente, pero reforzando la guardia 85 días al año. Con esos mismos 85 días elegidos por el sistema se cubre el 84 %; con 46 días de alerta, el 72 %. En 2024 - 2025: avisos amarillos 60 % con 80 días, sistema 77 % con los mismos 80 días y 57 % con 44 días de alerta. Para cubrir lo que cubren los avisos, el sistema necesita la mitad de los días.
+- Con el reanálisis en 2022 - 2026 el orden es el mismo (avisos amarillos 64 % de las horas-cliente con el 22 % de los días; GridPredict 59 % con el 13,5 % y 66 % con los mismos días que los avisos), con la cota optimista que ya hemos dicho.
 
 ## 3. Las brigadas: lo que dicen los datos
 
@@ -96,7 +117,7 @@ Lo que no podemos afirmar con estos datos: una cifra en euros del incentivo de c
 - `negocio.html` en el cuadro de mando (http://localhost:8086/negocio.html): la página para una distribuidora o un inversor, calculada en el navegador a partir de `historico.json`: las cuatro cifras (veces más averías un día muy alto, parte de las horas-cliente en los días de alerta, peores días avisados, días de alerta al año), la tasa de avería por nivel y dónde cayeron las horas-cliente, la guardia a igual presupuesto (fines de semana de invierno, todos los fines de semana, el sistema con los mismos días, solo los días en alerta, con el coste por día que ponga quien la mira), la tabla por distribuidora y año, los diez peores días, la retribución y la licencia, y lo que el sistema no hace. Se imprime o se guarda en PDF desde el enlace de la cabecera.
 - `historial.html` en el cuadro de mando (http://localhost:8086/historial.html): cuatro años en una pantalla por distribuidora, con el selector de previsión real o reanálisis y el recorte del incendio. Al pasar el ratón por un día salen el nivel, la probabilidad, las incidencias, los clientes y las bases propuestas.
 - El cuadro de mando de mañana (`index.html`): el mismo producto en vivo, con los rayos del satélite cada 15 minutos.
-- Para una reunión: la tabla por niveles (10 veces más averías un día muy alto), los 10 peores días con lo que decía el sistema y la noche del incendio de Jarilla.
+- Para una reunión: la tabla por niveles (10 veces más averías un día muy alto), la guardia a igual presupuesto frente a los calendarios fijos y a los avisos de AEMET (apartado 2b y `negocio.html`), los 10 peores días con lo que decía el sistema y la noche del incendio de Jarilla.
 
 ## 6. Límites
 

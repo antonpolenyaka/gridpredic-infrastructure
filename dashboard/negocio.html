@@ -67,7 +67,7 @@
   <div class="fuentes" id="fuentes">Cargando data/historico.json... <a href="index.html">Riesgo de mañana</a> · <a href="historial.html">Día a día</a></div>
 </header>
 <main id="main">
-  <section>
+  <section class="noimprimir">
     <div class="controles">
       <span>Tiempo del día que ve el modelo:</span>
       <label><input type="radio" name="modo" value="prevision" checked> previsión real de ICON-EU de la víspera (2024 - 2025): lo que daría el sistema en marcha</label>
@@ -127,18 +127,28 @@
   function policies(days) {
     const groups = new Map();
     for (const d of days) { const k = d.id + "|" + d.anio; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
-    const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, sistema: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, total: 0, grupos: groups.size };
+    const sum = (list) => list.reduce((s, d) => s + d.h, 0);
+    const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, aviso: { dias: 0, h: 0 }, avisoViento: { dias: 0, h: 0 }, avisoNaranja: { dias: 0, h: 0 },
+                  sistema: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, mismoAviso: { dias: 0, h: 0 }, total: 0, grupos: groups.size, anios: 0,
+                  conAvisos: days.some((d) => d.a != null) };
+    // A year with part of its days (the current one, or the first with forecast) counts as the part of a year it is.
+    for (const g of groups.values()) out.anios += g.length / 365;
     for (const g of groups.values()) {
-      const total = g.reduce((s, d) => s + d.h, 0);
       const winter = g.filter((d) => isWinterWeekend(d.f));
       const weekends = g.filter((d) => isWeekend(d.f));
       const alert = g.filter((d) => d.alerta);
-      const same = [...g].sort((a, b) => b.p - a.p).slice(0, winter.length);
-      out.invierno.dias += winter.length; out.invierno.h += winter.reduce((s, d) => s + d.h, 0);
-      out.findes.dias += weekends.length; out.findes.h += weekends.reduce((s, d) => s + d.h, 0);
-      out.sistema.dias += alert.length; out.sistema.h += alert.reduce((s, d) => s + d.h, 0);
-      out.mismo.dias += same.length; out.mismo.h += same.reduce((s, d) => s + d.h, 0);
-      out.total += total;
+      const warned = g.filter((d) => (d.a || 0) >= 1), wind = g.filter((d) => (d.av || 0) >= 1), orange = g.filter((d) => (d.a || 0) >= 2);
+      const byRisk = [...g].sort((a, b) => b.p - a.p);
+      const same = byRisk.slice(0, winter.length), sameWarned = byRisk.slice(0, warned.length);
+      out.invierno.dias += winter.length; out.invierno.h += sum(winter);
+      out.findes.dias += weekends.length; out.findes.h += sum(weekends);
+      out.aviso.dias += warned.length; out.aviso.h += sum(warned);
+      out.avisoViento.dias += wind.length; out.avisoViento.h += sum(wind);
+      out.avisoNaranja.dias += orange.length; out.avisoNaranja.h += sum(orange);
+      out.sistema.dias += alert.length; out.sistema.h += sum(alert);
+      out.mismo.dias += same.length; out.mismo.h += sum(same);
+      out.mismoAviso.dias += sameWarned.length; out.mismoAviso.h += sum(sameWarned);
+      out.total += sum(g);
     }
     return out;
   }
@@ -201,6 +211,7 @@
     const worstAlert = worst.filter((d) => d.alerta).length;
     const groups = new Set(days.map((d) => d.id + "|" + d.anio)).size;
     const pol = policies(days);
+    const yearsOfData = Math.max(0.01, pol.anios);
     const modeText = mode === "prevision" ? "la previsión real de la víspera" : "el reanálisis como previsión perfecta";
     let html = "";
 
@@ -210,7 +221,7 @@
         <div class="cifra"><div class="v">${ratio ? num(ratio, 0) + "x" : "-"}</div><div class="l">veces más averías un día "muy alto" que un día "bajo" (${pct(rate("muy alto"), 1)} frente a ${pct(rate("bajo"), 1)})</div></div>
         <div class="cifra"><div class="v">${pct(stats.total ? alertH / stats.total : 0)}</div><div class="l">de las horas-cliente perdidas caen en los días en alerta (alto o muy alto), que son el ${pct(alertDays / days.length)} de los días</div></div>
         <div class="cifra"><div class="v">${worstAlert} de ${worst.length}</div><div class="l">de los peores días estaban en alerta desde la tarde anterior</div></div>
-        <div class="cifra"><div class="v">${num(alertDays / Math.max(1, groups))}</div><div class="l">días de alerta al año por distribuidora: los días en que reforzar la guardia</div></div>
+        <div class="cifra"><div class="v">${num(alertDays / yearsOfData)}</div><div class="l">días de alerta al año por distribuidora: los días en que reforzar la guardia</div></div>
       </div>
       <div class="dos" style="margin-top:14px">
         <div><h3>Días con avería según el nivel de la víspera</h3>${bars(stats)}</div>
@@ -219,22 +230,22 @@
       </div></section>`;
 
     html += `<section><h2>La guardia: a igual presupuesto, más cobertura</h2>
-      <p>Cuatro formas de decidir qué días reforzar la guardia de brigadas, con los mismos datos (${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}). La cobertura es la parte de las horas-cliente perdidas por causas locales que caen en los días reforzados.</p>
+      <p>Varias formas de decidir qué días reforzar la guardia de brigadas, con los mismos datos (${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}). La cobertura es la parte de las horas-cliente perdidas por causas locales que caen en los días reforzados.</p>
       <div class="calc noimprimir">
         <label>Coste de reforzar la guardia un día (euros, por distribuidora)<input type="number" id="coste" value="600" min="0" step="50"></label>
         <span class="notas">Cámbialo por el coste real de tu retén (horas extra, segunda brigada, material preparado). Las horas-cliente y los días salen de los datos.</span>
       </div>
       <table id="tabla-guardia"></table>
-      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. "Mismo número de días" toma, cada año, tantos días como los fines de semana de invierno pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. Las averías de estas redes las trae el tiempo, no el calendario: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días.</p>
+      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. Los avisos de AEMET son los que ya se habían emitido para el día antes de las 20:00 de la víspera, en las celdas de la red: lo que hoy mira un jefe de brigadas. "Mismo número de días" toma, cada año, tantos días como la política con la que se compara pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. Las averías de estas redes las trae el tiempo, no el calendario: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días.</p>
       </section>`;
 
-    html += `<section><h2>Por distribuidora y año</h2><table><thead><tr><th>distribuidora</th><th>año</th><th class="num">días en alerta</th><th class="num">incidencias</th><th class="num">en días de alerta</th><th class="num">horas-cliente</th><th class="num">en días de alerta</th></tr></thead><tbody>`;
+    html += `<section><h2>Por distribuidora y año</h2><table><thead><tr><th>distribuidora</th><th>año</th><th class="num">días puntuados</th><th class="num">días en alerta</th><th class="num">incidencias</th><th class="num">en días de alerta</th><th class="num">horas-cliente</th><th class="num">en días de alerta</th></tr></thead><tbody>`;
     for (const name of names) for (const y of ys) {
       const g = days.filter((d) => d.nombre === name && d.anio === y);
       if (!g.length) continue;
       const a = g.filter((d) => d.alerta), inc = g.reduce((s, d) => s + d.i, 0), ainc = a.reduce((s, d) => s + d.i, 0);
       const h = g.reduce((s, d) => s + d.h, 0), ah = a.reduce((s, d) => s + d.h, 0);
-      html += `<tr><td>${esc(name)}</td><td>${y}</td><td class="num">${a.length} (${pct(a.length / g.length)})</td><td class="num">${inc}</td><td class="num">${ainc} (${pct(inc ? ainc / inc : 0)})</td><td class="num">${num(h)}</td><td class="num">${num(ah)} (${pct(h ? ah / h : 0)})</td></tr>`;
+      html += `<tr><td>${esc(name)}</td><td>${y}</td><td class="num">${g.length}</td><td class="num">${a.length} (${pct(a.length / g.length)})</td><td class="num">${inc}</td><td class="num">${ainc} (${pct(inc ? ainc / inc : 0)})</td><td class="num">${num(h)}</td><td class="num">${num(ah)} (${pct(h ? ah / h : 0)})</td></tr>`;
     }
     html += `</tbody></table></section>`;
 
@@ -254,26 +265,48 @@
       <p class="notas">Retribución de 2022 según la resolución de la CNMC de 6 de noviembre de 2025 (el sector: 5.317 millones de euros). Licencia e implantación según el plan de negocio. Lo que no afirmamos con estos datos: una cifra en euros del incentivo de calidad de cada distribuidora, que depende de la referencia sectorial y de los límites que publique la CNMC, ni el ahorro en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
       </section>`;
 
+    html += `<section id="produccion" style="display:none"><h2>Lo que vale la previsión, medido en producción</h2>
+      <p>Desde que el sistema corre cada tarde, las estaciones de AEMET dicen al día siguiente qué viento hubo. Esto es lo medido hasta hoy, sin seleccionar días.</p>
+      <ul id="produccion-lista"></ul></section>`;
+
     html += `<section><h2>Lo que el sistema no hace, para que nadie compre otra cosa</h2><ul>
       <li>No dice qué centro de transformación se quedará sin luz: da el día, la franja horaria, la zona y las líneas de más riesgo, y un ranking histórico de CT.</li>
       <li>No ve el estado de los equipos: las averías de equipos y de causa desconocida en días de calma caen en días "bajos" y son una de cada cuatro horas-cliente.</li>
-      <li>Con ${num(totalInc / Math.max(1, groups), 0)} incidencias al año por distribuidora, la cobertura de cada año se mueve entre el 30 % y el 70 %; el valor se mide con varios años juntos.</li>
+      <li>Con ${num(totalInc / yearsOfData, 0)} incidencias al año por distribuidora, la cobertura de cada año se mueve entre el 30 % y el 70 %; el valor se mide con varios años juntos.</li>
       <li>Mover las brigadas de base según el riesgo del día gana menos de un minuto de TIEPI al año: el valor está en tener gente y material preparados los días y en la franja que toca.</li>
     </ul></section>`;
 
     root.innerHTML = html;
     document.getElementById("coste").addEventListener("input", () => guardTable(pol, groups));
     guardTable(pol, groups);
+    produccion();
+  }
+
+  // The verification of the forecasts against the stations (verificacion.json), when there are complete days.
+  function produccion() {
+    fetch("data/verificacion.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); }).then((v) => {
+      const items = (v.resumen || []).filter((r) => r.dias > 0 && r.texto);
+      const sec = document.getElementById("produccion");
+      if (!sec || !items.length) return;
+      document.getElementById("produccion-lista").innerHTML = items.map((r) => `<li><b>${esc(r.nombre)}</b>: ${esc(r.texto)}.</li>`).join("")
+        + `<li class="notas">${Object.keys(v.dias || {}).length} días verificados; generado ${esc(v.generado || "")}.</li>`;
+      sec.style.display = "";
+    }).catch(() => {});
   }
 
   function guardTable(pol, groups) {
     const cost = Number(document.getElementById("coste").value) || 0;
-    const rows = [["Calendario fijo: fines de semana de invierno", pol.invierno], ["Calendario fijo: todos los fines de semana", pol.findes],
-                  ["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo], ["GridPredict, solo los días en alerta", pol.sistema]];
-    const base = pol.invierno.dias / Math.max(1, groups) * cost;
+    const rows = [["Calendario fijo: fines de semana de invierno", pol.invierno], ["Calendario fijo: todos los fines de semana", pol.findes]];
+    if (pol.conAvisos) rows.push(["Avisos de AEMET: amarillo o más, cualquier fenómeno", pol.aviso], ["Avisos de AEMET: viento, amarillo o más", pol.avisoViento],
+                                 ["Avisos de AEMET: naranja o rojo", pol.avisoNaranja]);
+    rows.push(["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo]);
+    if (pol.conAvisos) rows.push(["GridPredict, mismo número de días que los avisos amarillos", pol.mismoAviso]);
+    rows.push(["GridPredict, solo los días en alerta", pol.sistema]);
+    const years = Math.max(0.01, pol.anios || groups);
+    const base = pol.invierno.dias / years * cost;
     let html = `<thead><tr><th>política de guardia</th><th class="num">días reforzados al año</th><th class="num">cobertura de las horas-cliente</th><th class="num">coste al año (euros)</th><th class="num">frente al calendario</th></tr></thead><tbody>`;
     for (const [label, p] of rows) {
-      const d = p.dias / Math.max(1, groups), c = d * cost;
+      const d = p.dias / years, c = d * cost;
       html += `<tr><td>${label}</td><td class="num">${num(d)}</td><td class="num">${pct(pol.total ? p.h / pol.total : 0)}</td><td class="num">${num(c)}</td><td class="num">${c === base ? "-" : (c < base ? "-" : "+") + num(Math.abs(c - base))}</td></tr>`;
     }
     document.getElementById("tabla-guardia").innerHTML = html + "</tbody></table>";

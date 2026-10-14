@@ -56,12 +56,14 @@ from job_ml_riesgo_manana import (  # noqa: E402
     DEFAULTS as RISK_DEFAULTS,
     DIM_TABLE,
     WEATHER_TABLE,
+    calser_until,
     fit_zone_model,
     gold_cell_days,
     live_filesystem,
     number,
     risk_settings,
     road_minutes,
+    warnings_until,
 )
 from job_ml_train import RUNS_TABLE, get_spark, load_config, logger, save_frame  # noqa: E402
 
@@ -77,6 +79,7 @@ DEFAULTS = {
     "minimo_incidencias_nivel": 10,  # a distribuidora enters the tables by level with at least this many incidents in the period
 }
 ALERT = ("alto", "muy alto")
+WARNING_COLUMNS = ["aviso_max_nivel", "aviso_viento_nivel"]
 MODES = {"reanalisis": "tiempo del día del reanálisis (previsión perfecta)",
          "prevision": "previsión real de ICON-EU de la víspera"}
 
@@ -126,6 +129,8 @@ def day_scores(pdf: pd.DataFrame, blocks: dict, variant: dict, years: list, conf
                                               names=["logistica"], references=False)
         scorer = scorers["logistica"]
         out = target[["distribuidora_id", "fecha", "anio", MAIN_LABEL]].copy()
+        for column in WARNING_COLUMNS:  # the warnings of AEMET for the day, sent before the cut of the evening: the policy to beat
+            out[column] = target[column].to_numpy() if column in target.columns else np.nan
         out["p_reanalisis"] = scorer.score(target[features].to_numpy(dtype=np.float32, na_value=np.nan))
         raw = target.copy()
         for column, source in swap:
@@ -336,6 +341,8 @@ def replay(days: pd.DataFrame, zone_days: pd.DataFrame, ct: pd.DataFrame, cuts: 
             day_rows.append({"modo": mode, "distribuidora_id": dist, "distribuidora": names.get(dist, str(dist)), "fecha": day.date(),
                              "anio": year, "probabilidad": float(getattr(r, pcol)), "percentil": float(getattr(r, pcol.replace("p_", "pct_"))),
                              "nivel": level, "alerta": bool(alert), "franja_inicio": window.get("inicio"), "franja_fin": window.get("fin"),
+                             "aviso_max_nivel": number_or_none(getattr(r, "aviso_max_nivel", np.nan)),
+                             "aviso_viento_nivel": number_or_none(getattr(r, "aviso_viento_nivel", np.nan)),
                              "bases": "; ".join(bases[max(bases)]) if bases else "", "incidencias": int(n_inc),
                              "clientes_afectados": float(today["clientes"].sum()) if today is not None else 0.0,
                              "clientes_hora": hours, "clientes_hora_recortadas": hours_cut,
@@ -371,6 +378,43 @@ def replay(days: pd.DataFrame, zone_days: pd.DataFrame, ct: pd.DataFrame, cuts: 
                                         "espero_brigada": needs, "min_ganados_viaje": travel, "min_ganados_total": total,
                                         "clientes_min_ganados": total * float(k.num_abonados), "kva_min_ganados": total * float(k.potencia_kva)})
     return pd.DataFrame(day_rows), pd.DataFrame(ct_rows)
+
+
+def number_or_none(value):
+    try:
+        return None if value is None or pd.isna(value) else float(value)
+    except TypeError:
+        return None
+
+
+def policy_table(d: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ways of choosing the days to reinforce the guard, on the same days: the warnings of AEMET sent before the
+    evening (any phenomenon, or wind, yellow or more; orange or more), the alert of the system and the system
+    with the same number of days as the yellow warnings (the top of its probability, per distribuidora and
+    year). Days, incidents and customer-hours covered.
+    """
+    total_days, total_inc, total_h, total_raw = len(d), d["incidencias"].sum(), d["clientes_hora_recortadas"].sum(), d["clientes_hora"].sum()
+    if not total_days:
+        return pd.DataFrame()
+    warn = d["aviso_max_nivel"].fillna(0) if "aviso_max_nivel" in d.columns else pd.Series(0.0, index=d.index)
+    wind = d["aviso_viento_nivel"].fillna(0) if "aviso_viento_nivel" in d.columns else pd.Series(0.0, index=d.index)
+    same = pd.Series(False, index=d.index)
+    for (_, _), g in d.groupby(["distribuidora_id", "anio"]):
+        n = int((warn.loc[g.index] >= 1).sum())
+        same.loc[g.sort_values("probabilidad", ascending=False).index[:n]] = True
+    policies = [("aviso de AEMET amarillo o más (cualquier fenómeno)", warn >= 1), ("aviso de AEMET de viento, amarillo o más", wind >= 1),
+                ("aviso de AEMET naranja o rojo", warn >= 2), ("GridPredict en alerta (alto o muy alto)", d["alerta"].astype(bool)),
+                ("GridPredict con tantos días como avisos amarillos", same)]
+    rows = []
+    for name, mask in policies:
+        g = d[mask]
+        rows.append({"política": name, "días": int(len(g)), "parte de días": round(len(g) / total_days, 3),
+                     "incidencias cubiertas": int(g["incidencias"].sum()), "parte": round(g["incidencias"].sum() / total_inc, 2) if total_inc else 0.0,
+                     "horas-cliente cubiertas (recortadas)": round(float(g["clientes_hora_recortadas"].sum())),
+                     "parte de horas-cliente": round(g["clientes_hora_recortadas"].sum() / total_h, 2) if total_h else 0.0,
+                     "parte sin recortar": round(g["clientes_hora"].sum() / total_raw, 2) if total_raw else 0.0})
+    return pd.DataFrame(rows)
 
 
 def summarise(day_table: pd.DataFrame, ct_table: pd.DataFrame, installed: dict, cap: float) -> pd.DataFrame:
@@ -422,6 +466,8 @@ def history_payload(day_table: pd.DataFrame, levels: dict, names: dict) -> dict:
             block["dias"][mode] = [{"f": str(r.fecha), "n": r.nivel, "p": round(float(r.probabilidad), 4), "i": int(r.incidencias),
                                     "ch": round(float(r.clientes_hora)), "chr": round(float(r.clientes_hora_recortadas)),
                                     "c": int(r.clientes_afectados), "m": round(float(r.corte_max_min)),
+                                    "a": None if r.aviso_max_nivel is None or pd.isna(r.aviso_max_nivel) else int(r.aviso_max_nivel),
+                                    "av": None if r.aviso_viento_nivel is None or pd.isna(r.aviso_viento_nivel) else int(r.aviso_viento_nivel),
                                     "b": r.bases if r.alerta else None} for r in x.itertuples()]
         payload["distribuidoras"].append(block)
     return payload
@@ -502,6 +548,10 @@ def report_text(summary: pd.DataFrame, day_table: pd.DataFrame, ct_table: pd.Dat
             per = pd.concat([level_table(d[d["distribuidora"] == name]).assign(distribuidora=name) for name in enough])
             per = per[["distribuidora"] + [c for c in per.columns if c != "distribuidora"]]
             parts.append("### Por nivel previsto y distribuidora\n\n" + ml_metrics.markdown_table(per, 3))
+        policies = policy_table(d)
+        if len(policies):
+            parts.append("### Frente a los avisos de AEMET (los mismos días; avisos enviados antes de la tarde anterior)\n\n"
+                         + ml_metrics.markdown_table(policies, 3))
         worst = d[d["incidencias"] > 0].sort_values("clientes_hora_recortadas", ascending=False).head(int(ccfg["peores_dias"]))
         if len(worst):
             w = pd.DataFrame({"día": [f"{pd.Timestamp(f):%d.%m.%Y}" for f in worst["fecha"]], "distribuidora": worst["distribuidora"],
@@ -548,13 +598,25 @@ def main(argv=None):
     variant = next((v for v in cfg["variantes"] if v["nombre"] == rcfg["variante"]), None)
     if variant is None:
         raise ValueError(f"Variant {rcfg['variante']} not in meteo_dia.variantes")
+    # The current year too, up to the last day whose label is known (Calser minus the margin, the weather, the warnings).
+    today = pd.Timestamp(created.date())
+    if max(years) >= pd.Timestamp(cfg["hasta"]).year:
+        cfg["hasta"] = f"{today:%Y-%m-%d}"
     pdf, blocks, _ = build_dataset(spark, config, cfg)
+    events, _ = read_events(spark, cfg)
+    ends = [calser_until(spark, events, today).floor("D") - pd.Timedelta(days=int(rcfg["margen_etiquetas_dias"])), today - pd.Timedelta(days=1)]
+    if "dia_racha_max" in pdf.columns:
+        ends.append(pdf.loc[pdf["dia_racha_max"].notna(), "fecha"].max())
+    if "avisos" in variant["bloques"]:
+        ends.append(warnings_until(spark).floor("D"))
+    labelled_until = min(e for e in ends if pd.notna(e))
+    pdf = pdf[pdf["fecha"] <= labelled_until].reset_index(drop=True)
+    logger.info("Days with a known label up to %s", labelled_until.date())
     days = day_scores(pdf, blocks, variant, years, config, cfg, rcfg["niveles"])
     if days.empty:
         raise ValueError(f"No day of {years} could be scored")
 
     ct = network(spark)
-    events, _ = read_events(spark, cfg)
     cuts = ct_cuts(spark, events, ct)
     cuts = cuts[cuts["fecha"].dt.year.isin(years)]
     inc = incidents_of(cuts)
@@ -579,7 +641,7 @@ def main(argv=None):
         frame["creado_ts"] = created
     stored = day_table.copy()
     stored["fecha"] = pd.to_datetime(stored["fecha"])
-    for column in ("franja_inicio", "franja_fin"):
+    for column in ("franja_inicio", "franja_fin", *WARNING_COLUMNS):
         stored[column] = pd.to_numeric(stored[column], errors="coerce").astype("float64")
     save_frame(spark, stored, ccfg["tabla_dias"], args.run_id)
     if not summary.empty:
