@@ -62,6 +62,24 @@ Las tablas de contraste van en la misma dirección que el artículo, pero sin fu
 
 **Decisión.** No cambiamos el umbral: el reparto por estación gana un punto de horas-cliente y ninguna incidencia, dentro del ruido de 73 días con incidencia. El modelo ya está calibrado por estación (en verano da de media un 3,7 % y pasa el 3,4 %; en invierno, 4,6 % y 4,6 %), así que las pocas alertas de verano no son un fallo del umbral sino el riesgo real: las averías de verano (tormentas, incendios, equipos con calor) llegan con menos aviso meteorológico que las de invierno. Lo que sí deja esta prueba es el argumento para la guardia de verano: ahí mandan los rayos en vivo y la franja de la tarde, no la alerta de la víspera.
 
+## 3c. Prueba: la regla de los avisos de viento o tormenta frente al sistema (14.10.2026)
+
+**Hipótesis.** La regla que un jefe de brigadas aplicaría de cabeza, "reforzar la guardia cuando AEMET tiene aviso de viento o de tormenta para mañana", debería cubrir menos que el sistema con el mismo número de días, porque el sistema usa además la previsión numérica, el clima de cada celda y la historia.
+
+**Resultado** (replay `caso_v10_20261014_1543`, previsión real 2024 - 2026, EOSA y Pitarch; `policy_table` y `detection_table` de `job_ml_caso_negocio.py`, con los cortes de 2024 - 2025 y sin el 28.01.2026 calculados sobre `dias.csv`):
+
+| política | días al año | horas-cliente cubiertas 2024 - 2026 | 2024 - 2025 | sin el 28.01.2026 |
+| --- | --- | --- | --- | --- |
+| aviso de AEMET de viento o tormenta, amarillo o más | 23 | 69 % | 49 % | 40 % |
+| GridPredict con esos mismos 23 días (los de más probabilidad de cada año) | 23 | 66 % | 42 % | 34 % |
+| GridPredict en alerta (alto o muy alto) | 46 | 72 % | 57 % | 46 % |
+| GridPredict en alerta o aviso de viento o tormenta | 50 | 74 % | 61 % | 50 % |
+| GridPredict en alerta o aviso naranja o rojo | 63 | 74 % | 58 % | 49 % |
+
+La hipótesis era falsa a igual número de días: la regla sencilla cubre de 3 a 7 puntos más que el sistema con los mismos 23 días. El motivo está en los avisos de tormenta: los días con aviso de tormenta y sin aviso de viento (12 al año) tienen incidencia el 14 % de las veces (los días en alerta, el 13 %; un día cualquiera, el 4 %), y el sistema los pone en alto o muy alto en 48 de 63 casos de 2022 - 2026, pero con probabilidades del 10 % que no llegan a los 23 primeros puestos del año, ocupados por los temporales de invierno. Juntar las dos cosas es mejor que cada una: 50 días para el 74 % (61 % y 50 % en los otros cortes), y es la unión que gasta menos días por hora-cliente cubierta de todas las que pasan del 70 %.
+
+**Decisión.** El riesgo de mañana lleva desde hoy la recomendación de guardia con esa unión (`guardia` en `riesgo.json`: reforzar con nivel alto o muy alto o con aviso de viento o tormenta de AEMET para el día), el mensaje de la tarde la cuenta y el parte de guardia la escribe. No tocamos el modelo para "subir" los días de tormenta: con 7 días de dos incidencias o más en dos años y medio, cualquier ajuste a mano sería sobreajuste; la regla queda como política explícita y medible, no como un parche en la probabilidad. En la memoria se dice tal cual.
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
