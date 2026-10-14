@@ -123,8 +123,8 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
         json.dump(forecast("2026-07-20", 14, 80.0, (13, 16)), file)
     # The band of the ensemble of yesterday: the observed 72 falls inside 55 - 75 for Pitarch.
     with open(tmp_path / "ensemble_20260719.json", "w", encoding="utf-8") as file:
-        json.dump({"fecha": "2026-07-19", "distribuidoras": [{"id": 2, "nombre": "Pitarch", "pico": {"p10": 55, "p50": 63, "p90": 75}},
-                                                            {"id": 3, "nombre": "EOSA", "pico": {"p10": 50, "p50": 58, "p90": 70}}]}, file)
+        json.dump({"fecha": "2026-07-19", "distribuidoras": [{"id": 2, "nombre": "Pitarch", "pico": {"p10": 55, "p50": 63, "p90": 75}, "supera": {"50": 0.9, "70": 0.3}},
+                                                            {"id": 3, "nombre": "EOSA", "pico": {"p10": 50, "p50": 58, "p90": 70}, "supera": {"50": 0.8}}]}, file)
     # The forecast of AEMET by municipality of yesterday: a peak of 60 at 13:00 against the observed 72.
     with open(tmp_path / "aemet_20260719.json", "w", encoding="utf-8") as file:
         json.dump({"fecha": "2026-07-19", "distribuidoras": [{"id": 2, "nombre": "Pitarch", "pico": {"racha_kmh": 60, "hora": 13, "municipio": "x"}}]}, file)
@@ -147,6 +147,7 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
     assert eosa["estaciones"] == 0 and "racha_observada_max" not in eosa and "error_kmh" not in eosa and eosa["racha_prevista_max"] == 60
     assert pitarch["banda_p10"] == 55 and pitarch["banda_p90"] == 75 and pitarch["pico_en_banda"] is True
     assert pitarch["racha_aemet_max"] == 60 and pitarch["hora_aemet"] == 13 and pitarch["error_aemet_kmh"] == 12 and "racha_aemet_max" not in eosa
+    assert pitarch["supera"] == {"50": 0.9, "70": 0.3} and pitarch["supero"] == {"50": True, "70": True} and "supero" not in eosa
     assert eosa["banda_p50"] == 58 and "pico_en_banda" not in eosa
     today = out["hoy"]["distribuidoras"][0]
     assert today["horas_observadas"] == 16 and today["error_kmh"] == 72 - 80 and today["pico_en_franja"] is False
@@ -156,9 +157,11 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
     assert s["dias"] == 1 and s["sesgo_kmh"] == 12.0 and s["error_abs_kmh"] == 12.0 and s["pico_en_franja"] == 1.0 and s["dias_prevision_mayor"] == 0.0
     assert s["pico_en_banda"] == 1.0 and s["dias_con_banda"] == 1
     assert s["sesgo_aemet_kmh"] == 12.0 and s["dias_con_aemet"] == 1
+    assert s["umbrales"] == {"50": {"dias": 1, "probabilidad_media": 0.9, "parte_superada": 1.0, "brier": 0.01}, "70": {"dias": 1, "probabilidad_media": 0.3, "parte_superada": 1.0, "brier": 0.49}}
     assert s["texto"] == ("en el último día completo, la previsión de la víspera dio de media 12 km/h menos que las estaciones (error medio 12 km/h); "
                           "el pico observado cayó en la franja prevista el 100 % de los días; dentro de la banda de los escenarios el 100 % de los 1 días con banda; "
-                          "AEMET por municipios dio de media 12 km/h menos que las estaciones (error medio 12 km/h en 1 días)")
+                          "AEMET por municipios dio de media 12 km/h menos que las estaciones (error medio 12 km/h en 1 días); "
+                          "los escenarios daban un 90 % de superar 50 km/h y pasó el 100 % de los días, los escenarios daban un 30 % de superar 70 km/h y pasó el 100 % de los días")
     # A second run of the same day keeps yesterday and does not duplicate it.
     assert obs.main(["--dashboard-dir", str(tmp_path), "--landing", cfg["landing"]], fs=fs, now=NOW + timedelta(hours=1), records=records()) == 0
     with open(tmp_path / "verificacion.json", encoding="utf-8") as file:
