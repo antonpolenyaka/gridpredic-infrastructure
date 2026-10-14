@@ -127,18 +127,26 @@
   function policies(days) {
     const groups = new Map();
     for (const d of days) { const k = d.id + "|" + d.anio; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
-    const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, sistema: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, total: 0, grupos: groups.size };
+    const sum = (list) => list.reduce((s, d) => s + d.h, 0);
+    const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, aviso: { dias: 0, h: 0 }, avisoViento: { dias: 0, h: 0 }, avisoNaranja: { dias: 0, h: 0 },
+                  sistema: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, mismoAviso: { dias: 0, h: 0 }, total: 0, grupos: groups.size,
+                  conAvisos: days.some((d) => d.a != null) };
     for (const g of groups.values()) {
-      const total = g.reduce((s, d) => s + d.h, 0);
       const winter = g.filter((d) => isWinterWeekend(d.f));
       const weekends = g.filter((d) => isWeekend(d.f));
       const alert = g.filter((d) => d.alerta);
-      const same = [...g].sort((a, b) => b.p - a.p).slice(0, winter.length);
-      out.invierno.dias += winter.length; out.invierno.h += winter.reduce((s, d) => s + d.h, 0);
-      out.findes.dias += weekends.length; out.findes.h += weekends.reduce((s, d) => s + d.h, 0);
-      out.sistema.dias += alert.length; out.sistema.h += alert.reduce((s, d) => s + d.h, 0);
-      out.mismo.dias += same.length; out.mismo.h += same.reduce((s, d) => s + d.h, 0);
-      out.total += total;
+      const warned = g.filter((d) => (d.a || 0) >= 1), wind = g.filter((d) => (d.av || 0) >= 1), orange = g.filter((d) => (d.a || 0) >= 2);
+      const byRisk = [...g].sort((a, b) => b.p - a.p);
+      const same = byRisk.slice(0, winter.length), sameWarned = byRisk.slice(0, warned.length);
+      out.invierno.dias += winter.length; out.invierno.h += sum(winter);
+      out.findes.dias += weekends.length; out.findes.h += sum(weekends);
+      out.aviso.dias += warned.length; out.aviso.h += sum(warned);
+      out.avisoViento.dias += wind.length; out.avisoViento.h += sum(wind);
+      out.avisoNaranja.dias += orange.length; out.avisoNaranja.h += sum(orange);
+      out.sistema.dias += alert.length; out.sistema.h += sum(alert);
+      out.mismo.dias += same.length; out.mismo.h += sum(same);
+      out.mismoAviso.dias += sameWarned.length; out.mismoAviso.h += sum(sameWarned);
+      out.total += sum(g);
     }
     return out;
   }
@@ -219,13 +227,13 @@
       </div></section>`;
 
     html += `<section><h2>La guardia: a igual presupuesto, más cobertura</h2>
-      <p>Cuatro formas de decidir qué días reforzar la guardia de brigadas, con los mismos datos (${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}). La cobertura es la parte de las horas-cliente perdidas por causas locales que caen en los días reforzados.</p>
+      <p>Varias formas de decidir qué días reforzar la guardia de brigadas, con los mismos datos (${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}). La cobertura es la parte de las horas-cliente perdidas por causas locales que caen en los días reforzados.</p>
       <div class="calc noimprimir">
         <label>Coste de reforzar la guardia un día (euros, por distribuidora)<input type="number" id="coste" value="600" min="0" step="50"></label>
         <span class="notas">Cámbialo por el coste real de tu retén (horas extra, segunda brigada, material preparado). Las horas-cliente y los días salen de los datos.</span>
       </div>
       <table id="tabla-guardia"></table>
-      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. "Mismo número de días" toma, cada año, tantos días como los fines de semana de invierno pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. Las averías de estas redes las trae el tiempo, no el calendario: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días.</p>
+      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. Los avisos de AEMET son los que ya se habían emitido para el día antes de las 20:00 de la víspera, en las celdas de la red: lo que hoy mira un jefe de brigadas. "Mismo número de días" toma, cada año, tantos días como la política con la que se compara pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. Las averías de estas redes las trae el tiempo, no el calendario: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días.</p>
       </section>`;
 
     html += `<section><h2>Por distribuidora y año</h2><table><thead><tr><th>distribuidora</th><th>año</th><th class="num">días en alerta</th><th class="num">incidencias</th><th class="num">en días de alerta</th><th class="num">horas-cliente</th><th class="num">en días de alerta</th></tr></thead><tbody>`;
@@ -268,8 +276,12 @@
 
   function guardTable(pol, groups) {
     const cost = Number(document.getElementById("coste").value) || 0;
-    const rows = [["Calendario fijo: fines de semana de invierno", pol.invierno], ["Calendario fijo: todos los fines de semana", pol.findes],
-                  ["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo], ["GridPredict, solo los días en alerta", pol.sistema]];
+    const rows = [["Calendario fijo: fines de semana de invierno", pol.invierno], ["Calendario fijo: todos los fines de semana", pol.findes]];
+    if (pol.conAvisos) rows.push(["Avisos de AEMET: amarillo o más, cualquier fenómeno", pol.aviso], ["Avisos de AEMET: viento, amarillo o más", pol.avisoViento],
+                                 ["Avisos de AEMET: naranja o rojo", pol.avisoNaranja]);
+    rows.push(["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo]);
+    if (pol.conAvisos) rows.push(["GridPredict, mismo número de días que los avisos amarillos", pol.mismoAviso]);
+    rows.push(["GridPredict, solo los días en alerta", pol.sistema]);
     const base = pol.invierno.dias / Math.max(1, groups) * cost;
     let html = `<thead><tr><th>política de guardia</th><th class="num">días reforzados al año</th><th class="num">cobertura de las horas-cliente</th><th class="num">coste al año (euros)</th><th class="num">frente al calendario</th></tr></thead><tbody>`;
     for (const [label, p] of rows) {
