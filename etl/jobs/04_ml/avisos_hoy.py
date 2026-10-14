@@ -27,22 +27,61 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-for folder in (HERE, os.path.join(HERE, "..", "00_landing"), os.path.join(HERE, "..", "01_bronze"),
-               os.path.join(HERE, "..", "02_silver")):
+for folder in (HERE, os.path.join(HERE, "..", "00_landing"), os.path.join(HERE, "..", "01_bronze")):
     if folder not in sys.path:
         sys.path.insert(0, folder)
 
 from job_bronze_datos_publicos import parse_aemet_archive, polygon_points  # noqa: E402
+from job_landing_meteo_openmeteo import filesystem  # noqa: E402
 from job_landing_vivo import ask_warnings, day_folder  # noqa: E402
-from job_ml_riesgo_manana import LEVEL_NAMES, guard_advice, live_filesystem  # noqa: E402
-from job_ml_train import load_config  # noqa: E402
-from job_silver_contexto_publico import WARNING_LEVELS, inside  # noqa: E402
 import aviso_riesgo  # noqa: E402
+from aviso_riesgo import LEVEL_NAMES, guard_advice  # noqa: E402
 
 logger = logging.getLogger("avisos_hoy")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 PHENOMENA = {"VI": "viento", "TO": "tormenta"}
+WARNING_LEVELS = {"verde": 0, "amarillo": 1, "naranja": 2, "rojo": 3}
+
+CONFIG_CANDIDATES = ["/app/config/04_ml/config_ml.json", "/opt/airflow/config/04_ml/config_ml.json",
+                     os.path.join(HERE, "..", "..", "config", "04_ml", "config_ml.json")]
+
+
+class LocalFiles:
+    """The calls of s3fs this module makes, on a local folder."""
+
+    def open(self, path: str, mode: str = "r"):
+        return open(path, mode) if "b" in mode else open(path, mode, encoding="utf-8")
+
+    def makedirs(self, path: str, exist_ok: bool = True):
+        os.makedirs(path, exist_ok=exist_ok)
+
+
+def live_filesystem(path: str):
+    return filesystem() if str(path).startswith("s3://") else LocalFiles()
+
+
+def inside(lat: float, lon: float, points: list) -> bool:
+    """Point in polygon (ray casting) for (lat, lon) points, as job_silver_contexto_publico does."""
+    hit = False
+    j = len(points) - 1
+    for i in range(len(points)):
+        lat_i, lon_i = points[i]
+        lat_j, lon_j = points[j]
+        if (lon_i > lon) != (lon_j > lon):
+            crossing = lat_i + (lon - lon_i) / (lon_j - lon_i) * (lat_j - lat_i)
+            if lat < crossing:
+                hit = not hit
+        j = i
+    return hit
+
+
+def load_config(path: str = None) -> dict:
+    for candidate in ([path] if path else []) + CONFIG_CANDIDATES:
+        if candidate and os.path.exists(candidate):
+            with open(candidate, encoding="utf-8") as file:
+                return json.load(file)
+    raise FileNotFoundError("config_ml.json not found")
 
 
 def parse_stamp(value: str):

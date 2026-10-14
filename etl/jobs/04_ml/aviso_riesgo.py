@@ -21,6 +21,22 @@ logger = logging.getLogger("aviso")
 
 DEFAULTS = {"url_env": "AVISO_WEBHOOK_URL", "nivel_minimo": "alto", "campo": "text", "timeout_s": 30, "rayos_cada_min": 60,
             "parte_manana_hora": 7}
+LEVEL_NAMES = {1: "amarillo", 2: "naranja", 3: "rojo"}
+# The guard: reinforce it the days in alert (alto or muy alto) and the days with a wind or thunderstorm warning of
+# AEMET, the policy that covers most customer-hours per day spent in the replay of 2024 - 2026 (caso-de-negocio.md, 2b).
+GUARD_LEVELS = ("alto", "muy alto")
+
+
+def guard_advice(level: str, wind: float, storm: float) -> dict:
+    """{"reforzar": bool, "motivo": text}: why the guard of the day is reinforced, or "normal"."""
+    reasons = []
+    if level in GUARD_LEVELS:
+        reasons.append(f"nivel {level}")
+    if wind is not None and wind == wind and wind >= 1:
+        reasons.append(f"aviso de viento de AEMET ({LEVEL_NAMES.get(int(wind), int(wind))})")
+    if storm is not None and storm == storm and storm >= 1:
+        reasons.append(f"aviso de tormenta de AEMET ({LEVEL_NAMES.get(int(storm), int(storm))})")
+    return {"reforzar": bool(reasons), "motivo": "; ".join(reasons) if reasons else "normal"}
 ORDER = ["bajo", "medio", "alto", "muy alto"]
 
 
