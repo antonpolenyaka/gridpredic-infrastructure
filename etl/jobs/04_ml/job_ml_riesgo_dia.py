@@ -16,7 +16,9 @@ l2_silver.f_incidencia_causa): y_dia = 1 when an interruption starts in some
 CT of the distribuidora on D; y_dia_meteo, the same without the causes of
 causas_no_meteo (upstream, blackout, third parties...); y_dia_varias, when
 incidencias_dia_varias or more incidents start on D (the busy days that need
-more than one crew). The models learn y_dia; the other two only measure them.
+more than one crew). The models learn y_dia; the other two only measure them;
+n_dia, the number of incidents that start on D, is what the model poisson
+learns from (a count instead of a probability, scored on the same metrics).
 
 Features, every one known before D starts except the block dia:
 
@@ -173,7 +175,7 @@ WARNING_VALUE = r";\s*([\d.,]+)\s*(?:km/h|mm|cm|ºC|°C)"
 WARNING_DETAILS = ["aviso_det_racha_kmh", "aviso_det_lluvia_12h_mm", "aviso_det_lluvia_1h_mm", "aviso_det_viento_horas",
                    "aviso_det_viento_ct", "aviso_det_tiempo_ct", "aviso_det_tormenta_ct"]
 # Models with one score per variant (the references score the same in every variant that has their feature).
-TRAINED = ("logistica", "xgboost", "random_forest", "rango")
+TRAINED = ("logistica", "xgboost", "random_forest", "rango", "logistica_equilibrada", "poisson")
 
 # Daily weather of a distribuidora: name -> (hourly column of distributor_weather, aggregation over the day).
 DAILY = {
@@ -400,6 +402,8 @@ DEFAULTS = {
     "incidencias_dia_varias": 2,
     "calor_umbral_c": 35.0,
     "modelos": ["tasa_base", "logistica", "xgboost"],
+    # The counts the model poisson learns from (n_dia, the incidents that start on D).
+    "etiqueta_conteo": "n_dia",
     "referencias": {"naif_racha_ayer": "ayer_racha_max", "naif_racha_dia": "dia_racha_max",
                     "naif_aviso": "aviso_max_nivel"},
     "fraccion_validacion_interna": 0.25,
@@ -410,6 +414,8 @@ DEFAULTS = {
     "bootstrap_reps": 500,
     "busqueda": {
         "logistica": [{"C": 0.003}, {"C": 0.01}, {"C": 0.03}, {"C": 0.1}],
+        "logistica_equilibrada": [{"C": 0.003}, {"C": 0.01}, {"C": 0.03}, {"C": 0.1}],
+        "poisson": [{"alpha": 10.0}, {"alpha": 3.0}, {"alpha": 1.0}, {"alpha": 0.3}],
         "xgboost": [{"max_depth": 2, "min_child_weight": 5, "learning_rate": 0.05, "subsample": 0.8,
                      "colsample_bytree": 0.8, "n_estimators": 1500, "early_stopping_rounds": 100, "verbose": 0},
                     {"max_depth": 3, "min_child_weight": 5, "learning_rate": 0.05, "subsample": 0.8,
@@ -554,6 +560,9 @@ def day_labels(grid: pd.DataFrame, events: pd.DataFrame, excluded: list, several
         keys = keys[["distribuidora_id", "fecha"]].drop_duplicates().assign(**{label: 1})
         grid = grid.merge(keys, on=["distribuidora_id", "fecha"], how="left")
         grid[label] = grid[label].fillna(0).astype("int8")
+    # n_dia: how many incidents start on D (the counts the model poisson learns from; 0 without any).
+    grid = grid.merge(counts.rename("n_dia").reset_index(), on=["distribuidora_id", "fecha"], how="left")
+    grid["n_dia"] = grid["n_dia"].fillna(0).astype("int16")
 
     return grid
 
