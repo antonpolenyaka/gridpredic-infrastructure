@@ -13,7 +13,7 @@
     },
     "wikidata": {
       "url": "https://query.wikidata.org/sparql",
-      "agente": "GridPredict-TFM-UPC/1.0 (datos abiertos para un trabajo de master)"
+      "agente": "GridPredic-TFM-UPC/1.0 (datos abiertos para un trabajo de master)"
     },
     "elevacion": {
       "url": "https://api.open-meteo.com/v1/elevation",

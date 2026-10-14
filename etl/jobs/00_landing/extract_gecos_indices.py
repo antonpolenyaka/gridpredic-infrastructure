@@ -88,7 +88,7 @@ def number(text: str):
 def fetch(url: str, retries: int = 3, wait_s: float = 20.0) -> str:
     for attempt in range(retries):
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": "GridPredict-TFM/1.0"})
+            request = urllib.request.Request(url, headers={"User-Agent": "GridPredic-TFM/1.0"})
             with urllib.request.urlopen(request, timeout=120) as response:
                 return response.read().decode("utf-8")
         except Exception as error:  # noqa: BLE001

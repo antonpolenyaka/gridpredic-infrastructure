@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Riesgo de mañana</title>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-<link rel="stylesheet" href="gridpredict.css">
+<link rel="stylesheet" href="gridpredic.css">
 <style>
   /* Rules of this page only: the three-source legend of the profile and the live columns of the lines. */
   td.ahora .pico { color: var(--muy-alto-ink); font-weight: 600; }
@@ -16,7 +16,7 @@
 </head>
 <body>
 <nav class="menu" aria-label="Páginas del cuadro de mando">
-  <a class="marca" href="index.html" aria-label="GridPredict, riesgo de mañana"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h5l3 4h10" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12h7l3 4h8" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/><path d="M3 19h4l3-4h11" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><circle cx="8" cy="5" r="1.8" fill="#ffffff"/><circle cx="10" cy="12" r="1.8" fill="#ffffff"/><circle cx="7" cy="19" r="1.8" fill="#ffffff"/></svg>GridPredict</a>
+  <a class="marca" href="index.html" aria-label="GridPredic, riesgo de mañana"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h5l3 4h10" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12h7l3 4h8" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/><path d="M3 19h4l3-4h11" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><circle cx="8" cy="5" r="1.8" fill="#ffffff"/><circle cx="10" cy="12" r="1.8" fill="#ffffff"/><circle cx="7" cy="19" r="1.8" fill="#ffffff"/></svg>GridPredic</a>
   <div class="items">
     <a href="index.html" class="actual">Riesgo de mañana</a>
     <a href="dias.html">Días archivados</a>
@@ -120,7 +120,7 @@
       if (r.ok) acciones.insertAdjacentHTML("afterbegin", `<a class="boton primario" href="${sheet}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0 3-3M8 10 5 7M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Parte de guardia (Excel)</a>`);
     }).catch(() => {});
     fetch("data/historico.json", { method: "HEAD", cache: "no-store" }).then((r) => {
-      if (r.ok) acciones.insertAdjacentHTML("beforeend", '<a class="boton" href="historial.html">Lo que habría dicho desde 2022</a><a class="boton" href="negocio.html">GridPredict en cifras</a>');
+      if (r.ok) acciones.insertAdjacentHTML("beforeend", '<a class="boton" href="historial.html">Lo que habría dicho desde 2022</a><a class="boton" href="negocio.html">GridPredic en cifras</a>');
     }).catch(() => {});
     document.getElementById("pie").textContent = "Generado el " + (data.generado || "") + ". Mapa: OpenStreetMap (ODbL). " + (data.reglas && data.reglas.texto ? data.reglas.texto : "")
       + " Próximas 3 h por línea: regla sobre la probabilidad del día (el 84 % de las averías de los días de alerta de 2024 - 2026 empiezan en la franja; en el pico de racha, el 62 % de las averías por tiempo a menos de 3 h; rayos a menos de 10 km en la hora previa, 15 veces más averías): ordena las líneas para las próximas horas, no es una probabilidad calibrada.";

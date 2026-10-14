@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GridPredict en cifras</title>
-<link rel="stylesheet" href="gridpredict.css">
+<title>GridPredic en cifras</title>
+<link rel="stylesheet" href="gridpredic.css">
 <style>
   /* The page for a distribuidora or an investor: what the system would have said in 2022 - 2026 and what it is
      worth, computed in the browser from historico.json (what job_ml_caso_negocio leaves). Printable. */
@@ -41,7 +41,7 @@
 </head>
 <body>
 <nav class="menu" aria-label="Páginas del cuadro de mando">
-  <a class="marca" href="index.html" aria-label="GridPredict, riesgo de mañana"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h5l3 4h10" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12h7l3 4h8" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/><path d="M3 19h4l3-4h11" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><circle cx="8" cy="5" r="1.8" fill="#ffffff"/><circle cx="10" cy="12" r="1.8" fill="#ffffff"/><circle cx="7" cy="19" r="1.8" fill="#ffffff"/></svg>GridPredict</a>
+  <a class="marca" href="index.html" aria-label="GridPredic, riesgo de mañana"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h5l3 4h10" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12h7l3 4h8" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/><path d="M3 19h4l3-4h11" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><circle cx="8" cy="5" r="1.8" fill="#ffffff"/><circle cx="10" cy="12" r="1.8" fill="#ffffff"/><circle cx="7" cy="19" r="1.8" fill="#ffffff"/></svg>GridPredic</a>
   <div class="items">
     <a href="index.html">Riesgo de mañana</a>
     <a href="dias.html">Días archivados</a>
@@ -52,7 +52,7 @@
 </nav>
 <header class="page">
   <div class="page-top">
-    <div class="titulo"><h1>GridPredict en cifras</h1><span class="fecha-chip">lo que habría pasado con el sistema en marcha</span></div>
+    <div class="titulo"><h1>GridPredic en cifras</h1><span class="fecha-chip">lo que habría pasado con el sistema en marcha</span></div>
     <div class="acciones"><a class="boton noimprimir" href="#" id="imprimir-arriba">Imprimir o guardar en PDF</a></div>
   </div>
   <p class="sub" id="fuentes">Cargando data/historico.json...</p>
@@ -218,8 +218,8 @@
     const points = [["fines de semana de invierno", pol.invierno], ["todos los fines de semana", pol.findes]];
     if (pol.conAvisos) points.push(["aviso amarillo o más", pol.aviso], ["aviso de viento", pol.avisoViento], ["aviso de viento o tormenta", pol.avisoVientoTormenta],
                                    ["aviso naranja o rojo", pol.avisoNaranja]);
-    points.push(["GridPredict en alerta", pol.sistema]);
-    if (pol.conAvisos) points.push(["GridPredict en alerta o aviso de viento o tormenta", pol.unionVientoTormenta]);
+    points.push(["GridPredic en alerta", pol.sistema]);
+    if (pol.conAvisos) points.push(["GridPredic en alerta o aviso de viento o tormenta", pol.unionVientoTormenta]);
     const W = 520, H = 260, L = 46, R = 14, T = 12, B = 40, maxX = 150;
     const x = (v) => L + (W - L - R) * Math.min(v, maxX) / maxX, y = (v) => T + (H - T - B) * (1 - v);
     let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cobertura de las horas-cliente según los días reforzados al año">`;
@@ -231,7 +231,7 @@
     out += `<line x1="${x(0).toFixed(1)}" y1="${y(0).toFixed(1)}" x2="${x(maxX).toFixed(1)}" y2="${y(maxX / 365).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="4 3"/>`;
     const legend = [];
     points.forEach(([label, p], i) => {
-      const px = x(p.dias / years), py = y(p.h / total), system = label.startsWith("GridPredict");
+      const px = x(p.dias / years), py = y(p.h / total), system = label.startsWith("GridPredic");
       out += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="7" fill="${system ? "var(--accent)" : "var(--muy-alto)"}" stroke="#fff" stroke-width="1"><title>${esc(label)}: ${num(p.dias / years)} días al año, ${pct(p.h / total)}</title></circle>`;
       out += `<text x="${px.toFixed(1)}" y="${(py + 3.5).toFixed(1)}" font-size="9" font-weight="600" text-anchor="middle" fill="#fff">${i + 1}</text>`;
       legend.push(`<b>${i + 1}</b> ${esc(label)} (${num(p.dias / years)} días, ${pct(p.h / total)})`);
@@ -420,10 +420,10 @@
     const rows = [["Calendario fijo: fines de semana de invierno", pol.invierno], ["Calendario fijo: todos los fines de semana", pol.findes]];
     if (pol.conAvisos) rows.push(["Avisos de AEMET: amarillo o más, cualquier fenómeno", pol.aviso], ["Avisos de AEMET: viento, amarillo o más", pol.avisoViento],
                                  ["Avisos de AEMET: viento o tormenta, amarillo o más", pol.avisoVientoTormenta], ["Avisos de AEMET: naranja o rojo", pol.avisoNaranja]);
-    rows.push(["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo]);
-    if (pol.conAvisos) rows.push(["GridPredict, mismo número de días que los avisos amarillos", pol.mismoAviso]);
-    rows.push(["GridPredict, solo los días en alerta", pol.sistema]);
-    if (pol.conAvisos) rows.push(["GridPredict en alerta o aviso de viento o tormenta de AEMET", pol.unionVientoTormenta], ["GridPredict en alerta o aviso naranja o rojo de AEMET", pol.union]);
+    rows.push(["GridPredic, mismo número de días que los fines de semana de invierno", pol.mismo]);
+    if (pol.conAvisos) rows.push(["GridPredic, mismo número de días que los avisos amarillos", pol.mismoAviso]);
+    rows.push(["GridPredic, solo los días en alerta", pol.sistema]);
+    if (pol.conAvisos) rows.push(["GridPredic en alerta o aviso de viento o tormenta de AEMET", pol.unionVientoTormenta], ["GridPredic en alerta o aviso naranja o rojo de AEMET", pol.union]);
     const years = Math.max(0.01, pol.anios || groups);
     const base = pol.invierno.dias / years * cost;
     let html = `<thead><tr><th>política de guardia</th><th class="num">días reforzados al año</th><th class="num">cobertura de las horas-cliente</th><th class="num">coste al año (euros)</th><th class="num">frente al calendario</th></tr></thead><tbody>`;

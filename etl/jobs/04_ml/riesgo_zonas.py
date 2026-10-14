@@ -459,7 +459,7 @@ def osrm_table(points: list, api: str = "https://router.project-osrm.org", timeo
     """
     coords = ";".join(f"{lon:.5f},{lat:.5f}" for lat, lon in points)
     url = f"{api.rstrip('/')}/table/v1/driving/{coords}?annotations=duration"
-    request = urllib.request.Request(url, headers={"User-Agent": "GridPredict-TFM/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "GridPredic-TFM/1.0"})
     with urllib.request.urlopen(request, timeout=timeout) as answer:
         payload = json.loads(answer.read())
     if payload.get("code") != "Ok" or "durations" not in payload:
