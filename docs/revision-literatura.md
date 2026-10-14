@@ -138,3 +138,27 @@ Dos avisos transversales: Yang (2020, Sustainability) estima que el error aleato
 5. Módulo de aves para el horario y el anual (coste medio). Con el inventario de nidos de la distribuidora, o a falta de él con densidad de cigüeña (GBIF/eBird) y distancia a vertederos, agua y pastizal (Burdett 2022; Moreira 2018), construir un índice de presión de nidos por alimentador; en el horario añadir los términos noche/madrugada y los meses abril y octubre-noviembre (Moreira 2023), y en el diario un único término estación de cría x lluvia ligera. Comparación: sobre los incidentes codificados como aves (8 % del TIEPI), curva de captura horaria con y sin módulo; en el anual, R2 por alimentador. Juicio: aceptar si la captura de los incidentes de aves en las horas de alerta sube de forma clara; si no hay inventario de nidos, esperar poco y no insistir.
 
 Quedan por detrás, para después: CERRA como base de la climatología p98 (ganancia pequeña pero limpia), SPEI-6/12 del Monitor de Sequía solo dentro del régimen de verano, EFFIS/FIRMS como entrada del horario (fuego activo a X km) y el calendario agrícola. Lo que no recomendamos probar: obras y tráfico, y nieve húmeda fuera del norte de Cáceres.
+
+## 5. Estado de la lista (15.10.2026)
+
+Lo que se ha hecho con cada fuente e idea desde que se escribió esta revisión, para que la lista se vaya cerrando con una decisión por línea y no con un "pendiente" perpetuo. Los detalles y las cifras están en los apartados 3f a 3i del [cuaderno](investigacion-continua.md).
+
+| Fuente o idea | Estado | Decisión |
+| --- | --- | --- |
+| Extensión del viento fuerte (parte de la red con racha en el p98 o en 72 km/h) | Medida (3f) | No aporta: las redes caben en pocas celdas de ICON-EU y la fracción se mueve con la racha máxima. Queda en el job |
+| Interacciones racha x lluvia previa, lluvia del día, hoja y verano | Medida (3f) | No aporta con 58 días positivos en dos años. Queda en el job |
+| Pendiente de la racha por red (efecto de red) | Medida (3f) | Empeora un poco. Queda en el job |
+| Dirección del viento (anomalía frente a la habitual de las rachas fuertes) | Medida con el reanálisis (3f) | No aporta ni como cota superior: no se pide la dirección prevista al archivo |
+| Modelo de conteos (Poisson sobre el número de incidencias) y logística equilibrada | Medidos (3g) | Ordenan peor que la logística. Quedan en `ml_models.py` |
+| Arbolado de la celda: WorldCover 2021 y altura del dosel de Meta y WRI | Medido (3h) | Indicio por CT (un año), nada por cabecera. El bloque entra en el ranking; una prueba de verdad necesita el trazado de las líneas |
+| Copernicus HRL (densidad de copa, tipo de hoja) y LiDAR del PNOA | No probados | Necesitan EU Login (HRL) y la geometría de las líneas; con el grano del municipio no cambiarían la conclusión de 3h |
+| Sequía de los meses anteriores (balance hídrico de 90 y 180 días, del reanálisis de Gold) | En marcha (3i) | Se mide esta noche; sustituye al Monitor de Sequía del CSIC, que a este grano no añade nada |
+| Precipitación helada (CT-horas con lluvia a 0,5 grados o menos) | En marcha (3i) | Se mide esta noche con su gemelo desde la previsión |
+| CERRA como climatología del p98 | No probado | Descartado por ahora: la clave del CDS funciona, pero la ganancia esperada es afinar un percentil que ya se calcula con ERA5 a 10 km sobre celdas de 10 km, y obligaría a mezclar dos escalas de racha o a rehacer la climatología de Gold. Si entra una red con más celdas, se retoma |
+| Fenología y estado de la hoja (HR-VPP, MODIS) | No probado | Necesita cuenta (WEkEO o Earthdata); la aproximación por calendario (hoja de abril a octubre) ya se midió en 3f sin resultado |
+| Cigüeñas (GBIF) e incendios (EFFIS, FIRMS) | Ya estaban en el lakehouse | Medidos antes de esta revisión en el modelo anual (sin ganancia) y en el del día (FIRMS, FWI). Lo que cambiaría las cosas es el inventario de nidos por apoyo, que no tenemos |
+| Rayos (climatología de la red de AEMET) | No probado | Datos de pago; a un día solo tendríamos proxies (CAPE, ya dentro) y en el horario ya usamos el satélite MTG |
+| Relieve a 5 m (MDT05), CORINE, SIOSE, MFE | No probados | Con los CT en la coordenada de su municipio no mejoran al DEM de 90 m y a OSM que ya están |
+| Calendario agrícola, festivos locales | No probados | Sin respaldo en la literatura; solo tendría sentido en el horario para las averías de terceros |
+| Bandas de riesgo como cuantiles conformales | No probado | Es presentación, no acierto: los niveles ya se calibran por percentiles y las tasas por banda están medidas (9 veces entre muy alto y bajo) |
+
