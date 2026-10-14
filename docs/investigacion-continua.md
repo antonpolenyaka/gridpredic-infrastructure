@@ -121,6 +121,21 @@ Con dos tardes de antelación el sistema conserva la mayor parte de la señal: 5
 
 **Lectura.** El riesgo por zona a dos días es viable para planificar (reforzar con un presupuesto amplio de días, avisar a las contratas, mover vehículos entre bases), con la pérdida medida: la mitad del acierto de más que da el sistema sobre el tiempo de ayer se mantiene a 48 h cuando se mira el 10 % de días peores, y casi todo cuando se mira el 20 %. El reparto entre líneas y municipios dentro del día no cambia con el horizonte (lo manda el tamaño y la historia de cada línea). Lo de 72 h se mide esta noche con `metp3_*`.
 
+## 3f. Prueba: la extensión del viento fuerte, las interacciones con la racha, la pendiente por red y la dirección (en marcha, 14.10.2026)
+
+**De dónde sale.** De la revisión de literatura del 14.10 ([revision-literatura.md](revision-literatura.md)): Láng-Ritter y otros (NHESS 2025) encuentran en 92 temporales de Finlandia que el área con rachas de más de 21 m/s se correlaciona mejor con los puntos sin suministro (0,61) que la racha máxima (0,46); Manning, Wilkinson, Fowler y Kendon (Communications Earth and Environment 2025) encuentran en la red británica que la lluvia antecedente, la dirección anómala del viento y el verano multiplican por 2, por 5 y por 2 la probabilidad de muchas faltas cuando la racha pasa de 25 m/s, pero no sirven solas; Lorenz y otros (NHESS 2025) ven lo mismo con la duración: pesa como interacción con la racha. Eso explica nuestros resultados negativos del apartado 3 (la lluvia acumulada y la duración, probadas como efectos propios, no aportaron) y dice cómo volver a probarlos. Watson y otros (Journal of Engineering 2020) apoyan juntar varias redes en un modelo con un término por red.
+
+**Diseño.** Cuatro bloques nuevos en `job_ml_riesgo_dia.py`, todos calculados también desde la previsión (`prev_ext_*`) para medirlos con la previsión real de 2024 - 2025, salvo la dirección, que ICON-EU no nos da en el archivo de previsiones y queda como cota superior sobre el reanálisis:
+
+- `extension`: la parte de los CT de la red cuya celda tiene una racha en su p98 o más, y en 72 km/h o más (20 m/s), en la peor hora del día, y la suma de esa parte sobre las horas del día (CT-horas de viento fuerte).
+- `interacciones`: el exceso de la racha sobre 0,9 veces el p98 de su celda (max(0, cociente - 0,9)) por la lluvia del día anterior (la conocida esa tarde), por la lluvia del día, por la estación de hoja (abril - octubre) y por el verano (junio - septiembre).
+- `pendiente_red`: el cociente de la racha por cada distribuidora, una pendiente propia por red (el interceptor ya era propio con `dist_*`).
+- `direccion` (con `--direccion`): el ángulo entre el viento de las horas con racha en el p98 o más y la dirección de la que suelen venir las rachas fuertes de la celda (media circular del reanálisis), en grados, promediado en el día, y ese ángulo por el exceso de la racha.
+
+Variantes `operativa_extension`, `operativa_interacciones`, `operativa_pendiente_red`, `operativa_direccion` y `operativa_mas` (las tres primeras juntas) frente a `operativa`, con el mismo banco del apartado 1: PR-AUC, veces la tasa base, parte de los días con avería en el 10 y el 20 % de días de más riesgo, y la diferencia emparejada con bootstrap por fechas, sobre el reanálisis y sobre la previsión real. Criterio: entra en producción lo que suba la captura al 10 - 20 % de forma consistente en 2024 y 2025 con la previsión real, no solo sobre el reanálisis.
+
+**Resultados.** [Pendientes: cola `48_dia_mas.ps1`.]
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
@@ -140,6 +155,7 @@ Preguntamos qué datos de los equipos instalados en los clientes podrían cruzar
 ## 6. Lo que queda en la lista
 
 - Volver a probar el suelo y la duración del viento cuando haya dos temporadas más etiquetadas (2027), con el mismo banco de pruebas.
+- De la revisión de literatura ([revision-literatura.md](revision-literatura.md)), lo que no cabe antes del 18.10: el modelo de conteos (binomial negativa o hurdle) con efecto de red y las bandas de riesgo como cuantiles conformales; la exposición al arbolado junto a las líneas (densidad de copa y tipo de hoja del HRL de Copernicus, altura del dosel del LiDAR del PNOA o de los modelos globales de 10 m) como interacción con la racha, sobre todo para el modelo anual por cabecera; el índice de presión de nidos de cigüeña por cabecera (SEO/BirdLife, GBIF, vertederos y agua) para el modelo horario y el anual; CERRA como climatología del p98; y la dirección del viento prevista en el archivo de previsiones (`wind_direction_10m_previous_day1`) si la prueba 3f con el reanálisis la justifica.
 - Pedir los cortes de los contadores de telegestión a una de las distribuidoras para medir cuántos cortes de baja tensión no vemos.
 - Hecho el 14.10.2026: el replay da ya la detección y las falsas alarmas por día de cada política (apartado 2b de [caso-de-negocio.md](caso-de-negocio.md)): el sistema en alerta detecta el 71 % de los días con dos o más incidencias marcando el 12,5 % de los días, frente al 73 % con el 3 % de falsas alarmas del trabajo de Alcalá, que cuenta averías de una provincia entera. Queda pendiente definir el día extremo como ellos (por número de averías) cuando entre una red mayor.
 - Con los avisos de AEMET, una política mixta por fenómeno (viento y tormenta sí, calor no) frente a la unión que ya medimos.
