@@ -80,6 +80,25 @@ La hipótesis era falsa a igual número de días: la regla sencilla cubre de 3 a
 
 **Decisión.** El riesgo de mañana lleva desde hoy la recomendación de guardia con esa unión (`guardia` en `riesgo.json`: reforzar con nivel alto o muy alto o con aviso de viento o tormenta de AEMET para el día), el mensaje de la tarde la cuenta y el parte de guardia la escribe. No tocamos el modelo para "subir" los días de tormenta: con 7 días de dos incidencias o más en dos años y medio, cualquier ajuste a mano sería sobreajuste; la regla queda como política explícita y medible, no como un parche en la probabilidad. En la memoria se dice tal cual.
 
+## 3d. Con cuánta antelación llegan los avisos de AEMET (14.10.2026)
+
+**Pregunta.** El sistema corre a las 20:30 de la víspera con los avisos que ya están emitidos. ¿Qué parte de los avisos de un día ya existe a esa hora, y cuáles llegan después?
+
+**Datos.** El archivo de avisos de AEMET en Silver (`l2_silver.f_aviso_meteo`, del 20.06.2018 al 31.08.2026) cruzado con las celdas de cada red: 2.158 (distribuidora, día, fenómeno) con algún aviso amarillo o más. Para cada uno, las horas entre el primer mensaje y las 00:00 del día (`experimentos/avisos_antelacion/analizar.py`; calculado sobre la exportación `avisos_c_20261012_1845`).
+
+| fenómeno | días con aviso | primer mensaje antes de las 20:00 de la víspera | antes de las 12:00 de la víspera | dos días antes o más | mediana de antelación |
+| --- | --- | --- | --- | --- | --- |
+| todos | 2.158 | 79 % | 76 % | 57 % | 25 h |
+| viento (VI) | 243 | 78 % | 74 % | 55 % | 25 h |
+| tormentas (TO) | 346 | 57 % | 52 % | 21 % | 13 h |
+| lluvia (PR) | 503 | 71 % | 66 % | 43 % | 13 h |
+| nieve (NE) | 119 | 86 % | 84 % | 60 % | 36 h |
+| temperaturas máximas (AT) | 755 | 93 % | 91 % | 86 % | 48 h |
+
+El 21 % de los avisos de un día no existían a las 20:00 de la víspera (en las tormentas, el 43 %), y en un 3 % el nivel subió después. El aviso de viento se conoce con un día de margen en tres de cada cuatro casos; el de tormenta, que es el que más añade al sistema (apartado 3c), muchas veces llega la misma mañana.
+
+**Decisión.** La ejecución de la tarde no basta para los avisos de tormenta: la operación vuelve a leer los avisos de AEMET durante el día (tarea `avisos_hoy` de `dag_observacion_vivo`, cada hora) y, cuando aparece un aviso de viento o tormenta para hoy que no estaba anoche, sube la guardia a reforzada, lo escribe en el cuadro de mando y lo manda al webhook una vez por distribuidora y día.
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
