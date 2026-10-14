@@ -121,7 +121,7 @@ Con dos tardes de antelación el sistema conserva la mayor parte de la señal: 5
 
 **Lectura.** El riesgo por zona a dos días es viable para planificar (reforzar con un presupuesto amplio de días, avisar a las contratas, mover vehículos entre bases), con la pérdida medida: la mitad del acierto de más que da el sistema sobre el tiempo de ayer se mantiene a 48 h cuando se mira el 10 % de días peores, y casi todo cuando se mira el 20 %. El reparto entre líneas y municipios dentro del día no cambia con el horizonte (lo manda el tamaño y la historia de cada línea). Lo de 72 h se mide esta noche con `metp3_*`.
 
-## 3f. Prueba: la extensión del viento fuerte, las interacciones con la racha, la pendiente por red y la dirección (en marcha, 14.10.2026)
+## 3f. Prueba: la extensión del viento fuerte, las interacciones con la racha, la pendiente por red y la dirección (14.10.2026)
 
 **De dónde sale.** De la revisión de literatura del 14.10 ([revision-literatura.md](revision-literatura.md)): Láng-Ritter y otros (NHESS 2025) encuentran en 92 temporales de Finlandia que el área con rachas de más de 21 m/s se correlaciona mejor con los puntos sin suministro (0,61) que la racha máxima (0,46); Manning, Wilkinson, Fowler y Kendon (Communications Earth and Environment 2025) encuentran en la red británica que la lluvia antecedente, la dirección anómala del viento y el verano multiplican por 2, por 5 y por 2 la probabilidad de muchas faltas cuando la racha pasa de 25 m/s, pero no sirven solas; Lorenz y otros (NHESS 2025) ven lo mismo con la duración: pesa como interacción con la racha. Eso explica nuestros resultados negativos del apartado 3 (la lluvia acumulada y la duración, probadas como efectos propios, no aportaron) y dice cómo volver a probarlos. Watson y otros (Journal of Engineering 2020) apoyan juntar varias redes en un modelo con un término por red.
 
@@ -134,7 +134,20 @@ Con dos tardes de antelación el sistema conserva la mayor parte de la señal: 5
 
 Variantes `operativa_extension`, `operativa_interacciones`, `operativa_pendiente_red`, `operativa_direccion` y `operativa_mas` (las tres primeras juntas) frente a `operativa`, con el mismo banco del apartado 1: PR-AUC, veces la tasa base, parte de los días con avería en el 10 y el 20 % de días de más riesgo, y la diferencia emparejada con bootstrap por fechas, sobre el reanálisis y sobre la previsión real. Criterio: entra en producción lo que suba la captura al 10 - 20 % de forma consistente en 2024 y 2025 con la previsión real, no solo sobre el reanálisis.
 
-**Resultados.** [Pendientes: cola `48_dia_mas.ps1`.]
+**Resultados** (`dia_mas_20261014_2301`, 7 minutos; regresión logística, cada año puntuado por un modelo que solo vio los anteriores). Con la previsión real de ICON-EU de 2024 - 2025 (58 días con avería de distribuidora):
+
+| variante | PR-AUC | ROC-AUC | días con avería en el 10 % de más riesgo | en el 20 % | diferencia emparejada de PR-AUC frente a `operativa` [IC 95 %] | prob. de ser mejor |
+| --- | --- | --- | --- | --- | --- | --- |
+| `operativa` (producción) | 0,188 | 0,82 | 53 % | 67 % | | |
+| `operativa_interacciones` | 0,187 | 0,82 | 53 % | 67 % | -0,002 [-0,016, +0,017] | 39 % |
+| `operativa_direccion` (reanálisis, cota superior) | 0,186 | 0,82 | 53 % | 67 % | -0,001 [-0,006, +0,001] | 17 % |
+| `operativa_pendiente_red` | 0,179 | 0,82 | 53 % | 67 % | -0,005 [-0,026, +0,002] | 16 % |
+| `operativa_extension` | 0,178 | 0,82 | 52 % | 67 % | -0,007 [-0,031, +0,012] | 24 % |
+| `operativa_mas` (las tres juntas) | 0,177 | 0,82 | 53 % | 67 % | -0,008 [-0,038, +0,011] | 21 % |
+
+Sobre el reanálisis de 2022 - 2025 (cuatro años, la comparación con más días) pasa lo mismo: `operativa` 0,151 de PR-AUC; la extensión 0,149 (-0,002 [-0,015, +0,011], 33 %), las interacciones 0,150 (-0,001, 40 %), la pendiente por red 0,148 (-0,004 [-0,010, +0,000], 5 %), la dirección 0,150 (-0,001, 20 %) y las tres juntas 0,148 (-0,004, 22 %). Año a año ninguna variante gana en los cuatro: la extensión gana en 2023 y 2024 (0,163 y 0,241 frente a 0,152 y 0,235) y pierde en 2022 y 2025 (0,122 y 0,187 frente a 0,139 y 0,189); las interacciones empatan en 2024 y pierden en 2025. XGBoost con todo (`operativa_mas`) queda por debajo con la previsión real (-0,035 [-0,127, +0,032]); el rango de los dos modelos, también (-0,031 [-0,069, +0,000]).
+
+**Lectura.** Con nuestros datos, ninguno de los cuatro bloques añade nada medible al modelo del día que ya usa la racha frente al p98 de cada celda, el índice de Klawa y Ulbrich y la lluvia: las diferencias son de milésimas, dentro del ruido del bootstrap, y las variantes con más variables pierden un poco con la previsión real, que es donde se decide. La extensión del viento fuerte no aporta porque nuestras redes caben en unas pocas celdas de ICON-EU (10 km) y en un temporal casi todas las celdas pasan el p98 a la vez: la fracción se mueve con la racha máxima. Las interacciones de Manning tampoco: en la red británica salen con 12.500 km2 y miles de faltas por temporal; aquí hay 58 días positivos en dos años y una logística con regularización no puede separar el producto racha x lluvia del efecto de cada una. La dirección, incluso con el reanálisis (que no tendríamos en producción), no mueve nada, así que no vale la pena pedir `wind_direction_10m_previous_day1` al archivo de previsiones. La pendiente por red empeora: tres redes, dos de ellas parecidas, no dan para pendientes propias. Decisión: no entra nada en producción; los bloques quedan en el job para volver a medirlos con más años (y, si alguna red grande entra, con más celdas), y la lista de la revisión sigue con el modelo de conteos, el arbolado y las aves.
 
 ## 4. Datos públicos de España que revisamos
 
