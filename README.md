@@ -19,6 +19,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 | [docs/cifras.md](docs/cifras.md) | Las cifras que van a la memoria y a la presentación, en una página, con el documento y la ejecución de la que sale cada una |
 | [docs/guion-presentacion.md](docs/guion-presentacion.md) | El guion de la defensa: 14 diapositivas con el mensaje, la figura y la cifra de cada una |
 | [docs/memoria-lo-que-pide-el-tutor.md](docs/memoria-lo-que-pide-el-tutor.md) | Lo que pide el tutor de negocio para la memoria (tutorías del 06.07 y del 14.10.2026), lo que ya cubrimos y los textos propuestos: propuesta de valor, marca y posicionamiento, marketing mix, DAFO por fases, riesgos, validación y plan financiero |
+| [docs/revision-literatura.md](docs/revision-literatura.md) | Revisión de la literatura (modelos de interrupciones por meteorología, 2012 - 2026, con los DOI comprobados), las fuentes públicas que no usamos todavía y las ideas de modelado con respaldo, con las cinco pruebas recomendadas |
 | [docs/investigacion-continua.md](docs/investigacion-continua.md) | Cuaderno de laboratorio: las hipótesis probadas con los datos (literatura, humedad del suelo y duración del viento, datos públicos, dispositivos de los clientes), cómo se probaron y qué se descartó; el código de cada prueba está en `experimentos/` |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | GitHub Flow tal como lo aplicamos, reglas de commits y versionado de datos |
 | [CHANGELOG.md](CHANGELOG.md) | Historial de versiones |

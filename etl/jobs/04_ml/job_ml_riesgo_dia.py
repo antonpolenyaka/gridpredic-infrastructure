@@ -66,6 +66,30 @@ Features, every one known before D starts except the block dia:
   and the run of heat with the forecast hottest hour of D) and take the
   place of ext_* the same way. meteo_dia.comparaciones_prevision compares
   variants on the same weather of the day.
+- ext_fraccion_* (block extension, from the literature review of 14.10.2026:
+  the area under strong gusts matters more than the strongest point): the
+  share of the CT of the distribuidora whose cell has a gust at or above
+  its p98 (met_racha_fuerte_1h) and at or above 72 km/h (20 m/s,
+  met_racha_72_1h) in the worst hour of D, and the sum of that share over
+  the hours of D (CT-hours of strong gust). They come from the reanalysis
+  of D, and prev_ext_fraccion_* from the forecasts, like ext_*.
+- ext_int_* (block interacciones): the excess of the gust over 0.9 times the
+  p98 of its cell (the worst cell, max(0, ratio - 0.9)) times the rain of
+  the day before (what is known that evening), the rain of D, the leaf
+  season (April to October) and the summer (June to September). The
+  literature finds rain and season as multipliers of the gust, not as
+  effects of their own. ext_pend_* (block pendiente_red): the gust ratio
+  times each distribuidora, a slope of its own per network. Both have their
+  forecast twins (prev_ext_int_*, prev_ext_pend_*) built from the forecast
+  gust and rain, with the rain of the last day known at that horizon.
+- ext_dir_* (block direccion, only with --direccion): how far the wind of
+  the hours with gusts at or above the p98 of the cell blows from the
+  direction its strong gusts usually come from (the circular mean of the
+  reanalysis of the cell), in degrees: the CT weighted mean of the cells,
+  averaged over those hours of D (0 on a day without such an hour), and
+  that anomaly times the excess of the gust. There is no forecast of the
+  direction, so these stay from the reanalysis in the forecast comparison
+  (an upper bound).
 - Two and three days ahead (HORIZONS): Gold also keeps what ICON-EU forecast
   two days before (metp2_*, gusts and rain) and, once landed, three days
   before (metp3_*). They give prev2_* / prev3_* (the daily weather and the
@@ -187,17 +211,33 @@ FORECAST_DAILY = {
 }
 
 # Gusts against the climate of each cell (Gold): name -> (hourly column of distributor_weather, aggregation).
+# ext_fraccion_*: the CT weighted share of the cells under a strong gust (derived_extent), in the worst hour and
+# summed over the hours. ext_dir_*: the anomaly of the direction of the strong gusts (derived_direction).
 EXTREME_DAILY = {
     "ext_racha_clima_max": ("metd_max_met_racha_clima_1h", "max"),
     "ext_racha_clima_media": ("metd_media_met_racha_clima_1h", "max"),
     "ext_racha_ku": ("metd_media_met_racha_ku_1h", "sum"),
+    "ext_fraccion_p98_max": ("metd_media_met_racha_fuerte_1h", "max"),
+    "ext_fraccion_p98_horas": ("metd_media_met_racha_fuerte_1h", "sum"),
+    "ext_fraccion_72_max": ("metd_media_met_racha_72_1h", "max"),
+    "ext_fraccion_72_horas": ("metd_media_met_racha_72_1h", "sum"),
+    "ext_dir_anomalia": ("metd_media_met_dir_anomalia_1h", "mean"),
 }
-# The same from the forecast of ICON-EU of the day before (prev_ext_*).
+# The same from the forecast of ICON-EU of the day before (prev_ext_*); the direction has no forecast.
 FORECAST_EXTREME_DAILY = {
     "ext_racha_clima_max": ("metd_max_metp1_racha_clima_1h", "max"),
     "ext_racha_clima_media": ("metd_media_metp1_racha_clima_1h", "max"),
     "ext_racha_ku": ("metd_media_metp1_racha_ku_1h", "sum"),
+    "ext_fraccion_p98_max": ("metd_media_metp1_racha_fuerte_1h", "max"),
+    "ext_fraccion_p98_horas": ("metd_media_metp1_racha_fuerte_1h", "sum"),
+    "ext_fraccion_72_max": ("metd_media_metp1_racha_72_1h", "max"),
+    "ext_fraccion_72_horas": ("metd_media_metp1_racha_72_1h", "sum"),
 }
+# A strong gust in km/h (20 m/s: from here on some fault is almost certain in the British overhead networks of
+# Dunn et al. 2018) and the share of the p98 from which the interactions and the direction count.
+STRONG_GUST_KMH = 72.0
+GUST_EXCESS_FROM = 0.9
+DIRECTION_FROM = 1.0
 
 # How many days ahead the forecast was made -> the prefix of its hourly
 # columns in Gold, of its daily features (prev_*, prev2_*, prev3_*), of the
@@ -246,6 +286,107 @@ def derived_forecast_extremes(weather):
                                F.pow(F.greatest(ratio - F.lit(1.0), F.lit(0.0)), 3)))
     return weather
 
+def derived_extent(weather):
+    """
+    The frame of Gold with <prefix>_racha_fuerte_1h (1 when the gust of the
+    hour is at or above the p98 of the cell, 0 below, null without a gust)
+    and <prefix>_racha_72_1h (the same at STRONG_GUST_KMH) for the
+    reanalysis and every forecast that has its gust: their CT weighted mean
+    over the cells is the share of the network under a strong gust.
+    """
+    columns = set(weather.columns)
+    for prefix in ["met"] + [spec["gold"] for spec in HORIZONS.values()]:
+        gust, ratio = f"{prefix}_racha_1h", f"{prefix}_racha_clima_1h"
+        if ratio in columns and f"{prefix}_racha_fuerte_1h" not in columns:
+            weather = weather.withColumn(f"{prefix}_racha_fuerte_1h",
+                                         F.when(F.col(ratio).isNotNull(), (F.col(ratio) >= 1.0).cast("double")))
+        if gust in columns and f"{prefix}_racha_72_1h" not in columns:
+            weather = weather.withColumn(f"{prefix}_racha_72_1h",
+                                         F.when(F.col(gust).isNotNull(),
+                                                (F.col(gust) >= STRONG_GUST_KMH).cast("double")))
+    return weather
+
+
+def derived_direction(weather):
+    """
+    The frame of Gold with met_dir_anomalia_1h: in the hours with a gust at
+    or above DIRECTION_FROM times the p98 of the cell, the angle (0 - 180
+    degrees) between the wind of the hour and the direction the strong
+    gusts of the cell usually come from (the circular mean of the hours of
+    the reanalysis at or above the p98). Null in the other hours and when
+    Gold has no direction.
+    """
+    columns = set(weather.columns)
+    if not {"met_dir_viento_sin", "met_dir_viento_cos", "met_racha_clima_1h"} <= columns:
+        return weather
+    strong = weather.where(F.col("met_racha_clima_1h") >= 1.0)
+    usual = strong.groupBy("celda_id").agg(F.avg("met_dir_viento_sin").alias("_dir_sin"),
+                                           F.avg("met_dir_viento_cos").alias("_dir_cos"))
+    norm = F.sqrt(F.col("_dir_sin") ** 2 + F.col("_dir_cos") ** 2)
+    usual = usual.where(norm > 0).select("celda_id", (F.col("_dir_sin") / norm).alias("_dir_sin"),
+                                         (F.col("_dir_cos") / norm).alias("_dir_cos"))
+    joined = weather.join(F.broadcast(usual), "celda_id", "left")
+    cosine = F.col("met_dir_viento_sin") * F.col("_dir_sin") + F.col("met_dir_viento_cos") * F.col("_dir_cos")
+    angle = F.degrees(F.acos(F.greatest(F.least(cosine, F.lit(1.0)), F.lit(-1.0))))
+    return joined.withColumn("met_dir_anomalia_1h",
+                             F.when(F.col("met_racha_clima_1h") >= DIRECTION_FROM, angle)).drop("_dir_sin", "_dir_cos")
+
+
+def derive_weather(direction: bool = False):
+    """The derive hook of distributor_weather: the extremes of the forecasts, the extent and, if asked, the direction."""
+    def derive(weather):
+        weather = derived_extent(derived_forecast_extremes(weather))
+        return derived_direction(weather) if direction else weather
+    return derive
+
+
+def gust_excess(ratio: pd.Series) -> pd.Series:
+    """How far the gust goes above GUST_EXCESS_FROM times the p98 of its cell (0 below, null without a gust)."""
+    return (ratio - GUST_EXCESS_FROM).clip(lower=0.0)
+
+
+def add_interactions(pdf: pd.DataFrame, dists: list, forecasts: dict) -> list:
+    """
+    Adds to pdf, and returns the names of, the interactions of the gust
+    (ext_int_*, block interacciones), the slope of the gust per network
+    (ext_pend_*, block pendiente_red) and the anomaly of the direction times
+    the gust (ext_dir_int_racha, block direccion), each with its forecast
+    twin per horizon (<prev>_ext_*, returned too) so the forecast comparison
+    swaps them like the other extremes. The rain of the day before is the
+    one known at the horizon (ayer_, hace2_, hace3_).
+    """
+    month = pdf["fecha"].dt.month
+    leaf = month.between(4, 10).astype("float64")
+    summer = month.between(6, 9).astype("float64")
+    names = []
+    versions = [("", "ext_racha_clima_max", "ayer_lluvia_max", "dia_lluvia_max")]
+    for horizon in sorted(forecasts):
+        spec = HORIZONS[horizon]
+        versions.append((f"{spec['prev']}_", f"{spec['prev']}_ext_racha_clima_max",
+                         f"{spec['ultimo']}_lluvia_max", f"{spec['prev']}_lluvia_max"))
+    for prefix, gust, rain_before, rain_day in versions:
+        if gust not in pdf.columns:
+            continue
+        ratio = pdf[gust]
+        excess = gust_excess(ratio)
+        new = {
+            f"{prefix}ext_int_racha_lluvia_previa": excess * pdf[rain_before] if rain_before in pdf.columns else None,
+            f"{prefix}ext_int_racha_lluvia_dia": excess * pdf[rain_day] if rain_day in pdf.columns else None,
+            f"{prefix}ext_int_racha_hoja": excess * leaf,
+            f"{prefix}ext_int_racha_verano": excess * summer,
+        }
+        for dist in dists:
+            new[f"{prefix}ext_pend_racha_dist_{dist}"] = ratio * pdf[f"dist_{dist}"]
+        if prefix == "" and "ext_dir_anomalia" in pdf.columns:
+            new["ext_dir_int_racha"] = excess * (pdf["ext_dir_anomalia"] / 90.0)
+        for name, values in new.items():
+            if values is None:
+                continue
+            pdf[name] = values.astype("float64")
+            names.append(name)
+    return names
+
+
 DEFAULTS = {
     "desde": "2017-01-08",
     "hasta": "2026-01-01",
@@ -291,6 +432,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--sin-busqueda", action="store_true", help="Only the first configuration of every model")
     parser.add_argument("--variantes", default=None,
                         help="Comma separated names of meteo_dia.variantes to run (all by default)")
+    parser.add_argument("--direccion", action="store_true",
+                        help="Also the block direccion (the anomaly of the wind direction, reanalysis only)")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -497,7 +640,8 @@ def block_of(name: str) -> str:
                           ("aviso48_det_", "avisos_detalle_48h"), ("aviso48_", "avisos_48h"),
                           ("aviso72_det_", "avisos_detalle_72h"), ("aviso72_", "avisos_72h"),
                           ("prev_", "prevision"), ("prev2_", "prevision_48h"), ("prev3_", "prevision_72h"),
-                          ("ext_", "extremos")):
+                          ("ext_fraccion_", "extension"), ("ext_int_", "interacciones"),
+                          ("ext_pend_", "pendiente_red"), ("ext_dir_", "direccion"), ("ext_", "extremos")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -508,7 +652,8 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     start, end = pd.Timestamp(cfg["desde"]), pd.Timestamp(cfg["hasta"])
     gold_prefixes = tuple(f"{spec['gold']}_" for spec in HORIZONS.values())
     weather, names = distributor_weather(spark, {**config.get("meteo", {}), "activo": True},
-                                         prefixes=("met_",) + gold_prefixes, derive=derived_forecast_extremes)
+                                         prefixes=("met_",) + gold_prefixes,
+                                         derive=derive_weather(bool(cfg.get("bloque_direccion", False))))
     if weather is None:
         raise ValueError("No weather in Gold (meteo_celda_hora and map_ct_celda): nothing to learn from")
 
@@ -551,6 +696,10 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     extreme = extremes(hourly, daily, float(cfg["calor_umbral_c"]), int(cfg["horas_minimas_dia"]))
     extreme_names = [c for c in extreme.columns if c.startswith("ext_")]
     pdf = pdf.merge(extreme, on=["distribuidora_id", "fecha"], how="left")
+    # A day with gusts but none strong enough to measure the direction: no anomaly, not a missing one.
+    if "ext_dir_anomalia" in pdf.columns:
+        pdf["ext_dir_anomalia"] = pdf["ext_dir_anomalia"].where(
+            pdf["ext_racha_clima_max"].isna(), pdf["ext_dir_anomalia"].fillna(0.0))
     forecast_columns = []
     for horizon, (frame, found) in forecasts.items():
         prefix = HORIZONS[horizon]["prev"]
@@ -578,6 +727,9 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
 
     for dist in dists:
         pdf[f"dist_{dist}"] = (pdf["distribuidora_id"] == dist).astype("float64")
+    created = add_interactions(pdf, dists, forecasts)
+    interaction_names = [n for n in created if n.startswith("ext_")]
+    forecast_columns += [n for n in created if not n.startswith("ext_")]
 
     warnings_first = None
     warning_names = []
@@ -619,7 +771,8 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     blocks = {}
     features = ([f"dist_{d}" for d in dists] + list(cal.columns) + history
                 + [name for horizon in sorted(before) for name in before[horizon]]
-                + [f"dia_{c}" for c in weather_names] + extreme_names + warning_names + forecast_columns)
+                + [f"dia_{c}" for c in weather_names] + extreme_names + interaction_names + warning_names
+                + forecast_columns)
     for name in features:
         blocks.setdefault(block_of(name), []).append(name)
     # The weather of the day that the forecast of each horizon also gives: the fair reference of the real forecast.
@@ -627,7 +780,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
         blocks[common_block(horizon)] = [f"dia_{c}" for c in found if c in weather_names]
     blocks.setdefault("dia_comun", [])
     # The extremes of the gusts alone, the ones every forecast gives (the run of heat needs the temperature).
-    blocks["extremos_racha"] = [c for c in extreme_names if "racha" in c]
+    blocks["extremos_racha"] = [c for c in blocks.get("extremos", []) if "racha" in c]
 
     return pdf.sort_values(["distribuidora_id", "fecha"]).reset_index(drop=True), blocks, warnings_first
 
@@ -916,6 +1069,8 @@ def main(argv=None):
     spark = get_spark(config)
     created = datetime.now(timezone.utc).replace(tzinfo=None)
     cfg = settings(config)
+    if args.direccion:
+        cfg["bloque_direccion"] = True
     seed = int(config.get("semilla", 0))
     shares = [float(s) for s in cfg["fracciones_top"]]
     version = f"meteo_dia_{cfg['desde']}_{cfg['hasta']}"

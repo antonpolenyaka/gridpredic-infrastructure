@@ -259,10 +259,13 @@ def synthetic():
     for dist, cell in CELLS.items():
         gust = rng.gamma(4.0, 6.0, len(hours))
         rain = np.where(rng.random(len(hours)) < 0.05, rng.gamma(1.0, 2.0, len(hours)), 0.0)
+        # The wind blows from anywhere; the storms come from the south-west, one in four from the north-east.
+        direction = rng.uniform(0.0, 360.0, len(hours))
         for day in rng.choice(days, size=7 * 20, replace=False):
             start = int((pd.Timestamp(day) + pd.Timedelta(hours=10) - hours[0]) / pd.Timedelta(hours=1))
             gust[start:start + 6] = rng.uniform(80, 110, 6)
             rain[start:start + 6] = rng.uniform(2, 8, 6)
+            direction[start:start + 6] = (45.0 if pd.Timestamp(day).day % 4 == 0 else 225.0) + rng.normal(0, 5, 6)
             if rng.random() < 0.7:
                 events.append((dist, pd.Timestamp(day) + pd.Timedelta(hours=12), "meteorologia"))
             # AEMET warns of most storms the day before at noon, and of half of those two days before.
@@ -278,6 +281,7 @@ def synthetic():
             "celda_id": cell, "hora": hours, "met_racha_1h": gust, "met_viento_1h": gust * 0.6,
             "met_lluvia_1h": rain, "met_temp_1h": 15 + 10 * np.sin(2 * np.pi * (hours.dayofyear.to_numpy() - 100) / 365),
             "met_humedad_1h": 60.0, "met_presion_1h": 1013.0, "met_presion_delta_24h": 0.0, "met_nieve_24h": 0.0,
+            "met_dir_viento_sin": np.sin(np.radians(direction)), "met_dir_viento_cos": np.cos(np.radians(direction)),
         }))
 
     for dist in CELLS:
@@ -371,13 +375,19 @@ def config_path(workdir):
             {"nombre": "operativa_72h", "desde": "2019-06-25",
              "bloques": ["calendario", "historia", "avisos_72h", "dia_comun_72h", "extremos_racha"],
              "variables": ["hace3_racha_max", "hace3_lluvia_max"], "horizonte": 3},
+            {"nombre": "operativa_mas", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "extension", "interacciones",
+                         "pendiente_red"],
+             "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
         ],
         "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "operativa_racha",
-                               "operativa_48h", "operativa_72h"],
+                               "operativa_48h", "operativa_72h", "operativa_mas"],
         "anios_prevision": [2024, 2025],
         "comparaciones_prevision": [["comun_avisos_extremos__logistica__prevision",
                                      "comun_avisos__logistica__prevision"],
-                                    ["operativa_48h__logistica__prevision", "operativa_racha__logistica__prevision"]],
+                                    ["operativa_48h__logistica__prevision", "operativa_racha__logistica__prevision"],
+                                    ["operativa_mas__logistica__prevision",
+                                     "comun_avisos_extremos__logistica__prevision"]],
         "comparaciones": [["perfecta__logistica", "ayer__logistica"], ["avisos__logistica", "ayer__logistica"]],
     }
     path = os.path.join(workdir, "config.json")
@@ -435,7 +445,7 @@ def test_the_real_forecast_scores_the_years_it_covers(result):
     # The variants of the forecast, with the models of yesterday once; the one of three days ahead has no
     # forecast in Gold (no metp3_*) and is skipped.
     assert set(full["variante"]) == {"perfecta_comun", "comun_avisos", "comun_avisos_extremos", "ayer",
-                                     "operativa_racha", "operativa_48h"}
+                                     "operativa_racha", "operativa_48h", "operativa_mas"}
     table = full[full["variante"].isin(["perfecta_comun", "ayer"])].set_index(["tiempo_del_dia", "modelo"])
     assert {"reanalisis", "prevision", "prevision_cuantiles", "solo_ayer"} <= set(table.index.get_level_values(0))
     warned = full[full["variante"] == "comun_avisos"].set_index(["tiempo_del_dia", "modelo"])
@@ -524,6 +534,65 @@ def test_the_extremes_of_the_forecast_are_never_a_block(spark, tables, config_pa
     known = pdf[pdf["prev_ext_racha_clima_max"].notna()]
     assert known["fecha"].min() == pd.Timestamp("2024-01-01")
     assert known["prev_ext_racha_clima_max"].mean() > known["ext_racha_clima_max"].mean()
+
+
+def test_the_extent_the_interactions_and_the_direction_of_the_gusts(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    cfg = {**rd.settings(config), "bloque_direccion": True}
+    pdf, blocks, _ = rd.build_dataset(spark, config, cfg)
+    # The new blocks, apart from the extremes the operational variant already uses.
+    assert set(blocks["extension"]) == {"ext_fraccion_p98_max", "ext_fraccion_p98_horas", "ext_fraccion_72_max",
+                                        "ext_fraccion_72_horas"}
+    assert set(blocks["interacciones"]) == {"ext_int_racha_lluvia_previa", "ext_int_racha_lluvia_dia",
+                                            "ext_int_racha_hoja", "ext_int_racha_verano"}
+    assert set(blocks["pendiente_red"]) == {f"ext_pend_racha_dist_{d}" for d in CELLS}
+    assert set(blocks["direccion"]) == {"ext_dir_anomalia", "ext_dir_int_racha"}
+    assert set(blocks["extremos"]) == {"ext_racha_clima_max", "ext_racha_clima_media", "ext_racha_ku", "ext_dias_calor"}
+    assert set(blocks["extremos_racha"]) == {"ext_racha_clima_max", "ext_racha_clima_media", "ext_racha_ku"}
+    # One cell per network: the share under a strong gust is 0 or 1, and 1 exactly when the worst hour is at the p98.
+    known = pdf[pdf["ext_racha_clima_max"].notna()]
+    assert set(known["ext_fraccion_p98_max"].unique()) <= {0.0, 1.0}
+    assert (known["ext_fraccion_p98_max"] == (known["ext_racha_clima_max"] >= 1.0)).all()
+    assert (known["ext_fraccion_72_max"] == (known["dia_racha_max"] >= 72.0)).all()
+    assert known["ext_fraccion_72_horas"].between(0, 24).all() and known["ext_fraccion_72_horas"].max() >= 6
+    assert (known["ext_fraccion_p98_horas"] >= known["ext_fraccion_p98_max"]).all()
+    # The interactions multiply the excess of the gust over 0.9 times the p98 by rain and season.
+    excess = (known["ext_racha_clima_max"] - 0.9).clip(lower=0.0)
+    assert np.allclose(known["ext_int_racha_lluvia_previa"], excess * known["ayer_lluvia_max"], equal_nan=True)
+    assert np.allclose(known["ext_int_racha_lluvia_dia"], excess * known["dia_lluvia_max"], equal_nan=True)
+    july, january = known[known["fecha"].dt.month == 7], known[known["fecha"].dt.month == 1]
+    assert np.allclose(july["ext_int_racha_hoja"], (july["ext_racha_clima_max"] - 0.9).clip(lower=0.0))
+    assert np.allclose(july["ext_int_racha_verano"], july["ext_int_racha_hoja"])
+    assert (january["ext_int_racha_hoja"] == 0).all() and (january["ext_int_racha_verano"] == 0).all()
+    # A slope of the gust per network: the ratio in its own rows, 0 in the others.
+    for dist in CELLS:
+        own = known[known["distribuidora_id"] == dist]
+        assert np.allclose(own[f"ext_pend_racha_dist_{dist}"], own["ext_racha_clima_max"])
+        assert (known.loc[known["distribuidora_id"] != dist, f"ext_pend_racha_dist_{dist}"] == 0).all()
+    # The direction: the storms blow from the south-west, the ones on days multiple of four from the north-east.
+    storms = known[known["dia_racha_max"] >= 80.0]
+    usual, odd = storms[storms["fecha"].dt.day % 4 != 0], storms[storms["fecha"].dt.day % 4 == 0]
+    assert usual["ext_dir_anomalia"].median() < 25 and odd["ext_dir_anomalia"].median() > 155
+    calm = known[known["ext_racha_clima_max"] < 1.0]
+    assert (calm["ext_dir_anomalia"] == 0).all() and (calm["ext_dir_int_racha"] == 0).all()
+    assert np.allclose(odd["ext_dir_int_racha"], (odd["ext_racha_clima_max"] - 0.9).clip(lower=0.0)
+                       * odd["ext_dir_anomalia"] / 90.0)
+    # The forecast twins, at every horizon, with the rain of the last day known at that horizon.
+    for name in ("ext_fraccion_p98_max", "ext_fraccion_72_horas", "ext_int_racha_hoja", "ext_int_racha_lluvia_previa",
+                 "ext_pend_racha_dist_1"):
+        assert f"prev_{name}" in blocks["prevision"] and f"prev2_{name}" in blocks["prevision_48h"]
+    assert "prev_ext_dir_anomalia" not in pdf.columns and not any("dir" in c for c in blocks["prevision"])
+    archived = pdf[pdf["prev2_ext_racha_clima_max"].notna()]
+    excess2 = (archived["prev2_ext_racha_clima_max"] - 0.9).clip(lower=0.0)
+    assert np.allclose(archived["prev2_ext_int_racha_lluvia_previa"], excess2 * archived["hace2_lluvia_max"],
+                       equal_nan=True)
+    assert np.allclose(archived["prev_ext_int_racha_lluvia_dia"],
+                       (archived["prev_ext_racha_clima_max"] - 0.9).clip(lower=0.0) * archived["prev_lluvia_max"],
+                       equal_nan=True)
+    # Without the flag, no direction and nothing else changes.
+    _, plain, _ = rd.build_dataset(spark, config, rd.settings(config))
+    assert "direccion" not in plain and set(plain["extension"]) == set(blocks["extension"])
 
 
 def test_the_models_of_the_hours_never_see_the_forecast_of_the_day_before(spark, tables):

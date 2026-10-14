@@ -392,11 +392,28 @@
        "variables": ["hace2_racha_max", "hace2_lluvia_max"], "horizonte": 2},
       {"nombre": "operativa_72h", "desde": "2018-06-25",
        "bloques": ["calendario", "historia", "avisos_72h", "dia_comun_72h", "extremos_racha"],
-       "variables": ["hace3_racha_max", "hace3_lluvia_max"], "horizonte": 3}
+       "variables": ["hace3_racha_max", "hace3_lluvia_max"], "horizonte": 3},
+      {"nombre": "operativa_extension", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "extension"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_interacciones", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "interacciones"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_pendiente_red", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "pendiente_red"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_direccion", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "direccion"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_mas", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "extension", "interacciones",
+                   "pendiente_red"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]}
     ],
     "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "comun_avisos_detalle",
                            "comun_avisos_detalle_extremos", "operativa", "operativa_racha", "operativa_48h",
-                           "operativa_72h"],
+                           "operativa_72h", "operativa_extension", "operativa_interacciones",
+                           "operativa_pendiente_red", "operativa_direccion", "operativa_mas"],
     "anios_prevision": [2024, 2025],
     "comparaciones_prevision": [
       ["comun_avisos_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
@@ -414,7 +431,14 @@
       ["operativa_48h__logistica__prevision", "operativa_racha__logistica__prevision"],
       ["operativa_48h__logistica__prevision_cuantiles", "operativa_racha__logistica__prevision_cuantiles"],
       ["operativa_48h__rango__prevision", "operativa_racha__rango__prevision"],
-      ["operativa_72h__logistica__prevision", "operativa_48h__logistica__prevision"]
+      ["operativa_72h__logistica__prevision", "operativa_48h__logistica__prevision"],
+      ["operativa_extension__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_interacciones__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_pendiente_red__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_direccion__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_mas__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_mas__xgboost__prevision", "operativa__xgboost__prevision"],
+      ["operativa_mas__rango__prevision", "operativa__rango__prevision"]
     ],
     "comparaciones": [
       ["ayer__logistica", "calendario_historia__logistica"],
@@ -437,7 +461,13 @@
       ["comun_avisos_detalle_extremos__logistica", "comun_avisos__logistica"],
       ["comun_avisos_detalle_extremos__rango", "comun_avisos__rango"],
       ["operativa__logistica", "comun_avisos_extremos__logistica"],
-      ["operativa__logistica", "ayer__logistica"]
+      ["operativa__logistica", "ayer__logistica"],
+      ["operativa_extension__logistica", "operativa__logistica"],
+      ["operativa_interacciones__logistica", "operativa__logistica"],
+      ["operativa_pendiente_red__logistica", "operativa__logistica"],
+      ["operativa_direccion__logistica", "operativa__logistica"],
+      ["operativa_mas__logistica", "operativa__logistica"],
+      ["operativa_mas__xgboost", "operativa__xgboost"]
     ]
   },
   "caso_negocio": {
