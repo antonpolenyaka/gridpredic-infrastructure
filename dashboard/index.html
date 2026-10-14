@@ -30,6 +30,7 @@
   section.dist h2 { margin: 0 0 10px; font-size: 18px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .nivel { display: inline-block; padding: 2px 10px; border-radius: 12px; color: #fff; font-size: 13px; font-weight: 600;
     text-transform: uppercase; letter-spacing: .04em; }
+  .nivel.tormenta-pill { background: #f1c40f; color: #222; } td.ahora .pico { color: #b8302f; font-weight: 600; }
   .nivel.bajo { background: var(--bajo); } .nivel.medio { background: var(--medio); color: #222; }
   .nivel.alto { background: var(--alto); } .nivel.muy-alto { background: var(--muy-alto); }
   .cols { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 16px; }
@@ -171,9 +172,44 @@
       <td>${esc(z.nombre)}${extra}</td>
       <td>${nivelPill(z.nivel)}</td><td class="num">${pct(z.probabilidad)}</td><td class="num">${pct(z.parte, 0)}</td>
       <td class="num">${num(z.n_ct)}</td><td class="num">${num(z.abonados)}</td><td class="num">${num(z.clientes_esperados, 1)}</td><td class="num">${num(z.racha_max)}</td>
-      <td class="num">${num(z.hist_365d)}</td></tr>`;
+      <td class="num">${num(z.hist_365d)}</td><td class="ahora" data-dist="${idx}" data-zona="${i}"></td></tr>`;
     }).join("");
-    return `<div class="scroll"><table><thead><tr><th>Zona (línea)</th><th>Nivel</th><th class="num">Prob.</th><th class="num">Parte del riesgo</th><th class="num">CT</th><th class="num">Clientes</th><th class="num">Clientes esp.</th><th class="num">Racha (km/h)</th><th class="num">Inc. último año</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div class="scroll"><table><thead><tr><th>Zona (línea)</th><th>Nivel</th><th class="num">Prob.</th><th class="num">Parte del riesgo</th><th class="num">CT</th><th class="num">Clientes</th><th class="num">Clientes esp.</th><th class="num">Racha (km/h)</th><th class="num">Inc. último año</th><th>Ahora</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  // "Ahora" of every line, from what is live: the flashes of the satellite over its municipalities in the last
+  // hour (rayos.json) and the last gust of the stations of AEMET within 25 km of them (observado.json), against
+  // the gust forecast for the line.
+  const VIVO = { rayos: null, observado: null };
+  const haversine = (lat1, lon1, lat2, lon2) => {
+    const r = Math.PI / 180, a = Math.sin((lat2 - lat1) * r / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin((lon2 - lon1) * r / 2) ** 2;
+    return 2 * 6371 * Math.asin(Math.sqrt(a));
+  };
+
+  function pintarAhora(data) {
+    const radius = (VIVO.observado && VIVO.observado.radio_km) || 25;
+    (data.distribuidoras || []).forEach((d, idx) => {
+      const zonas = (d.zonas || []).slice().sort((a, b) => (b.probabilidad || 0) - (a.probabilidad || 0));
+      const storm = ((VIVO.rayos && VIVO.rayos.distribuidoras) || []).find((b) => String(b.id) === String(d.id));
+      const lines = new Set((storm && storm.lineas) || []);
+      const stations = ((VIVO.observado && VIVO.observado.fecha === data.fecha && VIVO.observado.estaciones) || []).filter((s) => s.racha_kmh != null);
+      zonas.forEach((z, i) => {
+        const cell = document.querySelector(`td.ahora[data-dist="${idx}"][data-zona="${i}"]`);
+        if (!cell) return;
+        const parts = [];
+        if (lines.has(z.nombre)) parts.push('<span class="nivel tormenta-pill">rayos</span>');
+        const places = (d.municipios || []).filter((m) => m.lat != null && (m.zonas || []).includes(z.nombre));
+        let best = null;
+        for (const st of stations) {
+          if (places.some((m) => haversine(m.lat, m.lon, st.lat, st.lon) <= radius) && (best == null || st.racha_kmh > best.racha_kmh)) best = st;
+        }
+        if (best) {
+          const hit = z.racha_max != null && best.racha_kmh >= z.racha_max;
+          parts.push(`<span${hit ? ' class="pico"' : ""} title="${esc(best.nombre)} a las ${esc(best.hora)}">${num(best.racha_kmh)} km/h${hit ? ", en el pico previsto" : ""}</span>`);
+        }
+        cell.innerHTML = parts.join(" ") || '<span class="notas">sin dato</span>';
+      });
+    });
   }
 
   function tablaCts(d) {
@@ -218,6 +254,8 @@
   // flashes on its map, the older ones paler. Optional: without the file nothing is shown.
   const maps = {};
   function pintarRayos(data, r) {
+    VIVO.rayos = r;
+    pintarAhora(data);
     const hora = r.generado ? r.generado.slice(11, 16) + " UTC" : "";
     (data.distribuidoras || []).forEach((d, idx) => {
       const block = (r.distribuidoras || []).find((b) => String(b.id) === String(d.id)) || null;
@@ -249,6 +287,8 @@
   // hour by hour over the forecast profile of the same day, and the stations on the map.
   function pintarObservado(data, o) {
     if (!o || o.fecha !== data.fecha) return;
+    VIVO.observado = o;
+    pintarAhora(data);
     (data.distribuidoras || []).forEach((d, idx) => {
       const block = (o.distribuidoras || []).find((b) => String(b.id) === String(d.id));
       const sec = document.getElementById("dist-" + idx);
