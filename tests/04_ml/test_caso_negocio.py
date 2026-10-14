@@ -80,12 +80,15 @@ def test_the_summary_the_files_and_the_history(replayed, spark, workdir):
     assert "## tiempo del día del reanálisis" in text and "### Brigadas" in text and "### Por nivel previsto (" in text
     assert "horas-cliente (recortadas)" in text and "| sin recortar |" in text
     assert "| probabilidad media |" in text and "Probabilidad de la víspera frente a los días con avería: AUC 0." in text
+    assert "### Frente a los avisos de AEMET" in text and "| GridPredict en alerta (alto o muy alto) |" in text
     cts = pd.read_csv(os.path.join(folder, "cts.csv"))
     assert (cts["min_ganados_total"].abs() <= cts["dur_min"] + 1e-9).all()
     assert cts.loc[~cts["espero_brigada"], "min_ganados_total"].eq(0).all()
     history = json.load(open(os.path.join(workdir, "dashboard", "historico.json"), encoding="utf-8"))
     assert [d["id"] for d in history["distribuidoras"]] == [1, 2]
     first_days = history["distribuidoras"][0]["dias"]["prevision"]
+    days = spark.table("l3_gold.caso_negocio_dia").toPandas()
+    assert "aviso_max_nivel" in days.columns and {"a", "av"} <= set(first_days[0])
     assert len(first_days) > 700 and {"f", "n", "p", "i", "ch", "chr", "c", "m", "b"} <= set(first_days[0])
     assert all(d["chr"] <= d["ch"] for d in first_days)
     assert any(d["b"] for d in first_days if d["n"] in ("alto", "muy alto"))
