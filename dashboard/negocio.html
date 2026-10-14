@@ -265,6 +265,10 @@
       <p class="notas">Retribución de 2022 según la resolución de la CNMC de 6 de noviembre de 2025 (el sector: 5.317 millones de euros). Licencia e implantación según el plan de negocio. Lo que no afirmamos con estos datos: una cifra en euros del incentivo de calidad de cada distribuidora, que depende de la referencia sectorial y de los límites que publique la CNMC, ni el ahorro en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
       </section>`;
 
+    html += `<section id="produccion" style="display:none"><h2>Lo que vale la previsión, medido en producción</h2>
+      <p>Desde que el sistema corre cada tarde, las estaciones de AEMET dicen al día siguiente qué viento hubo. Esto es lo medido hasta hoy, sin seleccionar días.</p>
+      <ul id="produccion-lista"></ul></section>`;
+
     html += `<section><h2>Lo que el sistema no hace, para que nadie compre otra cosa</h2><ul>
       <li>No dice qué centro de transformación se quedará sin luz: da el día, la franja horaria, la zona y las líneas de más riesgo, y un ranking histórico de CT.</li>
       <li>No ve el estado de los equipos: las averías de equipos y de causa desconocida en días de calma caen en días "bajos" y son una de cada cuatro horas-cliente.</li>
@@ -275,6 +279,19 @@
     root.innerHTML = html;
     document.getElementById("coste").addEventListener("input", () => guardTable(pol, groups));
     guardTable(pol, groups);
+    produccion();
+  }
+
+  // The verification of the forecasts against the stations (verificacion.json), when there are complete days.
+  function produccion() {
+    fetch("data/verificacion.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); }).then((v) => {
+      const items = (v.resumen || []).filter((r) => r.dias > 0 && r.texto);
+      const sec = document.getElementById("produccion");
+      if (!sec || !items.length) return;
+      document.getElementById("produccion-lista").innerHTML = items.map((r) => `<li><b>${esc(r.nombre)}</b>: ${esc(r.texto)}.</li>`).join("")
+        + `<li class="notas">${Object.keys(v.dias || {}).length} días verificados; generado ${esc(v.generado || "")}.</li>`;
+      sec.style.display = "";
+    }).catch(() => {});
   }
 
   function guardTable(pol, groups) {
