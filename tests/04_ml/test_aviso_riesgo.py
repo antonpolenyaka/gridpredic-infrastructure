@@ -59,6 +59,11 @@ def test_the_message_names_the_distribuidoras_in_alert_only():
     text = av.message_from(carried, "alto")
     assert "; escenarios: 40 escenarios de icon_eu en 21 celdas de la red: mediana 84; AEMET por municipios (40 municipios, elaborada 18:55): pico de racha 70 km/h a las 12:00 en Hervás." in text
     assert not av.reached("raro", "alto") and av.reached("muy alto", "alto") and not av.reached("medio", "alto")
+    # A distribuidora below the minimum enters when its guard is reinforced by a wind or thunderstorm warning.
+    guarded = json.loads(json.dumps(PAYLOAD))
+    guarded["distribuidoras"][1]["guardia"] = {"reforzar": True, "motivo": "aviso de tormenta de AEMET (amarillo)"}
+    text = av.message_from(guarded, "alto")
+    assert "- Pitarch: MEDIO (6 %" in text and "guardia reforzada (aviso de tormenta de AEMET (amarillo))" in text
 
 
 def test_send_posts_json_only_with_the_url(monkeypatch, capsys, tmp_path):

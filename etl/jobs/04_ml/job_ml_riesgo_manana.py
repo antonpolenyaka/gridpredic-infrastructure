@@ -178,7 +178,8 @@ OUTPUT_COLUMNS = [
     ("fecha", "date"), ("distribuidora_id", "bigint"), ("distribuidora", "string"), ("probabilidad", "double"),
     ("tasa_base", "double"), ("veces_tasa_base", "double"), ("percentil", "double"), ("nivel", "string"),
     ("motivos", "string"), ("zonas", "string"), ("racha_max_kmh", "double"), ("racha_clima_max", "double"),
-    ("lluvia_mm", "double"), ("temp_max_c", "double"), ("aviso_max_nivel", "double"),
+    ("lluvia_mm", "double"), ("temp_max_c", "double"), ("aviso_max_nivel", "double"), ("aviso_viento_nivel", "double"),
+    ("aviso_tormenta_nivel", "double"), ("guardia_reforzada", "boolean"), ("guardia_motivo", "string"),
     ("cobertura_prevision", "double"), ("avisos_disponibles", "boolean"), ("historia_al_dia", "boolean"),
     ("calser_hasta", "date"), ("entrenado_hasta", "date"), ("dias_entreno", "bigint"), ("variante", "string"),
     ("modelo", "string"), ("params_json", "string"), ("prevision_pedida_utc", "string"),
@@ -195,7 +196,24 @@ ZONE_COLUMNS = [
 ]
 # Output column -> live feature.
 INPUTS = {"racha_max_kmh": "dia_racha_max", "racha_clima_max": "ext_racha_clima_max", "lluvia_mm": "dia_lluvia_max",
-          "temp_max_c": "dia_temp_max", "aviso_max_nivel": "aviso_max_nivel"}
+          "temp_max_c": "dia_temp_max", "aviso_max_nivel": "aviso_max_nivel", "aviso_viento_nivel": "aviso_viento_nivel",
+          "aviso_tormenta_nivel": "aviso_tormenta_nivel"}
+
+# The guard: reinforce it the days in alert (alto or muy alto) and the days with a wind or thunderstorm warning of
+# AEMET, the policy that covers most customer-hours per day spent in the replay of 2024 - 2026 (caso-de-negocio.md, 2b).
+GUARD_LEVELS = ("alto", "muy alto")
+
+
+def guard_advice(level: str, wind: float, storm: float) -> dict:
+    """{"reforzar": bool, "motivo": text}: why the guard of the day is reinforced, or "normal"."""
+    reasons = []
+    if level in GUARD_LEVELS:
+        reasons.append(f"nivel {level}")
+    if wind is not None and not pd.isna(wind) and wind >= 1:
+        reasons.append(f"aviso de viento de AEMET ({LEVEL_NAMES.get(int(wind), int(wind))})")
+    if storm is not None and not pd.isna(storm) and storm >= 1:
+        reasons.append(f"aviso de tormenta de AEMET ({LEVEL_NAMES.get(int(storm), int(storm))})")
+    return {"reforzar": bool(reasons), "motivo": "; ".join(reasons) if reasons else "normal"}
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -875,6 +893,8 @@ def dashboard_payload(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out
             "brigadas": block.get("brigadas", {}), "zonas": block.get("zonas", []), "municipios": block.get("municipios", []),
             "cts": block.get("cts", []), "racha_max_kmh": r.racha_max_kmh, "racha_clima_max": r.racha_clima_max,
             "lluvia_mm": r.lluvia_mm, "temp_max_c": r.temp_max_c, "aviso_max_nivel": r.aviso_max_nivel,
+            "aviso_viento_nivel": getattr(r, "aviso_viento_nivel", None), "aviso_tormenta_nivel": getattr(r, "aviso_tormenta_nivel", None),
+            "guardia": {"reforzar": bool(getattr(r, "guardia_reforzada", False)), "motivo": getattr(r, "guardia_motivo", "normal")},
             "cobertura_prevision": r.cobertura_prevision, "zonas_racha": r.zonas,
         })
     return {
@@ -1365,6 +1385,10 @@ def main(argv=None):
             "zonas": places.get(int(dist), ""),
             **{column: float(live.loc[i, source]) if source in live.columns else float("nan")
                for column, source in INPUTS.items()},
+            **{f"guardia_{'reforzada' if k == 'reforzar' else k}": v for k, v in guard_advice(
+                level_of(percentile, rcfg["niveles"]),
+                float(live.loc[i, "aviso_viento_nivel"]) if "aviso_viento_nivel" in live.columns else None,
+                float(live.loc[i, "aviso_tormenta_nivel"]) if "aviso_tormenta_nivel" in live.columns else None).items()},
             "cobertura_prevision": float(coverage.get(dist, 0.0)),
             "avisos_disponibles": bool(answered),
             "historia_al_dia": up_to_date,
