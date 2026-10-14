@@ -1,3 +1,4 @@
-# El JSON de cada tarde lo escribe el job; no se versiona.
+# El JSON y el parte de guardia de cada tarde los escribe el job; no se versionan.
 *.json
+*.xlsx
 !.gitkeep
