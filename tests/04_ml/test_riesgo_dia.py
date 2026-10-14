@@ -238,7 +238,7 @@ def spark(workdir):
         .config("spark.ui.enabled", "false")
     )
     session = configure_spark_with_delta_pip(builder).getOrCreate()
-    for db in ("l2_silver", "l3_gold"):
+    for db in ("l1_bronze", "l2_silver", "l3_gold"):
         session.sql(f"CREATE DATABASE IF NOT EXISTS {db}")
     yield session
     session.stop()
@@ -250,7 +250,7 @@ def save(spark, pdf: pd.DataFrame, table: str):
 
 
 def synthetic():
-    """(weather per cell and hour, principal events with cause, warnings of AEMET)."""
+    """(weather per cell and hour, principal events with cause, warnings of AEMET, forecast of a second model)."""
     rng = np.random.default_rng(11)
     # When AEMET sends each warning, drawn apart so the storms and the incidents stay the same.
     lead = np.random.default_rng(12)
@@ -323,16 +323,29 @@ def synthetic():
         ratio = weather[f"{prefix}_racha_1h"] / weather["celda_id"].map(p98)
         weather[f"{prefix}_racha_clima_1h"] = ratio
         weather[f"{prefix}_racha_ku_1h"] = np.clip(ratio - 1.0, 0.0, None) ** 3
+    # A second model of the day before, as Bronze keeps it (the raw names of the Previous Runs API, without the wind
+    # speed): the same weather with its own noise and a storm in three missed (a calm, dry forecast that day), from
+    # 2024 like ICON-EU.
+    noise3 = rng.normal(1.0, 0.2, len(weather))
+    missed3 = weather["hora"].dt.floor("D").isin(rng.choice(days, size=len(days) // 3, replace=False)).to_numpy()
+    second = weather.loc[archived, ["celda_id", "hora"]].copy()
+    second["wind_gusts_10m_previous_day1"] = np.where(missed3, 25.0, weather["met_racha_1h"] * 1.1)[archived] * noise3[archived]
+    second["precipitation_previous_day1"] = np.where(missed3, 0.0, weather["met_lluvia_1h"] * noise3.clip(0))[archived]
+    second["temperature_2m_previous_day1"] = (weather["met_temp_1h"] - 1.0)[archived]
+    second["relative_humidity_2m_previous_day1"] = 55.0
+    second["anio"] = second["hora"].dt.year.astype("int32")
+    second["modelo"] = "gfs_seamless"
     # The archive of warnings starts in the middle of 2019, as the real one in 2018.
     warnings = pd.DataFrame(warnings)
     warnings = warnings[warnings["enviado_ts"] >= "2019-06-18"].reset_index(drop=True)
-    return weather, events, warnings
+    return weather, events, warnings, second.reset_index(drop=True)
 
 
 @pytest.fixture(scope="module")
 def tables(spark):
-    weather, events, warnings = synthetic()
+    weather, events, warnings, second = synthetic()
     save(spark, weather, "l3_gold.meteo_celda_hora")
+    save(spark, second, "l1_bronze.meteo_openmeteo_previo_gfs_hora")
     save(spark, pd.DataFrame([{"distribuidora_id": d, "ct_id": f"{d}-{i}", "celda_id": c}
                               for d, c in CELLS.items() for i in range(3)]), "l3_gold.map_ct_celda")
     facts, causes = [], []
@@ -396,6 +409,9 @@ def config_path(workdir):
         "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "operativa_racha",
                                "operativa_48h", "operativa_72h", "operativa_mas"],
         "anios_prevision": [2024, 2025],
+        # A second model in Bronze and one that is not there (left out with a warning).
+        "previsiones_extra": [{"clave": "gfs", "tabla": "l1_bronze.meteo_openmeteo_previo_gfs_hora", "nombre": "GFS"},
+                              {"clave": "gem", "tabla": "l1_bronze.meteo_openmeteo_previo_gem_hora", "nombre": "GEM"}],
         "comparaciones_prevision": [["comun_avisos_extremos__logistica__prevision",
                                      "comun_avisos__logistica__prevision"],
                                     ["operativa_48h__logistica__prevision", "operativa_racha__logistica__prevision"],
@@ -411,7 +427,7 @@ def config_path(workdir):
 
 @pytest.fixture(scope="module")
 def result(spark, tables, config_path, workdir):
-    code = rd.main(["--run-id", RUN_ID, "--config", config_path])
+    code = rd.main(["--run-id", RUN_ID, "--config", config_path, "--previsiones-extra"])
     return code, os.path.join(workdir, "resultados", RUN_ID)
 
 
@@ -504,6 +520,63 @@ def test_two_days_ahead_scores_with_the_older_forecast_and_warnings(result):
     assert "operativa_48h (48 h)" in text and "dos o tres días antes" in text
     variants = read(folder, "variantes.csv").set_index("variante")
     assert variants.loc["operativa_48h", "horizonte_dias"] == 2 and variants.loc["operativa_racha", "horizonte_dias"] == 1
+
+
+def test_a_second_model_and_the_mean_of_the_models_score_the_same_days(result):
+    _, folder = result
+    full = read(folder, "prevision.csv")
+    table = full[full["variante"] == "perfecta_comun"].set_index(["tiempo_del_dia", "modelo"])
+    sources = set(table.index.get_level_values(0))
+    assert {"prevision", "prevision_gfs", "prevision_gfs_cuantiles", "prevision_media", "prevision_media_cuantiles"} <= sources
+    # The model that is not in Bronze is left out, not invented.
+    assert not any("_gem" in s for s in sources)
+    # On the scale of the reanalysis (by quantiles, so the bias of each model does not count): the second model
+    # misses a storm in three and is worse than ICON-EU alone; the mean of both keeps most of the storms ICON-EU
+    # sees (a missed storm still scores half way), so it sits between them.
+    icon = table.loc[("prevision_cuantiles", "logistica"), "pr_auc"]
+    second = table.loc[("prevision_gfs_cuantiles", "logistica"), "pr_auc"]
+    mean = table.loc[("prevision_media_cuantiles", "logistica"), "pr_auc"]
+    assert second < 0.9 * icon
+    assert second < mean and mean > 0.8 * icon
+    assert ("prevision_media_cuantiles", "rango") in table.index and ("prevision_gfs", "xgboost") in table.index
+    differences = read(folder, "prevision_diferencias.csv").set_index(["a", "b"])
+    for a in ("perfecta_comun__logistica__prevision_gfs", "perfecta_comun__logistica__prevision_media"):
+        assert (a, "perfecta_comun__logistica__prevision") in differences.index
+    for key in ("gfs", "media"):
+        assert (f"perfecta_comun__rango__prevision_{key}_cuantiles",
+                "perfecta_comun__rango__prevision_cuantiles") in differences.index
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "GFS (prevision_gfs, 100 % de los días)" in text and "prevision_media" in text
+    # Two days ahead there is no second model: only the three usual weathers of the day.
+    far = full[full["variante"] == "operativa_48h"]
+    assert set(far["tiempo_del_dia"]) == {"reanalisis", "prevision", "prevision_cuantiles"}
+
+
+def test_the_second_model_is_joined_from_bronze_and_is_never_a_feature(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    cfg = {**rd.settings(config), "comparar_previsiones_extra": True}
+    pdf, blocks, _ = rd.build_dataset(spark, config, cfg)
+    # Its daily weather, extremes over the same climate, freezing hours and interactions, from 2024 like ICON-EU,
+    # without the wind speed Bronze does not have.
+    names = ["prevgfs_racha_max", "prevgfs_lluvia_max", "prevgfs_temp_max", "prevgfs_humedad_media",
+             "prevgfs_ext_racha_clima_max", "prevgfs_ext_racha_ku", "prevgfs_ext_dias_calor", "prevgfs_hie_horas",
+             "prevgfs_ext_int_racha_lluvia_previa"]
+    assert set(names) <= set(pdf.columns) and "prevgfs_viento_max" not in pdf.columns
+    assert not any(n.startswith("prevgfs_") for block in blocks.values() for n in block)
+    known = pdf[pdf["prevgfs_racha_max"].notna()]
+    assert known["fecha"].min() == pd.Timestamp("2024-01-01")
+    assert len(known) == pytest.approx(len(pdf[pdf["prev_racha_max"].notna()]), rel=0.01)
+    # Over the same p98 of the cell as the forecast of ICON-EU.
+    ratio = (known["prevgfs_ext_racha_clima_max"] / known["prevgfs_racha_max"]).median()
+    ratio1 = (known["prev_ext_racha_clima_max"] / known["prev_racha_max"]).median()
+    assert ratio == pytest.approx(ratio1, rel=0.05)
+    # Only the model that is in Bronze stays in the settings for the forecast comparison.
+    assert [e["clave"] for e in cfg["previsiones_extra"]] == ["gfs"]
+    assert cfg["previsiones_extra"][0]["cobertura"] == pytest.approx(1.0, abs=0.01)
+    # Without the flag nothing of it is read or built.
+    plain, _, _ = rd.build_dataset(spark, config, rd.settings(config))
+    assert not any(c.startswith("prevgfs_") for c in plain.columns)
 
 
 def test_metrics_and_run_saved(result, spark):
