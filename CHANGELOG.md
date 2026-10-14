@@ -2,7 +2,15 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
-## [0.12.0] - sin publicar
+## [0.13.0] - sin publicar
+
+La página de las cifras para una distribuidora o un inversor y la guardia a igual presupuesto.
+
+### Añadido
+
+- `dashboard/negocio.html`: calculada en el navegador a partir de `historico.json`, con las cuatro cifras del caso de negocio (veces más averías un día muy alto que un día bajo, parte de las horas-cliente en los días de alerta, peores días avisados la víspera, días de alerta al año), la tasa de avería por nivel y dónde cayeron las horas-cliente, la guardia a igual presupuesto (fines de semana de invierno, todos los fines de semana, el sistema con los mismos días y solo los días en alerta, con el coste por día que ponga quien la mira), la tabla por distribuidora y año, los diez peores días, la retribución de 2022 y la licencia, y lo que el sistema no hace. Selector de previsión real o reanálisis, recorte de los cortes largos e impresión a PDF. Enlazada desde `index.html` e `historial.html`.
+
+## [0.12.0] - 14.10.2026
 
 Lo que habría dicho el sistema cada tarde de 2022 a 2025 y lo que pasó: el caso de negocio con los datos reales y una página del cuadro de mando que lo enseña día a día.
 

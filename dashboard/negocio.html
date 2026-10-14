@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GridPredict en cifras</title>
+<style>
+  /* The page for a distribuidora or an investor: what the system would have said in 2022 - 2025 and what it is
+     worth, computed in the browser from historico.json (what job_ml_caso_negocio leaves). Printable. */
+  :root {
+    --bg: #f6f7f4; --panel: #ffffff; --fg: #1d2230; --muted: #5d6675; --line: #d9ddd3; --accent: #1f5f8b;
+    --bajo: #7fb27f; --medio: #e3b53a; --alto: #e0772f; --muy-alto: #b8302f; --grid: #e6e8e2; --input: #fff8d6;
+    --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
+      --accent: #7fb3dd; --grid: #2a3040; --input: #3a3620; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
+    --accent: #7fb3dd; --grid: #2a3040; --input: #3a3620; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); padding-block: 0 32px; }
+  header { padding: 18px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; }
+  header h1 { font-size: 22px; margin: 0; font-weight: 600; }
+  header .fuentes { color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); }
+  main { padding: 0 24px; display: grid; gap: 20px; margin-top: 16px; max-width: 1180px; }
+  @media (max-width: 700px) { header, main { padding-left: 16px; padding-right: 16px; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; }
+  section h2 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
+  h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  p { margin: 6px 0; max-width: 90ch; }
+  .controles { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
+  .controles label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; color: var(--fg); }
+  .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px; }
+  .cifra { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  .cifra .v { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .cifra .l { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .dos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; align-items: start; }
+  svg.graf { display: block; width: 100%; height: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.total td { font-weight: 600; }
+  .nivel { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #fff; }
+  .nivel.bajo { background: var(--bajo); } .nivel.medio { background: var(--medio); color: #222; } .nivel.alto { background: var(--alto); } .nivel.muy-alto { background: var(--muy-alto); }
+  .calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 18px; align-items: end; }
+  .calc label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+  .calc input { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--input); color: var(--fg); max-width: 160px; }
+  .notas { color: var(--muted); font-size: 13px; }
+  ul { margin: 6px 0; padding-left: 20px; } li { margin: 3px 0; }
+  footer { padding: 16px 24px; color: var(--muted); font-size: 12px; max-width: 1180px; }
+  .vacio { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 6px; }
+  @media print {
+    body { background: #fff; color: #000; font-size: 12px; }
+    header, section { border-color: #bbb; break-inside: avoid; }
+    .controles, .noimprimir { display: none; }
+    main { max-width: none; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>GridPredict en cifras: lo que habría pasado con el sistema en marcha</h1>
+  <div class="fuentes" id="fuentes">Cargando data/historico.json... <a href="index.html">Riesgo de mañana</a> · <a href="historial.html">Día a día</a></div>
+</header>
+<main id="main">
+  <section>
+    <div class="controles">
+      <span>Tiempo del día que ve el modelo:</span>
+      <label><input type="radio" name="modo" value="prevision" checked> previsión real de ICON-EU de la víspera (2024 - 2025): lo que daría el sistema en marcha</label>
+      <label><input type="radio" name="modo" value="reanalisis"> reanálisis, como previsión perfecta (2022 - 2025)</label>
+      <label><input type="checkbox" id="winsor" checked> cortes recortados a 110 minutos</label>
+      <a class="noimprimir" href="#" id="imprimir">Imprimir o guardar en PDF</a>
+    </div>
+  </section>
+  <div id="bloques"></div>
+</main>
+<footer id="pie"></footer>
+<script>
+(function () {
+  "use strict";
+  const ORDER = ["bajo", "medio", "alto", "muy alto"];
+  const cls = (n) => (n || "bajo").replace(" ", "-");
+  const num = (x, d = 0) => (x == null || isNaN(x)) ? "" : Number(x).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const pct = (x, d = 0) => (x == null || isNaN(x)) ? "" : (100 * x).toFixed(d).replace(".", ",") + " %";
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fecha = (f) => f.slice(8, 10) + "." + f.slice(5, 7) + "." + f.slice(0, 4);
+  const CAP = 110, MIN_INCIDENTS = 10, WINTER = new Set([11, 12, 1, 2, 3]);
+  // What the distribuidoras get and what the system costs: the resolution of the CNMC of 06.11.2025 (retribución de 2022)
+  // and the business plan of the TFM. The names are those of the resolution.
+  const RETRIBUCION = { 3: { nombre: "Eléctrica del Oeste Distribución (EOSA)", codigo: "R1-035", euros: 11821045 },
+                        2: { nombre: "Eléctricas Pitarch Distribución", codigo: "R1-049", euros: 10541790 },
+                        1366: { nombre: "Distribución de Electricidad Valle de Santa Ana", codigo: "R1-164", euros: 206434 } };
+  const LICENCIA = 18000, IMPLANTACION = 20000;
+  let DATA = null;
+
+  function hours(d, winsor) { return winsor ? (d.chr != null ? d.chr : (d.m > CAP ? d.ch * CAP / d.m : d.ch)) : d.ch; }
+  const isWeekend = (f) => { const wd = new Date(f + "T00:00:00Z").getUTCDay(); return wd === 0 || wd === 6; };
+  const isWinterWeekend = (f) => isWeekend(f) && WINTER.has(new Date(f + "T00:00:00Z").getUTCMonth() + 1);
+
+  // The days of the distribuidoras with enough incidents in the chosen mode, each with its hours and its year.
+  function pool(mode, winsor) {
+    const out = [];
+    for (const d of DATA.distribuidoras) {
+      const days = (d.dias || {})[mode] || [];
+      const incidents = days.reduce((s, x) => s + x.i, 0);
+      if (incidents < MIN_INCIDENTS) continue;
+      for (const x of days) out.push({ ...x, id: d.id, nombre: d.nombre, h: hours(x, winsor), anio: Number(x.f.slice(0, 4)), alerta: x.n === "alto" || x.n === "muy alto" });
+    }
+    return out;
+  }
+
+  function byLevel(days) {
+    const by = {};
+    for (const n of ORDER) by[n] = { dias: 0, con: 0, inc: 0, h: 0, p: 0 };
+    let total = 0;
+    for (const d of days) { const b = by[d.n] || by.bajo; b.dias++; if (d.i > 0) b.con++; b.inc += d.i; b.h += d.h; b.p += d.p; total += d.h; }
+    return { by, total };
+  }
+
+  function years(days) { return [...new Set(days.map((d) => d.anio))].sort(); }
+
+  // Share of the customer-hours covered and days used by three ways of reinforcing the guard, per distribuidora and year averaged.
+  function policies(days) {
+    const groups = new Map();
+    for (const d of days) { const k = d.id + "|" + d.anio; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
+    const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, sistema: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, total: 0, grupos: groups.size };
+    for (const g of groups.values()) {
+      const total = g.reduce((s, d) => s + d.h, 0);
+      const winter = g.filter((d) => isWinterWeekend(d.f));
+      const weekends = g.filter((d) => isWeekend(d.f));
+      const alert = g.filter((d) => d.alerta);
+      const same = [...g].sort((a, b) => b.p - a.p).slice(0, winter.length);
+      out.invierno.dias += winter.length; out.invierno.h += winter.reduce((s, d) => s + d.h, 0);
+      out.findes.dias += weekends.length; out.findes.h += weekends.reduce((s, d) => s + d.h, 0);
+      out.sistema.dias += alert.length; out.sistema.h += alert.reduce((s, d) => s + d.h, 0);
+      out.mismo.dias += same.length; out.mismo.h += same.reduce((s, d) => s + d.h, 0);
+      out.total += total;
+    }
+    return out;
+  }
+
+  function bars(stats) {
+    // Rate of days with incident by level, as bars, with the share of days under each.
+    const W = 520, H = 190, L = 44, B = 46, T = 14, R = 10;
+    const max = Math.max(0.05, ...ORDER.map((n) => stats.by[n].dias ? stats.by[n].con / stats.by[n].dias : 0));
+    const bw = (W - L - R) / ORDER.length;
+    let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tasa de días con avería por nivel previsto">`;
+    for (let k = 0; k <= 4; k++) {
+      const v = max * k / 4, y = T + (H - T - B) * (1 - k / 4);
+      out += `<line x1="${L}" x2="${W - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--grid)"/><text x="${L - 4}" y="${(y + 4).toFixed(1)}" font-size="10" text-anchor="end" fill="var(--muted)">${pct(v)}</text>`;
+    }
+    ORDER.forEach((n, j) => {
+      const b = stats.by[n], rate = b.dias ? b.con / b.dias : 0, h = (H - T - B) * rate / max;
+      const x = L + j * bw + bw * 0.18, y = T + (H - T - B) - h;
+      out += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw * 0.64).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="var(--${cls(n)})"><title>${n}: ${b.con} de ${b.dias} días con avería</title></rect>`;
+      out += `<text x="${(x + bw * 0.32).toFixed(1)}" y="${(y - 4).toFixed(1)}" font-size="12" font-weight="600" text-anchor="middle" fill="var(--fg)">${pct(rate, 1)}</text>`;
+      out += `<text x="${(x + bw * 0.32).toFixed(1)}" y="${H - B + 14}" font-size="11" text-anchor="middle" fill="var(--fg)">${n}</text>`;
+      out += `<text x="${(x + bw * 0.32).toFixed(1)}" y="${H - B + 28}" font-size="10" text-anchor="middle" fill="var(--muted)">${pct(b.dias / Math.max(1, ORDER.reduce((s, m) => s + stats.by[m].dias, 0)))} de los días</text>`;
+    });
+    return out + "</svg>";
+  }
+
+  function stacked(stats) {
+    // Where the customer-hours fell: one bar of days and one of customer-hours, split by level.
+    const W = 520, H = 120, L = 150, R = 10, bh = 26;
+    const totalDays = ORDER.reduce((s, n) => s + stats.by[n].dias, 0);
+    let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Días y horas-cliente por nivel previsto">`;
+    [["días", (n) => stats.by[n].dias / Math.max(1, totalDays)], ["horas-cliente perdidas", (n) => stats.total ? stats.by[n].h / stats.total : 0]].forEach(([label, share], row) => {
+      const y = 18 + row * (bh + 24);
+      out += `<text x="${L - 8}" y="${y + bh / 2 + 4}" font-size="12" text-anchor="end" fill="var(--fg)">${label}</text>`;
+      let x = L;
+      for (const n of ORDER) {
+        const w = (W - L - R) * share(n);
+        out += `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${bh}" fill="var(--${cls(n)})"><title>${n}: ${pct(share(n))}</title></rect>`;
+        if (w > 34) out += `<text x="${(x + w / 2).toFixed(1)}" y="${y + bh / 2 + 4}" font-size="11" text-anchor="middle" fill="#fff">${pct(share(n))}</text>`;
+        x += w;
+      }
+    });
+    out += `<text x="${L}" y="${H - 4}" font-size="10" fill="var(--muted)">colores: bajo, medio, alto, muy alto (de izquierda a derecha)</text>`;
+    return out + "</svg>";
+  }
+
+  function render() {
+    const mode = document.querySelector('input[name="modo"]:checked').value;
+    const winsor = document.getElementById("winsor").checked;
+    const days = pool(mode, winsor);
+    const root = document.getElementById("bloques");
+    if (!days.length) { root.innerHTML = '<div class="vacio">Sin distribuidoras con incidencias suficientes en historico.json.</div>'; return; }
+    const stats = byLevel(days);
+    const names = [...new Set(days.map((d) => d.nombre))].sort((a, b) => a.localeCompare(b, "es"));
+    const ys = years(days);
+    const alertDays = stats.by.alto.dias + stats.by["muy alto"].dias, alertH = stats.by.alto.h + stats.by["muy alto"].h;
+    const alertInc = stats.by.alto.inc + stats.by["muy alto"].inc, totalInc = ORDER.reduce((s, n) => s + stats.by[n].inc, 0);
+    const rate = (n) => stats.by[n].dias ? stats.by[n].con / stats.by[n].dias : 0;
+    const ratio = rate("bajo") > 0 ? rate("muy alto") / rate("bajo") : null;
+    const worst = days.filter((d) => d.i > 0).sort((a, b) => b.h - a.h).slice(0, 10);
+    const worstAlert = worst.filter((d) => d.alerta).length;
+    const groups = new Set(days.map((d) => d.id + "|" + d.anio)).size;
+    const pol = policies(days);
+    const modeText = mode === "prevision" ? "la previsión real de la víspera" : "el reanálisis como previsión perfecta";
+    let html = "";
+
+    html += `<section><h2>Lo que vería un director de distribución</h2>
+      <p>${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}, con ${modeText}: ${num(days.length)} días de distribuidora, ${num(totalInc)} incidencias de causa local y ${num(stats.total)} horas-cliente sin suministro${winsor ? " (cortes recortados a 110 min)" : ""}. Cada día lleva el nivel que el sistema habría dado la tarde anterior, con un modelo entrenado solo con los años previos.</p>
+      <div class="cifras">
+        <div class="cifra"><div class="v">${ratio ? num(ratio, 0) + "x" : "-"}</div><div class="l">veces más averías un día "muy alto" que un día "bajo" (${pct(rate("muy alto"), 1)} frente a ${pct(rate("bajo"), 1)})</div></div>
+        <div class="cifra"><div class="v">${pct(stats.total ? alertH / stats.total : 0)}</div><div class="l">de las horas-cliente perdidas caen en los días en alerta (alto o muy alto), que son el ${pct(alertDays / days.length)} de los días</div></div>
+        <div class="cifra"><div class="v">${worstAlert} de ${worst.length}</div><div class="l">de los peores días estaban en alerta desde la tarde anterior</div></div>
+        <div class="cifra"><div class="v">${num(alertDays / Math.max(1, groups))}</div><div class="l">días de alerta al año por distribuidora: los días en que reforzar la guardia</div></div>
+      </div>
+      <div class="dos" style="margin-top:14px">
+        <div><h3>Días con avería según el nivel de la víspera</h3>${bars(stats)}</div>
+        <div><h3>Dónde cayeron las horas-cliente</h3>${stacked(stats)}
+          <p class="notas">Las probabilidades que ve el usuario cuadran con lo que pasó: los días "muy alto" llevaban de media un ${pct(stats.by["muy alto"].dias ? stats.by["muy alto"].p / stats.by["muy alto"].dias : 0, 1)} y tuvieron avería el ${pct(rate("muy alto"), 1)}; los "bajo", un ${pct(stats.by.bajo.dias ? stats.by.bajo.p / stats.by.bajo.dias : 0, 1)} y tuvieron avería el ${pct(rate("bajo"), 1)}.</p></div>
+      </div></section>`;
+
+    html += `<section><h2>La guardia: a igual presupuesto, más cobertura</h2>
+      <p>Cuatro formas de decidir qué días reforzar la guardia de brigadas, con los mismos datos (${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}). La cobertura es la parte de las horas-cliente perdidas por causas locales que caen en los días reforzados.</p>
+      <div class="calc noimprimir">
+        <label>Coste de reforzar la guardia un día (euros, por distribuidora)<input type="number" id="coste" value="600" min="0" step="50"></label>
+        <span class="notas">Cámbialo por el coste real de tu retén (horas extra, segunda brigada, material preparado). Las horas-cliente y los días salen de los datos.</span>
+      </div>
+      <table id="tabla-guardia"></table>
+      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. "Mismo número de días" toma, cada año, tantos días como los fines de semana de invierno pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. Las averías de estas redes las trae el tiempo, no el calendario: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días.</p>
+      </section>`;
+
+    html += `<section><h2>Por distribuidora y año</h2><table><thead><tr><th>distribuidora</th><th>año</th><th class="num">días en alerta</th><th class="num">incidencias</th><th class="num">en días de alerta</th><th class="num">horas-cliente</th><th class="num">en días de alerta</th></tr></thead><tbody>`;
+    for (const name of names) for (const y of ys) {
+      const g = days.filter((d) => d.nombre === name && d.anio === y);
+      if (!g.length) continue;
+      const a = g.filter((d) => d.alerta), inc = g.reduce((s, d) => s + d.i, 0), ainc = a.reduce((s, d) => s + d.i, 0);
+      const h = g.reduce((s, d) => s + d.h, 0), ah = a.reduce((s, d) => s + d.h, 0);
+      html += `<tr><td>${esc(name)}</td><td>${y}</td><td class="num">${a.length} (${pct(a.length / g.length)})</td><td class="num">${inc}</td><td class="num">${ainc} (${pct(inc ? ainc / inc : 0)})</td><td class="num">${num(h)}</td><td class="num">${num(ah)} (${pct(h ? ah / h : 0)})</td></tr>`;
+    }
+    html += `</tbody></table></section>`;
+
+    html += `<section><h2>Los ${worst.length} peores días y lo que decía el sistema la tarde anterior</h2><table><thead><tr><th>día</th><th>distribuidora</th><th>nivel previsto</th><th class="num">probabilidad</th><th class="num">incidencias</th><th class="num">clientes</th><th class="num">horas-cliente</th><th class="num">corte más largo (min)</th><th>bases propuestas</th></tr></thead><tbody>`;
+    for (const d of worst) html += `<tr><td>${fecha(d.f)}</td><td>${esc(d.nombre)}</td><td><span class="nivel ${cls(d.n)}">${d.n}</span></td><td class="num">${pct(d.p, 1)}</td><td class="num">${d.i}</td><td class="num">${num(d.c)}</td><td class="num">${num(d.h)}</td><td class="num">${num(d.m)}</td><td>${esc(d.b || "")}</td></tr>`;
+    html += `</tbody></table></section>`;
+
+    html += `<section><h2>Cuánto cuesta y de qué depende la retribución</h2>
+      <p>Las distribuidoras no facturan al cliente: cobran la retribución regulada que fija la CNMC. La Circular 8/2025 (metodología 2026 - 2031) liga parte de esa retribución a la calidad del suministro con un incentivo calculado sobre el TIEPI de los años n-4 a n-2 frente a una referencia sectorial (artículos 24 y 25) y permite reconocer, con cargo a los costes de distribución, inversiones en proyectos piloto con beneficio cuantificable, incluidos los de adaptación de la red al cambio climático (artículo 15).</p>
+      <table><thead><tr><th>distribuidora</th><th>código CNMC</th><th class="num">retribución 2022 (euros)</th><th class="num">licencia anual del sistema</th><th class="num">parte de la retribución</th><th class="num">implantación (una vez)</th></tr></thead><tbody>`;
+    for (const d of DATA.distribuidoras) {
+      const r = RETRIBUCION[d.id];
+      if (!r) continue;
+      html += `<tr><td>${esc(r.nombre)}</td><td>${r.codigo}</td><td class="num">${num(r.euros)}</td><td class="num">${num(LICENCIA)}</td><td class="num">${pct(LICENCIA / r.euros, 2)}</td><td class="num">${num(IMPLANTACION)}</td></tr>`;
+    }
+    html += `</tbody></table>
+      <p class="notas">Retribución de 2022 según la resolución de la CNMC de 6 de noviembre de 2025 (el sector: 5.317 millones de euros). Licencia e implantación según el plan de negocio. Lo que no afirmamos con estos datos: una cifra en euros del incentivo de calidad de cada distribuidora, que depende de la referencia sectorial y de los límites que publique la CNMC, ni el ahorro en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
+      </section>`;
+
+    html += `<section><h2>Lo que el sistema no hace, para que nadie compre otra cosa</h2><ul>
+      <li>No dice qué centro de transformación se quedará sin luz: da el día, la franja horaria, la zona y las líneas de más riesgo, y un ranking histórico de CT.</li>
+      <li>No ve el estado de los equipos: las averías de equipos y de causa desconocida en días de calma caen en días "bajos" y son una de cada cuatro horas-cliente.</li>
+      <li>Con ${num(totalInc / Math.max(1, groups), 0)} incidencias al año por distribuidora, la cobertura de cada año se mueve entre el 30 % y el 70 %; el valor se mide con varios años juntos.</li>
+      <li>Mover las brigadas de base según el riesgo del día gana menos de un minuto de TIEPI al año: el valor está en tener gente y material preparados los días y en la franja que toca.</li>
+    </ul></section>`;
+
+    root.innerHTML = html;
+    document.getElementById("coste").addEventListener("input", () => guardTable(pol, groups));
+    guardTable(pol, groups);
+  }
+
+  function guardTable(pol, groups) {
+    const cost = Number(document.getElementById("coste").value) || 0;
+    const rows = [["Calendario fijo: fines de semana de invierno", pol.invierno], ["Calendario fijo: todos los fines de semana", pol.findes],
+                  ["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo], ["GridPredict, solo los días en alerta", pol.sistema]];
+    const base = pol.invierno.dias / Math.max(1, groups) * cost;
+    let html = `<thead><tr><th>política de guardia</th><th class="num">días reforzados al año</th><th class="num">cobertura de las horas-cliente</th><th class="num">coste al año (euros)</th><th class="num">frente al calendario</th></tr></thead><tbody>`;
+    for (const [label, p] of rows) {
+      const d = p.dias / Math.max(1, groups), c = d * cost;
+      html += `<tr><td>${label}</td><td class="num">${num(d)}</td><td class="num">${pct(pol.total ? p.h / pol.total : 0)}</td><td class="num">${num(c)}</td><td class="num">${c === base ? "-" : (c < base ? "-" : "+") + num(Math.abs(c - base))}</td></tr>`;
+    }
+    document.getElementById("tabla-guardia").innerHTML = html + "</tbody></table>";
+  }
+
+  fetch("data/historico.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+    .then((data) => {
+      DATA = data;
+      document.getElementById("fuentes").innerHTML = `Calculado en el navegador a partir de data/historico.json (generado ${esc(data.generado || "")}). <a href="index.html">Riesgo de mañana</a> · <a href="historial.html">Día a día</a> · <a href="https://github.com/antonpolenyaka/gridpredic-infrastructure/blob/main/docs/caso-de-negocio.md">Método y límites</a>`;
+      document.getElementById("pie").textContent = "Niveles: muy alto desde el percentil 95 de los días de entrenamiento de cada distribuidora, alto desde el 90, medio desde el 75. Averías: incidencias de causa local de Calser (equipos, meteorología, vegetación, fauna, terceros y causa desconocida) en los CT en estudio, con los clientes y la duración real de cada corte de CT. Las distribuidoras con menos de 10 incidencias en el periodo no entran en las cifras.";
+      document.querySelectorAll('input[name="modo"], #winsor').forEach((el) => el.addEventListener("change", render));
+      document.getElementById("imprimir").addEventListener("click", (e) => { e.preventDefault(); window.print(); });
+      render();
+    })
+    .catch((e) => { document.getElementById("bloques").innerHTML = `<div class="vacio">No hay data/historico.json todavía: corre job_ml_caso_negocio.py (${esc(e.message)}).</div>`; });
+})();
+</script>
+</body>
+</html>
