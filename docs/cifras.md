@@ -1,6 +1,6 @@
 # GridPredict en cifras: las que van a la memoria y a la presentación
 
-Una página con los números que sostienen el trabajo, de dónde sale cada uno (documento, ejecución) y la frase con la que lo contamos. Todas las cifras son de los datos reales de las tres distribuidoras salvo que se diga lo contrario. Fecha de corte de los datos: 02.08.2026 (último día con etiqueta conocida de la copia de Calser). Cuando una cifra cambie con una ejecución nueva, se cambia aquí y en el documento de origen.
+Una página con los números que sostienen el trabajo, de dónde sale cada uno (documento, ejecución) y la frase con la que lo contamos. Las figuras de la memoria salen del cuadro de mando con `experimentos/figuras/capturar.py` (un PNG a doble resolución por bloque de las tres páginas, con los datos de `dashboard/data`). Todas las cifras son de los datos reales de las tres distribuidoras salvo que se diga lo contrario. Fecha de corte de los datos: 02.08.2026 (último día con etiqueta conocida de la copia de Calser). Cuando una cifra cambie con una ejecución nueva, se cambia aquí y en el documento de origen.
 
 ## 1. Los datos
 
