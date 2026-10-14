@@ -270,6 +270,10 @@
       <p class="notas">Retribución de 2022 según la resolución de la CNMC de 6 de noviembre de 2025 (el sector: 5.317 millones de euros). Licencia e implantación según el plan de negocio. Lo que no afirmamos con estos datos: una cifra en euros del incentivo de calidad de cada distribuidora, que depende de la referencia sectorial y de los límites que publique la CNMC, ni el ahorro en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
       </section>`;
 
+    html += `<section id="sector" style="display:none"><h2>Dónde está cada red frente al sector</h2>
+      <p>El Ministerio publica cada año el TIEPI oficial de todo el sector por tipo de zona (GECOS). Es la referencia con la que la CNMC compara a cada distribuidora para el incentivo de calidad, y lo que un comprador mira primero.</p>
+      <div id="sector-cuerpo"></div></section>`;
+
     html += `<section id="produccion" style="display:none"><h2>Lo que vale la previsión, medido en producción</h2>
       <p>Desde que el sistema corre cada tarde, las estaciones de AEMET dicen al día siguiente qué viento hubo. Esto es lo medido hasta hoy, sin seleccionar días.</p>
       <ul id="produccion-lista"></ul></section>`;
@@ -285,6 +289,74 @@
     document.getElementById("coste").addEventListener("input", () => guardTable(pol, groups));
     guardTable(pol, groups);
     produccion();
+    sector();
+  }
+
+  // Our TIEPI by zone type next to the official one of the sector (sector.json, from job_analisis_red --dashboard-dir).
+  let SECTOR = null;
+  function sector() {
+    const paint = (j) => {
+      const sec = document.getElementById("sector");
+      const body = document.getElementById("sector-cuerpo");
+      if (!sec || !body || !j || !(j.distribuidoras || []).length) return;
+      const chosen = document.getElementById("dist").value;
+      const shown = j.distribuidoras.filter((d) => !chosen || String(d.id) === chosen);
+      if (!shown.length) { sec.style.display = "none"; return; }
+      const names = Object.fromEntries((DATA.distribuidoras || []).map((d) => [String(d.id), d.nombre]));
+      const [s0, s1] = j.anios_sector, [n0, n1] = j.anios_nuestros;
+      const scopes = j.ambitos || [];
+      const palette = ["var(--accent)", "#8a9bb0", "#b7c2cf", "#d6dde6", "#e9edf2"];
+      let html = "";
+      for (const d of shown) {
+        const name = names[String(d.id)] || d.nombre;
+        const zones = d.zonas.filter((z) => z.abonados > 0);
+        // Grouped bars: ours and every scope, by zone, unplanned TIEPI.
+        const W = 560, H = 44 + zones.length * 58, L = 150, R = 110, bh = 9, gap = 2;
+        const top = Math.max(0.5, ...zones.flatMap((z) => [z.imprevista || 0, ...scopes.map((sc) => (z.sector[sc] || {}).imprevista || 0)]));
+        const x = (v) => L + (W - L - R) * (v / top);
+        let svg = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="TIEPI imprevisto por zona frente al sector">`;
+        zones.forEach((z, i) => {
+          const y0 = 24 + i * 58;
+          svg += `<text x="${L - 8}" y="${y0 + 10}" font-size="12" text-anchor="end" fill="var(--fg)">${esc(z.zona.replace("_", " "))}</text>`;
+          svg += `<text x="${L - 8}" y="${y0 + 24}" font-size="10" text-anchor="end" fill="var(--muted)">${num(z.abonados)} clientes</text>`;
+          const bars = [[name, z.imprevista, palette[0]], ...scopes.map((sc, k) => [sc, (z.sector[sc] || {}).imprevista, palette[Math.min(k + 1, palette.length - 1)]])];
+          bars.forEach(([label, v, color], k) => {
+            if (v == null) return;
+            const y = y0 + k * (bh + gap);
+            svg += `<rect x="${L}" y="${y}" width="${(x(v) - L).toFixed(1)}" height="${bh}" fill="${color}"><title>${esc(label)}: ${num(v, 2)} h</title></rect>`;
+            svg += `<text x="${(x(v) + 4).toFixed(1)}" y="${y + bh - 1}" font-size="9" fill="var(--muted)">${num(v, 2)}${k === 0 ? " h " + esc(label) : " " + esc(label)}</text>`;
+          });
+        });
+        svg += `<text x="${L}" y="${H - 6}" font-size="10" fill="var(--muted)">TIEPI imprevisto en horas al año: ${esc(name)} ${n0} - ${n1}; sector ${s0} - ${s1}</text></svg>`;
+        const mix = d.mezcla || {};
+        const parts = scopes.filter((sc) => mix[sc] != null).map((sc) => `${esc(sc)} ${num(mix[sc], 2)} h`);
+        html += `<h3>${esc(name)}</h3><div class="dos"><div>${svg}</div><div>
+          <p>Con la mezcla de zonas de ${esc(name)}, el TIEPI imprevisto de ${n0} - ${n1} es de <b>${num(mix.nuestra || 0, 2)} h</b> al año (horas equivalentes de interrupción por potencia instalada); el sector con esa misma mezcla de zonas: ${parts.join(", ")}.</p>
+          ${zones.some((z) => z.imprevista_mismos_anios != null) ? `<p class="notas">En los mismos años que el sector (${s0} - ${s1}): ${zones.filter((z) => z.imprevista_mismos_anios != null).map((z) => `${esc(z.zona.replace("_", " "))} ${num(z.imprevista_mismos_anios, 2)} h`).join(", ")}.</p>` : ""}
+          </div></div>`;
+      }
+      // The national series: the storm years show up in the official statistics.
+      const spain = ((j.serie || {})["España"] || {}).TOTAL || [];
+      if (spain.length > 3) {
+        const W = 560, H = 160, L = 40, R = 10, T = 14, B = 36;
+        const top = Math.max(...spain.map((r) => r.imprevista || 0)) * 1.08;
+        const x = (i) => L + (W - L - R) * (i / Math.max(1, spain.length - 1)), y = (v) => T + (H - T - B) * (1 - v / top);
+        let svg = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="TIEPI imprevisto de España por año">`;
+        for (const t of [0, 1, 2]) if (t <= top) svg += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="var(--grid)"/><text x="${L - 4}" y="${(y(t) + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--muted)">${t} h</text>`;
+        const line = (key, color, w) => `<polyline fill="none" stroke="${color}" stroke-width="${w}" points="${spain.map((r, i) => `${x(i).toFixed(1)},${y(r[key] || 0).toFixed(1)}`).join(" ")}"/>`;
+        svg += line("imprevista", "var(--accent)", 2) + line("fuerza_mayor", "var(--muy-alto)", 2);
+        spain.forEach((r, i) => { if (i % 3 === 0 || i === spain.length - 1) svg += `<text x="${x(i).toFixed(1)}" y="${H - 22}" font-size="9" text-anchor="middle" fill="var(--muted)">${r.anio}</text>`; });
+        const peaks = spain.filter((r) => r.fuerza_mayor >= 0.3);
+        for (const r of peaks) { const i = spain.indexOf(r); svg += `<text x="${x(i).toFixed(1)}" y="${(y(r.fuerza_mayor) - 5).toFixed(1)}" font-size="9" text-anchor="middle" fill="var(--muy-alto)">${r.anio}</text>`; }
+        svg += `<text x="${L}" y="${H - 4}" font-size="10" fill="var(--muted)">España, todas las zonas: TIEPI imprevisto (azul) y su parte por fuerza mayor (rojo)</text></svg>`;
+        html += `<h3>El tiempo manda también en la estadística oficial</h3><div class="dos"><div>${svg}</div><div><p>A escala nacional, el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (Klaus en enero de 2009, Xynthia en febrero de 2010, Ana en diciembre de 2017) y vuelve a casi cero al año siguiente. Es la parte del TIEPI que una red no evita, pero sí puede preparar: saber la víspera qué días son es lo que hace el sistema.</p></div></div>`;
+      }
+      html += `<p class="notas">Fuente: ${esc(j.fuente || "")} (generado ${esc(j.generado || "")}). Nuestro TIEPI sale de Calser con las reglas del cálculo oficial a nivel de CT y queda entre un 2 % y un 16 % por debajo del declarado; los años no coinciden porque el Ministerio publica con retraso.</p>`;
+      body.innerHTML = html;
+      sec.style.display = "";
+    };
+    if (SECTOR) { paint(SECTOR); return; }
+    fetch("data/sector.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); }).then((j) => { SECTOR = j; paint(j); }).catch(() => {});
   }
 
   // The verification of the forecasts against the stations (verificacion.json), when there are complete days.

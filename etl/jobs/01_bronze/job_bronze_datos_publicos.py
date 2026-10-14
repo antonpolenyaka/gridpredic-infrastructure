@@ -36,6 +36,9 @@ cleaning and the aggregates are in Silver.
 - ieex_proyeccion_ame: population projected by the IEEX for every group of
   municipalities (AME) and year, 2024-2039, and ieex_ame_municipio: the AME
   of every municipality, from the CSV files of Landing.
+- gecos_indice_zonal: the official TIEPI and NIEPI of the sector by zone
+  type and year (Spain, communities, provinces), with the components by
+  cause, from the CSV of Landing (extract_gecos_indices.py); numbers typed.
 - gbif_conteo_celda: records of GBIF by cell and taxon (white stork, all
   the birds): the total and the counts by year and by month (tipo total,
   anio or mes, clave the year or the month).
@@ -987,6 +990,20 @@ def main():
             with fs.open(path, "rb") as file:
                 rows = pd.read_csv(file, dtype=str).assign(descargado_utc=stamp_utc).to_dict("records")
         write(rows, table, label)
+
+    sector_path = f"{landing}/calidad_sector/gecos_indices_zonales.csv"
+    sector = []
+    if "calidad_sector" in tables and fs.exists(sector_path):
+        stamp_path = f"{landing}/calidad_sector/peticion.json"
+        stamp_utc = read_json(fs, stamp_path).get("descargado_utc") if fs.exists(stamp_path) else None
+        with fs.open(sector_path, "rb") as file:
+            frame = pd.read_csv(file)
+        for column in frame.columns:
+            if column not in ("ambito", "nombre", "zona", "indice"):
+                frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        frame["anio"] = frame["anio"].astype("int64")
+        sector = frame.assign(descargado_utc=stamp_utc).to_dict("records")
+    write(sector, tables.get("calidad_sector", "l1_bronze.gecos_indice_zonal"), "GECOS sector indices")
 
     birds = []
     for path in sorted(fs.glob(f"{landing}/aves/*.json")):

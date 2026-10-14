@@ -2,6 +2,22 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.15.0] - sin publicar
+
+El sector como referencia, el cuaderno de las pruebas y la primera prueba descartada con argumentos.
+
+### Añadido
+
+- Índices oficiales de calidad de suministro del sector (GECOS, MITECO): `extract_gecos_indices.py` pide a las páginas públicas el TIEPI y NIEPI por tipo de zona y causa de España, las comunidades y las provincias (2003-2021) y deja `etl/config/01_bronze/gecos_indices_zonales.csv` (13.400 filas); fuente `calidad_sector` de `job_landing_datos_publicos.py` y tabla `l1_bronze.gecos_indice_zonal` de `job_bronze_datos_publicos.py`. Test en `tests/01_bronze/test_datos_publicos.py`.
+- `job_analisis_red.py`, sección 1b "Frente al sector": nuestro TIEPI imprevisto y de incentivo por tipo de zona al lado del oficial de Cáceres, Badajoz, Extremadura y España (los últimos tres años publicados, y los mismos años cuando los tenemos), la cifra con nuestra mezcla de zonas y la serie nacional; `tiepi_sector.csv`, `sector_series.csv` y `sector.json`, que con `--dashboard-dir` va a `dashboard/data`. Test en `tests/04_ml/test_analisis_red.py`.
+- `negocio.html`: sección "Dónde está cada red frente al sector" con `sector.json`: barras por zona (la distribuidora frente a la provincia, la comunidad y España), la frase con la mezcla de zonas y la serie nacional del TIEPI imprevisto con su parte por fuerza mayor, donde se ven los años de Klaus, Xynthia y Ana.
+- `docs/investigacion-continua.md`: el cuaderno de laboratorio (literatura con las referencias exactas, la prueba de la humedad del suelo, la duración del viento y el factor de racha, los datos públicos revisados, los datos de los dispositivos de los clientes y lo que queda en la lista). Carpeta `experimentos/` con el código de cada prueba (`suelo_humedad/bajar_suelo.py` y `analizar.py`, reproducible con el `dias.csv` del replay).
+- `docs/caso-de-negocio.md`: la política "GridPredict en alerta o aviso naranja o rojo" en la tabla de 2b y el sector como referencia en el apartado del dinero.
+
+### Decidido
+
+- La humedad del suelo (0-7 y 7-28 cm y su anomalía), la lluvia acumulada de 7 y 30 días, el factor de racha y las horas por encima del percentil 90 local no entran en el modelo del día: con 3.348 días y 143 con incidencia ninguna mejora el AUC rodante (0,685 sola; de 0,659 a 0,685 con ellas) ni el Brier, y los contrastes van en la dirección de la literatura pero sin significación (suelo húmedo frente a seco en los días de más viento: 18,0 % frente a 12,2 %, Fisher p = 0,48). Queda escrito para volver a probarlo con más años.
+
 ## [0.14.0] - sin publicar
 
 Los avisos de AEMET al lado del nivel en todas las páginas y la política combinada.

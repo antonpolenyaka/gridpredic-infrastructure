@@ -35,6 +35,7 @@ gridpredic-infrastructure/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
 ├── dashboard/                   # Cuadro de mando estático del riesgo de mañana (Leaflet y OpenStreetMap) y de lo que habría dicho en 2022 - 2025; data/ recibe los JSON de los jobs
 ├── docs/                        # Documentación: cards, capas Silver y Gold, flujo de datos, este documento
+├── experimentos/                # El código de cada prueba del cuaderno de laboratorio (docs/investigacion-continua.md), reproducible fuera de Spark
 ├── notebooks/                   # Exploración (convención de nombres en su README)
 ├── tests/                       # Pruebas locales de los jobs, sin Docker
 └── _runlogs/                    # Scripts de pruebas manuales; los logs que generan se ignoran
@@ -49,7 +50,7 @@ Dentro de `dags/`, `config/` y `jobs/` los ficheros se agrupan por capa (`00_lan
 | `data/raw` | `infra/sqlserver/backups/*.bak` (fuera de Git) y la zona Bronze del lakehouse (`l1_bronze`) | Los datos crudos son 61 GB de backups fechados. El dato inmutable es el backup; Bronze es su copia fiel en Delta. Ninguno cabe ni debe ir en Git |
 | `data/interim` | Zona Silver (`l2_silver`) en MinIO | Los intermedios son tablas Delta, no ficheros del repositorio |
 | `data/processed` | Zona Gold (`l3_gold`) | El dataset final de entrenamiento se congela por versiones en Gold (`dataset_train` y `dataset_versions`) |
-| `data/external` | `data/reference_data/` | Único dato que sí se versiona: el fichero de municipios del INE (28 KB) |
+| `data/external` | `data/reference_data/` y los CSV pequeños junto a `etl/config/01_bronze/` | Lo único que se versiona: el fichero de municipios del INE (28 KB) y las tablas de referencia que un script extrae una vez de una fuente pública (proyecciones del IEEX, índices oficiales de calidad de GECOS) |
 | `<modulo>/dataset.py`, `features.py`, `modeling/` | `etl/jobs/00_landing`, `01_bronze`, `02_silver`, `03_gold` y `04_ml` | El código se ejecuta con `spark-submit` desde Airflow, así que se organiza por capa del pipeline en lugar de como paquete importable. `silver_common.py` y `gold_common.py` hacen de librería compartida de su capa; en `04_ml`, `ml_models.py` y `ml_metrics.py` no dependen de Spark y se prueban solos |
 | `Makefile` | `Makefile` (y `_runlogs/run_silver_test.ps1` para Windows) | Mismos atajos: levantar el stack, lanzar tests, lint |
 | `requirements.txt` | `requirements.txt` en la raíz para el entorno local; `infra/spark/requirements.txt` y los `Dockerfile` para el runtime | Las versiones de Spark, Delta, Airflow, Hive y Trino están fijadas en las imágenes. El `requirements.txt` de la raíz reproduce el entorno de pruebas sin Docker |
