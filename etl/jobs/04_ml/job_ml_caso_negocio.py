@@ -431,13 +431,30 @@ def level_table(d: pd.DataFrame) -> pd.DataFrame:
     """Days, incidents and customer-hours (capped and raw) by the level of the evening before, as shown in the report."""
     by = d.groupby("nivel").agg(dias=("fecha", "count"), con_averia=("incidencias", lambda s: int((s > 0).sum())),
                                 incidencias=("incidencias", "sum"), horas_cliente=("clientes_hora_recortadas", "sum"),
-                                sin_recortar=("clientes_hora", "sum")).reindex(["bajo", "medio", "alto", "muy alto"]).dropna(how="all")
+                                sin_recortar=("clientes_hora", "sum"), p_media=("probabilidad", "mean")).reindex(["bajo", "medio", "alto", "muy alto"]).dropna(how="all")
     by["parte de días"] = (by["dias"] / by["dias"].sum()).round(3)
+    by["probabilidad media"] = by["p_media"].round(3)
     by["tasa de avería"] = (by["con_averia"] / by["dias"]).round(3)
     by["parte de horas-cliente"] = (by["horas_cliente"] / by["horas_cliente"].sum()).round(2) if by["horas_cliente"].sum() > 0 else 0.0
     by["parte sin recortar"] = (by["sin_recortar"] / by["sin_recortar"].sum()).round(2) if by["sin_recortar"].sum() > 0 else 0.0
     return by.reset_index().rename(columns={"nivel": "nivel previsto", "con_averia": "días con avería",
-                                            "horas_cliente": "horas-cliente (recortadas)"}).drop(columns=["sin_recortar"])
+                                            "horas_cliente": "horas-cliente (recortadas)"}).drop(columns=["sin_recortar", "p_media"])
+
+
+def skill_text(d: pd.DataFrame) -> str:
+    """AUC and Brier of the probability of the evening before against the days with incident, all together and per distribuidora."""
+    y = (d["incidencias"] > 0).astype(int).to_numpy()
+    p = d["probabilidad"].to_numpy(dtype=float)
+    if len(d) == 0 or y.sum() == 0 or y.sum() == len(y):
+        return ""
+    parts = [f"AUC {ml_metrics.roc_auc(y, p):.2f}"]
+    for name, g in d.groupby("distribuidora", sort=False):
+        yy = (g["incidencias"] > 0).astype(int).to_numpy()
+        if 0 < yy.sum() < len(yy):
+            parts.append(f"{name} {ml_metrics.roc_auc(yy, g['probabilidad'].to_numpy(dtype=float)):.2f}")
+    brier, climate = float(np.mean((p - y) ** 2)), float(np.mean((y.mean() - y) ** 2))
+    return (f"Probabilidad de la víspera frente a los días con avería: {', '.join(parts)}; Brier {brier:.4f} frente a "
+            f"{climate:.4f} de la tasa base ({100 * y.mean():.1f} % de los días con avería).")
 
 
 def report_text(summary: pd.DataFrame, day_table: pd.DataFrame, ct_table: pd.DataFrame, ccfg: dict, run_id: str) -> str:
@@ -477,9 +494,10 @@ def report_text(summary: pd.DataFrame, day_table: pd.DataFrame, ct_table: pd.Dat
         enough = sorted(counts[counts >= int(ccfg["minimo_incidencias_nivel"])].index)
         d = d[d["distribuidora"].isin(enough)]
         by = level_table(d)
+        skill = skill_text(d)
         parts.append(f"### Por nivel previsto ({', '.join(enough) or 'ninguna distribuidora'} con al menos "
                      f"{int(ccfg['minimo_incidencias_nivel'])} incidencias en el periodo; {len(d)} días de distribuidora)\n\n"
-                     + ml_metrics.markdown_table(by, 3))
+                     + ml_metrics.markdown_table(by, 3) + (f"\n\n{skill}" if skill else ""))
         if len(enough) > 1:
             per = pd.concat([level_table(d[d["distribuidora"] == name]).assign(distribuidora=name) for name in enough])
             per = per[["distribuidora"] + [c for c in per.columns if c != "distribuidora"]]

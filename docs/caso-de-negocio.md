@@ -26,6 +26,7 @@ Con la previsión real de la víspera, en 2024 y 2025 (EOSA y Pitarch juntas, 1.
 - Los días en alerta (alto o muy alto) son el 12 % de los días y concentran el 57 % de las horas-cliente perdidas por causas locales (el 73 % sin recortar el incendio).
 - De los 3 peores días de cada distribuidora y año de 2024 - 2025 (12 días que suman el 54 % de las horas-cliente), 7 estaban en alerta la víspera; de los 5 peores (20 días, el 73 %), 12. Con el reanálisis, en 2022 - 2025: 11 de 24 y 16 de 40. Mirando los 10 peores días de 2024 - 2025 sin separar por distribuidora ni año (la mitad de las horas-cliente), 8 estaban en alerta.
 - El 74 % de los días son bajos y en ellos cae una de cada cuatro horas-cliente: son las averías de equipos y de causa desconocida que el tiempo no anuncia.
+- La probabilidad que ve el usuario es de fiar: en los días muy altos el modelo da de media un 14,5 % y pasa el 17,6 %; en los altos, 7,3 % y pasa el 9,3 %; en los bajos, 2,7 % y pasa el 1,7 %. Como separador de días, AUC 0,75 (EOSA 0,80, Pitarch 0,65) con una tasa base del 3,6 %; el Brier es 0,032 frente a 0,035 de la tasa base, una mejora modesta porque la mayor parte de las averías no la explica ningún dato meteorológico. El 10 % de días de más riesgo concentra el 41 % de los días con avería y el 53 % de las horas-cliente.
 
 Por distribuidora y año:
 
