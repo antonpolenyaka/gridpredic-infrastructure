@@ -107,6 +107,7 @@ from job_ml_riesgo_dia import (  # noqa: E402
     warning_days,
 )
 from job_ml_train import RUNS_TABLE, get_spark, load_config, logger, save_frame  # noqa: E402
+import aviso_riesgo  # noqa: E402
 import riesgo_zonas as rz  # noqa: E402
 from job_silver_contexto_publico import WARNING_LEVELS, inside, local_wall_clock  # noqa: E402
 
@@ -147,7 +148,8 @@ LIVE_VARIABLES = {
 # job runs, the evening before or later: 48 h lets in the ones sent up to the end of D.
 LIVE_CUTOFF_H = 48
 
-LEVEL_NAMES = {1: "amarillo", 2: "naranja", 3: "rojo"}
+LEVEL_NAMES = aviso_riesgo.LEVEL_NAMES
+guard_advice = aviso_riesgo.guard_advice
 
 # The features told as one reason. The contributions of features that move together (the gust and the wind, the
 # rain of the day and of its wettest hour) are added, so the opposite signs that a regression gives to correlated
@@ -199,21 +201,6 @@ INPUTS = {"racha_max_kmh": "dia_racha_max", "racha_clima_max": "ext_racha_clima_
           "temp_max_c": "dia_temp_max", "aviso_max_nivel": "aviso_max_nivel", "aviso_viento_nivel": "aviso_viento_nivel",
           "aviso_tormenta_nivel": "aviso_tormenta_nivel"}
 
-# The guard: reinforce it the days in alert (alto or muy alto) and the days with a wind or thunderstorm warning of
-# AEMET, the policy that covers most customer-hours per day spent in the replay of 2024 - 2026 (caso-de-negocio.md, 2b).
-GUARD_LEVELS = ("alto", "muy alto")
-
-
-def guard_advice(level: str, wind: float, storm: float) -> dict:
-    """{"reforzar": bool, "motivo": text}: why the guard of the day is reinforced, or "normal"."""
-    reasons = []
-    if level in GUARD_LEVELS:
-        reasons.append(f"nivel {level}")
-    if wind is not None and not pd.isna(wind) and wind >= 1:
-        reasons.append(f"aviso de viento de AEMET ({LEVEL_NAMES.get(int(wind), int(wind))})")
-    if storm is not None and not pd.isna(storm) and storm >= 1:
-        reasons.append(f"aviso de tormenta de AEMET ({LEVEL_NAMES.get(int(storm), int(storm))})")
-    return {"reforzar": bool(reasons), "motivo": "; ".join(reasons) if reasons else "normal"}
 
 
 def parse_args(argv=None) -> argparse.Namespace:
