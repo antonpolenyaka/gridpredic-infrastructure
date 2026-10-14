@@ -115,6 +115,16 @@ Features, every one known before D starts except the block dia:
   operator would have had two or three evenings before. The history
   (hist_*) is the one known when D starts, a day or two later than that
   evening; with retraso_conocido_dias of a week the difference is small.
+- Other weather models (meteo_dia.previsiones_extra, with
+  --previsiones-extra): the forecast of the day before of GFS, GEM or any
+  other model of the Previous Runs API, landed by
+  job_landing_meteo_openmeteo --fuente openmeteo_previo_<clave> and read
+  here from its Bronze table, joined per cell and hour (metp1<clave>_*) and
+  turned into the same daily weather and extremes (prev<clave>_*). They are
+  never features: the forecast comparison scores the variants of
+  variante_prevision also with each of them (prevision_<clave>) and with
+  the mean of all the models (prevision_media, prevision_media_cuantiles),
+  to measure what a second model, or the mean of several, adds to ICON-EU.
 
 Variants (meteo_dia.variantes): blocks, single variables of other blocks
 (variables) and first day of training. The variant operativa is the one that
@@ -268,8 +278,81 @@ HORIZONS = {
 }
 
 
+# Other weather models of the Previous Runs API (meteo_dia.previsiones_extra,
+# only with --previsiones-extra): landed as they come by
+# job_landing_meteo_openmeteo --fuente openmeteo_previo_<clave> and left in
+# Bronze (l1_bronze.meteo_openmeteo_previo_<clave>_hora) without Silver or
+# Gold. Their forecast of the day before joins the frame of Gold per cell and
+# hour with the prefix metp1<clave>_, gets the same extremes over the climate
+# of the cell, and gives the daily prev<clave>_* like metp1_ gives prev_*. They
+# are never features: the forecast comparison scores the variants of
+# variante_prevision also with each of them (prevision_<clave>) and with the
+# mean of all the models (prevision_media, and prevision_media_cuantiles). What
+# a second model, or the mean of several, adds to the forecast of ICON-EU.
+EXTRA_FORECAST_COLUMNS = {
+    "wind_gusts_10m_previous_day1": "racha_1h",
+    "wind_speed_10m_previous_day1": "viento_1h",
+    "precipitation_previous_day1": "lluvia_1h",
+    "temperature_2m_previous_day1": "temp_1h",
+    "relative_humidity_2m_previous_day1": "humedad_1h",
+}
+MEAN_SOURCE = "prevision_media"
+
+
 def horizon_of(variant: dict) -> int:
     return int(variant.get("horizonte", 1))
+
+
+def extra_forecasts(cfg: dict) -> list:
+    """
+    [{clave, tabla, nombre, gold, prev}] of meteo_dia.previsiones_extra when
+    the run asks for them (comparar_previsiones_extra): the prefix of their
+    hourly columns (metp1<clave>) and of their daily ones (prev<clave>).
+    """
+    if not cfg.get("comparar_previsiones_extra"):
+        return []
+    out = []
+    for item in cfg.get("previsiones_extra") or []:
+        key = str(item["clave"]).strip().lower()
+        out.append({**item, "clave": key, "nombre": item.get("nombre", key), "gold": f"metp1{key}", "prev": f"prev{key}"})
+    return out
+
+
+def forecast_prefixes(extras: list = ()) -> list:
+    """The prefixes of the hourly forecasts in the frame of Gold: the horizons of ICON-EU and the other models."""
+    return [spec["gold"] for spec in HORIZONS.values()] + [extra["gold"] for extra in extras]
+
+
+def with_extra_forecasts(spark, extras: list, derive):
+    """
+    The derive hook of distributor_weather with the forecasts of the other
+    models (extras) joined to the frame of Gold per cell and hour before
+    derive runs: the columns of EXTRA_FORECAST_COLUMNS of each Bronze table
+    as metp1<clave>_*. A model whose table is missing, or has no gust, is
+    marked (presente False) and left out.
+    """
+    def hook(weather):
+        for extra in extras:
+            table = extra["tabla"]
+            extra["presente"] = False
+            if not spark.catalog.tableExists(table):
+                logger.warning("Forecast of %s not in Bronze (%s): the comparison goes on without it",
+                               extra["nombre"], table)
+                continue
+            source = spark.table(table)
+            columns = [(raw, f"{extra['gold']}_{name}") for raw, name in EXTRA_FORECAST_COLUMNS.items()
+                       if raw in source.columns]
+            if not any(name.endswith("_racha_1h") for _, name in columns):
+                logger.warning("Forecast of %s (%s) has no gust (wind_gusts_10m_previous_day1): left out",
+                               extra["nombre"], table)
+                continue
+            frame = source.select("celda_id", F.col("hora").cast("timestamp").alias("hora"),
+                                  *[F.col(raw).cast("double").alias(name) for raw, name in columns])
+            weather = weather.join(frame, ["celda_id", "hora"], "left")
+            extra["presente"] = True
+            logger.info("Forecast of %s joined from %s: %s", extra["nombre"], table, [n for _, n in columns])
+        return derive(weather)
+    return hook
 
 
 def common_block(horizon: int) -> str:
@@ -282,20 +365,20 @@ def forecast_mapping(mapping: dict, gold_prefix: str) -> dict:
     return {name: (column.replace("metp1_", f"{gold_prefix}_", 1), how) for name, (column, how) in mapping.items()}
 
 
-def derived_forecast_extremes(weather):
+def derived_forecast_extremes(weather, prefixes: list = None):
     """
     The frame of Gold with metp2_racha_clima_1h / metp2_racha_ku_1h (and
-    metp3_*) when it has the forecast gusts of two (three) days before but
-    not their extremes: the same climate of each cell that Gold used for
-    met_racha_clima_1h (the gust of the hour over that ratio), so the
-    forecasts of every horizon go over the same p98.
+    metp3_*, and the other models' metp1<clave>_*) when it has the forecast
+    gusts of two (three) days before but not their extremes: the same
+    climate of each cell that Gold used for met_racha_clima_1h (the gust of
+    the hour over that ratio), so the forecasts of every horizon and model
+    go over the same p98.
     """
     columns = set(weather.columns)
     if "met_racha_clima_1h" not in columns or "met_racha_1h" not in columns:
         return weather
     climate = F.when(F.col("met_racha_clima_1h") > 0, F.col("met_racha_1h") / F.col("met_racha_clima_1h"))
-    for spec in HORIZONS.values():
-        prefix = spec["gold"]
+    for prefix in (prefixes if prefixes is not None else forecast_prefixes()):
         if f"{prefix}_racha_1h" not in columns or f"{prefix}_racha_clima_1h" in columns:
             continue
         ratio = F.col(f"{prefix}_racha_1h") / climate
@@ -304,7 +387,8 @@ def derived_forecast_extremes(weather):
                                F.pow(F.greatest(ratio - F.lit(1.0), F.lit(0.0)), 3)))
     return weather
 
-def derived_extent(weather):
+
+def derived_extent(weather, prefixes: list = None):
     """
     The frame of Gold with <prefix>_racha_fuerte_1h (1 when the gust of the
     hour is at or above the p98 of the cell, 0 below, null without a gust)
@@ -313,7 +397,7 @@ def derived_extent(weather):
     over the cells is the share of the network under a strong gust.
     """
     columns = set(weather.columns)
-    for prefix in ["met"] + [spec["gold"] for spec in HORIZONS.values()]:
+    for prefix in ["met"] + list(prefixes if prefixes is not None else forecast_prefixes()):
         gust, ratio = f"{prefix}_racha_1h", f"{prefix}_racha_clima_1h"
         if ratio in columns and f"{prefix}_racha_fuerte_1h" not in columns:
             weather = weather.withColumn(f"{prefix}_racha_fuerte_1h",
@@ -399,10 +483,16 @@ def derived_direction(weather):
                              F.when(F.col("met_racha_clima_1h") >= DIRECTION_FROM, angle)).drop("_dir_sin", "_dir_cos")
 
 
-def derive_weather(direction: bool = False):
-    """The derive hook of distributor_weather: the extremes of the forecasts, the extent and, if asked, the direction."""
+def derive_weather(direction: bool = False, extras: list = ()):
+    """
+    The derive hook of distributor_weather: the extremes of the forecasts (of
+    ICON-EU at every horizon and of the other models, extras), the extent
+    and, if asked, the direction.
+    """
+    prefixes = forecast_prefixes(extras)
+
     def derive(weather):
-        weather = derived_extent(derived_forecast_extremes(weather))
+        weather = derived_extent(derived_forecast_extremes(weather, prefixes), prefixes)
         return derived_direction(weather) if direction else weather
     return derive
 
@@ -412,15 +502,16 @@ def gust_excess(ratio: pd.Series) -> pd.Series:
     return (ratio - GUST_EXCESS_FROM).clip(lower=0.0)
 
 
-def add_interactions(pdf: pd.DataFrame, dists: list, forecasts: dict) -> list:
+def add_interactions(pdf: pd.DataFrame, dists: list, forecasts: dict, extras: list = ()) -> list:
     """
     Adds to pdf, and returns the names of, the interactions of the gust
     (ext_int_*, block interacciones), the slope of the gust per network
     (ext_pend_*, block pendiente_red) and the anomaly of the direction times
     the gust (ext_dir_int_racha, block direccion), each with its forecast
-    twin per horizon (<prev>_ext_*, returned too) so the forecast comparison
-    swaps them like the other extremes. The rain of the day before is the
-    one known at the horizon (ayer_, hace2_, hace3_).
+    twin per horizon (<prev>_ext_*, returned too) and per other model
+    (prev<clave>_ext_*) so the forecast comparison swaps them like the other
+    extremes. The rain of the day before is the one known at the horizon
+    (ayer_, hace2_, hace3_).
     """
     month = pdf["fecha"].dt.month
     leaf = month.between(4, 10).astype("float64")
@@ -431,6 +522,9 @@ def add_interactions(pdf: pd.DataFrame, dists: list, forecasts: dict) -> list:
         spec = HORIZONS[horizon]
         versions.append((f"{spec['prev']}_", f"{spec['prev']}_ext_racha_clima_max",
                          f"{spec['ultimo']}_lluvia_max", f"{spec['prev']}_lluvia_max"))
+    for extra in extras:
+        versions.append((f"{extra['prev']}_", f"{extra['prev']}_ext_racha_clima_max", "ayer_lluvia_max",
+                         f"{extra['prev']}_lluvia_max"))
     for prefix, gust, rain_before, rain_day in versions:
         if gust not in pdf.columns:
             continue
@@ -505,6 +599,11 @@ def parse_args(argv=None) -> argparse.Namespace:
                         help="Comma separated names of meteo_dia.variantes to run (all by default)")
     parser.add_argument("--direccion", action="store_true",
                         help="Also the block direccion (the anomaly of the wind direction, reanalysis only)")
+    parser.add_argument("--previsiones-extra", action="store_true",
+                        help="Also score the forecast comparison with the other models of meteo_dia.previsiones_extra "
+                             "(their Bronze tables) and with the mean of all the models")
+    parser.add_argument("--modelos", default=None,
+                        help="Comma separated models to train in place of meteo_dia.modelos")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -725,12 +824,16 @@ def block_of(name: str) -> str:
 def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     """(pdf, {block: feature names}, first day of the warnings) of the distribuidora-day history."""
     start, end = pd.Timestamp(cfg["desde"]), pd.Timestamp(cfg["hasta"])
-    gold_prefixes = tuple(f"{spec['gold']}_" for spec in HORIZONS.values())
+    extras = extra_forecasts(cfg)
+    gold_prefixes = tuple(f"{prefix}_" for prefix in forecast_prefixes(extras))
+    derive = derive_weather(bool(cfg.get("bloque_direccion", False)), extras)
+    if extras:
+        derive = with_extra_forecasts(spark, extras, derive)
     weather, names = distributor_weather(spark, {**config.get("meteo", {}), "activo": True},
-                                         prefixes=("met_",) + gold_prefixes,
-                                         derive=derive_weather(bool(cfg.get("bloque_direccion", False))))
+                                         prefixes=("met_",) + gold_prefixes, derive=derive)
     if weather is None:
         raise ValueError("No weather in Gold (meteo_celda_hora and map_ct_celda): nothing to learn from")
+    extras = [extra for extra in extras if extra.get("presente")]
 
     # The daily weather of every forecast of Gold: horizon -> (daily mapping, extremes mapping).
     mappings = {h: (forecast_mapping(FORECAST_DAILY, spec["gold"]), forecast_mapping(FORECAST_EXTREME_DAILY, spec["gold"]))
@@ -738,6 +841,9 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     sources = list(DAILY.values()) + list(EXTREME_DAILY.values()) + list(ICE_DAILY.values()) + list(FORECAST_ICE_DAILY.values())
     for daily_map, extreme_map in mappings.values():
         sources += list(daily_map.values()) + list(extreme_map.values())
+    for extra in extras:
+        for mapping in (FORECAST_DAILY, FORECAST_EXTREME_DAILY, FORECAST_ICE_DAILY):
+            sources += list(forecast_mapping(mapping, extra["gold"]).values())
     wanted = [c for c in {spec[0] for spec in sources} if c in names]
     # The days before the first day need their weather too (ayer_*, hace2_*, hace3_*).
     hourly = weather.where((F.col("hora") >= F.lit(start - pd.Timedelta(days=max(HORIZONS))))
@@ -802,6 +908,35 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
             pdf = pdf.merge(forecast_extreme, on=["distribuidora_id", "fecha"], how="left")
             forecast_columns += extreme_found
 
+    # The same daily weather, extremes and freezing hours from the forecast of the day before of every other model
+    # (prev<clave>_*): for the forecast comparison only, never features.
+    present = []
+    for extra in extras:
+        prefix = extra["prev"]
+        frame = daily_weather(hourly, int(cfg["horas_minimas_dia"]), forecast_mapping(FORECAST_DAILY, extra["gold"]))
+        found = [c for c in frame.columns if c not in ("distribuidora_id", "fecha")]
+        if "racha_max" not in found:
+            logger.warning("Forecast of %s without gusts in the hours of the dataset: left out", extra["nombre"])
+            continue
+        pdf = pdf.merge(frame.rename(columns={c: f"{prefix}_{c}" for c in found}), on=["distribuidora_id", "fecha"],
+                        how="left")
+        forecast_extreme = forecast_extremes(hourly, frame, extreme, float(cfg["calor_umbral_c"]),
+                                             int(cfg["horas_minimas_dia"]),
+                                             forecast_mapping(FORECAST_EXTREME_DAILY, extra["gold"]), prefix)
+        if any(c.startswith(f"{prefix}_ext_") for c in forecast_extreme.columns):
+            pdf = pdf.merge(forecast_extreme, on=["distribuidora_id", "fecha"], how="left")
+        ice_extra = daily_weather(hourly, int(cfg["horas_minimas_dia"]), forecast_mapping(FORECAST_ICE_DAILY, extra["gold"]))
+        if "hie_horas" in ice_extra.columns:
+            pdf = pdf.merge(ice_extra.rename(columns={"hie_horas": f"{prefix}_hie_horas"}),
+                            on=["distribuidora_id", "fecha"], how="left")
+        archived = pdf["prev_racha_max"].notna() if "prev_racha_max" in pdf.columns else pdf[f"{prefix}_racha_max"].notna()
+        covered = float(pdf.loc[archived, f"{prefix}_racha_max"].notna().mean()) if archived.any() else 0.0
+        logger.info("Forecast of %s: %s daily variables, %.1f %% of the days with a forecast of ICON-EU", extra["nombre"],
+                    len(found), 100 * covered)
+        present.append({**extra, "cobertura": covered})
+    extras = present
+    cfg["previsiones_extra"] = [{k: v for k, v in extra.items() if k != "presente"} for extra in extras]
+
     events, known = read_events(spark, cfg)
     pdf = day_labels(pdf, events, cfg["causas_no_meteo"], int(cfg["incidencias_dia_varias"]))
 
@@ -816,9 +951,10 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
 
     for dist in dists:
         pdf[f"dist_{dist}"] = (pdf["distribuidora_id"] == dist).astype("float64")
-    created = add_interactions(pdf, dists, forecasts)
+    created = add_interactions(pdf, dists, forecasts, extras)
     interaction_names = [n for n in created if n.startswith("ext_")]
-    forecast_columns += [n for n in created if not n.startswith("ext_")]
+    other_models = tuple(f"{extra['prev']}_" for extra in extras)
+    forecast_columns += [n for n in created if not n.startswith("ext_") and not n.startswith(other_models)]
 
     warnings_first = None
     warning_names = []
@@ -1101,28 +1237,73 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     if perfect:
         logger.warning("Variant %s at %s day(s): %s stay from the reanalysis (no forecast of them at this horizon)",
                        variant["nombre"], horizon, perfect)
+    # The other models forecast the day before only: the same swap with their columns (the ones they have; a
+    # variable a model lacks stays from ICON-EU), and the mean of all the models.
+    others = {}
+    for extra in (extra_forecasts(cfg) if horizon == 1 else []):
+        twins = [(column, source.replace(f"{prefix}_", f"{extra['prev']}_", 1)) for column, source in swap]
+        twins = [(column, twin) for column, twin in twins if twin in pdf.columns]
+        if twins:
+            others[extra["clave"]] = dict(twins)
+            missing = [column for column, _ in swap if column not in dict(twins)]
+            if missing:
+                logger.info("Forecast of %s: %s stay from ICON-EU", extra["nombre"], missing)
     rows = pdf[pdf["fecha"] >= pd.Timestamp(variant["desde"])]
     parts = []
 
-    for year in years:
-        scored, _, scorers, _ = rolling_evaluation(rows, features, MAIN_LABEL, config, cfg, [year], only_first,
-                                                   names=cfg["modelos"])
-        target = rows[rows["anio"] == year].copy()
-        others = rows[rows["anio"].isin([y for y in years if y != year])]
-        fitting = others if len(others) else target
-        raw, mapped = target.copy(), target.copy()
-
-        for column, source in swap:
-            raw[column] = target[source].to_numpy()
+    def mapped_by_quantiles(target, fitting, pairs):
+        """target with the columns of pairs replaced by their source taken by quantiles to the scale of the column."""
+        out = target.copy()
+        for column, source in pairs:
             values = np.full(len(target), np.nan)
             for dist in target["distribuidora_id"].unique():
                 mask = (target["distribuidora_id"] == dist).to_numpy()
                 fit = fitting[fitting["distribuidora_id"] == dist]
                 values[mask] = quantile_map(fit[source], fit[column], target.loc[mask, source])
-            mapped[column] = values
+            out[column] = values
+        return out
+
+    for year in years:
+        scored, _, scorers, _ = rolling_evaluation(rows, features, MAIN_LABEL, config, cfg, [year], only_first,
+                                                   names=cfg["modelos"])
+        target = rows[rows["anio"] == year].copy()
+        other_years = rows[rows["anio"].isin([y for y in years if y != year])]
+        fitting = (other_years if len(other_years) else target).copy()
+        raw = target.copy()
+        for column, source in swap:
+            raw[column] = target[source].to_numpy()
+        frames = {"reanalisis": target, "prevision": raw, "prevision_cuantiles": mapped_by_quantiles(target, fitting, swap)}
+
+        if others:
+            mean_pairs = []
+            for column, source in swap:
+                twins = [source] + [names[column] for names in others.values() if column in names]
+                mean_column = f"_media_{column}"
+                for frame in (target, fitting):
+                    frame[mean_column] = frame[twins].mean(axis=1, skipna=True).to_numpy()
+                mean_pairs.append((column, mean_column))
+            for key, names in others.items():
+                pairs = []
+                for column, source in swap:
+                    # The model's forecast where it has one, the one of ICON-EU where it does not.
+                    filled = f"_{key}_{column}"
+                    for frame in (target, fitting):
+                        frame[filled] = (frame[names[column]].fillna(frame[source]) if column in names
+                                         else frame[source]).to_numpy()
+                    pairs.append((column, filled))
+                frame = target.copy()
+                for column, filled in pairs:
+                    frame[column] = target[filled].to_numpy()
+                frames[f"prevision_{key}"] = frame
+                frames[f"prevision_{key}_cuantiles"] = mapped_by_quantiles(target, fitting, pairs)
+            mean = target.copy()
+            for column, mean_column in mean_pairs:
+                mean[column] = target[mean_column].to_numpy()
+            frames[MEAN_SOURCE] = mean
+            frames[f"{MEAN_SOURCE}_cuantiles"] = mapped_by_quantiles(target, fitting, mean_pairs)
 
         out = target[["distribuidora_id", "fecha", "anio"] + LABELS].copy()
-        for source, frame in (("reanalisis", target), ("prevision", raw), ("prevision_cuantiles", mapped)):
+        for source, frame in frames.items():
             X = frame[features].to_numpy(dtype=np.float32, na_value=np.nan)
             for model, scorer in scorers.items():
                 out[f"p_{model}__{source}"] = scorer.score(X)
@@ -1133,8 +1314,23 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
         return pd.DataFrame()
     found = pd.concat(parts, ignore_index=True)
     found = found[found["con_prevision"]].drop(columns="con_prevision").reset_index(drop=True)
+    sources = ["reanalisis", "prevision", "prevision_cuantiles"]
+    for key in list(others) + ([MEAN_SOURCE[len("prevision_"):]] if others else []):
+        sources += [f"prevision_{key}", f"prevision_{key}_cuantiles"]
     return add_rank_mean(found, {f"p_rango__{source}": (f"p_logistica__{source}", f"p_xgboost__{source}")
-                                 for source in ("reanalisis", "prevision", "prevision_cuantiles")})
+                                 for source in sources})
+
+
+def models_text(cfg: dict) -> str:
+    """The sentence of the report about the other weather models of the comparison, empty without them."""
+    extras = extra_forecasts(cfg)
+    if not extras:
+        return ""
+    names = ", ".join(f"{e['nombre']} (prevision_{e['clave']}, {100 * float(e.get('cobertura', 1.0)):.0f} % de los días)"
+                      for e in extras)
+    return (f" Los días con previsión se puntúan también con lo que preveía cada uno de los otros modelos el día antes, "
+            f"{names}, y con la media de todos los modelos ({MEAN_SOURCE}), cada uno en crudo y llevado por cuantiles "
+            "a la escala del reanálisis (_cuantiles); donde a un modelo le falta una variable o un día, va la de ICON-EU.")
 
 
 def horizons_text(references: list, cfg: dict) -> str:
@@ -1160,6 +1356,10 @@ def main(argv=None):
     cfg = settings(config)
     if args.direccion:
         cfg["bloque_direccion"] = True
+    if args.previsiones_extra:
+        cfg["comparar_previsiones_extra"] = True
+    if args.modelos:
+        cfg["modelos"] = [m.strip() for m in args.modelos.split(",") if m.strip()]
     seed = int(config.get("semilla", 0))
     shares = [float(s) for s in cfg["fracciones_top"]]
     version = f"meteo_dia_{cfg['desde']}_{cfg['hasta']}"
@@ -1276,6 +1476,10 @@ def main(argv=None):
                     wanted += [(f"p_{name}__{m}__prevision_cuantiles", f"p_{name}__{m}__reanalisis"),
                                (f"p_{name}__{m}__prevision", f"p_{name}__{m}__reanalisis"),
                                (f"p_{name}__{m}__prevision_cuantiles", f"p_ayer__{m}")]
+                    # The other models and the mean of all of them against ICON-EU alone, raw and by quantiles.
+                    for key in [extra["clave"] for extra in extra_forecasts(run_cfg)] + [MEAN_SOURCE[len("prevision_"):]]:
+                        wanted += [(f"p_{name}__{m}__prevision_{key}", f"p_{name}__{m}__prevision"),
+                                   (f"p_{name}__{m}__prevision_{key}_cuantiles", f"p_{name}__{m}__prevision_cuantiles")]
             # Between variants with the same weather of the day (meteo_dia.comparaciones_prevision).
             wanted += [(f"p_{a}", f"p_{b}") for a, b in cfg.get("comparaciones_prevision", [])]
             wanted = [(a, b) for a, b in wanted if a in found.columns and b in found.columns]
@@ -1330,7 +1534,7 @@ def main(argv=None):
         "días con previsión tres veces: con el tiempo del día sacado del reanálisis (reanalisis), con lo que preveía ICON-EU el "
         "día anterior (prevision) y con esa previsión llevada por cuantiles a la escala del reanálisis "
         "(prevision_cuantiles). ayer es la variante que solo sabe el tiempo del día anterior."
-        + horizons_text(references, cfg) + "\n\n"
+        + horizons_text(references, cfg) + models_text(run_cfg) + "\n\n"
         + ml_metrics.markdown_table(forecast_table, digits=4)
         + "\n\n" + ml_metrics.markdown_table(forecast_differences, digits=4),
     ] if not forecast_table.empty else [])) + "\n"
