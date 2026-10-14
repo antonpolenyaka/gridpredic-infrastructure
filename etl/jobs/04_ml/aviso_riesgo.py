@@ -62,8 +62,11 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         if d.get("motivos") and not str(d["motivos"]).startswith("ninguno"):
             line += f"; motivos: {d['motivos']}"
         band = bands.get(str(d.get("id"))) or {}
-        if band.get("texto") and band.get("horas"):
-            line += f"; escenarios: {band['texto']}"
+        scenarios = (band.get("texto") if band.get("horas") else None) or (d.get("escenarios") or {}).get("texto")
+        if scenarios:
+            line += f"; escenarios: {scenarios}"
+        if (d.get("aemet") or {}).get("texto"):
+            line += f"; {d['aemet']['texto']}"
         lines.append(line + ".")
     rule = (payload.get("reglas") or {}).get("texto")
     if rule:

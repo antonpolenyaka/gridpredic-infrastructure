@@ -52,6 +52,12 @@ def test_the_message_names_the_distribuidoras_in_alert_only():
     with_band = av.message_from(PAYLOAD, "alto", band)
     assert "motivos: racha prevista de 1,6 veces el p98 (x12); escenarios: 40 escenarios de icon_eu en 21 celdas de la red: el 80 % central da el pico de racha entre 70 y 95 km/h (mediana 84)." in with_band
     assert "escenarios" not in av.message_from(PAYLOAD, "alto", {**band, "fecha": "2026-01-14"})
+    # riesgo.json may carry them itself (attached by the scoring job), with the forecast of AEMET by municipality.
+    carried = json.loads(json.dumps(PAYLOAD))
+    carried["distribuidoras"][0]["escenarios"] = {"texto": "40 escenarios de icon_eu en 21 celdas de la red: mediana 84"}
+    carried["distribuidoras"][0]["aemet"] = {"texto": "AEMET por municipios (40 municipios, elaborada 18:55): pico de racha 70 km/h a las 12:00 en Hervás"}
+    text = av.message_from(carried, "alto")
+    assert "; escenarios: 40 escenarios de icon_eu en 21 celdas de la red: mediana 84; AEMET por municipios (40 municipios, elaborada 18:55): pico de racha 70 km/h a las 12:00 en Hervás." in text
     assert not av.reached("raro", "alto") and av.reached("muy alto", "alto") and not av.reached("medio", "alto")
 
 
