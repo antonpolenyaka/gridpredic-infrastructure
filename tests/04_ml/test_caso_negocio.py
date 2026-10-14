@@ -54,6 +54,9 @@ def test_the_replay_scores_every_day_with_the_past_only(replayed, spark):
     assert len(incident_days) > 10
     assert incident_days["alerta"].mean() > one["alerta"].mean()
     assert (incident_days["clientes_hora"] > 0).all()
+    # The cut hours never exceed the raw ones and only differ on days with a cut longer than the cap.
+    assert (one["clientes_hora_recortadas"] <= one["clientes_hora"] + 1e-6).all()
+    assert (one.loc[one["corte_max_min"] <= 110, "clientes_hora_recortadas"] == one.loc[one["corte_max_min"] <= 110, "clientes_hora"]).all()
     # With the forecast, the same days are scored (the synthetic forecast exists from 2024).
     two = days[(days["modo"] == "prevision") & (days["distribuidora_id"] == 1)]
     assert len(two) == len(one)
@@ -74,14 +77,16 @@ def test_the_summary_the_files_and_the_history(replayed, spark, workdir):
     for name in ("resumen.md", "dias.csv", "cts.csv", "resumen_anual.csv", "historico.json"):
         assert os.path.getsize(os.path.join(folder, name)) > 0
     text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
-    assert "## tiempo del día del reanálisis" in text and "### Brigadas" in text and "### Por nivel previsto" in text
+    assert "## tiempo del día del reanálisis" in text and "### Brigadas" in text and "### Por nivel previsto (" in text
+    assert "horas-cliente (recortadas)" in text and "| sin recortar |" in text
     cts = pd.read_csv(os.path.join(folder, "cts.csv"))
     assert (cts["min_ganados_total"].abs() <= cts["dur_min"] + 1e-9).all()
     assert cts.loc[~cts["espero_brigada"], "min_ganados_total"].eq(0).all()
     history = json.load(open(os.path.join(workdir, "dashboard", "historico.json"), encoding="utf-8"))
     assert [d["id"] for d in history["distribuidoras"]] == [1, 2]
     first_days = history["distribuidoras"][0]["dias"]["prevision"]
-    assert len(first_days) > 700 and {"f", "n", "p", "i", "ch", "c", "m", "b"} <= set(first_days[0])
+    assert len(first_days) > 700 and {"f", "n", "p", "i", "ch", "chr", "c", "m", "b"} <= set(first_days[0])
+    assert all(d["chr"] <= d["ch"] for d in first_days)
     assert any(d["b"] for d in first_days if d["n"] in ("alto", "muy alto"))
     runs = spark.table("l3_gold.ml_runs").toPandas()
     assert RUN_ID in set(runs["run_id"])

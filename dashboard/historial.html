@@ -86,7 +86,8 @@
   const CAP = 110;
   let DATA = null;
 
-  function hours(d, winsor) { return winsor && d.m > CAP ? d.ch * CAP / d.m : d.ch; }
+  // The cut hours come from the job (chr: every CT cut capped at 110 min); older files only have the raw hours and the longest cut.
+  function hours(d, winsor) { return winsor ? (d.chr != null ? d.chr : (d.m > CAP ? d.ch * CAP / d.m : d.ch)) : d.ch; }
 
   function resumen(days, winsor) {
     const by = {};
