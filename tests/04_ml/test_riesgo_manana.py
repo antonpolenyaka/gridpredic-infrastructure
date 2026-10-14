@@ -582,6 +582,34 @@ def test_an_old_copy_of_calser_leaves_the_history_empty(first, spark, config_pat
     assert "La copia de Calser llega hasta el 13.01.2026" in text
 
 
+def test_a_past_day_is_played_again_from_gold_without_touching_the_live_day(first, spark, config_path, workdir):
+    """A storm day of 2025 with the forecast of the day before (metp1_*) and the warnings of the archive."""
+    weather = spark.table("l3_gold.meteo_celda_hora").toPandas()
+    weather["hora"] = pd.to_datetime(weather["hora"])
+    of_2025 = weather[(weather["hora"] >= "2025-01-01") & (weather["hora"] < "2025-12-01") & (weather["celda_id"] == CELLS[1])]
+    storm_day = of_2025.loc[of_2025["metp1_racha_1h"].idxmax(), "hora"].floor("D")
+    live = os.path.join(workdir, "dashboard", "riesgo.json")
+    before = open(live, encoding="utf-8").read()
+    code = rm.main(["--run-id", "repetido", "--config", config_path, "--fecha", f"{storm_day:%Y-%m-%d}", "--desde-gold",
+                    "--solo-archivo", "--landing", os.path.join(workdir, "vivo")])
+    assert code == 0
+    rows = spark.table("l3_gold.riesgo_dia_siguiente").toPandas()
+    played = rows[rows["fecha"].astype(str) == f"{storm_day:%Y-%m-%d}"].set_index("distribuidora_id")
+    assert sorted(played.index) == [1, 2] and (played["run_id"] == "repetido").all()
+    storm = played.loc[1]
+    # The forecast of the day before, the warning sent the day before, training only with the days before.
+    assert storm["racha_max_kmh"] == pytest.approx(of_2025["metp1_racha_1h"].max(), abs=0.5)
+    assert storm["aviso_max_nivel"] == 2.0 and storm["avisos_disponibles"]
+    assert pd.Timestamp(storm["entrenado_hasta"]) < storm_day
+    assert storm["prevision_pedida_utc"] == "gold" and storm["nivel"] in ("alto", "muy alto")
+    # The dashboard keeps the live day and gets the dated copy.
+    assert open(live, encoding="utf-8").read() == before
+    dated = os.path.join(workdir, "dashboard", f"riesgo_{storm_day:%Y%m%d}.json")
+    payload = json.load(open(dated, encoding="utf-8"))
+    assert payload["fecha"] == f"{storm_day:%Y-%m-%d}" and "Gold" in payload["fuentes"]["prevision_pedida"]
+    assert os.path.exists(os.path.join(workdir, "dashboard", f"parte_guardia_{storm_day:%Y%m%d}.xlsx"))
+
+
 def test_without_the_forecast_there_is_nothing_to_score(config_path, workdir):
     with pytest.raises(FileNotFoundError):
         rm.main(["--run-id", "sin_prevision", "--config", config_path, "--fecha", "2026-06-01",

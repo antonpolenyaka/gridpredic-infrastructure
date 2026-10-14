@@ -104,7 +104,11 @@
     document.getElementById("titulo").textContent = cuando + ": " + (data.fecha_texto || data.fecha);
     let aviso = document.getElementById("vejez");
     if (!aviso) { aviso = document.createElement("div"); aviso.id = "vejez"; aviso.className = "rayos vejez"; document.getElementById("main").insertAdjacentElement("beforebegin", aviso); }
-    if (diff < 0) {
+    if (DIA) {
+      document.getElementById("titulo").textContent = "Riesgo del " + (data.fecha_texto || data.fecha) + ", visto la tarde anterior";
+      aviso.innerHTML = `<b>Día repetido</b>: lo que el sistema habría dicho la tarde del día anterior con la previsión de ICON-EU y los avisos de AEMET que había entonces (${esc(DIA.slice(6, 8))}.${esc(DIA.slice(4, 6))}.${esc(DIA.slice(0, 4))}). Lo vivo (rayos, estaciones, próximas horas) no aplica a este día. <a href="index.html">Volver al riesgo de mañana</a>.`;
+      aviso.style.display = "";
+    } else if (diff < 0) {
       aviso.innerHTML = `<b>Este riesgo es del ${esc(data.fecha_texto || data.fecha)}</b>: la ejecución de anoche no ha dejado un riesgo nuevo. Mira dag_riesgo_manana en Airflow (http://localhost:8080) o lanza la tarea a mano.`;
       aviso.style.display = "";
     } else {
@@ -448,13 +452,14 @@
   }
 
   function cargarObservado(data) {
-    fetch("data/observado.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+    const suffix = DIA.length === 8 ? `_${DIA}` : "";
+    if (!suffix) fetch("data/observado.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((o) => pintarObservado(data, o)).catch(() => {});
-    fetch("data/ensemble.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+    fetch(`data/ensemble${suffix}.json`, { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((e) => pintarEnsemble(data, e)).catch(() => {});
-    fetch("data/aemet.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+    fetch(`data/aemet${suffix}.json`, { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((a) => pintarAemet(data, a)).catch(() => {});
-    fetch("data/verificacion.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+    if (!suffix) fetch("data/verificacion.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((v) => pintarVerificacion(data, v)).catch(() => {});
   }
 
@@ -524,6 +529,7 @@
   function fechaCorta(f) { return f && f.length >= 10 ? f.slice(8, 10) + "." + f.slice(5, 7) : f || ""; }
 
   function cargarRayos(data) {
+    if (DIA) return;
     fetch("data/rayos.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((r) => pintarRayos(data, r)).catch(() => {});
   }
@@ -583,8 +589,11 @@
     setInterval(() => { cargarRayos(data); cargarObservado(data); }, 5 * 60 * 1000);
   }
 
-  fetch("data/riesgo.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(render)
-    .catch((e) => { document.getElementById("fuentes").textContent = "No hay datos todavía (data/riesgo.json): " + e; });
+  // ?dia=YYYYMMDD shows an archived or replayed day (riesgo_<dia>.json, with its ensemble and AEMET files when they exist).
+  const DIA = (new URLSearchParams(location.search).get("dia") || "").replace(/[^0-9]/g, "").slice(0, 8);
+  const RIESGO = DIA.length === 8 ? `data/riesgo_${DIA}.json` : "data/riesgo.json";
+  fetch(RIESGO, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(render)
+    .catch((e) => { document.getElementById("fuentes").textContent = `No hay datos todavía (${RIESGO}): ` + e; });
 })();
 </script>
 </body>
