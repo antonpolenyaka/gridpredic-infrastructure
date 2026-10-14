@@ -64,6 +64,7 @@
   details.cts summary { cursor: pointer; color: var(--accent); font-size: 13px; }
   details.cts p.notas { max-width: 60ch; }
   .rayos { margin: 8px 0 4px; padding: 8px 10px; border-radius: 6px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
+  .vejez { margin: 12px 24px 0; border-color: #e0772f; background: rgba(224, 119, 47, 0.12); }
   .rayos.tormenta { border-color: #e3b53a; background: color-mix(in srgb, #e3b53a 18%, var(--panel)); }
   .rayos.cerca { border-color: #e3b53a; }
   .rayos b { font-weight: 600; }
@@ -95,7 +96,20 @@
 
   function cabecera(data) {
     const f = data.fuentes || {};
-    document.getElementById("titulo").textContent = "Riesgo de mañana: " + (data.fecha_texto || data.fecha);
+    // The page lives all day: the evening before it is the risk of tomorrow, during the day it is the risk of today,
+    // and when the run of the evening did not leave a new file it says so instead of looking current.
+    const today = new Date(), local = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const diff = data.fecha ? Math.round((new Date(data.fecha + "T00:00:00") - new Date(local + "T00:00:00")) / 86400000) : 0;
+    const cuando = diff === 1 ? "Riesgo de mañana" : diff === 0 ? "Riesgo de hoy" : "Riesgo del día";
+    document.getElementById("titulo").textContent = cuando + ": " + (data.fecha_texto || data.fecha);
+    let aviso = document.getElementById("vejez");
+    if (!aviso) { aviso = document.createElement("div"); aviso.id = "vejez"; aviso.className = "rayos vejez"; document.getElementById("main").insertAdjacentElement("beforebegin", aviso); }
+    if (diff < 0) {
+      aviso.innerHTML = `<b>Este riesgo es del ${esc(data.fecha_texto || data.fecha)}</b>: la ejecución de anoche no ha dejado un riesgo nuevo. Mira dag_riesgo_manana en Airflow (http://localhost:8080) o lanza la tarea a mano.`;
+      aviso.style.display = "";
+    } else {
+      aviso.style.display = "none";
+    }
     const partes = [];
     if (f.prevision_pedida) partes.push("Previsión de ICON-EU pedida el " + f.prevision_pedida);
     if (f.avisos_texto) partes.push(f.avisos_texto);
