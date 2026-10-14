@@ -134,10 +134,12 @@ def test_stored_window_must_cover_the_year():
 
 def test_forecast_source_url_and_merge_of_suffixed_variables():
     cfg = landing.load_config()["openmeteo_previo"]
-    assert len(cfg["variables"]) <= 10 and cfg["celda_grados"] == 0.1
+    # Twelve variables (one, two and three days before, and the run of the day): 1.2 calls of the free plan.
+    assert len(cfg["variables"]) == 12 and cfg["celda_grados"] == 0.1
+    assert landing.call_weight(3, len(cfg["variables"])) == pytest.approx(1.2)
     url = landing.request_url(40.3, -6.0, date(2024, 1, 1), date(2024, 12, 31), cfg)
     assert url.startswith("https://previous-runs-api.open-meteo.com/v1/forecast?")
-    assert "wind_gusts_10m_previous_day1" in url and "models=icon_eu" in url
+    assert "wind_gusts_10m_previous_day1" in url and "wind_gusts_10m_previous_day3" in url and "models=icon_eu" in url
     assert bronze.forecast_of("precipitation_previous_day2") == "precipitation"
     assert bronze.forecast_of("wind_gusts_10m") == "wind_gusts_10m"
 
@@ -159,3 +161,19 @@ def test_forecast_source_url_and_merge_of_suffixed_variables():
     assert merged.loc["2025-10-26 02:00", "precipitation_previous_day1"] == pytest.approx(3.0)
     assert merged.loc["2025-10-26 02:00", "temperature_2m_previous_day1"] == pytest.approx(8.5)
     assert pd.isna(merged.loc["2025-10-26 03:00", "wind_gusts_10m_previous_day1"])
+
+
+def test_a_stored_answer_without_a_new_variable_is_asked_again(tmp_path):
+    import json
+
+    class Local:
+        def open(self, path, mode="r"):
+            return open(path, mode, encoding="utf-8")
+
+    stored = tmp_path / "2024.json"
+    stored.write_text(json.dumps({"hourly": {"time": [0], "wind_gusts_10m_previous_day1": [30.0],
+                                             "precipitation_previous_day1": [0.0]}}), encoding="utf-8")
+    assert landing.missing_variables(Local(), str(stored), ["wind_gusts_10m_previous_day1"]) == []
+    assert landing.missing_variables(Local(), str(stored), ["wind_gusts_10m_previous_day1",
+                                                            "wind_gusts_10m_previous_day3"]) == [
+        "wind_gusts_10m_previous_day3"]

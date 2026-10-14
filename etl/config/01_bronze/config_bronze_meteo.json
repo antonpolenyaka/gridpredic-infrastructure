@@ -82,6 +82,8 @@
       "relative_humidity_2m_previous_day1",
       "wind_gusts_10m_previous_day2",
       "precipitation_previous_day2",
+      "wind_gusts_10m_previous_day3",
+      "precipitation_previous_day3",
       "wind_gusts_10m",
       "precipitation"
     ],

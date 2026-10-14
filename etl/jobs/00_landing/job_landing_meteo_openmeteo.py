@@ -14,7 +14,9 @@ plan for non commercial use).
   14.08.2026 and the features look back up to 7 days, so the default asks
   from 01.12.2020 to 31.08.2026.
 - One request per cell and year, saved as it comes (JSON) in
-  s3://datalake/00_landing/meteo/openmeteo/<cell>/<year>.json. A file that is
+  s3://datalake/00_landing/meteo/openmeteo/<cell>/<year>.json. A file that
+  lacks a variable of the configuration (one added later) is asked again
+  whole, as a file that does not cover the year asked. A file that is
   already there is not asked again: a run that stops (network, limit of the
   day) is continued by launching it again.
 - Limits of the free plan: 600 calls per minute, 5.000 per hour, 10.000 per
@@ -158,6 +160,13 @@ def models_of(cfg: dict) -> list:
     return list(cfg.get("modelos") or [cfg.get("modelo", "ecmwf_ifs")])
 
 
+def missing_variables(fs, path: str, variables: list) -> list:
+    """The configured variables the stored answer does not have (a variable added to the config after the download)."""
+    with fs.open(path, "r") as file:
+        hourly = json.load(file).get("hourly", {})
+    return [v for v in variables if v not in hourly]
+
+
 def covers(window, lo: date, hi: date) -> bool:
     """True when the stored window [desde, hasta] includes [lo, hi]."""
     if not window or not window[0] or not window[1]:
@@ -272,9 +281,13 @@ def main(argv=None):
                     index[key] = [stored.get("desde"), stored.get("hasta")]
                     save_index()
                 if covers(index[key], lo, hi):
-                    done += 1
-                    continue
-                logger.info("Cell %s, %s: the file covers %s, asking %s - %s again", cell, year, index[key], lo, hi)
+                    missing = missing_variables(fs, target, cfg["variables"])
+                    if not missing:
+                        done += 1
+                        continue
+                    logger.info("Cell %s, %s: the file lacks %s, asking again", cell, year, missing)
+                else:
+                    logger.info("Cell %s, %s: the file covers %s, asking %s - %s again", cell, year, index[key], lo, hi)
 
             if args.max_peticiones is not None and requested >= args.max_peticiones:
                 logger.info("Stopped after %s requests as asked", requested)

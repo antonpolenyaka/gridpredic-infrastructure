@@ -30,12 +30,14 @@ Gold weather: the features of every cell and hour and the cell of every CT.
     insulators); highest vapour pressure deficit of 24 h and
     evapotranspiration of 7 days (dryness, fires); low clouds of 6 h; and
     the highest weather code of 6 h with a flag for thunderstorm codes.
-  - metp1_* and metp2_*, when Silver has the forecasts of ICON-EU (from
-    January 2024): what was forecast for the hour one day before (gust,
-    wind, rain, snow, temperature and humidity of the hour) and two days
-    before (gust and rain). They are passed as they come, with their own
-    prefix, so the models of the next hours never take them by mistake: the
-    model of the next day uses them in place of the weather of the day.
+  - metp1_*, metp2_* and metp3_*, when Silver has the forecasts of ICON-EU
+    (from January 2024): what was forecast for the hour one day before
+    (gust, wind, rain, snow, temperature and humidity of the hour), two days
+    before and three days before (gust and rain). They are passed as they
+    come, with their own prefix, so the models of the next hours never take
+    them by mistake: the model of the next day uses them in place of the
+    weather of the day, and the ones of two and three days before measure
+    how much is lost with more lead time.
   - met_focos_24h and met_focos_frp_max_24h, when Silver has the active fires
     of FIRMS (f_foco_incendio): the fires of nominal or high confidence
     within meteo.focos_radio_km of the centre of the cell in the last 24 h
@@ -100,7 +102,7 @@ EXTRA_COLUMNS = {
 PARTIAL_FEATURES = ("met_cape_", "met_li_", "met_dir_viento_", "met_viento_100m_", "met_humedad_suelo_",
                     "met_rocio_", "met_dpv_", "met_nubes_bajas_", "met_et0_", "met_codigo_", "met_tormenta_",
                     "met_aviso_", "met_focos_", "met_fwi_", "met_ffmc_", "met_dmc_", "met_dc_", "met_isi_",
-                    "met_bui_", "metp1_", "metp2_")
+                    "met_bui_", "metp1_", "metp2_", "metp3_")
 
 # Forecasts of ICON-EU in Silver -> hourly column of Gold (one and two days before).
 FORECAST_COLUMNS = {
@@ -108,6 +110,7 @@ FORECAST_COLUMNS = {
     "precipitacion_prev1_mm": "metp1_lluvia_1h", "nieve_prev1_cm": "metp1_nieve_1h",
     "temperatura_prev1_c": "metp1_temp_1h", "humedad_prev1_pct": "metp1_humedad_1h",
     "racha_prev2_kmh": "metp2_racha_1h", "precipitacion_prev2_mm": "metp2_lluvia_1h",
+    "racha_prev3_kmh": "metp3_racha_1h", "precipitacion_prev3_mm": "metp3_lluvia_1h",
 }
 WARNINGS_TABLE = "l2_silver.f_aviso_meteo"
 HOTSPOTS_TABLE = "l2_silver.f_foco_incendio"
@@ -262,7 +265,7 @@ def weather_features(hourly, lead: int, region: bool):
         region_df = features.groupBy("hora").agg(*[F.max(c).alias(region_name(c)) for c in sources])
         features = features.join(region_df, "hora", "left")
 
-    names = [c for c in features.columns if c.startswith(("met_", "metprev_", "metp1_", "metp2_"))]
+    names = [c for c in features.columns if c.startswith(("met_", "metprev_", "metp1_", "metp2_", "metp3_"))]
     return features.select("celda_id", "hora", *names), names
 
 
@@ -362,9 +365,10 @@ def add_gust_climate(features, names: list, until: str):
     met_racha_clima_1h (gust of the hour / p98 of the hourly gusts of the cell
     before until) and met_racha_ku_1h (max(0, ratio - 1)^3). Null where the
     gust is null or the cell has no climate. With the forecast of ICON-EU of
-    the day before, the same over the same climate (metp1_racha_clima_1h and
-    metp1_racha_ku_1h): the model of the next day takes them in place of the
-    ones of the reanalysis when it scores with the forecast.
+    the days before, the same over the same climate (metp1_racha_clima_1h
+    and metp1_racha_ku_1h, metp2_* and metp3_*): the model of the next day
+    takes them in place of the ones of the reanalysis when it scores with
+    the forecast.
     """
     if "met_racha_1h" not in features.columns:
         return features, names
@@ -372,7 +376,7 @@ def add_gust_climate(features, names: list, until: str):
            .groupBy("celda_id").agg(F.percentile_approx("met_racha_1h", 0.98, 10000).alias("_p98")))
     out = features.join(F.broadcast(p98), "celda_id", "left")
     added = []
-    for prefix in ("met", "metp1"):
+    for prefix in ("met", "metp1", "metp2", "metp3"):
         if f"{prefix}_racha_1h" not in features.columns:
             continue
         ratio = F.col(f"{prefix}_racha_1h") / F.when(F.col("_p98") > 0, F.col("_p98"))
