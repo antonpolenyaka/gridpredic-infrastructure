@@ -115,6 +115,33 @@ def send(payload: dict, rcfg: dict, ensemble: dict = None) -> str:
     return "enviado"
 
 
+def failure_message(context: dict) -> str:
+    """What a task failure of Airflow looks like in the webhook: DAG, task, attempt, day and the error."""
+    ti = context.get("task_instance") or context.get("ti")
+    dag_id = getattr(ti, "dag_id", None) or getattr(context.get("dag"), "dag_id", "?")
+    task_id = getattr(ti, "task_id", "?")
+    attempt = getattr(ti, "try_number", None)
+    when = context.get("logical_date") or context.get("execution_date") or context.get("run_id") or ""
+    error = str(context.get("exception") or "")[:300]
+    return (f"GridPredict: la tarea {task_id} de {dag_id} ha fallado" + (f" (intento {attempt})" if attempt else "")
+            + (f", ejecución {str(when)[:16]}" if when else "") + (f": {error}" if error else "") + ". Airflow: http://localhost:8080")
+
+
+def notify_failure(context: dict) -> str:
+    """on_failure_callback of the DAGs: the failure goes to the same webhook as the message of the evening; silent without URL."""
+    url = os.environ.get(DEFAULTS["url_env"], "").strip()
+    message = failure_message(context)
+    if not url:
+        logger.warning("Task failed and no %s to tell it: %s", DEFAULTS["url_env"], message)
+        return "sin url"
+    try:
+        post(url, message, DEFAULTS["campo"], float(DEFAULTS["timeout_s"]))
+    except Exception as error:  # noqa: BLE001
+        logger.error("The webhook did not take the failure: %s", type(error).__name__)
+        return f"error: {type(error).__name__}"
+    return "enviado"
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

@@ -22,6 +22,16 @@ from airflow.sdk.exceptions import AirflowSkipException
 
 CONFIG_PATH = "/opt/airflow/config/04_ml/config_ml.json"
 LANDING_DIR = "/app/jobs/00_landing"
+JOBS_DIR = "/app/jobs/04_ml"
+
+
+def failed(context: dict) -> None:
+    """A run that failed for good goes to the webhook of the evening (silent without AVISO_WEBHOOK_URL)."""
+    if JOBS_DIR not in sys.path:
+        sys.path.insert(0, JOBS_DIR)
+    import aviso_riesgo
+
+    aviso_riesgo.notify_failure(context)
 
 with open(CONFIG_PATH) as file:
     settings = json.load(file)["riesgo_manana"]
@@ -50,7 +60,7 @@ with DAG(
     schedule=CronTriggerTimetable(OBSERVATION.get("horario", "20 * * * *"), timezone=ZONE),
     catchup=False,
     max_active_runs=1,
-    default_args={"retries": 1, "retry_delay": timedelta(minutes=5)},
+    default_args={"retries": 1, "retry_delay": timedelta(minutes=5), "on_failure_callback": failed},
     dagrun_timeout=timedelta(minutes=30),
     tags=["landing", "riesgo"],
 ) as dag:
