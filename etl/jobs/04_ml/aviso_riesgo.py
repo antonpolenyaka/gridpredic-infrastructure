@@ -32,16 +32,18 @@ def reached(level: str, minimum: str) -> bool:
         return False
 
 
-def message_from(payload: dict, minimum: str = "alto") -> str:
+def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) -> str:
     """
     The text of the evening from riesgo.json of the dashboard: one line per
     distribuidora in alert with the level, the probability, the expected
-    incidents and customers, the window, the zones of most risk and the
-    bases of the crews; empty when no distribuidora reaches minimum.
+    incidents and customers, the window, the zones of most risk, the bases
+    of the crews and, with ensemble.json of the same day, the spread of the
+    runs; empty when no distribuidora reaches minimum.
     """
     blocks = [d for d in payload.get("distribuidoras", []) if reached(d.get("nivel", "bajo"), minimum)]
     if not blocks:
         return ""
+    bands = {str(b.get("id")): b for b in (ensemble or {}).get("distribuidoras", [])} if (ensemble or {}).get("fecha") == payload.get("fecha") else {}
     lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}:"]
     for d in sorted(blocks, key=lambda b: -(b.get("probabilidad") or 0)):
         imp, fr, plan = d.get("impacto") or {}, d.get("franja") or {}, d.get("brigadas") or {}
@@ -59,6 +61,9 @@ def message_from(payload: dict, minimum: str = "alto") -> str:
                 line += f" ({plan['posicionamiento']})"
         if d.get("motivos") and not str(d["motivos"]).startswith("ninguno"):
             line += f"; motivos: {d['motivos']}"
+        band = bands.get(str(d.get("id"))) or {}
+        if band.get("texto") and band.get("horas"):
+            line += f"; escenarios: {band['texto']}"
         lines.append(line + ".")
     rule = (payload.get("reglas") or {}).get("texto")
     if rule:
@@ -76,13 +81,25 @@ def post(url: str, message: str, field: str = "text", timeout: float = 30.0) -> 
         return int(answer.status)
 
 
-def send(payload: dict, rcfg: dict) -> str:
+def read_ensemble(folder: str) -> dict:
+    """ensemble.json of the dashboard folder, or None."""
+    path = os.path.join(folder or "", "ensemble.json")
+    if not folder or not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as file:
+            return json.load(file)
+    except (OSError, ValueError):
+        return None
+
+
+def send(payload: dict, rcfg: dict, ensemble: dict = None) -> str:
     """
     Builds the message and sends it when the URL is in the environment.
     Returns "enviado", "sin alerta", "sin url" or "error: ...".
     """
     cfg = alert_settings(rcfg)
-    message = message_from(payload, cfg["nivel_minimo"])
+    message = message_from(payload, cfg["nivel_minimo"], ensemble)
     if not message:
         return "sin alerta"
     url = os.environ.get(cfg["url_env"], "").strip()
@@ -109,7 +126,7 @@ def main(argv=None) -> int:
     if config_path and os.path.exists(config_path):
         with open(config_path, encoding="utf-8") as file:
             rcfg = json.load(file).get("riesgo_manana", {})
-    result = send(payload, rcfg)
+    result = send(payload, rcfg, read_ensemble(os.path.dirname(os.path.abspath(path))))
     print(result)
     return 0 if result in ("enviado", "sin alerta", "sin url") else 1
 
