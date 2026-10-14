@@ -79,7 +79,7 @@ DEFAULTS = {
     "minimo_incidencias_nivel": 10,  # a distribuidora enters the tables by level with at least this many incidents in the period
 }
 ALERT = ("alto", "muy alto")
-WARNING_COLUMNS = ["aviso_max_nivel", "aviso_viento_nivel"]
+WARNING_COLUMNS = ["aviso_max_nivel", "aviso_viento_nivel", "aviso_tormenta_nivel"]
 MODES = {"reanalisis": "tiempo del día del reanálisis (previsión perfecta)",
          "prevision": "previsión real de ICON-EU de la víspera"}
 
@@ -343,6 +343,7 @@ def replay(days: pd.DataFrame, zone_days: pd.DataFrame, ct: pd.DataFrame, cuts: 
                              "nivel": level, "alerta": bool(alert), "franja_inicio": window.get("inicio"), "franja_fin": window.get("fin"),
                              "aviso_max_nivel": number_or_none(getattr(r, "aviso_max_nivel", np.nan)),
                              "aviso_viento_nivel": number_or_none(getattr(r, "aviso_viento_nivel", np.nan)),
+                             "aviso_tormenta_nivel": number_or_none(getattr(r, "aviso_tormenta_nivel", np.nan)),
                              "bases": "; ".join(bases[max(bases)]) if bases else "", "incidencias": int(n_inc),
                              "clientes_afectados": float(today["clientes"].sum()) if today is not None else 0.0,
                              "clientes_hora": hours, "clientes_hora_recortadas": hours_cut,
@@ -412,11 +413,13 @@ def policy_masks(d: pd.DataFrame) -> list:
     """The policies of policy_table as (name, boolean mask), on the same days."""
     warn = d["aviso_max_nivel"].fillna(0) if "aviso_max_nivel" in d.columns else pd.Series(0.0, index=d.index)
     wind = d["aviso_viento_nivel"].fillna(0) if "aviso_viento_nivel" in d.columns else pd.Series(0.0, index=d.index)
+    storm = d["aviso_tormenta_nivel"].fillna(0) if "aviso_tormenta_nivel" in d.columns else pd.Series(0.0, index=d.index)
     same = pd.Series(False, index=d.index)
     for (_, _), g in d.groupby(["distribuidora_id", "anio"]):
         n = int((warn.loc[g.index] >= 1).sum())
         same.loc[g.sort_values("probabilidad", ascending=False).index[:n]] = True
     return [("aviso de AEMET amarillo o más (cualquier fenómeno)", warn >= 1), ("aviso de AEMET de viento, amarillo o más", wind >= 1),
+            ("aviso de AEMET de viento o tormenta, amarillo o más", (wind >= 1) | (storm >= 1)),
             ("aviso de AEMET naranja o rojo", warn >= 2), ("GridPredict en alerta (alto o muy alto)", d["alerta"].astype(bool)),
             ("GridPredict en alerta o aviso naranja o rojo", d["alerta"].astype(bool) | (warn >= 2)),
             ("GridPredict con tantos días como avisos amarillos", same)]
@@ -504,6 +507,7 @@ def history_payload(day_table: pd.DataFrame, levels: dict, names: dict) -> dict:
                                     "c": int(r.clientes_afectados), "m": round(float(r.corte_max_min)),
                                     "a": None if r.aviso_max_nivel is None or pd.isna(r.aviso_max_nivel) else int(r.aviso_max_nivel),
                                     "av": None if r.aviso_viento_nivel is None or pd.isna(r.aviso_viento_nivel) else int(r.aviso_viento_nivel),
+                                    "at": None if r.aviso_tormenta_nivel is None or pd.isna(r.aviso_tormenta_nivel) else int(r.aviso_tormenta_nivel),
                                     "b": r.bases if r.alerta else None} for r in x.itertuples()]
         payload["distribuidoras"].append(block)
     return payload
