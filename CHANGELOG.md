@@ -2,6 +2,16 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.14.0] - sin publicar
+
+Los avisos de AEMET al lado del nivel en todas las páginas y la política combinada.
+
+### Añadido
+
+- Política "GridPredict en alerta o aviso naranja o rojo de AEMET" en la tabla de políticas del replay y en la guardia de `negocio.html`: con 2024 - 2026, 63 días al año para el 74 % de las horas-cliente, frente al 72 % con los 46 días de alerta.
+- `verificacion.json` lleva el nivel del aviso de AEMET que había para el día (`aviso_aemet`) y la tabla de los últimos días de `index.html` lo escribe al lado del nivel.
+- `historial.html` marca con un borde los días con aviso de AEMET (fino el amarillo, grueso el naranja o rojo), con leyenda y en el tooltip: se ve de un vistazo que los avisos de verano son de calor y que el sistema avisa de otros días.
+
 ## [0.13.0] - sin publicar
 
 La página de las cifras para una distribuidora o un inversor y la guardia a igual presupuesto.
