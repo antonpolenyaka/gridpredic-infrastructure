@@ -1347,8 +1347,8 @@ def day_summary(payload: dict, name: str, dashboard: str) -> dict:
         "repetido": "repetido" in forecast or "Gold" in forecast, "prevision": forecast,
         "modelo": (payload.get("modelo") or {}).get("descripcion"),
         "distribuidoras": dists,
-        "pasado_manana": {"fecha_texto": outlook.get("fecha_texto"),
-                          "distribuidoras": [{"nombre": d.get("nombre"), "nivel": d.get("nivel"),
+        "pasado_manana": {"fecha": outlook.get("fecha"), "fecha_texto": outlook.get("fecha_texto"),
+                          "distribuidoras": [{"id": d.get("id"), "nombre": d.get("nombre"), "nivel": d.get("nivel"),
                                               "probabilidad": d.get("probabilidad")}
                                              for d in outlook.get("distribuidoras", [])]} if outlook else None,
         "ficheros": {kind: file for kind, file in files.items() if os.path.exists(os.path.join(dashboard, file))},

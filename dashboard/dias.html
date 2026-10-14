@@ -140,16 +140,31 @@
     return kind + (day.generado ? " del " + esc(day.generado) : "") + (isLive ? " (es el día en vivo)" : "");
   }
 
-  function celda(d) {
+  function celda(d, early) {
     const guard = d.guardia_reforzada ? ` <span class="nivel guardia-pill" title="${esc(d.guardia_motivo || "guardia reforzada")}">guardia</span>` : "";
     const warn = d.aviso_max_nivel >= 1 ? ` <span class="prob" title="aviso de AEMET">aviso ${esc(WARN[Math.round(d.aviso_max_nivel)] || d.aviso_max_nivel)}</span>` : "";
-    return `<td class="celda-dist"><span class="nivel ${cls(d.nivel)}">${esc(d.nivel || "?")}</span> <span class="prob">${pct(d.probabilidad)}</span>${guard}${warn}<br><span class="prob">${esc(d.franja || "")}</span></td>`;
+    // What the evening of two days before said of this day (the outlook of pasado manana), to see how stable it was.
+    const before = early ? `<br><span class="prob" title="orientación a dos días, de la tarde anterior a la víspera">dos tardes antes: <span class="nivel ${cls(early.nivel)}">${esc(early.nivel || "?")}</span> ${pct(early.probabilidad)}</span>` : "";
+    return `<td class="celda-dist"><span class="nivel ${cls(d.nivel)}">${esc(d.nivel || "?")}</span> <span class="prob">${pct(d.probabilidad)}</span>${guard}${warn}<br><span class="prob">${esc(d.franja || "")}</span>${before}</td>`;
   }
 
-  function fila(day, names, live) {
+  // fecha -> {nombre: outlook} from the entries whose pasado_manana points at that day.
+  function outlooks(days) {
+    const map = {};
+    for (const day of days) {
+      const o = day.pasado_manana;
+      if (!o || !o.fecha) continue;
+      map[o.fecha] = map[o.fecha] || {};
+      for (const d of o.distribuidoras || []) map[o.fecha][d.nombre] = d;
+    }
+    return map;
+  }
+
+  function fila(day, names, live, early) {
     const by = {};
     for (const d of day.distribuidoras || []) by[d.nombre] = d;
-    const cells = names.map((n) => by[n] ? celda(by[n]) : "<td></td>").join("");
+    const said = early[day.fecha] || {};
+    const cells = names.map((n) => by[n] ? celda(by[n], said[n]) : "<td></td>").join("");
     const files = day.ficheros || {};
     const links = [`<a href="index.html?dia=${esc(day.dia)}">Ver el cuadro de mando</a>`];
     if (files.parte_guardia) links.push(`<a href="data/${esc(files.parte_guardia)}">Parte de guardia (xlsx)</a>`);
@@ -186,7 +201,8 @@
     document.getElementById("contador").textContent = `${shown.length} de ${days.length} días`;
     const holder = document.getElementById("tabla");
     if (!shown.length) { holder.innerHTML = `<div class="vacio">Ningún día cumple el filtro.</div>`; return; }
-    holder.innerHTML = `<table><thead><tr><th>Día</th>${names.map((n) => `<th>${esc(n)}</th>`).join("")}<th>Cómo se hizo</th><th>Abrir</th></tr></thead><tbody>${shown.map((d) => fila(d, names, index.vivo)).join("")}</tbody></table>`;
+    const early = outlooks(days);
+    holder.innerHTML = `<table><thead><tr><th>Día</th>${names.map((n) => `<th>${esc(n)}</th>`).join("")}<th>Cómo se hizo</th><th>Abrir</th></tr></thead><tbody>${shown.map((d) => fila(d, names, index.vivo, early)).join("")}</tbody></table>`;
   }
 
   function cifras() {
