@@ -48,6 +48,18 @@ resumen.md and prediccion.csv in exportar_dir/<run_id>/.
 
     docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g \\
         /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json --fecha 2026-10-14
+
+A past day can be played again as if it were tomorrow, without the live
+Landing: --desde-gold takes the forecast ICON-EU made the day before from
+Gold (metp1_* of meteo_celda_hora, the reanalysis for the days before) and
+the warnings of AEMET sent before meteo_dia.aviso_corte_h of the day before
+from Silver, trains only with the days before and writes the same outputs;
+with --solo-archivo the dashboard keeps riesgo.json and parte_guardia.xlsx
+of the live day and only gets the dated copies (riesgo_<day>.json), which
+index.html shows with ?dia=YYYYMMDD. For a demo of a storm (the forecast of
+the evening of 27.01.2026):
+
+    ... job_ml_riesgo_manana.py --config ... --fecha 2026-01-28 --desde-gold --solo-archivo --run-id demo_20260128
 """
 
 import argparse
@@ -192,6 +204,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--config", default=None)
     parser.add_argument("--fecha", default="", help="Day to predict, YYYY-MM-DD (tomorrow by default)")
     parser.add_argument("--landing", default=None, help="Folder of the live Landing (riesgo_manana.landing)")
+    parser.add_argument("--desde-gold", action="store_true",
+                        help="A past day: the forecast of the day before from Gold and the warnings from Silver")
+    parser.add_argument("--solo-archivo", action="store_true",
+                        help="Only the dated copies in the dashboard (riesgo_<day>.json), not riesgo.json")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -210,10 +226,18 @@ def number(value: float, digits: int) -> str:
 
 
 def moment(stamp: str) -> str:
-    """An ISO time in UTC (pedido_utc of the Landing) as 13.10.2026 18:31 UTC."""
+    """An ISO time in UTC (pedido_utc of the Landing) as 13.10.2026 18:31 UTC; the stamps of a day played again as words."""
     if not stamp:
         return "?"
-    return f"{pd.Timestamp(stamp).tz_convert('UTC'):%d.%m.%Y %H:%M} UTC" if pd.Timestamp(stamp).tzinfo else stamp
+    if stamp == "gold":
+        return "día anterior (previsión guardada en Gold, día repetido)"
+    if stamp == "silver":
+        return "archivo de avisos de Silver"
+    try:
+        parsed = pd.Timestamp(stamp)
+    except (ValueError, TypeError):
+        return stamp
+    return f"{parsed.tz_convert('UTC'):%d.%m.%Y %H:%M} UTC" if parsed.tzinfo else stamp
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +297,56 @@ def forecast_hours(fs, folder: str, zone: str) -> tuple:
         out[name] = values.where(values.between(low, high))
     stamps = [a for a in asked if a]
     return out, max(stamps) if stamps else None
+
+
+def gold_hours(spark, day: pd.Timestamp, days_before: int = 31) -> tuple:
+    """
+    The hours of a past day as forecast_hours gives them, from Gold: for D
+    the forecast ICON-EU made the day before (metp1_*), for the days before
+    the reanalysis (met_*), with the names of LIVE_VARIABLES; "gold" as the
+    stamp of the request. Empty without metp1_* for D.
+    """
+    names = [name for name, _, _ in LIVE_VARIABLES.values()]
+    weather = spark.table(WEATHER_TABLE)
+    first, last = day - pd.Timedelta(days=days_before), day + pd.Timedelta(days=1)
+    wanted = ["celda_id", "hora"] + [f"{p}_{n}" for p in ("met", "metp1") for n in names if f"{p}_{n}" in weather.columns]
+    pdf = (weather.where((F.col("hora") >= F.lit(first.to_pydatetime())) & (F.col("hora") < F.lit(last.to_pydatetime())))
+           .select(*wanted).toPandas())
+    if pdf.empty:
+        return pd.DataFrame(columns=["celda_id", "hora"] + names), None
+    pdf["hora"] = pd.to_datetime(pdf["hora"])
+    of_day = pdf["hora"].dt.floor("D") == day
+    out = pdf[["celda_id", "hora"]].copy()
+    for variable, (name, low, high) in LIVE_VARIABLES.items():
+        past = pd.to_numeric(pdf[f"met_{name}"], errors="coerce") if f"met_{name}" in pdf else pd.Series(np.nan, index=pdf.index)
+        ahead = pd.to_numeric(pdf[f"metp1_{name}"], errors="coerce") if f"metp1_{name}" in pdf else pd.Series(np.nan, index=pdf.index)
+        values = ahead.where(of_day, past)
+        out[name] = values.where(values.between(low, high))
+    if out.loc[of_day, "racha_1h"].notna().sum() == 0:
+        logger.warning("Gold has no forecast (metp1_*) for %s", day.date())
+        return pd.DataFrame(columns=["celda_id", "hora"] + names), None
+    return out.sort_values(["celda_id", "hora"]).reset_index(drop=True), "gold"
+
+
+def warnings_from_silver(spark, day: pd.Timestamp, cutoff_h: int) -> pd.DataFrame:
+    """
+    The warnings of AEMET of the archive (l2_silver.f_aviso_meteo, by cell)
+    sent before cutoff_h of the day before D, with the columns of
+    warnings_in_cells; empty without the table.
+    """
+    columns = ["celda_id", "fenomeno_codigo", "nivel_num", "tipo_mensaje", "enviado_ts", "inicio_ts", "fin_ts", "parametro"]
+    if not spark.catalog.tableExists(WARNINGS_TABLE):
+        return pd.DataFrame(columns=columns)
+    source = spark.table(WARNINGS_TABLE)
+    cutoff = (day - pd.Timedelta(days=1) + pd.Timedelta(hours=int(cutoff_h))).to_pydatetime()
+    pdf = (source.where((F.col("enviado_ts") < F.lit(cutoff)) & (F.col("fin_ts") > F.lit((day - pd.Timedelta(days=1)).to_pydatetime())))
+           .select(*[c for c in columns if c in source.columns]).toPandas())
+    for column in columns:
+        if column not in pdf.columns:
+            pdf[column] = np.nan if column != "parametro" else ""
+    for column in ("enviado_ts", "inicio_ts", "fin_ts"):
+        pdf[column] = pd.to_datetime(pdf[column])
+    return pdf[columns].reset_index(drop=True)
 
 
 def gold_columns(hours: pd.DataFrame, climate: pd.Series) -> pd.DataFrame:
@@ -1119,11 +1193,13 @@ def attach_second_opinions(payload: dict, folder: str) -> dict:
     return payload
 
 
-def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day: pd.Timestamp):
+def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day: pd.Timestamp, dated_only: bool = False):
     """
     riesgo.json for the dashboard (dashboard_dir, when the folder exists)
     and a copy in the export folder, and parte_guardia.xlsx (the same
-    tables for the shift, to print or send) next to each of them.
+    tables for the shift, to print or send) next to each of them. With
+    dated_only the dashboard gets riesgo_<day>.json only (a past day played
+    again must not replace the live day).
     """
     targets = []
     folder = config.get("exportar_dir")
@@ -1131,7 +1207,7 @@ def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day
         targets.append(os.path.join(folder, folder_id, "riesgo.json"))
     dashboard = rcfg.get("dashboard_dir")
     if dashboard and os.path.isdir(dashboard):
-        targets += [os.path.join(dashboard, "riesgo.json"), os.path.join(dashboard, f"riesgo_{day:%Y%m%d}.json")]
+        targets += ([] if dated_only else [os.path.join(dashboard, "riesgo.json")]) + [os.path.join(dashboard, f"riesgo_{day:%Y%m%d}.json")]
     elif dashboard:
         logger.warning("Dashboard folder %s not found: riesgo.json only in the export folder", dashboard)
     for target in targets:
@@ -1170,12 +1246,18 @@ def main(argv=None):
         raise ValueError(f"Variant {rcfg['variante']} not in meteo_dia.variantes")
 
     # The forecast first: without it there is nothing to score.
-    cells_hours, forecast_asked = forecast_hours(fs, folder, zone)
-    if cells_hours.empty:
-        raise FileNotFoundError(f"No forecast of ICON-EU for {day.date()} in {folder}/prevision: run "
-                                "job_landing_vivo.py --fuente prevision first")
-
-    spark = get_spark(config)
+    if args.desde_gold:
+        spark = get_spark(config)
+        cells_hours, forecast_asked = gold_hours(spark, day)
+        if cells_hours.empty:
+            raise FileNotFoundError(f"No forecast of the day before (metp1_*) for {day.date()} in {WEATHER_TABLE}")
+        logger.info("Playing %s again from Gold: the forecast of the day before and the warnings of the archive", day.date())
+    else:
+        cells_hours, forecast_asked = forecast_hours(fs, folder, zone)
+        if cells_hours.empty:
+            raise FileNotFoundError(f"No forecast of ICON-EU for {day.date()} in {folder}/prevision: run "
+                                    "job_landing_vivo.py --fuente prevision first")
+        spark = get_spark(config)
     cfg["hasta"] = f"{day:%Y-%m-%d}"
     pdf, blocks, _ = build_dataset(spark, config, cfg)
     missing_blocks = [b for b in variant["bloques"] if not blocks.get(b)]
@@ -1210,8 +1292,12 @@ def main(argv=None):
     live = live.merge(weather_features(hourly, day, cfg), on="distribuidora_id", how="left")
 
     areas = rcfg.get("avisos", {}).get("areas", ["esp"])
-    cap_rows, answered, warnings_asked = warning_rows(fs, folder, areas)
-    warnings = warnings_in_cells(cap_rows, sorted(weights["celda_id"].unique()))
+    if args.desde_gold:
+        warnings = warnings_from_silver(spark, day, int(cfg.get("aviso_corte_h", 20)))
+        cap_rows, answered, warnings_asked = [], spark.catalog.tableExists(WARNINGS_TABLE), "silver"
+    else:
+        cap_rows, answered, warnings_asked = warning_rows(fs, folder, areas)
+        warnings = warnings_in_cells(cap_rows, sorted(weights["celda_id"].unique()))
     logger.info("Warnings of AEMET (answered for every area: %s): %s CAP rows, %s in the cells of the network, %s in "
                 "force on %s", answered, len(cap_rows), len(warnings), len(warnings_of_day(warnings, day)), day.date())
     live = live.merge(warning_features(warnings, weights, day, dists), on="distribuidora_id", how="left")
@@ -1325,7 +1411,7 @@ def main(argv=None):
     notes = report_notes(out, info)
     payload = attach_second_opinions(dashboard_payload(day, out, info, zone_out, seguimiento, args.run_id, notes), rcfg.get("dashboard_dir"))
     export(config, folder_id, report_text(day, out, info, zone_out), {"prediccion": out, "zonas": zone_rows})
-    write_dashboard(config, rcfg, folder_id, payload, day)
+    write_dashboard(config, rcfg, folder_id, payload, day, args.solo_archivo)
 
     run = pd.DataFrame([{
         "run_id": args.run_id,
