@@ -384,7 +384,44 @@
         if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
       }
       p.textContent = "Línea verde: " + (block.texto || "AEMET por municipios") + ".";
+      d._picoAemet = block.pico;
+      pintarConfianza(d, idx);
     });
+  }
+
+  // How much to trust the forecast of the day: a rule on the agreement of the three sources about the peak gust of
+  // the network. ICON-EU (the bars) and AEMET by municipality agree when their peaks differ by 15 km/h or less;
+  // the 40 runs agree when the p10 - p90 of their peak spans 30 km/h or less. Both: alta; one: media; none: baja.
+  function pintarConfianza(d, idx) {
+    const sec = document.getElementById("dist-" + idx);
+    if (!sec) return;
+    const peakIcon = (d.franja || {}).racha_pico != null ? d.franja.racha_pico : Math.max(0, ...(d.perfil || []).map((p) => p.racha_max || 0));
+    const aemet = d._picoAemet && d._picoAemet.racha_kmh != null ? d._picoAemet.racha_kmh : null;
+    const band = d._picoBanda && d._picoBanda.p10 != null && d._picoBanda.p90 != null ? d._picoBanda : null;
+    if (aemet == null && !band) return;
+    const parts = [];
+    let points = 0, of = 0;
+    if (aemet != null) {
+      of++;
+      const agree = Math.abs(peakIcon - aemet) <= 15;
+      points += agree ? 1 : 0;
+      parts.push(agree ? `ICON-EU y AEMET coinciden en el pico (${num(peakIcon)} y ${num(aemet)} km/h)` : `ICON-EU y AEMET no coinciden en el pico (${num(peakIcon)} frente a ${num(aemet)} km/h)`);
+    }
+    if (band) {
+      of++;
+      const agree = band.p90 - band.p10 <= 30;
+      points += agree ? 1 : 0;
+      parts.push(agree ? `los escenarios están de acuerdo (pico entre ${num(band.p10)} y ${num(band.p90)})` : `los escenarios están repartidos (pico entre ${num(band.p10)} y ${num(band.p90)})`);
+    }
+    const label = points === of ? "alta" : points > 0 ? "media" : "baja";
+    let p = sec.querySelector(".confianza");
+    if (!p) {
+      p = document.createElement("p");
+      p.className = "verificacion confianza";
+      const holder = sec.querySelector(".perfil-holder");
+      if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
+    }
+    p.innerHTML = `<b>Confianza en la previsión del viento: ${label}</b> (${esc(parts.join("; "))}).`;
   }
 
   // The ensemble of ICON-EU EPS (ensemble.json, task ensemble of dag_riesgo_manana): the band between the p10 and
@@ -405,6 +442,8 @@
         if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
       }
       p.textContent = "Banda morada: " + (block.texto || "escenarios de ICON-EU EPS") + ".";
+      d._picoBanda = block.pico;
+      pintarConfianza(d, idx);
     });
   }
 
@@ -434,7 +473,7 @@
     }
     const dists = data.distribuidoras || [];
     let html = `<h2>Lo que dijimos cada tarde y lo que pasó con el viento (últimos ${days.length} días)</h2>
-      <p class="notas">Por distribuidora: el nivel de la víspera, el pico de racha previsto y el medido por las estaciones de AEMET a menos de ${num(v.radio_km || 25)} km de la red (hora del pico medido). Las averías de cada día llegan con la carga de Calser y se ven en el historial.</p>
+      <p class="notas">Por distribuidora: el nivel de la víspera (y el aviso de AEMET que había para el día), el pico de racha previsto y el medido por las estaciones de AEMET a menos de ${num(v.radio_km || 25)} km de la red (hora del pico medido). Las averías de cada día llegan con la carga de Calser y se ven en el historial.</p>
       <table><thead><tr><th>día</th>${dists.map((d) => `<th>${esc(d.nombre)}</th>`).join("")}</tr></thead><tbody>`;
     for (const f of days) {
       const recs = v.dias[f] || [];
@@ -442,7 +481,8 @@
       for (const d of dists) {
         const r = recs.find((x) => String(x.id) === String(d.id));
         if (!r) { html += "<td></td>"; continue; }
-        const level = r.nivel ? `<span class="nivel ${cls(r.nivel)}">${r.nivel}</span>` : "";
+        const AVISO = ["", "aviso amarillo", "aviso naranja", "aviso rojo"];
+        const level = (r.nivel ? `<span class="nivel ${cls(r.nivel)}">${r.nivel}</span>` : "") + (r.aviso_aemet ? ` <span class="notas">(${AVISO[r.aviso_aemet] || "aviso"} de AEMET)</span>` : "");
         const forecast = r.racha_prevista_max != null ? `${num(r.racha_prevista_max)}` : "-";
         const observed = r.racha_observada_max != null ? `${num(r.racha_observada_max)} km/h a las ${r.hora_observada}:00` : "sin estaciones";
         const marks = [r.pico_en_franja === true ? "en la franja" : r.pico_en_franja === false ? "fuera de la franja" : "",

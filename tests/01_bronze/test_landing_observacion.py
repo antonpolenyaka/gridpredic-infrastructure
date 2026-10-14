@@ -107,7 +107,7 @@ def forecast(day: str, peak_hour: int, peak: float, window: tuple) -> dict:
     profile = [{"hora": h, "racha_max": peak if h == peak_hour else 20.0, "lluvia": 0.0} for h in range(24)]
     return {"fecha": day, "distribuidoras": [
         {"id": 2, "nombre": "Pitarch", "nivel": "alto", "probabilidad": 0.12, "perfil": profile, "franja": {"inicio": window[0], "fin": window[1]},
-         "municipios": [{"nombre": "Casar de Cáceres", "lat": 39.56, "lon": -6.42}]},
+         "aviso_max_nivel": 2.0, "municipios": [{"nombre": "Casar de Cáceres", "lat": 39.56, "lon": -6.42}]},
         {"id": 3, "nombre": "EOSA", "nivel": "bajo", "probabilidad": 0.02, "perfil": profile, "franja": {},
          "municipios": [{"nombre": "Hervás", "lat": 40.27, "lon": -5.86}]},
     ]}
@@ -148,6 +148,7 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
     assert pitarch["banda_p10"] == 55 and pitarch["banda_p90"] == 75 and pitarch["pico_en_banda"] is True
     assert pitarch["racha_aemet_max"] == 60 and pitarch["hora_aemet"] == 13 and pitarch["error_aemet_kmh"] == 12 and "racha_aemet_max" not in eosa
     assert pitarch["supera"] == {"50": 0.9, "70": 0.3} and pitarch["supero"] == {"50": True, "70": True} and "supero" not in eosa
+    assert pitarch["aviso_aemet"] == 2 and "aviso_aemet" not in eosa
     assert eosa["banda_p50"] == 58 and "pico_en_banda" not in eosa
     today = out["hoy"]["distribuidoras"][0]
     assert today["horas_observadas"] == 16 and today["error_kmh"] == 72 - 80 and today["pico_en_franja"] is False
