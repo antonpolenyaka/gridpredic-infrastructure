@@ -198,16 +198,21 @@ def day_text(iso: str) -> str:
         return str(iso or "")
 
 
-def morning_message(verification: dict, risk: dict = None) -> str:
+def morning_message(verification: dict, risk: dict = None, today_iso: str = None) -> str:
     """
     The text of the morning: what we said for yesterday and what the stations
     measured (verificacion.json, block ayer), and what the system says for
     today (riesgo.json when its fecha is today, else the block hoy of the
-    verification). Empty when there is nothing of yesterday nor of today.
+    verification). With today_iso, a warning when riesgo.json is older than
+    today (the evening run did not leave the risk). Empty when there is
+    nothing of yesterday nor of today.
     """
     yesterday = (verification or {}).get("ayer") or {}
     today = (verification or {}).get("hoy") or {}
     lines = []
+    if today_iso and (risk or {}).get("fecha") and str(risk["fecha"]) < today_iso:
+        lines.append(f"Atención: no hay riesgo calculado para hoy (el último es del {day_text(risk['fecha'])}); "
+                     "mirar dag_riesgo_manana en Airflow (http://localhost:8080).")
     if yesterday.get("distribuidoras"):
         parts = []
         for d in yesterday["distribuidoras"]:
@@ -284,7 +289,7 @@ def send_morning(folder: str, rcfg: dict, state_path: str, now: datetime = None)
                         risk = json.load(file)
             except (OSError, ValueError):
                 pass
-    message = morning_message(verification, risk)
+    message = morning_message(verification, risk, today)
     if not message:
         return "sin datos"
     url = os.environ.get(cfg["url_env"], "").strip()
