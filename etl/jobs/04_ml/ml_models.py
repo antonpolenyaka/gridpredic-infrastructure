@@ -32,6 +32,16 @@ Models (name in config_ml.json):
   the configuration chosen for the global model; a group with too few
   positives uses the global model. Divide and conquer: a single model over
   very different CTs dilutes what each kind of CT has to say.
+- logistica_equilibrada: the logistic regression with class_weight balanced
+  (Sharma et al. 2023: in small rural networks the imbalance is the main
+  problem). Same ranking family, more weight on the few positives.
+- poisson: a regularised Poisson regression on the same pipeline, fitted on
+  the counts of the rows (data["n"], the number of incidents of the day)
+  when the caller gives them and on the binary label otherwise. Its score
+  is the expected number of incidents, a count instead of a probability
+  (Liu et al. 2005, Guikema and Quiring 2012): a day with six incidents
+  teaches more than one with one. Compared with the others on the same
+  binary metrics.
 """
 
 import time
@@ -39,7 +49,7 @@ import time
 import numpy as np
 
 
-TRAINED = ("logistica", "random_forest", "xgboost")
+TRAINED = ("logistica", "random_forest", "xgboost", "logistica_equilibrada", "poisson")
 REFERENCES = ("tasa_base", "naif_historico")
 ALL_MODELS = REFERENCES + TRAINED
 
@@ -161,6 +171,20 @@ class FeatureScorer(Scorer):
         return np.where(missing, low, x).astype(np.float32)
 
 
+class CountScorer(Scorer):
+    """A scikit-learn compatible regressor of counts: the score is the expected number of events."""
+
+    def __init__(self, name: str, feature_names: list, estimator):
+        super().__init__(name, feature_names, 1.0)
+        self.estimator = estimator
+
+    def score(self, X):
+        return np.clip(self.estimator.predict(X), 0.0, None).astype(np.float32)
+
+    def single_thread(self):
+        return self
+
+
 class EstimatorScorer(Scorer):
     """A scikit-learn compatible classifier with predict_proba."""
 
@@ -187,24 +211,29 @@ class EstimatorScorer(Scorer):
 # ---------------------------------------------------------------------------
 
 def build_estimator(name: str, params: dict, seed: int, n_jobs: int):
-    if name == "logistica":
+    if name in ("logistica", "logistica_equilibrada", "poisson"):
         from sklearn.impute import SimpleImputer
-        from sklearn.linear_model import LogisticRegression
+        from sklearn.linear_model import LogisticRegression, PoissonRegressor
         from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
+        if name == "poisson":
+            model = PoissonRegressor(alpha=float(params.get("alpha", 1.0)), max_iter=int(params.get("max_iter", 1000)))
+        else:
+            model = LogisticRegression(
+                C=float(params.get("C", 0.1)),
+                max_iter=int(params.get("max_iter", 1000)),
+                solver="lbfgs",
+                class_weight="balanced" if name == "logistica_equilibrada" else params.get("class_weight"),
+                random_state=seed,
+            )
         # add_indicator: a missing measurement (CT without telemetry, gap of
         # the SCADA) is information by itself.
         return Pipeline([
             ("imputar", SimpleImputer(strategy="median", add_indicator=True, keep_empty_features=True)),
             ("log", FunctionTransformer(signed_log1p)),
             ("escalar", StandardScaler()),
-            ("modelo", LogisticRegression(
-                C=float(params.get("C", 0.1)),
-                max_iter=int(params.get("max_iter", 1000)),
-                solver="lbfgs",
-                random_state=seed,
-            )),
+            ("modelo", model),
         ])
 
     if name == "random_forest":
@@ -267,12 +296,19 @@ def fit_model(name: str, params: dict, data: dict, rate: float, seed: int, n_job
             sample_weight_eval_set=[data["wv"]],
             verbose=int(params.get("verbose", 100)),
         )
-    elif name == "logistica":
+    elif name == "poisson":
+        counts = data.get("n")
+        target = np.asarray(counts if counts is not None else data["y"], dtype=np.float64)
+        estimator.fit(data["X"], target, modelo__sample_weight=weights)
+    elif name.startswith("logistica"):
         estimator.fit(data["X"], data["y"], modelo__sample_weight=weights)
     else:
         estimator.fit(data["X"], data["y"], sample_weight=weights)
 
-    scorer = EstimatorScorer(name, data["feature_names"], estimator, 1.0 if use_weights else rate)
+    if name == "poisson":
+        scorer = CountScorer(name, data["feature_names"], estimator)
+    else:
+        scorer = EstimatorScorer(name, data["feature_names"], estimator, 1.0 if use_weights else rate)
     scorer.params = dict(params)
     scorer.info = {"segundos_entrenamiento": round(time.time() - start, 1), "usa_peso_muestra": use_weights}
 
@@ -322,8 +358,9 @@ def importances(scorer: Scorer, X_sample=None) -> dict:
     elif scorer.name == "random_forest":
         out["importancia_impureza"] = scorer.estimator.feature_importances_
 
-    elif scorer.name == "logistica":
-        coef = scorer.estimator.named_steps["modelo"].coef_[0]
+    elif scorer.name in ("logistica", "logistica_equilibrada", "poisson"):
+        coef = np.asarray(scorer.estimator.named_steps["modelo"].coef_)
+        coef = coef[0] if coef.ndim == 2 else coef
         # The first len(names) coefficients are the features; the rest are
         # the missing indicators added by the imputer.
         out["coef_abs"] = np.abs(coef[:len(names)])

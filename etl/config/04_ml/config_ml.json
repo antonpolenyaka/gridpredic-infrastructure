@@ -410,6 +410,7 @@
                    "pendiente_red"],
        "variables": ["ayer_racha_max", "ayer_lluvia_max"]}
     ],
+    "modelos": ["tasa_base", "logistica", "xgboost", "logistica_equilibrada", "poisson"],
     "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "comun_avisos_detalle",
                            "comun_avisos_detalle_extremos", "operativa", "operativa_racha", "operativa_48h",
                            "operativa_72h", "operativa_extension", "operativa_interacciones",
@@ -438,7 +439,10 @@
       ["operativa_direccion__logistica__prevision", "operativa__logistica__prevision"],
       ["operativa_mas__logistica__prevision", "operativa__logistica__prevision"],
       ["operativa_mas__xgboost__prevision", "operativa__xgboost__prevision"],
-      ["operativa_mas__rango__prevision", "operativa__rango__prevision"]
+      ["operativa_mas__rango__prevision", "operativa__rango__prevision"],
+      ["operativa__poisson__prevision", "operativa__logistica__prevision"],
+      ["operativa__logistica_equilibrada__prevision", "operativa__logistica__prevision"],
+      ["operativa__poisson__prevision_cuantiles", "operativa__logistica__prevision_cuantiles"]
     ],
     "comparaciones": [
       ["ayer__logistica", "calendario_historia__logistica"],
@@ -467,7 +471,9 @@
       ["operativa_pendiente_red__logistica", "operativa__logistica"],
       ["operativa_direccion__logistica", "operativa__logistica"],
       ["operativa_mas__logistica", "operativa__logistica"],
-      ["operativa_mas__xgboost", "operativa__xgboost"]
+      ["operativa_mas__xgboost", "operativa__xgboost"],
+      ["operativa__poisson", "operativa__logistica"],
+      ["operativa__logistica_equilibrada", "operativa__logistica"]
     ]
   },
   "caso_negocio": {

@@ -64,6 +64,7 @@ def test_day_labels_and_calendar():
     assert out["y_dia"].tolist() == [1, 0, 1, 1]
     assert out["y_dia_meteo"].tolist() == [1, 0, 0, 1]
     assert out["y_dia_varias"].tolist() == [0, 0, 0, 0]
+    assert out["n_dia"].tolist() == [1, 0, 1, 1]
     # Two incidents on 30.03 (one of them with two CT) make a busy day; one incident with two CT does not.
     busy = pd.DataFrame({"distribuidora_id": [1, 1, 1, 2, 2], "periodo_id": [2024] * 5,
                          "incidencia_id": [7, 8, 8, 9, 9],
@@ -72,6 +73,7 @@ def test_day_labels_and_calendar():
                          "causa": ["meteorologia"] * 5})
     out = rd.day_labels(grid, busy, ["aguas_arriba"], several=2)
     assert out["y_dia_varias"].tolist() == [0, 0, 1, 0]
+    assert out["n_dia"].tolist() == [0, 0, 2, 1]
 
     cal = rd.day_calendar(grid["fecha"])
     # Good Friday 2024 is a holiday; 30.03.2024 is a Saturday.
@@ -347,7 +349,8 @@ def config_path(workdir):
         "hasta": "2026-01-01",
         "anios_evaluacion": [2023, 2024, 2025],
         "bootstrap_reps": 50,
-        "busqueda": {"logistica": [{"C": 0.1}],
+        "modelos": ["tasa_base", "logistica", "xgboost", "poisson"],
+        "busqueda": {"logistica": [{"C": 0.1}], "poisson": [{"alpha": 1.0}],
                      "xgboost": [{"max_depth": 2, "min_child_weight": 5, "learning_rate": 0.1, "subsample": 0.8,
                                   "colsample_bytree": 0.8, "n_estimators": 200, "early_stopping_rounds": 20,
                                   "verbose": 0}]},
@@ -437,6 +440,9 @@ def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
     # The two models of every variant together by their percentiles in the year.
     assert table.loc[("perfecta", "rango"), "pr_auc"] > 2 * nothing
     assert len(read(folder, "diferencias.csv")) == 2
+    # The model of counts (fitted on n_dia) ranks the days like the logistic regression.
+    counted = table.loc[("perfecta", "poisson"), "pr_auc"]
+    assert counted > 2 * nothing and counted > 0.7 * perfect
 
 
 def test_the_real_forecast_scores_the_years_it_covers(result):
