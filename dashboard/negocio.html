@@ -70,9 +70,10 @@
   <section class="noimprimir">
     <div class="controles">
       <span>Tiempo del día que ve el modelo:</span>
-      <label><input type="radio" name="modo" value="prevision" checked> previsión real de ICON-EU de la víspera (2024 - 2025): lo que daría el sistema en marcha</label>
-      <label><input type="radio" name="modo" value="reanalisis"> reanálisis, como previsión perfecta (2022 - 2025)</label>
+      <label><input type="radio" name="modo" value="prevision" checked> previsión real de ICON-EU de la víspera (desde 2024): lo que daría el sistema en marcha</label>
+      <label><input type="radio" name="modo" value="reanalisis"> reanálisis, como previsión perfecta (desde 2022)</label>
       <label><input type="checkbox" id="winsor" checked> cortes recortados a 110 minutos</label>
+      <label>Distribuidora: <select id="dist"><option value="">todas</option></select></label>
       <a class="noimprimir" href="#" id="imprimir">Imprimir o guardar en PDF</a>
     </div>
   </section>
@@ -104,7 +105,9 @@
   // The days of the distribuidoras with enough incidents in the chosen mode, each with its hours and its year.
   function pool(mode, winsor) {
     const out = [];
+    const chosen = document.getElementById("dist").value;
     for (const d of DATA.distribuidoras) {
+      if (chosen && String(d.id) !== chosen) continue;
       const days = (d.dias || {})[mode] || [];
       const incidents = days.reduce((s, x) => s + x.i, 0);
       if (incidents < MIN_INCIDENTS) continue;
@@ -129,7 +132,7 @@
     for (const d of days) { const k = d.id + "|" + d.anio; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
     const sum = (list) => list.reduce((s, d) => s + d.h, 0);
     const out = { invierno: { dias: 0, h: 0 }, findes: { dias: 0, h: 0 }, aviso: { dias: 0, h: 0 }, avisoViento: { dias: 0, h: 0 }, avisoNaranja: { dias: 0, h: 0 },
-                  sistema: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, mismoAviso: { dias: 0, h: 0 }, total: 0, grupos: groups.size, anios: 0,
+                  sistema: { dias: 0, h: 0 }, union: { dias: 0, h: 0 }, mismo: { dias: 0, h: 0 }, mismoAviso: { dias: 0, h: 0 }, total: 0, grupos: groups.size, anios: 0,
                   conAvisos: days.some((d) => d.a != null) };
     // A year with part of its days (the current one, or the first with forecast) counts as the part of a year it is.
     for (const g of groups.values()) out.anios += g.length / 365;
@@ -138,6 +141,7 @@
       const weekends = g.filter((d) => isWeekend(d.f));
       const alert = g.filter((d) => d.alerta);
       const warned = g.filter((d) => (d.a || 0) >= 1), wind = g.filter((d) => (d.av || 0) >= 1), orange = g.filter((d) => (d.a || 0) >= 2);
+      const union = g.filter((d) => d.alerta || (d.a || 0) >= 2);
       const byRisk = [...g].sort((a, b) => b.p - a.p);
       const same = byRisk.slice(0, winter.length), sameWarned = byRisk.slice(0, warned.length);
       out.invierno.dias += winter.length; out.invierno.h += sum(winter);
@@ -146,6 +150,7 @@
       out.avisoViento.dias += wind.length; out.avisoViento.h += sum(wind);
       out.avisoNaranja.dias += orange.length; out.avisoNaranja.h += sum(orange);
       out.sistema.dias += alert.length; out.sistema.h += sum(alert);
+      out.union.dias += union.length; out.union.h += sum(union);
       out.mismo.dias += same.length; out.mismo.h += sum(same);
       out.mismoAviso.dias += sameWarned.length; out.mismoAviso.h += sum(sameWarned);
       out.total += sum(g);
@@ -302,6 +307,7 @@
     rows.push(["GridPredict, mismo número de días que los fines de semana de invierno", pol.mismo]);
     if (pol.conAvisos) rows.push(["GridPredict, mismo número de días que los avisos amarillos", pol.mismoAviso]);
     rows.push(["GridPredict, solo los días en alerta", pol.sistema]);
+    if (pol.conAvisos) rows.push(["GridPredict en alerta o aviso naranja o rojo de AEMET", pol.union]);
     const years = Math.max(0.01, pol.anios || groups);
     const base = pol.invierno.dias / years * cost;
     let html = `<thead><tr><th>política de guardia</th><th class="num">días reforzados al año</th><th class="num">cobertura de las horas-cliente</th><th class="num">coste al año (euros)</th><th class="num">frente al calendario</th></tr></thead><tbody>`;
@@ -317,7 +323,13 @@
       DATA = data;
       document.getElementById("fuentes").innerHTML = `Calculado en el navegador a partir de data/historico.json (generado ${esc(data.generado || "")}). <a href="index.html">Riesgo de mañana</a> · <a href="historial.html">Día a día</a> · <a href="https://github.com/antonpolenyaka/gridpredic-infrastructure/blob/main/docs/caso-de-negocio.md">Método y límites</a>`;
       document.getElementById("pie").textContent = "Niveles: muy alto desde el percentil 95 de los días de entrenamiento de cada distribuidora, alto desde el 90, medio desde el 75. Averías: incidencias de causa local de Calser (equipos, meteorología, vegetación, fauna, terceros y causa desconocida) en los CT en estudio, con los clientes y la duración real de cada corte de CT. Las distribuidoras con menos de 10 incidencias en el periodo no entran en las cifras.";
-      document.querySelectorAll('input[name="modo"], #winsor').forEach((el) => el.addEventListener("change", render));
+      // The distribuidoras with enough incidents in some mode can be looked at alone: the levels are their own percentiles.
+      const select = document.getElementById("dist");
+      for (const d of data.distribuidoras || []) {
+        const enough = Object.values(d.dias || {}).some((days) => days.reduce((s, x) => s + x.i, 0) >= MIN_INCIDENTS);
+        if (enough) select.insertAdjacentHTML("beforeend", `<option value="${esc(d.id)}">${esc(d.nombre)}</option>`);
+      }
+      document.querySelectorAll('input[name="modo"], #winsor, #dist').forEach((el) => el.addEventListener("change", render));
       document.getElementById("imprimir").addEventListener("click", (e) => { e.preventDefault(); window.print(); });
       render();
     })
