@@ -142,3 +142,56 @@ def test_main_fails_when_most_cells_have_no_forecast(fs, cfg, monkeypatch, tmp_p
     monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: (_ for _ in ()).throw(RuntimeError("HTTP 500"))
                         if url.split("latitude=")[1][3] in "01234" else answer())
     assert vivo.main(["--fuente", "prevision", "--fecha", "2026-10-15", "--config", str(path)], fs=fs) == 1
+
+
+def ensemble_answer(day: date, peak_by_member: list, peak_hour_utc: int = 10) -> bytes:
+    """What the Ensemble API gives: the control run and the members, 3 days from the day before the one to predict."""
+    start = int(datetime(day.year, day.month, day.day, tzinfo=ZoneInfo("UTC")).timestamp()) - 24 * 3600
+    times = [start + 3600 * h for h in range(72)]
+    hourly = {"time": times}
+    for k, peak in enumerate(peak_by_member):
+        values = [20.0 + (peak - 20.0) * (1.0 if (t - start) // 3600 == 24 + peak_hour_utc else 0.0) for t in times]
+        hourly["wind_gusts_10m" if k == 0 else f"wind_gusts_10m_member{k:02d}"] = values
+    return json.dumps({"latitude": 39.5, "longitude": -6.4, "hourly": hourly}).encode()
+
+
+def test_the_ensemble_of_every_network(fs, cfg, monkeypatch, tmp_path):
+    config = vivo.load_config()
+    config["riesgo_manana"]["landing"] = "/vivo"
+    config["riesgo_manana"]["ensemble"]["puntos"] = {"3": [{"nombre": "Hervás", "lat": 40.27, "lon": -5.87}, {"nombre": "Plasencia", "lat": 40.03, "lon": -6.09}],
+                                                      "2": [{"nombre": "Casar de Cáceres", "lat": 39.56, "lon": -6.42}]}
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+    day = date(2026, 10, 15)
+    calls = []
+
+    def fake_fetch(url, **kwargs):
+        calls.append(url)
+        if "models=icon_eu&" in url and "latitude=39.5600" in url:
+            raise RuntimeError("HTTP 400")  # icon_eu fails for this point: the next model answers
+        peaks = [60, 80, 100, 40, 55] if "latitude=40.2700" in url else [50, 50, 50, 50, 50]
+        return ensemble_answer(day, peaks)
+
+    monkeypatch.setattr(vivo, "fetch", fake_fetch)
+    monkeypatch.setattr(vivo.time, "sleep", lambda s: None)
+    assert vivo.main(["--fuente", "ensemble", "--fecha", day.isoformat(), "--config", str(path), "--dashboard-dir", str(tmp_path)], fs=fs) == 0
+    assert sorted(fs.ls("/vivo/20261015/ensemble", detail=False)) == ["/vivo/20261015/ensemble/2_Casar_de_C_ceres.json", "/vivo/20261015/ensemble/3_Herv_s.json",
+                                                                       "/vivo/20261015/ensemble/3_Plasencia.json"]
+    assert any("models=icon_seamless" in u and "latitude=39.5600" in u for u in calls)
+    with open(tmp_path / "ensemble.json", encoding="utf-8") as file:
+        out = json.load(file)
+    assert out["fecha"] == "2026-10-15" and out["umbrales_kmh"] == [50.0, 70.0, 90.0]
+    eosa, pitarch = out["distribuidoras"]
+    assert eosa["id"] == 3 and eosa["nombre"] == "EOSA" and eosa["puntos"] == ["Hervás", "Plasencia"] and eosa["miembros"] == 5 and eosa["modelo"] == "icon_eu"
+    # The gust over the network is the worst of the points: the peak at 12:00 local (10:00 UTC) of every member.
+    assert len(eosa["horas"]) == 24 and eosa["horas"][0]["hora"] == 0
+    noon = next(h for h in eosa["horas"] if h["hora"] == 12)
+    # Members over the network: max(Hervás, Plasencia) = 60, 80, 100, 50, 55.
+    assert noon["p50"] == 60 and noon["p10"] == 52 and noon["p90"] == 92
+    assert eosa["pico"] == {"p10": 52, "p50": 60, "p90": 92}
+    assert eosa["supera"] == {"50": 1.0, "70": 0.4, "90": 0.2}
+    assert eosa["texto"] == "5 escenarios de icon_eu: el 80 % central da el pico de racha entre 52 y 92 km/h (mediana 60); el 100 % supera 50 km/h, el 40 % supera 70 km/h, el 20 % supera 90 km/h; escenarios muy repartidos; más de la mitad supera 50 km/h"
+    assert pitarch["modelo"] == "icon_seamless" and pitarch["pico"] == {"p10": 50, "p50": 50, "p90": 50} and "muy de acuerdo" in pitarch["texto"]
+    # Without any answer the source fails with 2 and writes nothing.
+    monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: (_ for _ in ()).throw(RuntimeError("HTTP 500")))
+    assert vivo.main(["--fuente", "ensemble", "--fecha", "2026-10-16", "--config", str(path), "--dashboard-dir", str(tmp_path)], fs=fs) == 2
