@@ -8,6 +8,8 @@ Los avisos de AEMET al lado del nivel en todas las páginas y la política combi
 
 ### Añadido
 
+- `negocio.html`: selector de distribuidora (todas, o una sola: los niveles son percentiles propios de cada una, así que sus cifras valen por separado).
+- `index.html`: "Confianza en la previsión del viento" (alta, media, baja) bajo el perfil, por el acuerdo entre ICON-EU y AEMET en el pico (15 km/h o menos de diferencia) y por la anchura de la banda de los escenarios (30 km/h o menos); regla en el navegador con las tres fuentes del día.
 - Política "GridPredict en alerta o aviso naranja o rojo de AEMET" en la tabla de políticas del replay y en la guardia de `negocio.html`: con 2024 - 2026, 63 días al año para el 74 % de las horas-cliente, frente al 72 % con los 46 días de alerta.
 - `verificacion.json` lleva el nivel del aviso de AEMET que había para el día (`aviso_aemet`) y la tabla de los últimos días de `index.html` lo escribe al lado del nivel.
 - `historial.html` marca con un borde los días con aviso de AEMET (fino el amarillo, grueso el naranja o rojo), con leyenda y en el tooltip: se ve de un vistazo que los avisos de verano son de calor y que el sistema avisa de otros días.

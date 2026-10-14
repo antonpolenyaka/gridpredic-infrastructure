@@ -384,7 +384,44 @@
         if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
       }
       p.textContent = "Línea verde: " + (block.texto || "AEMET por municipios") + ".";
+      d._picoAemet = block.pico;
+      pintarConfianza(d, idx);
     });
+  }
+
+  // How much to trust the forecast of the day: a rule on the agreement of the three sources about the peak gust of
+  // the network. ICON-EU (the bars) and AEMET by municipality agree when their peaks differ by 15 km/h or less;
+  // the 40 runs agree when the p10 - p90 of their peak spans 30 km/h or less. Both: alta; one: media; none: baja.
+  function pintarConfianza(d, idx) {
+    const sec = document.getElementById("dist-" + idx);
+    if (!sec) return;
+    const peakIcon = (d.franja || {}).racha_pico != null ? d.franja.racha_pico : Math.max(0, ...(d.perfil || []).map((p) => p.racha_max || 0));
+    const aemet = d._picoAemet && d._picoAemet.racha_kmh != null ? d._picoAemet.racha_kmh : null;
+    const band = d._picoBanda && d._picoBanda.p10 != null && d._picoBanda.p90 != null ? d._picoBanda : null;
+    if (aemet == null && !band) return;
+    const parts = [];
+    let points = 0, of = 0;
+    if (aemet != null) {
+      of++;
+      const agree = Math.abs(peakIcon - aemet) <= 15;
+      points += agree ? 1 : 0;
+      parts.push(agree ? `ICON-EU y AEMET coinciden en el pico (${num(peakIcon)} y ${num(aemet)} km/h)` : `ICON-EU y AEMET no coinciden en el pico (${num(peakIcon)} frente a ${num(aemet)} km/h)`);
+    }
+    if (band) {
+      of++;
+      const agree = band.p90 - band.p10 <= 30;
+      points += agree ? 1 : 0;
+      parts.push(agree ? `los escenarios están de acuerdo (pico entre ${num(band.p10)} y ${num(band.p90)})` : `los escenarios están repartidos (pico entre ${num(band.p10)} y ${num(band.p90)})`);
+    }
+    const label = points === of ? "alta" : points > 0 ? "media" : "baja";
+    let p = sec.querySelector(".confianza");
+    if (!p) {
+      p = document.createElement("p");
+      p.className = "verificacion confianza";
+      const holder = sec.querySelector(".perfil-holder");
+      if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
+    }
+    p.innerHTML = `<b>Confianza en la previsión del viento: ${label}</b> (${esc(parts.join("; "))}).`;
   }
 
   // The ensemble of ICON-EU EPS (ensemble.json, task ensemble of dag_riesgo_manana): the band between the p10 and
@@ -405,6 +442,8 @@
         if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
       }
       p.textContent = "Banda morada: " + (block.texto || "escenarios de ICON-EU EPS") + ".";
+      d._picoBanda = block.pico;
+      pintarConfianza(d, idx);
     });
   }
 
