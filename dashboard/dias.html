@@ -200,7 +200,11 @@
     for (const y of years) { const o = document.createElement("option"); o.value = y; o.textContent = y; select.appendChild(o); }
   }
 
+  // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
+  function ordenar(lista) { return (lista || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { numeric: true })); }
+
   function start(data) {
+    for (const d of data.dias || []) { d.distribuidoras = ordenar(d.distribuidoras); if (d.pasado_manana) d.pasado_manana.distribuidoras = ordenar(d.pasado_manana.distribuidoras); }
     index = data;
     cifras();
     render();

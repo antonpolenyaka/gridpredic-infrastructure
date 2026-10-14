@@ -1,6 +1,6 @@
 # Caso de negocio con los datos reales: qué habría pasado en 2022 - 2025
 
-Hasta ahora medíamos el modelo con métricas de clasificación (PR-AUC, parte de días con avería en el 10 % de más riesgo). Para una distribuidora o un inversor la pregunta es otra: si el sistema hubiera estado en marcha estos cuatro años, qué habría dicho cada tarde y qué habría pasado al día siguiente. Este documento responde con los datos de EOSA y Pitarch de 2022 al 02.08.2026, el último día con etiqueta conocida de la copia de Calser (Valle de Santa Ana, con 10 CT, tuvo una sola incidencia de causa local en esos años, en 2023, y con una incidencia sus días no dicen nada del nivel). La página `historial.html` del cuadro de mando lo enseña día a día: el color es el nivel que habría dado el sistema la tarde anterior y los puntos, las averías que hubo.
+Hasta ahora medíamos el modelo con métricas de clasificación (PR-AUC, parte de días con avería en el 10 % de más riesgo). Para una distribuidora o un inversor la pregunta es otra: si el sistema hubiera estado en marcha estos cuatro años, qué habría dicho cada tarde y qué habría pasado al día siguiente. Este documento responde con los datos de la Distribuidora 1 y la Distribuidora 2 de 2022 al 02.08.2026, el último día con etiqueta conocida de la copia de Calser (la Distribuidora 3, con 10 CT, tuvo una sola incidencia de causa local en esos años, en 2023, y con una incidencia sus días no dicen nada del nivel). La página `historial.html` del cuadro de mando lo enseña día a día: el color es el nivel que habría dado el sistema la tarde anterior y los puntos, las averías que hubo.
 
 ## 1. Cómo lo hemos medido
 
@@ -13,7 +13,7 @@ El cálculo está en el job `job_ml_caso_negocio.py` y deja `historico.json` par
 
 ## 2. Lo que vería un director de distribución
 
-Con la previsión real de la víspera, del 20.01.2024 al 02.08.2026 (EOSA y Pitarch juntas, 1.844 días de distribuidora):
+Con la previsión real de la víspera, del 20.01.2024 al 02.08.2026 (la Distribuidora 1 y la Distribuidora 2 juntas, 1.844 días de distribuidora):
 
 | nivel previsto la víspera | días | con avería | incidencias | horas-cliente (recortadas) | parte | parte sin recortar |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -24,50 +24,50 @@ Con la previsión real de la víspera, del 20.01.2024 al 02.08.2026 (EOSA y Pita
 
 Solo con 2024 y 2025 (1.422 días), que es lo que había antes de incorporar 2026: bajo 1.047 días y 1,7 % con avería; medio 198 y 4,5 %; alto 86 y 9,3 %; muy alto 91 y 17,6 %; los días en alerta eran el 12 % y llevaban el 57 % de las horas-cliente (el 73 % sin recortar).
 
-- Un día muy alto tiene avería 9 veces más a menudo que un día bajo (17,9 % frente a 1,9 %; con 2024 - 2025 solo, 10 veces: 17,6 % frente a 1,7 %). Por separado se mantiene: en EOSA, 22,2 % frente a 1,5 % en 2024 - 2025 (45 días muy altos, 10 con avería); en Pitarch, 13,0 % frente a 1,9 % (46 días, 6 con avería).
+- Un día muy alto tiene avería 9 veces más a menudo que un día bajo (17,9 % frente a 1,9 %; con 2024 - 2025 solo, 10 veces: 17,6 % frente a 1,7 %). Por separado se mantiene: en la Distribuidora 1, 22,2 % frente a 1,5 % en 2024 - 2025 (45 días muy altos, 10 con avería); en la Distribuidora 2, 13,0 % frente a 1,9 % (46 días, 6 con avería).
 - Los días en alerta (alto o muy alto) son el 12,5 % de los días y concentran el 72 % de las horas-cliente perdidas por causas locales (el 70 % sin recortar). El temporal del 28.01.2026 pesa mucho en esa cifra: las dos distribuidoras estaban en muy alto desde la tarde anterior (21 % y 18 % de probabilidad, 6 y 4 veces su tasa base de 2022 - 2025), tuvieron 20 incidencias, 73.485 clientes afectados y 31.795 horas-cliente, el 49 % de todas las de 2024 - 2026. Sin ese día, los días en alerta llevan el 46 % de las horas-cliente (53 % sin recortar).
 - De los 3 peores días de cada distribuidora y año de 2024 - 2026 (18 días que suman el 77 % de las horas-cliente), 9 estaban en alerta la víspera; de los 5 peores (30 días, el 87 %), 15. Con el reanálisis, en 2022 - 2026: 13 de 30 y 19 de 50. Mirando los 10 peores días de 2024 - 2026 sin separar por distribuidora ni año (el 68 % de las horas-cliente), 7 estaban en alerta; en 2024 - 2025, 8 de 10.
 - Dentro del día, en las 51 incidencias de los días de alerta de 2024 - 2026: el 84 % empezaron dentro de la franja horaria que daba el sistema, y la línea que falló estaba entre las 3 primeras del ranking de su distribuidora el 25 % de las veces (azar 9 %, con unas 35 líneas por distribuidora) y entre las 5 primeras el 41 % (azar 14 %). El sistema acierta el día y la franja mucho mejor que la línea.
 - El 71 % de los días son bajos y en ellos cae una de cada seis horas-cliente (una de cada cuatro en 2024 - 2025): son las averías de equipos y de causa desconocida que el tiempo no anuncia.
-- La probabilidad que ve el usuario es de fiar: en los días muy altos el modelo da de media un 15,5 % y pasa el 17,9 %; en los altos, 7,3 % y pasa el 7,4 %; en los bajos, 2,7 % y pasa el 1,9 %. Como separador de días, AUC 0,72 (EOSA 0,76, Pitarch 0,66) con una tasa base del 4,0 %; el Brier es 0,036 frente a 0,038 de la tasa base, una mejora modesta porque la mayor parte de las averías no la explica ningún dato meteorológico. En 2024 - 2025 el 10 % de días de más riesgo concentraba el 41 % de los días con avería y el 53 % de las horas-cliente.
+- La probabilidad que ve el usuario es de fiar: en los días muy altos el modelo da de media un 15,5 % y pasa el 17,9 %; en los altos, 7,3 % y pasa el 7,4 %; en los bajos, 2,7 % y pasa el 1,9 %. Como separador de días, AUC 0,72 (la Distribuidora 1 0,76, la Distribuidora 2 0,66) con una tasa base del 4,0 %; el Brier es 0,036 frente a 0,038 de la tasa base, una mejora modesta porque la mayor parte de las averías no la explica ningún dato meteorológico. En 2024 - 2025 el 10 % de días de más riesgo concentraba el 41 % de los días con avería y el 53 % de las horas-cliente.
 
 Por distribuidora y año:
 
 | distribuidora | año | tiempo que ve el modelo | días en alerta | incidencias | en días de alerta | horas-cliente | en días de alerta | sin recortar |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| EOSA | 2022 | reanálisis | 41 (11 %) | 30 | 13 (43 %) | 13.134 | 4.380 (33 %) | 34 % |
-| EOSA | 2023 | reanálisis | 36 (10 %) | 21 | 5 (24 %) | 16.693 | 10.871 (65 %) | 65 % |
-| EOSA | 2024 | previsión real | 38 (11 %) | 17 | 8 (47 %) | 7.543 | 3.867 (51 %) | 51 % |
-| EOSA | 2025 | previsión real | 54 (15 %) | 18 | 10 (56 %) | 9.670 | 5.388 (56 %) | 82 % |
-| EOSA | 2026 (hasta el 02.08) | previsión real | 27 (13 %) | 14 | 5 (36 %) | 17.726 | 13.032 (74 %) | 73 % |
-| Pitarch | 2022 | reanálisis | 50 (14 %) | 13 | 3 (23 %) | 8.101 | 244 (3 %) | 3 % |
-| Pitarch | 2023 | reanálisis | 35 (10 %) | 19 | 5 (26 %) | 3.916 | 1.298 (33 %) | 33 % |
-| Pitarch | 2024 | previsión real | 44 (13 %) | 11 | 5 (45 %) | 4.555 | 3.288 (72 %) | 72 % |
-| Pitarch | 2025 | previsión real | 41 (11 %) | 9 | 4 (44 %) | 3.283 | 1.752 (53 %) | 50 % |
-| Pitarch | 2026 (hasta el 02.08) | previsión real | 27 (13 %) | 27 | 19 (70 %) | 22.231 | 19.653 (88 %) | 63 % |
+| Distribuidora 1 | 2022 | reanálisis | 41 (11 %) | 30 | 13 (43 %) | 13.134 | 4.380 (33 %) | 34 % |
+| Distribuidora 1 | 2023 | reanálisis | 36 (10 %) | 21 | 5 (24 %) | 16.693 | 10.871 (65 %) | 65 % |
+| Distribuidora 1 | 2024 | previsión real | 38 (11 %) | 17 | 8 (47 %) | 7.543 | 3.867 (51 %) | 51 % |
+| Distribuidora 1 | 2025 | previsión real | 54 (15 %) | 18 | 10 (56 %) | 9.670 | 5.388 (56 %) | 82 % |
+| Distribuidora 1 | 2026 (hasta el 02.08) | previsión real | 27 (13 %) | 14 | 5 (36 %) | 17.726 | 13.032 (74 %) | 73 % |
+| Distribuidora 2 | 2022 | reanálisis | 50 (14 %) | 13 | 3 (23 %) | 8.101 | 244 (3 %) | 3 % |
+| Distribuidora 2 | 2023 | reanálisis | 35 (10 %) | 19 | 5 (26 %) | 3.916 | 1.298 (33 %) | 33 % |
+| Distribuidora 2 | 2024 | previsión real | 44 (13 %) | 11 | 5 (45 %) | 4.555 | 3.288 (72 %) | 72 % |
+| Distribuidora 2 | 2025 | previsión real | 41 (11 %) | 9 | 4 (44 %) | 3.283 | 1.752 (53 %) | 50 % |
+| Distribuidora 2 | 2026 (hasta el 02.08) | previsión real | 27 (13 %) | 27 | 19 (70 %) | 22.231 | 19.653 (88 %) | 63 % |
 
-Pitarch en 2022 es el año malo: sus dos peores días (6.300 horas-cliente, averías de equipos en días de calma) salieron bajos. Es el límite que ya conocíamos: el sistema ve el tiempo, no el estado de los equipos. 2026 es el año del temporal del 28 de enero: en Pitarch, 16 incidencias en un día, 35.782 clientes y 18.812 horas-cliente; el sistema lo tenía en muy alto desde la tarde anterior, y AEMET en aviso naranja.
+La Distribuidora 2 en 2022 es el año malo: sus dos peores días (6.300 horas-cliente, averías de equipos en días de calma) salieron bajos. Es el límite que ya conocíamos: el sistema ve el tiempo, no el estado de los equipos. 2026 es el año del temporal del 28 de enero: en la Distribuidora 2, 16 incidencias en un día, 35.782 clientes y 18.812 horas-cliente; el sistema lo tenía en muy alto desde la tarde anterior, y AEMET en aviso naranja.
 
 Los diez peores días de 2024 - 2026 y lo que decía el sistema la tarde anterior:
 
 | día | distribuidora | nivel previsto | probabilidad | incidencias | clientes | horas-cliente (recortadas) | sin recortar | corte más largo (min) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 28.01.2026 | Pitarch | muy alto | 21,2 % | 16 | 35.782 | 18.812 | 18.875 | 116 |
-| 28.01.2026 | EOSA | muy alto | 18,2 % | 4 | 37.703 | 12.983 | 12.983 | 35 |
-| 10.06.2024 | EOSA | muy alto | 11,9 % | 1 | 24.381 | 2.039 | 2.039 | 5 |
-| 05.11.2025 | EOSA | muy alto | 35,7 % | 2 | 1.971 | 1.895 | 2.465 | 169 |
-| 24.01.2026 | EOSA | bajo | 2,5 % | 1 | 9.949 | 1.861 | 1.861 | 9 |
-| 01.08.2026 | Pitarch | bajo | 2,9 % | 2 | 794 | 1.455 | 10.531 | 800 |
-| 12.10.2024 | Pitarch | muy alto | 11,5 % | 1 | 313 | 1.431 | 1.431 | 75 |
-| 04.04.2025 | Pitarch | muy alto | 15,2 % | 1 | 365 | 1.262 | 1.262 | 58 |
-| 18.03.2025 | EOSA | alto | 10,2 % | 1 | 1.813 | 1.249 | 1.249 | 41 |
-| 28.05.2025 | EOSA | bajo | 2,6 % | 1 | 11.194 | 1.113 | 1.113 | 6 |
+| 28.01.2026 | Distribuidora 2 | muy alto | 21,2 % | 16 | 35.782 | 18.812 | 18.875 | 116 |
+| 28.01.2026 | Distribuidora 1 | muy alto | 18,2 % | 4 | 37.703 | 12.983 | 12.983 | 35 |
+| 10.06.2024 | Distribuidora 1 | muy alto | 11,9 % | 1 | 24.381 | 2.039 | 2.039 | 5 |
+| 05.11.2025 | Distribuidora 1 | muy alto | 35,7 % | 2 | 1.971 | 1.895 | 2.465 | 169 |
+| 24.01.2026 | Distribuidora 1 | bajo | 2,5 % | 1 | 9.949 | 1.861 | 1.861 | 9 |
+| 01.08.2026 | Distribuidora 2 | bajo | 2,9 % | 2 | 794 | 1.455 | 10.531 | 800 |
+| 12.10.2024 | Distribuidora 2 | muy alto | 11,5 % | 1 | 313 | 1.431 | 1.431 | 75 |
+| 04.04.2025 | Distribuidora 2 | muy alto | 15,2 % | 1 | 365 | 1.262 | 1.262 | 58 |
+| 18.03.2025 | Distribuidora 1 | alto | 10,2 % | 1 | 1.813 | 1.249 | 1.249 | 41 |
+| 28.05.2025 | Distribuidora 1 | bajo | 2,6 % | 1 | 11.194 | 1.113 | 1.113 | 6 |
 
-La noche del incendio de Jarilla (13.08.2025, el corte más largo de estos años, 17.349 horas-cliente sin recortar en tres CT) EOSA estaba en alto desde la tarde anterior; con el recorte queda fuera de los diez peores.
+La noche del incendio de Jarilla (13.08.2025, el corte más largo de estos años, 17.349 horas-cliente sin recortar en tres CT) la Distribuidora 1 estaba en alto desde la tarde anterior; con el recorte queda fuera de los diez peores.
 
 ## 2b. Frente a los avisos de AEMET, que es lo que hoy mira un jefe de brigadas
 
-Los avisos de AEMET son una previsión real con archivo desde 2018 y lo que una distribuidora consulta cada tarde. Con los mismos días (previsión real, 2024 - 2026, EOSA y Pitarch; avisos para el día siguiente emitidos antes de las 20:00 de la víspera, en las celdas de cada red):
+Los avisos de AEMET son una previsión real con archivo desde 2018 y lo que una distribuidora consulta cada tarde. Con los mismos días (previsión real, 2024 - 2026, la Distribuidora 1 y la Distribuidora 2; avisos para el día siguiente emitidos antes de las 20:00 de la víspera, en las celdas de cada red):
 
 | política de guardia | días al año por distribuidora | parte de los días | incidencias cubiertas | horas-cliente cubiertas (recortadas) | sin recortar |
 | --- | --- | --- | --- | --- | --- |
@@ -91,28 +91,28 @@ Los avisos de AEMET son una previsión real con archivo desde 2018 y lo que una 
 
 | distribuidora | brigadas | año | cortes de CT | más largos que la llegada de la brigada | horas-cliente de esos cortes | llegada media con bases fijas (min) | en alerta, con las bases del día (min) | minutos de TIEPI ganados |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| EOSA | 1 | 2024 | 1.267 | 53 (4 %) | 1.103 (14 %) | 45 | 36 | 0,00 |
-| EOSA | 2 | 2024 | 1.267 | 67 (5 %) | 2.080 (27 %) | 25 | 25 | 0,00 |
-| EOSA | 1 | 2025 | 755 | 17 (2 %) | 19.752 (73 %) | 66 | 60 | 0,08 |
-| EOSA | 2 | 2025 | 755 | 74 (10 %) | 21.697 (80 %) | 23 | 25 | 0,08 |
-| Pitarch | 1 | 2024 | 634 | 15 (2 %) | 50 (1 %) | 47 | 45 | 0,54 |
-| Pitarch | 2 | 2024 | 634 | 15 (2 %) | 50 (1 %) | 32 | 27 | 0,54 |
-| Pitarch | 1 | 2025 | 319 | 16 (5 %) | 642 (18 %) | 39 | 37 | 0,21 |
-| Pitarch | 2 | 2025 | 319 | 16 (5 %) | 642 (18 %) | 39 | 30 | 0,31 |
+| Distribuidora 1 | 1 | 2024 | 1.267 | 53 (4 %) | 1.103 (14 %) | 45 | 36 | 0,00 |
+| Distribuidora 1 | 2 | 2024 | 1.267 | 67 (5 %) | 2.080 (27 %) | 25 | 25 | 0,00 |
+| Distribuidora 1 | 1 | 2025 | 755 | 17 (2 %) | 19.752 (73 %) | 66 | 60 | 0,08 |
+| Distribuidora 1 | 2 | 2025 | 755 | 74 (10 %) | 21.697 (80 %) | 23 | 25 | 0,08 |
+| Distribuidora 2 | 1 | 2024 | 634 | 15 (2 %) | 50 (1 %) | 47 | 45 | 0,54 |
+| Distribuidora 2 | 2 | 2024 | 634 | 15 (2 %) | 50 (1 %) | 32 | 27 | 0,54 |
+| Distribuidora 2 | 1 | 2025 | 319 | 16 (5 %) | 642 (18 %) | 39 | 37 | 0,21 |
+| Distribuidora 2 | 2 | 2025 | 319 | 16 (5 %) | 642 (18 %) | 39 | 30 | 0,31 |
 
-Las horas-cliente de esta tabla van sin recortar: en EOSA en 2025 el incendio de Jarilla (17.349 horas-cliente en tres CT) es casi todo lo que esperó a la brigada.
+Las horas-cliente de esta tabla van sin recortar: en la Distribuidora 1 en 2025 el incendio de Jarilla (17.349 horas-cliente en tres CT) es casi todo lo que esperó a la brigada.
 
-- Casi tres de cada cuatro cortes de CT (el 72 %) duran menos de 15 minutos, la mediana son 8: los repone el reenganche o el telemando antes de que ninguna brigada pueda llegar. Solo entre el 2 % y el 10 % de los cortes duran más que la llegada de la brigada, pero son los largos: en EOSA, el 14 - 27 % de las horas-cliente de 2024 y, con el incendio, el 73 - 80 % de las de 2025. Son esos los que la brigada puede acortar.
-- Cambiar las bases según el riesgo del día apenas mueve la llegada media (entre 0 y 9 minutos, y con dos brigadas en EOSA no la mejora) y gana menos de un minuto de TIEPI al año (0,54 como máximo, en Pitarch en 2024): con dos brigadas, la base fija óptima ya cubre bien las dos mitades de cada red. El valor de la víspera no está en mover furgonetas, está en tener gente y material preparados los días que toca, y en la franja horaria en la que toca (el 84 % de las incidencias de los días de alerta de 2024 - 2026 empiezan dentro de la franja del pico de racha, y el 64 % de las incidencias empiezan fuera del horario laboral).
+- Casi tres de cada cuatro cortes de CT (el 72 %) duran menos de 15 minutos, la mediana son 8: los repone el reenganche o el telemando antes de que ninguna brigada pueda llegar. Solo entre el 2 % y el 10 % de los cortes duran más que la llegada de la brigada, pero son los largos: en la Distribuidora 1, el 14 - 27 % de las horas-cliente de 2024 y, con el incendio, el 73 - 80 % de las de 2025. Son esos los que la brigada puede acortar.
+- Cambiar las bases según el riesgo del día apenas mueve la llegada media (entre 0 y 9 minutos, y con dos brigadas en la Distribuidora 1 no la mejora) y gana menos de un minuto de TIEPI al año (0,54 como máximo, en la Distribuidora 2 en 2024): con dos brigadas, la base fija óptima ya cubre bien las dos mitades de cada red. El valor de la víspera no está en mover furgonetas, está en tener gente y material preparados los días que toca, y en la franja horaria en la que toca (el 84 % de las incidencias de los días de alerta de 2024 - 2026 empiezan dentro de la franja del pico de racha, y el 64 % de las incidencias empiezan fuera del horario laboral).
 - Lo que sí acorta las horas-cliente en estas redes es el telemando: los cortes que esperan a la brigada son pocos pero largos. El ranking anual de CT y cabeceras ([network-analysis.md](network-analysis.md)) dice dónde ponerlo.
 
 ## 4. Cuánto vale
 
-Las distribuidoras no facturan al cliente: cobran la retribución regulada que fija la CNMC. La de 2022, publicada en la resolución de la CNMC de 6 de noviembre de 2025, fue de 11.821.045 euros para Eléctrica del Oeste Distribución (R1-035), 10.541.790 para Eléctricas Pitarch Distribución (R1-049) y 206.434 para Distribución de Electricidad Valle de Santa Ana (R1-164). La Circular 8/2025 de la CNMC, que fija la metodología de 2026 a 2031, liga parte de esa retribución a la calidad: su artículo 24 establece un incentivo a la mejora de la calidad de suministro calculado sobre el TIEPI de los años n-4 a n-2 frente a una referencia sectorial, con límites que la CNMC fija al principio de cada periodo, y el artículo 25 da la fórmula; el artículo 15 permite reconocer, con cargo a los costes de distribución, inversiones en proyectos piloto con beneficio cuantificable, incluidos los de adaptación de la red al cambio climático. Con la retribución de EOSA, cada décima de punto son 11.800 euros al año; la licencia del sistema (18.000 euros al año según el plan de negocio) equivale al 0,15 % de su retribución y al 0,17 % de la de Pitarch. La referencia sectorial existe y es pública: el Ministerio publica en GECOS el TIEPI oficial por tipo de zona de todo el sector, y con ella EOSA y Pitarch están hoy muy por debajo de su zona (en rural concentrada, 0,38 y 0,20 h de TIEPI imprevisto en 2023-2025 frente a 1,06 h en Cáceres y 1,67 h en España en 2019-2021, los últimos años publicados; apartado 2 de [network-analysis.md](network-analysis.md) y la sección "Dónde está cada red frente al sector" de `negocio.html`). El argumento para una distribuidora así no es salir del castigo, es no perder la bonificación el año del temporal.
+Las distribuidoras no facturan al cliente: cobran la retribución regulada que fija la CNMC. La de 2022, publicada en la resolución de la CNMC de 6 de noviembre de 2025, fue de 11.821.045 euros para la Distribuidora 1, 10.541.790 para la Distribuidora 2 y 206.434 para la Distribuidora 3. La Circular 8/2025 de la CNMC, que fija la metodología de 2026 a 2031, liga parte de esa retribución a la calidad: su artículo 24 establece un incentivo a la mejora de la calidad de suministro calculado sobre el TIEPI de los años n-4 a n-2 frente a una referencia sectorial, con límites que la CNMC fija al principio de cada periodo, y el artículo 25 da la fórmula; el artículo 15 permite reconocer, con cargo a los costes de distribución, inversiones en proyectos piloto con beneficio cuantificable, incluidos los de adaptación de la red al cambio climático. Con la retribución de la Distribuidora 1, cada décima de punto son 11.800 euros al año; la licencia del sistema (18.000 euros al año según el plan de negocio) equivale al 0,15 % de su retribución y al 0,17 % de la de la Distribuidora 2. La referencia sectorial existe y es pública: el Ministerio publica en GECOS el TIEPI oficial por tipo de zona de todo el sector, y con ella la Distribuidora 1 y la Distribuidora 2 están hoy muy por debajo de su zona (en rural concentrada, 0,38 y 0,20 h de TIEPI imprevisto en 2023-2025 frente a 1,06 h en Cáceres y 1,67 h en España en 2019-2021, los últimos años publicados; apartado 2 de [network-analysis.md](network-analysis.md) y la sección "Dónde está cada red frente al sector" de `negocio.html`). El argumento para una distribuidora así no es salir del castigo, es no perder la bonificación el año del temporal.
 
 Lo que el sistema aporta a esa cuenta, con los números de arriba:
 
-- Dónde está el TIEPI de causas locales: en EOSA, entre 16 y 35 minutos al año en los CT en estudio (2022 - 2025); en Pitarch, entre 5 y 19. Los días en alerta concentran más de la mitad. Es el TIEPI sobre el que actúan las brigadas y el telemando; el de aguas arriba y el apagón del 28.04.2025 (12.228 horas de CT, más que todas las causas locales de cuatro años juntas) no dependen de la distribuidora.
+- Dónde está el TIEPI de causas locales: en la Distribuidora 1, entre 16 y 35 minutos al año en los CT en estudio (2022 - 2025); en la Distribuidora 2, entre 5 y 19. Los días en alerta concentran más de la mitad. Es el TIEPI sobre el que actúan las brigadas y el telemando; el de aguas arriba y el apagón del 28.04.2025 (12.228 horas de CT, más que todas las causas locales de cuatro años juntas) no dependen de la distribuidora.
 - La guardia: en lugar de reforzar la guardia todos los fines de semana de invierno, reforzarla los 40 - 55 días de alerta al año (o los 50 de "alerta o aviso de viento o tormenta", la política que más cubre por día gastado), durante la franja de 12 - 14 horas que marca el sistema, con las bases y los municipios que cubre cada una. Son unas 500 - 750 horas de franja al año por distribuidora.
 - Las compensaciones a los clientes del Real Decreto 1955/2000 (descuentos cuando se superan los límites individuales de calidad) y el coste reputacional de un corte largo caen sobre los mismos días: los 20 peores días de 2024 - 2025 suman el 73 % de las horas-cliente y 12 estaban en alerta la víspera.
 

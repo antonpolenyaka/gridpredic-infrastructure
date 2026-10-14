@@ -61,7 +61,7 @@ Silver deja una sola versión válida de cada registro y marca lo dudoso. Gold e
 
 Ese conocimiento sale de los cortes y por eso tiene fecha. Antes del primer corte de un par nadie sabía que esa cabecera alimentaba al CT, y un CT que solo se corta una vez, en el período de test, llevaría ese corte futuro en todas sus horas anteriores (sus medidas aguas arriba y el número de posiciones dirían "este CT se va a cortar"). Por eso cada par guarda `primer_conocido_ts`, la llegada al SCADA de su primer corte, y las features solo usan el par a partir de ese momento. `n_posiciones_aguas_arriba` de `dim_ct` cuenta las posiciones de todo el histórico y solo describe la dimensión; la feature es `aa_n_posiciones`, las posiciones conocidas en cada hora.
 
-**Potencia del CT.** En Calser `CT_POTENCIA_INSTAL` es 0 en el 37 % de los CT de EOSA y en el 48 % de los de Pitarch. Gold usa la potencia instalada si es mayor que 0, si no la administrativa (como hace Calser) y, si tampoco hay, la potencia nominal del trafo en TedisNet (`RatedPower`). `potencia_fuente` dice de dónde sale y `potencia_imputada` lo marca.
+**Potencia del CT.** En Calser `CT_POTENCIA_INSTAL` es 0 en el 37 % de los CT de la Distribuidora 1 y en el 48 % de los de la Distribuidora 2. Gold usa la potencia instalada si es mayor que 0, si no la administrativa (como hace Calser) y, si tampoco hay, la potencia nominal del trafo en TedisNet (`RatedPower`). `potencia_fuente` dice de dónde sale y `potencia_imputada` lo marca.
 
 **Qué CT entran en el estudio.** Los que tienen trafo en TedisNet y además son observables: `IsPowerCut = 1` y nodo en `SystemNodes`. Un trafo que no cumple las dos cosas nunca puede aparecer como cortado en el SCADA, así que sus horas sin corte no significarían nada. El parámetro `ct.solo_observables` permite relajarlo.
 
@@ -76,7 +76,7 @@ Una fila por evento de interrupción de un CT, en tres variantes:
 | Variante | Qué entra | Para qué |
 | --- | --- | --- |
 | `principal` | Incidencia `CL_IMPRE`, factor distinto de `FA_CLIEN`, `INT_DURACION > 180` y nivel CT. Son los filtros con los que Calser calcula el TIEPI (`ZonaCalculateIndexValues.cs`). Un factor NULL no pasa, igual que en el SQL de Calser | Es el target del TFM |
-| `amplia` | La principal más las interrupciones de CT de más de 180 s sin incidencia válida (26 - 28 % en EOSA y Pitarch) | Medir cuánto cambia el resultado por ese hueco de etiquetado |
+| `amplia` | La principal más las interrupciones de CT de más de 180 s sin incidencia válida (26 - 28 % en la Distribuidora 1 y la Distribuidora 2) | Medir cuánto cambia el resultado por ese hueco de etiquetado |
 | `todas` | Toda interrupción de CT de más de 180 s, también las programadas | Saber cuándo un CT ya está sin suministro. Nunca es etiqueta |
 
 Cada variante fusiona sus propios solapes. Silver agrupa los solapes sobre todos los registros, pero si fusionáramos con ese grupo dos interrupciones del target podrían acabar unidas a través de una programada que no forma parte de la variante. La regla es `target.fusion_solapes`: `envolvente` (del primer inicio al último fin, la opción por defecto) o `mas_larga`. La duración se winsoriza al percentil 99 por distribuidora en `duracion_winsor_s`, con el percentil calculado solo con los eventos anteriores a `dataset.train_hasta` para que el tope no dependa de valid ni de test, y la original se conserva. La misma interrupción grabada en dos períodos se queda una vez.
@@ -102,7 +102,7 @@ De aquí salen dos cosas: la etiqueta alternativa `y_1_3h_scada` (episodios de m
 | --- | --- |
 | `y_1_3h` | Empieza una interrupción principal en `(hora + 1 h, hora + 3 h]`. Target del TFM |
 | `y_0_1h`, `y_0_3h`, `y_0_6h` | Lo mismo para otros horizontes (`horizontes` en la configuración) |
-| `y_1_3h_local` | Solo interrupciones cuya incidencia afecta a un único CT. En EOSA y Pitarch el 94 % son sistémicas, y esta etiqueta dice si un modelo encuentra el CT y no solo el día malo |
+| `y_1_3h_local` | Solo interrupciones cuya incidencia afecta a un único CT. En la Distribuidora 1 y la Distribuidora 2 el 94 % son sistémicas, y esta etiqueta dice si un modelo encuentra el CT y no solo el día malo |
 | `y_1_3h_amplia` | Con la variante amplia |
 | `y_1_3h_scada` | Con los cortes del SCADA |
 | `en_corte`, `en_corte_calser`, `en_corte_scada` | El CT ya está sin suministro en `hora`. Esas filas no se usan para entrenar |
@@ -119,7 +119,7 @@ Unas 250 columnas en la configuración actual, en estos bloques:
 | Prefijo | Qué mide | Fuente | Ventanas |
 | --- | --- | --- | --- |
 | `med_` | Series de medida del CT: media, máximo, mínimo, desviación, número de muestras y fracción de valores rancios de la última hora, desequilibrio entre tags (fases), media y máximo de 24 h, diferencia con la hora anterior y con la misma hora del día anterior | `agg_medida_hora` (ámbito LOCAL) | 1 h y 24 h |
-| `medaa_` | Lo mismo, más reducido, para las posiciones aguas arriba conocidas en esa hora. En EOSA es donde están las intensidades de cabecera (`AI.INTENSIDAD`, 800 tags con serie), así que es la única medida que puede tener un CT sin RTU | `agg_medida_hora` (ámbito AGUAS_ARRIBA) | 1 h y 24 h |
+| `medaa_` | Lo mismo, más reducido, para las posiciones aguas arriba conocidas en esa hora. En la Distribuidora 1 es donde están las intensidades de cabecera (`AI.INTENSIDAD`, 800 tags con serie), así que es la única medida que puede tener un CT sin RTU | `agg_medida_hora` (ámbito AGUAS_ARRIBA) | 1 h y 24 h |
 | `aa_n_posiciones` | Posiciones cuyos interruptores habían cortado el CT antes de esa hora | `map_aguas_arriba` | histórico |
 | `ev_` | Cambios de valor de cada familia de señales en el CT | `f_tag_value_change` | 1, 6, 24 y 168 h |
 | `evred_` | Lo mismo en el grupo de red del CT | `f_tag_value_change` | 6, 24 y 168 h |
@@ -132,7 +132,7 @@ Unas 250 columnas en la configuración actual, en estos bloques:
 | calendario | Hora del día, día de la semana, mes, fin de semana, festivo y víspera | calculado | |
 | `scada_activo`, `ct_con_datos_1h` | Hay muestras del SCADA de la distribuidora en la última hora; el CT tuvo alguna muestra o cambio | `actividad_scada_hora` | 1 h |
 
-**Familias de señales.** Una familia es una expresión regular sobre el nombre de la clase del tag en `LibTagClasses` (`familias_medida` y `familias_evento` en la configuración; gana la primera que encaja, por eso `DI.DISPARO TEMPORIZADO NEUTRO` es un defecto a tierra antes que un disparo genérico). Las comprobamos contra las 1.122 clases reales de EOSA, que no se parecen al vocabulario del banco de pruebas de Girona: aquí casi no hay THD ni homopolar, y las series que más abundan son `AI.INTENSIDAD` (800 tags), `AI.TENSION` (331) y `AI.INT. FASE L1/L2/L3` (227 cada una). Las familias de evento cubren los defectos a tierra y de fase (unos 3.200 tags entre disparos, arranques y detectores), el paso de falta de los ekorRCI y Nortroll, los reenganches, los seccionalizadores, las faltas de tensión, las posiciones, las comunicaciones (incluido `SYS.Estado Dispositivo`), el mando local, la presencia de personal en el CT y las alarmas de equipo.
+**Familias de señales.** Una familia es una expresión regular sobre el nombre de la clase del tag en `LibTagClasses` (`familias_medida` y `familias_evento` en la configuración; gana la primera que encaja, por eso `DI.DISPARO TEMPORIZADO NEUTRO` es un defecto a tierra antes que un disparo genérico). Las comprobamos contra las 1.122 clases reales de la Distribuidora 1, que no se parecen al vocabulario del banco de pruebas de Girona: aquí casi no hay THD ni homopolar, y las series que más abundan son `AI.INTENSIDAD` (800 tags), `AI.TENSION` (331) y `AI.INT. FASE L1/L2/L3` (227 cada una). Las familias de evento cubren los defectos a tierra y de fase (unos 3.200 tags entre disparos, arranques y detectores), el paso de falta de los ekorRCI y Nortroll, los reenganches, los seccionalizadores, las faltas de tensión, las posiciones, las comunicaciones (incluido `SYS.Estado Dispositivo`), el mando local, la presencia de personal en el CT y las alarmas de equipo.
 
 **Medidas en la misma escala.** Los valores en V, W, VAr o VA se pasan a kV, kW, kVAr y kVA, porque en un mismo CT conviven `AI.TENSION` en kV y `AI.Tension Fase 1` en V.
 
@@ -203,7 +203,7 @@ Los jobs pesados son `agg_medida_hora` (lee la serie de Silver una vez, mes a me
 - **Cambio de hora de octubre.** En la hora que se repite, ordenar por hora local puede poner un On de las 02:10 (CET) delante de un Off de las 02:50 (CEST) y emparejar mal un episodio. Pasa una hora al año y solo si el Off y el On caen en ella: el Off se empareja con un On posterior y el episodio sale mucho más largo de lo real; si pasa de `scada.emparejamiento_max_h` horas queda marcado como `emparejamiento_dudoso`.
 - **El camino eléctrico real.** `map_aguas_arriba` aprende la topología de los cortes. Recorrer el grafo de `SystemNodes` y `SystemBranches` daría también los CT que nunca se han cortado y las cabeceras alternativas.
 - **Meteorología**, cuando esté la ingesta. `dim_ct` ya trae las coordenadas del municipio para cruzarla.
-- **Festivos locales**: el calendario solo tiene los nacionales y los de Extremadura (8 de septiembre y Jueves Santo), porque `LibElectricCalendarDates` tiene 9 filas en EOSA.
-- **Operaciones de anomalía del SCADA** (`LibOperationTypes` 9, 10 y 11): en EOSA solo hay 99 configuradas y no se ingiere `SystemOperations` en Silver.
+- **Festivos locales**: el calendario solo tiene los nacionales y los de Extremadura (8 de septiembre y Jueves Santo), porque `LibElectricCalendarDates` tiene 9 filas en la Distribuidora 1.
+- **Operaciones de anomalía del SCADA** (`LibOperationTypes` 9, 10 y 11): en la Distribuidora 1 solo hay 99 configuradas y no se ingiere `SystemOperations` en Silver.
 - **TIEPI y NIEPI por municipio** para validar el pipeline contra `calculos_anual_resumen` de Calser.
 - **Serving**: features en streaming con las mismas funciones, `predicciones_ct_hora` y `alertas` (pasos 21 a 23 del diseño), que llegan con el modelo.

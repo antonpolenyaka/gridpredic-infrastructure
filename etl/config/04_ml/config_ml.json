@@ -464,7 +464,7 @@
     "niveles": {"muy alto": 0.95, "alto": 0.9, "medio": 0.75},
     "motivos": 3,
     "zonas": 3,
-    "nombres": {"3": "EOSA", "2": "Pitarch", "1366": "Valle de Santa Ana"},
+    "nombres": {"3": "Distribuidora 1", "2": "Distribuidora 2", "1366": "Distribuidora 3"},
     "tabla_zonas": "l3_gold.riesgo_zona_siguiente",
     "dashboard_dir": "/app/dashboard/data",
     "riesgo_zonas": {

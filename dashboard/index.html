@@ -636,7 +636,10 @@
   // ?dia=YYYYMMDD shows an archived or replayed day (riesgo_<dia>.json, with its ensemble and AEMET files when they exist).
   const DIA = (new URLSearchParams(location.search).get("dia") || "").replace(/[^0-9]/g, "").slice(0, 8);
   const RIESGO = DIA.length === 8 ? `data/riesgo_${DIA}.json` : "data/riesgo.json";
-  fetch(RIESGO, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(render)
+  // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
+  function ordenar(lista) { return (lista || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { numeric: true })); }
+  fetch(RIESGO, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then((data) => { data.distribuidoras = ordenar(data.distribuidoras); if (data.pasado_manana) data.pasado_manana.distribuidoras = ordenar(data.pasado_manana.distribuidoras); return render(data); })
     .catch((e) => { document.getElementById("fuentes").innerHTML = `<div><dt>Estado</dt><dd>No hay datos todavía (${esc(RIESGO)}): ${esc(e)}. La ejecución de las 20:30 deja riesgo.json en data/.</dd></div>`; document.getElementById("meta").open = true; });
 })();
 </script>

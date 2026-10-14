@@ -315,8 +315,12 @@ def test_tiepi_by_factor_matches_hand_calculation(result):
     assert row["tiepi_h"] == pytest.approx(1650.0 / 2600.0)
     assert row["tiepi_incentivo_h"] == pytest.approx(1250.0 / 2600.0)
     # The client incident of Pitarch and the interruption without incident stay out.
-    pit = summary[(summary["distribuidora"] == "Calser_Pitarch") & (summary["anio"] == 2025)]
+    # Distribuidora 2 is shown with the name of riesgo_manana.nombres, never with its database.
+    assert "Calser_Pitarch" not in set(summary["distribuidora"])
+    pit = summary[(summary["distribuidora"] == "Distribuidora 2") & (summary["anio"] == 2025)]
     assert pit.empty or pit.iloc[0]["tiepi_h"] == pytest.approx(0.0)
+    assert set(table.loc[table["distribuidora_id"] == 2, "source_database"]) == {"Calser_Pitarch"}
+    assert set(table.loc[table["distribuidora_id"] == 2, "distribuidora"]) == {"Distribuidora 2"}
     no_incident = table[(table["grupo"] == "sin_incidencia") & (table["anio"] == 2025)]
     assert no_incident["kva_h"].sum() == pytest.approx(800.0)
 

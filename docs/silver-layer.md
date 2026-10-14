@@ -66,7 +66,7 @@ Las tablas `d_` son dimensiones y las `f_` hechos, igual que en `d_elemento`. El
 
 Es lo primero que hay que resolver, porque los códigos de CT se repiten entre distribuidoras y sin ella cualquier cruce es ambiguo.
 
-- **Calser**: cada base de datos declara su distribuidora en `parametros_configuracion`, código `DistributorId`. Ese valor es el `Id` del elemento raíz de la distribuidora en TedisNet (3 EOSA, 2 Pitarch, 1366 Valle de Santa Ana). No es un ordinal: EOSA es la base 1 de los backups pero su id es 3. Si una base Calser tiene filas pero no tiene `DistributorId`, el job se para en vez de seguir con filas sin atribuir.
+- **Calser**: cada base de datos declara su distribuidora en `parametros_configuracion`, código `DistributorId`. Ese valor es el `Id` del elemento raíz de la distribuidora en TedisNet (3 Distribuidora 1, 2 Distribuidora 2, 1366 Distribuidora 3). No es un ordinal: la Distribuidora 1 es la base 1 de los backups pero su id es 3. Si una base Calser tiene filas pero no tiene `DistributorId`, el job se para en vez de seguir con filas sin atribuir.
 - **TedisNet**: `d_elemento` sube por `ParentElementId` hasta un elemento de tipo 115. Los elementos de Iberdrola (raíz 6005) quedan con estado `DISTRIBUIDORA_SIN_CALSER`: son el punto frontera y pueden ser una feature, así que no se borran. Tags, cortes y valores heredan la distribuidora de su elemento.
 
 ## 4. Calser (etiquetas)
@@ -84,14 +84,14 @@ Las columnas de fecha y hora que Calser guarda por separado se juntan en un úni
 | Fin anterior al inicio o duración negativa | rechazo `INVALID_INTERVAL` | Calser solo valida esto al guardar; si aparece es un error |
 | CT que no existe en `d_ct` en ese período | rechazo `ORPHAN_FK` | |
 | PK repetida | rechazo `DUPLICATE_ID` | |
-| Misma fila grabada dos veces | rechazo `DUPLICATE_NATURAL_KEY` | 984 filas en EOSA y 1.952 en Pitarch |
-| Solape con otra interrupción del mismo CT | flag `en_solape` + `grupo_solape_id` | 1.605 pares en EOSA y 2.388 en Pitarch |
+| Misma fila grabada dos veces | rechazo `DUPLICATE_NATURAL_KEY` | 984 filas en la Distribuidora 1 y 1.952 en la Distribuidora 2 |
+| Solape con otra interrupción del mismo CT | flag `en_solape` + `grupo_solape_id` | 1.605 pares en la Distribuidora 1 y 2.388 en la Distribuidora 2 |
 | Duración 0 | flag `duracion_cero` | 815 y 1.255 filas |
 | Duración entre 1 y 180 s | flag `es_microcorte` | mismo umbral que `MinimalDurationImportInterruptions` |
 | Duración mayor de 7 días | flag `duracion_extrema` | no se winsoriza aquí |
 | `INT_DURACION` no cuadra con fin - inicio (más de 60 s) | flag `duracion_incoherente` | |
 | Sin fecha de fin | flag `sin_fin` | |
-| Sin incidencia | flag `sin_incidencia` | 26 - 28 % en EOSA y Pitarch, asociación manual en Calser |
+| Sin incidencia | flag `sin_incidencia` | 26 - 28 % en la Distribuidora 1 y la Distribuidora 2, asociación manual en Calser |
 | Incidencia que no existe | flag `incidencia_inexistente` | |
 | Mismo evento en dos períodos | flag `duplicado_otro_periodo` | |
 | Período que no cuadra con el mes del inicio | flag `periodo_incoherente` | |
@@ -110,7 +110,7 @@ Se añade `nivel_afectacion` (ABONADO > ACOMETIDA > SALIDA > CT), la misma prior
 - `f_incidencia`: flags `es_imprevista` (CL_IMPRE), `es_programada` (CL_PROGR), `es_factor_cliente` (FA_CLIEN), `intervalo_invalido`. `fecha_alta` es leakage.
 - `f_incidencia_ex`: lo que la distribuidora declara a la Junta de Extremadura de cada incidencia: el código de causa (`casuistica`, de 21 fuerza mayor a 36 no subsumible, con su nombre), la instalación donde empezó y la cabecera que la despejó, el nivel de tensión, el tipo de día, el plan de mejora y cómo se detectó (`metodos_recogida`, con `detectada_telecontrol` y `aviso_cliente`). Hasta 2015 casi todas tienen el código 35 (desconocida), que es el valor por defecto; se guarda tal cual. Marca `sin_incidencia` si la incidencia no está en `f_incidencia`.
 - `f_incidencia_causa`: la causa de cada incidencia en dos ejes, `causa`/`subcausa` (el agente: meteorología, fauna, vegetación, incendio, terceros, fallo de equipo por componente, red de baja tensión, instalación del cliente, sobrecarga, red aguas arriba, programada, desconocida o sin causa escrita) y `origen` (aguas arriba, subestación, línea de 45 kV, línea de media tensión, CT, red de baja tensión, instalación particular, cliente). Las reglas están en `causas_incidencia.py`: decide el texto cuando nombra un agente, si no el código oficial y en último lugar el factor; `regla`, `fuente_causa` y `texto_causa` permiten revisar cada caso. Ver [causas-incidencias.md](causas-incidencias.md).
-- `d_ct`: rechaza los CT cuyo municipio no existe en el período. Flags `potencia_cero` (37 % en EOSA, 48 % en Pitarch), `potencia_admin_cero` y `sin_telemetria`. La imputación de la potencia la hace Gold, como la hace Calser.
+- `d_ct`: rechaza los CT cuyo municipio no existe en el período. Flags `potencia_cero` (37 % en la Distribuidora 1, 48 % en la Distribuidora 2), `potencia_admin_cero` y `sin_telemetria`. La imputación de la potencia la hace Gold, como la hace Calser.
 - `d_ct_scada`: una fila por (distribuidora, CT) con su trafo en TedisNet. La clave que verificamos es `CT_ID` = `SystemElements.ShortName` de un elemento de tipo 145 (TRAFO CT) de la misma distribuidora, comparando como texto y respetando mayúsculas. Añade `tiene_nodo`: un trafo sin nodo en `SystemNodes` nunca entra en el flood fill y no puede aparecer como cortado. Si hay dos trafos con el mismo nombre se marca `mapeo_ambiguo`. Desde octubre de 2026 trae también los datos eléctricos del trafo (`SystemElectricElectricalTransformers`): `is_power_cut`, `potencia_nominal_kva`, tensiones y `ucc_pct`, y el flag `observable` (nodo e `IsPowerCut = 1` a la vez). La potencia nominal es la segunda fuente para los CT con potencia 0 en Calser.
 - `d_salida`: el ejemplo de Josep completado con distribuidora, textos limpios, deduplicación y comprobación de que el CT existe en el período.
 - `d_municipio`: añade `latitud` y `longitud` del fichero de referencia de municipios (`l1_bronze.reference_municipios`) cruzando por código INE. Gold las necesita para la meteorología. Si la referencia no está cargada quedan nulas y se marca `sin_coordenadas`.
@@ -165,7 +165,7 @@ Y el volumen. El job no trata nunca la tabla entera:
 
 ### `d_tag`
 
-Rechaza los tags cuyo elemento o dispositivo no existe: es una clave rota. Un tag sin elemento no lo es, porque `ElementId` admite NULL en TedisNet, y en EOSA hay unos 14.700, entre ellos 1.134 tags `SYS` con el estado de conexión de los dispositivos, que son la base de las features de fallo de comunicaciones. Esos tags se conservan con el flag `sin_elemento` y su distribuidora sale del dispositivo (la que tienen la mayoría de los tags del mismo dispositivo con elemento); `distribuidora_origen` dice de dónde viene. Gold los asocia al CT a través del dispositivo. Añade también el nombre de la clase (`AI.INTENSIDAD`, `DI.DEFECTO DE TIERRA`, `ES.1 POSICIÓN`...) y `tiene_serie`: solo unos 4.000 de los 78.000 tags tienen `StoreInterval` y serie regular.
+Rechaza los tags cuyo elemento o dispositivo no existe: es una clave rota. Un tag sin elemento no lo es, porque `ElementId` admite NULL en TedisNet, y en la Distribuidora 1 hay unos 14.700, entre ellos 1.134 tags `SYS` con el estado de conexión de los dispositivos, que son la base de las features de fallo de comunicaciones. Esos tags se conservan con el flag `sin_elemento` y su distribuidora sale del dispositivo (la que tienen la mayoría de los tags del mismo dispositivo con elemento); `distribuidora_origen` dice de dónde viene. Gold los asocia al CT a través del dispositivo. Añade también el nombre de la clase (`AI.INTENSIDAD`, `DI.DEFECTO DE TIERRA`, `ES.1 POSICIÓN`...) y `tiene_serie`: solo unos 4.000 de los 78.000 tags tienen `StoreInterval` y serie regular.
 
 ### `f_corte_evento` y `f_corte_elemento`
 
@@ -177,13 +177,13 @@ TedisNet no mide el corte, lo deduce por topología, y eso deja rastros que hay 
 - `CutStateId = 3` es un error de comunicaciones, no un corte: flag `es_error_comm`.
 - `IsCommand` siempre llega a `false`. Un corte se marca como maniobra (`es_maniobra`) cuando su cambio de tag es el de una ejecución de mando (`f_command_execution`, que guarda solo el estado final de cada mando).
 - `ElectricalElementType` no está validado en origen (aparecen valores que en realidad son `ElementTypeId`). Fuera de 1 - 4 se pone a NULL y se marca `tipo_electrico_invalido`.
-- Hay eventos con una hora imposible. En EOSA aparecen On fechados el 13.09.2026, un mes después del backup, que Calser procesó el 29.01.2026: la hora viene del equipo de campo y un reloj mal puesto acaba aquí. Un evento posterior a su propio procesado (con 10 minutos de margen) se marca `ts_incoherente` y Gold lo deja fuera.
+- Hay eventos con una hora imposible. En la Distribuidora 1 aparecen On fechados el 13.09.2026, un mes después del backup, que Calser procesó el 29.01.2026: la hora viene del equipo de campo y un reloj mal puesto acaba aquí. Un evento posterior a su propio procesado (con 10 minutos de margen) se marca `ts_incoherente` y Gold lo deja fuera.
 - `ProcessedTimestamp` no es el momento en que el SCADA conoció el corte: lo marca el consumidor que lee el evento (Calser, por la API de exportación). La llegada del corte al SCADA es el `UpdateTimestamp` del cambio de tag que lo provocó, que se lee de Bronze (así no se pierde si `f_tag_value_change` rechazó ese cambio) y se guarda en `ts_actualizacion`. `llegada_tardia` marca los eventos que llegaron más de una hora después de su hora de campo.
 - Cada fila de `f_corte_elemento` lleva el instante, la llegada y el estado del evento, `ct_id` cuando el elemento es un TRAFO CT y `tiene_nodo`. Gold empareja Off y On por elemento sin tener que volver a cruzar con los eventos.
 
 ### `f_evento`
 
-Un evento solo es un puntero a un cambio de tag. Si el cambio no sobrevivió a `f_tag_value_change`, el evento se rechaza. Se le añade el nivel (`LibTagClass_EnumValues_EventLevels`, por clase del tag y valor) y su severidad (`nivel_severidad`, la columna `Level` de `LibEventLevels`: 1 normal, 2 aviso, 3 alarma), porque los identificadores de nivel son propios de cada instalación (EOSA tiene también 100 - 103 con colores).
+Un evento solo es un puntero a un cambio de tag. Si el cambio no sobrevivió a `f_tag_value_change`, el evento se rechaza. Se le añade el nivel (`LibTagClass_EnumValues_EventLevels`, por clase del tag y valor) y su severidad (`nivel_severidad`, la columna `Level` de `LibEventLevels`: 1 normal, 2 aviso, 3 alarma), porque los identificadores de nivel son propios de cada instalación (la Distribuidora 1 tiene también 100 - 103 con colores).
 
 ## 6. Métricas de calidad y control final
 
