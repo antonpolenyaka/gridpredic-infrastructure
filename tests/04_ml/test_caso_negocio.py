@@ -70,7 +70,7 @@ def test_detection_and_false_alarms_of_the_policies():
         "probabilidad": [0.9, 0.8, 0.7, 0.6] + [0.05] * 16, "alerta": [True] * 4 + [False] * 16,
         "incidencias": [2, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         "clientes_hora_recortadas": [500.0, 100.0, 0, 0, 50.0] + [0.0] * 15, "clientes_hora": [500.0, 100.0, 0, 0, 50.0] + [0.0] * 15,
-        "aviso_max_nivel": [2, 0, 1, 0, 0] + [0] * 15, "aviso_viento_nivel": [2] + [0] * 19,
+        "aviso_max_nivel": [2, 0, 1, 0, 0] + [0] * 15, "aviso_viento_nivel": [2] + [0] * 19, "aviso_tormenta_nivel": [0, 0, 1] + [0] * 17,
     })
     table = cn.detection_table(days).set_index("política")
     alert = table.loc["GridPredict en alerta (alto o muy alto)"]
@@ -78,6 +78,8 @@ def test_detection_and_false_alarms_of_the_policies():
     assert alert["detección: día con alguna incidencia"] == pytest.approx(2 / 3, abs=0.01)
     assert alert["falsas alarmas: día con alguna incidencia"] == pytest.approx(2 / 17, abs=0.001)
     assert alert["detección: día con dos incidencias o más"] == 1.0 and alert["parte de días marcados"] == 0.2
+    both = table.loc["aviso de AEMET de viento o tormenta, amarillo o más"]
+    assert both["parte de días marcados"] == 0.1 and both["detección: día con alguna incidencia"] == pytest.approx(1 / 3, abs=0.01)
     orange = table.loc["aviso de AEMET naranja o rojo"]
     assert orange["detección: día con alguna incidencia"] == pytest.approx(1 / 3, abs=0.01) and orange["falsas alarmas: día con alguna incidencia"] == 0.0
     assert table.attrs["positivos"]["los 10 peores días del año por horas-cliente"] == 3
@@ -109,7 +111,7 @@ def test_the_summary_the_files_and_the_history(replayed, spark, workdir):
     assert [d["id"] for d in history["distribuidoras"]] == [1, 2]
     first_days = history["distribuidoras"][0]["dias"]["prevision"]
     days = spark.table("l3_gold.caso_negocio_dia").toPandas()
-    assert "aviso_max_nivel" in days.columns and {"a", "av"} <= set(first_days[0])
+    assert "aviso_max_nivel" in days.columns and {"a", "av", "at"} <= set(first_days[0])
     assert len(first_days) > 700 and {"f", "n", "p", "i", "ch", "chr", "c", "m", "b"} <= set(first_days[0])
     assert all(d["chr"] <= d["ch"] for d in first_days)
     assert any(d["b"] for d in first_days if d["n"] in ("alto", "muy alto"))
