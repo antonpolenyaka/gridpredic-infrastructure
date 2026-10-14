@@ -52,6 +52,8 @@ async def capture(base: str, out: str, width: int, theme: str, days: list = None
         page = await context.new_page()
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
+        # The menu is sticky on screen; in a figure of one block it would cover its title.
+        await context.add_init_script("document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = 'nav.menu { position: static !important; }'; document.head.appendChild(s); });")
 
         async def shot(element, name):
             path = os.path.join(out, name + ".png")
