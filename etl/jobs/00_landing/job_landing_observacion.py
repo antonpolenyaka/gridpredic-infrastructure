@@ -270,6 +270,11 @@ def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: 
             rec["banda_p10"], rec["banda_p50"], rec["banda_p90"] = band["p10"], band.get("p50"), band["p90"]
             if "racha_observada_max" in rec:
                 rec["pico_en_banda"] = bool(band["p10"] <= rec["racha_observada_max"] <= band["p90"])
+        above = (bands.get(str(dist.get("id"))) or {}).get("supera") or {}
+        if above and "racha_observada_max" in rec:
+            # The chance of every threshold that the runs gave, and whether the stations passed it: the calibration of the ensemble.
+            rec["supera"] = {k: float(v) for k, v in above.items()}
+            rec["supero"] = {k: bool(rec["racha_observada_max"] >= float(k)) for k in above}
         out.append(rec)
     return out
 
@@ -294,6 +299,15 @@ def verification_summary(days: dict, minimum_hours: int) -> list:
         if "pico_en_banda" in g.columns and g["pico_en_banda"].notna().any():
             block["dias_con_banda"] = int(g["pico_en_banda"].notna().sum())
             block["pico_en_banda"] = round(float(g["pico_en_banda"].dropna().astype(bool).mean()), 2)
+        if "supera" in g.columns and g["supera"].notna().any():
+            thresholds = {}
+            for r in g.itertuples():
+                if isinstance(r.supera, dict) and isinstance(getattr(r, "supero", None), dict):
+                    for k, prob in r.supera.items():
+                        thresholds.setdefault(k, []).append((float(prob), 1.0 if r.supero.get(k) else 0.0))
+            block["umbrales"] = {k: {"dias": len(v), "probabilidad_media": round(float(np.mean([p for p, _ in v])), 2),
+                                     "parte_superada": round(float(np.mean([o for _, o in v])), 2),
+                                     "brier": round(float(np.mean([(p - o) ** 2 for p, o in v])), 3)} for k, v in thresholds.items() if v}
         if "error_aemet_kmh" in g.columns and g["error_aemet_kmh"].notna().any():
             e2 = g["error_aemet_kmh"].dropna()
             block["dias_con_aemet"] = int(len(e2))
@@ -305,7 +319,9 @@ def verification_summary(days: dict, minimum_hours: int) -> list:
                           + (f"; el pico observado cayó en la franja prevista el {100 * block['pico_en_franja']:.0f} % de los días" if "pico_en_franja" in block else "")
                           + (f"; dentro de la banda de los escenarios el {100 * block['pico_en_banda']:.0f} % de los {block['dias_con_banda']} días con banda" if "pico_en_banda" in block else "")
                           + (f"; AEMET por municipios dio de media {abs(block['sesgo_aemet_kmh']):g} km/h {'más' if block['sesgo_aemet_kmh'] < 0 else 'menos'} "
-                             f"que las estaciones (error medio {block['error_abs_aemet_kmh']:g} km/h en {block['dias_con_aemet']} días)" if "sesgo_aemet_kmh" in block else ""))
+                             f"que las estaciones (error medio {block['error_abs_aemet_kmh']:g} km/h en {block['dias_con_aemet']} días)" if "sesgo_aemet_kmh" in block else "")
+                          + ("; " + ", ".join(f"los escenarios daban un {100 * u['probabilidad_media']:.0f} % de superar {float(k):g} km/h y pasó el {100 * u['parte_superada']:.0f} % de los días"
+                                              for k, u in block["umbrales"].items()) if block.get("umbrales") else ""))
         out.append(block)
     return out
 
