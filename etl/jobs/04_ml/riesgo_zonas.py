@@ -598,8 +598,10 @@ def shift_sheets(payload: dict) -> dict:
     summary, lines, munis, cts, crews, curve = [], [], [], [], [], []
     for d in dists:
         imp, fr, plan = d.get("impacto") or {}, d.get("franja") or {}, d.get("brigadas") or {}
+        guard = d.get("guardia") or {}
         summary.append({
             "distribuidora": d.get("nombre"), "nivel": d.get("nivel"), "probabilidad": d.get("probabilidad"),
+            "guardia": ("reforzar: " + str(guard.get("motivo", ""))) if guard.get("reforzar") else "normal",
             "veces la tasa base": d.get("veces_tasa_base"), "averías esperadas": d.get("esperadas"),
             "CT esperados sin luz": imp.get("ct_esperados"), "clientes esperados sin luz": imp.get("clientes_esperados"),
             "kVA esperados": imp.get("kva_esperados"), "franja de más riesgo": fr.get("texto"),

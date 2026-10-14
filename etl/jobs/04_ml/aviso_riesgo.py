@@ -38,12 +38,14 @@ def reached(level: str, minimum: str) -> bool:
 def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) -> str:
     """
     The text of the evening from riesgo.json of the dashboard: one line per
-    distribuidora in alert with the level, the probability, the expected
+    distribuidora in alert, or whose guard is reinforced by a wind or
+    thunderstorm warning of AEMET, with the level, the probability, the expected
     incidents and customers, the window, the zones of most risk, the bases
     of the crews and, with ensemble.json of the same day, the spread of the
     runs; empty when no distribuidora reaches minimum.
     """
-    blocks = [d for d in payload.get("distribuidoras", []) if reached(d.get("nivel", "bajo"), minimum)]
+    blocks = [d for d in payload.get("distribuidoras", [])
+              if reached(d.get("nivel", "bajo"), minimum) or (d.get("guardia") or {}).get("reforzar")]
     if not blocks:
         return ""
     bands = {str(b.get("id")): b for b in (ensemble or {}).get("distribuidoras", [])} if (ensemble or {}).get("fecha") == payload.get("fecha") else {}
@@ -54,6 +56,9 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         line = (f"- {d.get('nombre')}: {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %, "
                 f"{float(d.get('veces_tasa_base') or 0):.1f} veces su tasa base); averías esperadas {float(d.get('esperadas') or 0):.1f}, "
                 f"clientes esperados sin luz {float(imp.get('clientes_esperados') or 0):.0f}")
+        guard = d.get("guardia") or {}
+        if guard.get("reforzar"):
+            line += f"; guardia reforzada ({guard.get('motivo', '')})"
         if fr.get("inicio") is not None:
             line += f"; franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00 (pico {float(fr.get('racha_pico') or 0):.0f} km/h)"
         if zones:

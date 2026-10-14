@@ -65,6 +65,7 @@
   details.cts p.notas { max-width: 60ch; }
   .rayos { margin: 8px 0 4px; padding: 8px 10px; border-radius: 6px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
   .vejez { margin: 12px 24px 0; border-color: #e0772f; background: rgba(224, 119, 47, 0.12); }
+  .nivel.guardia-pill { background: var(--accent); }
   .rayos.tormenta { border-color: #e3b53a; background: color-mix(in srgb, #e3b53a 18%, var(--panel)); }
   .rayos.cerca { border-color: #e3b53a; }
   .rayos b { font-weight: 600; }
@@ -552,7 +553,8 @@
       sec.className = "dist";
       sec.id = "dist-" + idx;
       const imp = d.impacto || {}, fr = d.franja || {};
-      sec.innerHTML = `<h2>${esc(d.nombre)} ${nivelPill(d.nivel)} <span class="notas">${esc(d.motivos || "")}</span></h2>
+      const guardia = d.guardia && d.guardia.reforzar ? `<span class="nivel guardia-pill" title="${esc(d.guardia.motivo || "")}">guardia reforzada</span>` : "";
+      sec.innerHTML = `<h2>${esc(d.nombre)} ${nivelPill(d.nivel)} ${guardia} <span class="notas">${esc(d.motivos || "")}</span>${d.guardia && d.guardia.reforzar ? `<span class="notas"> · guardia: ${esc(d.guardia.motivo || "")}</span>` : ""}</h2>
         <div class="cols">
           <div>
             <div class="cifras">

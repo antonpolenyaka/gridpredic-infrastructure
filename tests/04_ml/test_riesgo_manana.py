@@ -498,6 +498,10 @@ def test_the_storm_with_a_warning_is_the_riskiest_day(first):
     assert storm["zonas"].startswith("Montánchez (105 km/h")
     assert storm["racha_max_kmh"] == 105.0 and storm["aviso_max_nivel"] == 2.0 and calm["aviso_max_nivel"] == 0.0
     assert storm["lluvia_mm"] == pytest.approx(24.0)
+    # The guard: reinforced by the level and by the wind warning on the storm; normal on the calm day.
+    assert storm["guardia_reforzada"] and "aviso de viento de AEMET (naranja)" in storm["guardia_motivo"]
+    assert not calm["guardia_reforzada"] and calm["guardia_motivo"] == "normal"
+    assert storm["aviso_viento_nivel"] == 2.0 and calm["aviso_tormenta_nivel"] == 0.0
     assert rows["avisos_disponibles"].all() and rows["historia_al_dia"].all()
     assert (rows["cobertura_prevision"] == 1.0).all()
     assert str(storm["calser_hasta"]) == "2026-01-13"
