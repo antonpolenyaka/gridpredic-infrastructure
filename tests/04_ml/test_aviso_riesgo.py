@@ -166,8 +166,10 @@ def test_the_morning_report_tells_yesterday_and_today_once_a_day(monkeypatch, tm
                            "medido 81 km/h a las 17 h (fuera de la franja, fuera de la banda de los escenarios, aviso de AEMET de nivel 1).")
     assert "Hoy 15.10.2026: EOSA MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h; Pitarch BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h." in text
     assert text.endswith("http://localhost:8086")
-    # Without the risk of today, the block hoy of the verification; without anything, no message.
+    # Without the risk of today, the block hoy of the verification; with the date of today, a warning; without anything, no message.
     assert "Hoy 15.10.2026: Pitarch BAJO (3 %)." in av.morning_message(verification, {"fecha": "2026-10-14"})
+    assert "Atención: no hay riesgo calculado para hoy (el último es del 14.10.2026)" in av.morning_message(verification, {"fecha": "2026-10-14"}, "2026-10-15")
+    assert "Atención" not in av.morning_message(verification, risk, "2026-10-15")
     assert av.morning_message({}, {}) == ""
     folder = tmp_path
     (folder / "verificacion.json").write_text(json.dumps(verification), encoding="utf-8")
