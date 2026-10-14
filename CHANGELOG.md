@@ -21,6 +21,7 @@ El sector como referencia, el cuaderno de las pruebas y la primera prueba descar
 
 ### Decidido
 
+- El umbral de alerta sigue siendo el mismo todo el año: repartir las alertas por estación o por mes con la misma parte de días (`experimentos/umbral_estacion/analizar.py`) gana un punto de horas-cliente y ninguna incidencia; el modelo ya está calibrado por estación (verano 3,7 % previsto y 3,4 % real; invierno 4,6 % y 4,6 %).
 - La humedad del suelo (0-7 y 7-28 cm y su anomalía), la lluvia acumulada de 7 y 30 días, el factor de racha y las horas por encima del percentil 90 local no entran en el modelo del día: con 3.348 días y 143 con incidencia ninguna mejora el AUC rodante (0,685 sola; de 0,659 a 0,685 con ellas) ni el Brier, y los contrastes van en la dirección de la literatura pero sin significación (suelo húmedo frente a seco en los días de más viento: 18,0 % frente a 12,2 %, Fisher p = 0,48). Queda escrito para volver a probarlo con más años.
 
 ## [0.14.0] - sin publicar
