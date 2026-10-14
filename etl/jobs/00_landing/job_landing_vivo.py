@@ -17,28 +17,41 @@ config_ml.json.
   (avisos_cap/ultimoelaborado), as AEMET gives them (a tar of CAP messages).
   It needs the free key of opendata.aemet.es in the environment variable
   clave_env, which goes in a header and is never written in the log.
+- ensemble: the ensemble forecast (ICON-EU EPS, 40 perturbed runs, from the
+  Open-Meteo Ensemble API, free, no key) of the gusts of a few points of every
+  network (ensemble.puntos), hourly, for the day to predict. The deterministic
+  run says one gust; the members say how sure it is. Besides the raw answers,
+  it writes ensemble.json for the dashboard (dashboard_dir): per
+  distribuidora and hour the p10, p50 and p90 of the gust over its points,
+  the peak of the day and the share of members above every threshold of
+  ensemble.umbrales_kmh, with a sentence for the page.
 
-Everything goes to <landing>/<day to predict, YYYYMMDD>/prevision/<cell>.json
-and avisos/<area>.tar (avisos/<area>.vacio.json when AEMET has none), so the
-scoring job reads exactly what was known that evening. A source that is
-already there for the day is asked again (the forecast changes during the
-day): the last run of the evening wins.
+Everything goes to <landing>/<day to predict, YYYYMMDD>/prevision/<cell>.json,
+avisos/<area>.tar (avisos/<area>.vacio.json when AEMET has none) and
+ensemble/<punto>.json, so the scoring job reads exactly what was known that
+evening. A source that is already there for the day is asked again (the
+forecast changes during the day): the last run of the evening wins.
 
 The day to predict is tomorrow in the time zone of the configuration unless
 --fecha gives it.
 
     docker compose exec airflow python /app/jobs/00_landing/job_landing_vivo.py --fuente prevision
     docker compose exec airflow python /app/jobs/00_landing/job_landing_vivo.py --fuente avisos
+    docker compose exec airflow python /app/jobs/00_landing/job_landing_vivo.py --fuente ensemble
 """
 
 import argparse
 import json
 import logging
 import os
+import re
 import sys
 import time
 import urllib.parse
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -56,7 +69,19 @@ CONFIG_CANDIDATES = [
     "/opt/airflow/config/04_ml/config_ml.json",
     os.path.join(HERE, "..", "..", "config", "04_ml", "config_ml.json"),
 ]
-SOURCES = ("prevision", "avisos")
+SOURCES = ("prevision", "avisos", "ensemble")
+ENSEMBLE_DEFAULTS = {
+    "api": "https://ensemble-api.open-meteo.com/v1/ensemble",
+    "modelos": ["icon_eu", "icon_seamless", "gfs025"],  # tried in this order until one answers
+    "variable": "wind_gusts_10m",
+    "dias_futuros": 3,
+    "umbrales_kmh": [50, 70, 90],
+    "puntos": {},
+    "pausa_s": 0.5,
+    "reintentos": 3,
+    "espera_reintento_s": 20,
+    "timeout_s": 120,
+}
 
 
 def load_config(path: str = None) -> dict:
@@ -191,11 +216,120 @@ def land_warnings(fs, cfg: dict, folder: str) -> tuple:
     return done, failed
 
 
+def ensemble_settings(cfg: dict) -> dict:
+    return {**ENSEMBLE_DEFAULTS, **(cfg.get("ensemble") or {})}
+
+
+def ensemble_url(lat: float, lon: float, ecfg: dict, model: str) -> str:
+    query = {
+        "latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "hourly": ecfg["variable"], "models": model,
+        "forecast_days": int(ecfg["dias_futuros"]), "timezone": "GMT", "timeformat": "unixtime", "wind_speed_unit": "kmh",
+    }
+    return f"{ecfg['api']}?{urllib.parse.urlencode(query, safe=',')}"
+
+
+def members_of(payload: dict, variable: str) -> np.ndarray:
+    """The hourly values of every member as a matrix (members x hours): the control run and the perturbed ones."""
+    hourly = payload.get("hourly") or {}
+    pattern = re.compile(rf"^{re.escape(variable)}(_member\d+)?$")
+    rows = [np.asarray(hourly[k], dtype=float) for k in sorted(hourly) if pattern.match(k)]
+    return np.vstack(rows) if rows else np.empty((0, 0))
+
+
+def ask_ensemble(point: dict, ecfg: dict) -> tuple:
+    """(payload, model) of the first model that answers with members for the point."""
+    last = None
+    for model in ecfg["modelos"]:
+        try:
+            raw = fetch(ensemble_url(float(point["lat"]), float(point["lon"]), ecfg, model), retries=int(ecfg["reintentos"]),
+                        wait_s=float(ecfg["espera_reintento_s"]), timeout=float(ecfg["timeout_s"]), label=f"Open-Meteo ensemble {point.get('nombre')}")
+            payload = json.loads(raw.decode("utf-8"))
+            members = members_of(payload, ecfg["variable"])
+            if members.shape[0] < 2 or not payload.get("hourly", {}).get("time"):
+                raise RuntimeError(f"no members in the answer of {model}: {str(payload)[:160]}")
+            return payload, model
+        except Exception as error:  # noqa: BLE001
+            last = error
+            logger.warning("Ensemble %s of %s: %s", model, point.get("nombre"), str(error)[:160])
+    raise RuntimeError(f"no ensemble model answered: {last}")
+
+
+def land_ensemble(fs, cfg: dict, folder: str, day: date) -> tuple:
+    """(points saved, points failed, ensemble.json payload): the members of every point in <folder>/ensemble/<punto>.json."""
+    ecfg = ensemble_settings(cfg)
+    zone = ZoneInfo(cfg.get("zona_horaria", "Europe/Madrid"))
+    names = {str(k): str(v) for k, v in (cfg.get("nombres") or {}).items()}
+    out = {"generado": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "fecha": day.isoformat(), "fuente": "Open-Meteo Ensemble API",
+           "variable": ecfg["variable"], "umbrales_kmh": [float(u) for u in ecfg["umbrales_kmh"]], "distribuidoras": []}
+    done = failed = 0
+    for dist, points in (ecfg.get("puntos") or {}).items():
+        stacks = []
+        for point in points:
+            try:
+                payload, model = ask_ensemble(point, ecfg)
+            except Exception as error:  # noqa: BLE001
+                failed += 1
+                logger.error("Ensemble of %s (%s) not downloaded: %s", point.get("nombre"), dist, str(error)[:200])
+                continue
+            payload["_peticion"] = {"distribuidora_id": dist, "punto": point.get("nombre"), "modelo": model,
+                                    "pedido_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+            key = re.sub(r"[^A-Za-z0-9_-]+", "_", f"{dist}_{point.get('nombre', '')}").strip("_")
+            with fs.open(f"{folder}/ensemble/{key}.json", "w") as file:
+                json.dump(payload, file, ensure_ascii=False)
+            done += 1
+            times = np.asarray(payload["hourly"]["time"], dtype="int64")
+            local = [datetime.fromtimestamp(int(t), tz=timezone.utc).astimezone(zone) for t in times]
+            mask = np.asarray([t.date() == day for t in local])
+            members = members_of(payload, ecfg["variable"])[:, mask]
+            if members.shape[1]:
+                stacks.append((members, [t.hour for t, m in zip(local, mask) if m], point.get("nombre"), model))
+            time.sleep(float(ecfg["pausa_s"]))
+        block = {"id": int(dist) if str(dist).isdigit() else dist, "nombre": names.get(str(dist), str(dist)),
+                 "puntos": [s[2] for s in stacks], "modelo": stacks[0][3] if stacks else None, "miembros": 0, "horas": []}
+        if stacks:
+            hours = stacks[0][1]
+            width = min(s[0].shape[1] for s in stacks)
+            depth = min(s[0].shape[0] for s in stacks)
+            # Per member and hour, the worst of the points: the gust over the network, like racha_max of the profile.
+            network = np.max(np.stack([s[0][:depth, :width] for s in stacks]), axis=0)
+            network = np.where(np.isnan(network), np.nan, network)
+            p10, p50, p90 = np.nanpercentile(network, [10, 50, 90], axis=0)
+            peaks = np.nanmax(network, axis=1)
+            block["miembros"] = int(depth)
+            block["horas"] = [{"hora": int(hours[j]), "p10": round(float(p10[j])), "p50": round(float(p50[j])), "p90": round(float(p90[j]))}
+                              for j in range(width) if not np.isnan(p50[j])]
+            lo, mid, hi = np.nanpercentile(peaks, [10, 50, 90])
+            block["pico"] = {"p10": round(float(lo)), "p50": round(float(mid)), "p90": round(float(hi))}
+            block["supera"] = {f"{float(u):g}": round(float(np.mean(peaks >= float(u))), 2) for u in ecfg["umbrales_kmh"]}
+            above = [u for u in ecfg["umbrales_kmh"] if block["supera"][f"{float(u):g}"] >= 0.5]
+            spread = "escenarios muy de acuerdo" if hi - lo <= 15 else ("escenarios bastante de acuerdo" if hi - lo <= 30 else "escenarios muy repartidos")
+            block["texto"] = (f"{depth} escenarios de {block['modelo']}: el 80 % central da el pico de racha entre {round(float(lo))} y {round(float(hi))} km/h "
+                              f"(mediana {round(float(mid))}); " + ", ".join(f"el {100 * block['supera'][f'{float(u):g}']:.0f} % supera {float(u):g} km/h" for u in ecfg["umbrales_kmh"])
+                              + f"; {spread}" + (f"; más de la mitad supera {float(above[-1]):g} km/h" if above else ""))
+        else:
+            block["texto"] = "sin previsión por conjuntos para el día"
+        out["distribuidoras"].append(block)
+    logger.info("Ensemble: %s points saved, %s failed", done, failed)
+    return done, failed, out
+
+
+def write_ensemble(payload: dict, folder: str) -> bool:
+    if not folder or not os.path.isdir(folder):
+        logger.warning("Dashboard folder %s not found: ensemble.json not written", folder)
+        return False
+    path = os.path.join(folder, "ensemble.json")
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, indent=1)
+    logger.info("ensemble.json written in %s", path)
+    return True
+
+
 def main(argv=None, fs=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fuente", required=True, choices=SOURCES)
     parser.add_argument("--fecha", default="", help="Day to predict, YYYY-MM-DD (tomorrow by default)")
     parser.add_argument("--config", default=None)
+    parser.add_argument("--dashboard-dir", default=None)
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)["riesgo_manana"]
@@ -203,6 +337,14 @@ def main(argv=None, fs=None) -> int:
     day = target_day(args.fecha, cfg.get("zona_horaria", "Europe/Madrid"))
     folder = day_folder(cfg["landing"], day)
     logger.info("Landing of %s for %s in %s", args.fuente, day, folder)
+
+    if args.fuente == "ensemble":
+        done, failed, payload = land_ensemble(fs, cfg, folder, day)
+        if done:
+            write_ensemble(payload, args.dashboard_dir or cfg.get("dashboard_dir", "/app/dashboard/data"))
+            for block in payload["distribuidoras"]:
+                logger.info("%s: %s", block["nombre"], block["texto"])
+        return 0 if done and not failed else (2 if not done else 1)
 
     if args.fuente == "prevision":
         cells = study_cells(fs, load_meteo_config()["openmeteo"])

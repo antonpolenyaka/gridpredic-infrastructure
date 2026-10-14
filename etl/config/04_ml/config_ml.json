@@ -483,6 +483,78 @@
       "clave_env": "AEMET_API_KEY",
       "timeout_s": 120
     },
+    "ensemble": {
+      "api": "https://ensemble-api.open-meteo.com/v1/ensemble",
+      "modelos": [
+        "icon_eu",
+        "icon_seamless",
+        "gfs025"
+      ],
+      "variable": "wind_gusts_10m",
+      "dias_futuros": 3,
+      "umbrales_kmh": [
+        50,
+        70,
+        90
+      ],
+      "puntos": {
+        "3": [
+          {
+            "nombre": "Hervás",
+            "lat": 40.2708,
+            "lon": -5.8672
+          },
+          {
+            "nombre": "Casas del Castañar",
+            "lat": 40.1078,
+            "lon": -5.9051
+          },
+          {
+            "nombre": "Plasencia",
+            "lat": 40.0312,
+            "lon": -6.0884
+          },
+          {
+            "nombre": "Aldea del Cano",
+            "lat": 39.2887,
+            "lon": -6.3181
+          }
+        ],
+        "2": [
+          {
+            "nombre": "Casar de Cáceres",
+            "lat": 39.5611,
+            "lon": -6.4194
+          },
+          {
+            "nombre": "Cáceres",
+            "lat": 39.4765,
+            "lon": -6.3722
+          },
+          {
+            "nombre": "Garrovillas de Alconétar",
+            "lat": 39.7108,
+            "lon": -6.5503
+          },
+          {
+            "nombre": "Alcántara",
+            "lat": 39.7189,
+            "lon": -6.8837
+          }
+        ],
+        "1366": [
+          {
+            "nombre": "Valle de Santa Ana",
+            "lat": 38.3664,
+            "lon": -6.7886
+          }
+        ]
+      },
+      "pausa_s": 0.5,
+      "reintentos": 3,
+      "espera_reintento_s": 20,
+      "timeout_s": 120
+    },
     "aviso": {
       "url_env": "AVISO_WEBHOOK_URL",
       "nivel_minimo": "alto",
