@@ -4,61 +4,48 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lo que habría dicho el sistema</title>
+<link rel="stylesheet" href="gridpredic.css">
 <style>
   /* Four years in one screen: a calendar per distribuidora and year with the level the system would have given
      the evening before (colour) and the incidents that happened (dots), from historico.json. */
-  :root {
-    --bg: #f6f7f4; --panel: #ffffff; --fg: #1d2230; --muted: #5d6675; --line: #d9ddd3; --accent: #1f5f8b;
-    --bajo: #cfe3cf; --medio: #f0d98a; --alto: #ecb089; --muy-alto: #d9736f; --grid: #e6e8e2; --dot: #1d2230;
-    --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
-      --accent: #7fb3dd; --grid: #2a3040; --bajo: #3d5a3d; --medio: #8a7a2a; --alto: #9a5a2a; --muy-alto: #a33a36; --dot: #ffffff;
-      color-scheme: dark; }
-  }
-  :root[data-theme="dark"] { --bg: #141720; --panel: #1d2130; --fg: #e7e9ee; --muted: #a2a9b8; --line: #2f3545;
-    --accent: #7fb3dd; --grid: #2a3040; --bajo: #3d5a3d; --medio: #8a7a2a; --alto: #9a5a2a; --muy-alto: #a33a36; --dot: #ffffff;
-    color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); padding-block: 0 32px; }
-  header { padding: 18px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; }
-  header h1 { font-size: 22px; margin: 0; font-weight: 600; }
-  header .fuentes { color: var(--muted); font-size: 13px; }
-  header a { color: var(--accent); }
-  main { padding: 0 24px; display: grid; gap: 20px; margin-top: 16px; }
-  @media (max-width: 700px) { header, main { padding-left: 16px; padding-right: 16px; } }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
-  section h2 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
-  h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .controles { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+  :root { --cal-bajo: #a9dcb9; --cal-medio: #f2d98a; --cal-alto: #f2b283; --cal-muy-alto: #e27f78; --dot: #1b2430; --bg: var(--paper); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cal-bajo: #2f6b45; --cal-medio: #8a7420; --cal-alto: #9a5424; --cal-muy-alto: #a63a37; --dot: #ffffff; } }
+  :root[data-theme="dark"] { --cal-bajo: #2f6b45; --cal-medio: #8a7420; --cal-alto: #9a5424; --cal-muy-alto: #a63a37; --dot: #ffffff; }
+  main, footer, header.page { max-width: 1280px; }
+  main section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-3); box-shadow: var(--shadow); padding: var(--s-4) var(--s-5) var(--s-5); }
+  main section h2 { margin: 0 0 var(--s-3); font-size: var(--fs-4); }
+  main section h3 { margin: var(--s-4) 0 var(--s-2); font-size: var(--fs-2); }
+  .controles { display: flex; gap: var(--s-3) var(--s-4); flex-wrap: wrap; align-items: center; font-size: var(--fs-1); }
   .controles label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
-  .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
-  .cifra { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
-  .cifra .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .cifra .l { color: var(--muted); font-size: 12px; }
-  .anio { margin: 10px 0 2px; font-size: 13px; font-weight: 600; }
+  .cifras { margin-top: var(--s-2); }
+  .anio { margin: var(--s-3) 0 2px; font-size: var(--fs-1); font-weight: 600; }
   .cal { display: block; width: 100%; height: auto; }
-  .leyenda { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; align-items: center; margin-top: 6px; }
-  .leyenda i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .leyenda { margin-top: var(--s-2); }
+  .leyenda i { border-radius: 2px; }
   .leyenda b.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); margin-right: 4px; }
-  table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .nivel { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #fff; }
-  .nivel.bajo { background: #7fb27f; } .nivel.medio { background: #e3b53a; color: #222; } .nivel.alto { background: #e0772f; } .nivel.muy-alto { background: #b8302f; }
-  .tip { position: fixed; pointer-events: none; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
-    padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none; max-width: 320px; z-index: 5; }
-  p.texto { margin: 6px 0; max-width: 80ch; }
-  .notas { color: var(--muted); font-size: 13px; }
-  footer { padding: 16px 24px; color: var(--muted); font-size: 12px; }
+  .tip { position: fixed; pointer-events: none; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: var(--r-1);
+    padding: 6px 8px; font-size: var(--fs-0); box-shadow: var(--shadow); display: none; max-width: 320px; z-index: 30; }
+  p.texto { margin: var(--s-2) 0; max-width: 80ch; }
+  td:first-child, th:first-child { position: static; }
+  .scroll { max-height: none; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Lo que habría dicho el sistema, día a día</h1>
-  <div class="fuentes" id="fuentes">Cargando data/historico.json... <a href="index.html">Volver al riesgo de mañana</a> · <a href="negocio.html">GridPredict en cifras</a></div>
+<nav class="menu" aria-label="Páginas del cuadro de mando">
+  <a class="marca" href="index.html" aria-label="GridPredic, riesgo de mañana"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h5l3 4h10" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12h7l3 4h8" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/><path d="M3 19h4l3-4h11" fill="none" stroke="#8fb1ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><circle cx="8" cy="5" r="1.8" fill="#ffffff"/><circle cx="10" cy="12" r="1.8" fill="#ffffff"/><circle cx="7" cy="19" r="1.8" fill="#ffffff"/></svg>GridPredic</a>
+  <div class="items">
+    <a href="index.html">Riesgo de mañana</a>
+    <a href="dias.html">Días archivados</a>
+    <a href="historial.html" class="actual">Día a día 2022 - 2026</a>
+    <a href="negocio.html">Negocio y cifras</a>
+  </div>
+  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
+</nav>
+<header class="page">
+  <div class="page-top">
+    <div class="titulo"><h1>Lo que habría dicho el sistema, día a día</h1></div>
+  </div>
+  <p class="sub" id="fuentes">Cargando data/historico.json...</p>
 </header>
 <main id="main">
   <section>
@@ -73,10 +60,21 @@
 </main>
 <div class="tip" id="tip"></div>
 <footer id="pie"></footer>
+<script src="vendor/gsap/gsap.min.js"></script>
+<script src="vendor/gsap/ScrollTrigger.min.js"></script>
+<script src="motion.js"></script>
 <script>
 (function () {
   "use strict";
-  const COLORS = { bajo: "var(--bajo)", medio: "var(--medio)", alto: "var(--alto)", "muy alto": "var(--muy-alto)" };
+
+  // Every table scrolls inside its own box on narrow screens instead of widening the page.
+  function envolverTablas(root) {
+    root.querySelectorAll("table").forEach((t) => {
+      if (t.closest(".scroll")) return;
+      const w = document.createElement("div"); w.className = "scroll"; t.parentNode.insertBefore(w, t); w.appendChild(t);
+    });
+  }
+  const COLORS = { bajo: "var(--cal-bajo)", medio: "var(--cal-medio)", alto: "var(--cal-alto)", "muy alto": "var(--cal-muy-alto)" };
   const ORDER = ["bajo", "medio", "alto", "muy alto"];
   const cls = (n) => (n || "bajo").replace(" ", "-");
   const num = (x, d = 0) => (x == null || isNaN(x)) ? "" : Number(x).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -155,12 +153,13 @@
           <div class="cifra"><div class="v">${num(days.reduce((a, d) => a + d.i, 0))}</div><div class="l">incidencias de causa local en ${years.length} años (${num(days.reduce((a, d) => a + d.i, 0) / years.length, 1)} al año)</div></div>
         </div>
         ${years.map((y) => `<div class="anio">${y}</div>` + calendar(days.filter((d) => d.f.startsWith(y)), Number(y), winsor)).join("")}
-        <div class="leyenda"><span><i style="background:var(--bajo)"></i>bajo</span><span><i style="background:var(--medio)"></i>medio</span><span><i style="background:var(--alto)"></i>alto</span><span><i style="background:var(--muy-alto)"></i>muy alto</span><span><b class="dot"></b>avería ese día (tamaño: horas-cliente)</span><span><i style="background:transparent;border:1px solid var(--fg)"></i>aviso amarillo de AEMET</span><span><i style="background:transparent;border:2px solid var(--fg)"></i>naranja o rojo</span><span>color: nivel que habría dado el sistema la tarde anterior</span></div>
+        <div class="leyenda"><span><i style="background:var(--cal-bajo)"></i>bajo</span><span><i style="background:var(--cal-medio)"></i>medio</span><span><i style="background:var(--cal-alto)"></i>alto</span><span><i style="background:var(--cal-muy-alto)"></i>muy alto</span><span><b class="dot"></b>avería ese día (tamaño: horas-cliente)</span><span><i style="background:transparent;border:1px solid var(--fg)"></i>aviso amarillo de AEMET</span><span><i style="background:transparent;border:2px solid var(--fg)"></i>naranja o rojo</span><span>color: nivel que habría dado el sistema la tarde anterior</span></div>
         <h3>Por nivel previsto</h3>
         <table><thead><tr><th>Nivel</th><th class="num">Días</th><th class="num">Con avería</th><th class="num">Incidencias</th><th class="num">Horas-cliente</th><th class="num">Parte</th></tr></thead><tbody>${lv}</tbody></table>
         <h3>Los 10 peores días</h3>
         <table><thead><tr><th>Día</th><th>Nivel previsto</th><th class="num">Prob.</th><th class="num">Incid.</th><th class="num">Clientes</th><th class="num">Horas-cliente</th><th class="num">Corte más largo (min)</th><th>Bases propuestas</th></tr></thead><tbody>${worst}</tbody></table>`;
       root.appendChild(sec);
+      envolverTablas(sec);
       const tip = document.getElementById("tip");
       const byDate = new Map(days.map((d) => [d.f, d]));
       sec.querySelectorAll("rect.dia").forEach((el) => {
@@ -174,13 +173,15 @@
         el.addEventListener("mouseleave", () => { tip.style.display = "none"; });
       });
     }
-    document.getElementById("fuentes").innerHTML = `${esc(DATA.modos[mode])} · niveles: muy alto desde el percentil 95 de los días de entrenamiento, alto desde el 90, medio desde el 75 · <a href="index.html">Volver al riesgo de mañana</a>`;
+    document.getElementById("fuentes").innerHTML = `${esc(DATA.modos[mode])}. Niveles: muy alto desde el percentil 95 de los días de entrenamiento, alto desde el 90, medio desde el 75.`;
     document.getElementById("pie").textContent = "Cada día se puntúa con un modelo entrenado solo con los años anteriores, como haría el job cada tarde; las averías son las incidencias de causa local de Calser (sin aguas arriba, apagones, programadas ni maniobras) en los CT en estudio, con sus clientes y la duración real de cada corte. Generado el " + (DATA.generado || "") + ".";
   }
 
   document.querySelectorAll('input[name="modo"]').forEach((el) => el.addEventListener("change", render));
   document.getElementById("winsor").addEventListener("change", render);
-  fetch("data/historico.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => { DATA = d; render(); })
+  // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
+  function ordenar(lista) { return (lista || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { numeric: true })); }
+  fetch("data/historico.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => { d.distribuidoras = ordenar(d.distribuidoras); DATA = d; render(); })
     .catch((e) => { document.getElementById("fuentes").textContent = "No hay data/historico.json (lo deja job_ml_caso_negocio): " + e; });
 })();
 </script>

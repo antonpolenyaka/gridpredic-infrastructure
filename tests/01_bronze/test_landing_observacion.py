@@ -117,8 +117,13 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
     cfg = obs.observation_settings(obs.load_config())
     cfg["landing"] = "memory://datalake/00_landing/vivo"
     for day, hour, peak, window in (("2026-07-19", 11, 60.0, (10, 15)), ("2026-07-20", 14, 80.0, (13, 16))):
+        risk = forecast(day, hour, peak, window)
+        if day == "2026-07-19":
+            # The evening of the 18th also gave an outlook of the 20th: alto for Pitarch.
+            risk["pasado_manana"] = {"fecha": "2026-07-20", "fecha_texto": "20.07.2026",
+                                     "distribuidoras": [{"id": 2, "nombre": "Pitarch", "nivel": "alto", "probabilidad": 0.12}]}
         with open(tmp_path / f"riesgo_{day.replace('-', '')}.json", "w", encoding="utf-8") as file:
-            json.dump(forecast(day, hour, peak, window), file)
+            json.dump(risk, file)
     with open(tmp_path / "riesgo.json", "w", encoding="utf-8") as file:
         json.dump(forecast("2026-07-20", 14, 80.0, (13, 16)), file)
     # The band of the ensemble of yesterday: the observed 72 falls inside 55 - 75 for Pitarch.
@@ -152,6 +157,9 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
     assert eosa["banda_p50"] == 58 and "pico_en_banda" not in eosa
     today = out["hoy"]["distribuidoras"][0]
     assert today["horas_observadas"] == 16 and today["error_kmh"] == 72 - 80 and today["pico_en_franja"] is False
+    # What the outlook of two evenings before said of today; nothing for yesterday (no outlook pointed at it).
+    assert today["nivel_dos_dias"] == "alto" and today["probabilidad_dos_dias"] == 0.12
+    assert "nivel_dos_dias" not in pitarch and "nivel_dos_dias" not in out["hoy"]["distribuidoras"][1]
     # The summary only counts the complete days and only the networks with stations.
     assert [s["id"] for s in out["resumen"]] == [2]
     s = out["resumen"][0]

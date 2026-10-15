@@ -224,15 +224,21 @@ def archived_forecast(folder: str, day: date, prefix: str = "riesgo") -> dict:
         return json.load(file)
 
 
-def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: dict = None, aemet: dict = None) -> list:
+def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: dict = None, aemet: dict = None,
+               early: dict = None) -> list:
     """
     One record per distribuidora of riesgo_<day>.json: the peak gust it forecast
     (hour and km/h) against the peak the stations near the network measured
     that local day, whether the observed peak fell in the forecast window and,
     with ensemble_<day>.json, whether it fell inside the band of the runs.
+    With early (the block pasado_manana of riesgo_<day - 1>.json, the outlook
+    made two evenings before for this day), the level and probability it gave
+    (nivel_dos_dias, probabilidad_dos_dias): how stable the outlook was.
     """
     bands = {str(b.get("id")): b for b in (ensemble or {}).get("distribuidoras", [])}
     second = {str(b.get("id")): b for b in (aemet or {}).get("distribuidoras", [])}
+    outlook = ({str(b.get("id")): b for b in (early or {}).get("distribuidoras", [])}
+               if (early or {}).get("fecha") == day.isoformat() else {})
     zone = ZoneInfo(cfg["zona_horaria"])
     out = []
     if not risk:
@@ -275,6 +281,9 @@ def verify_day(frame: pd.DataFrame, risk: dict, cfg: dict, day: date, ensemble: 
             rec["banda_p10"], rec["banda_p50"], rec["banda_p90"] = band["p10"], band.get("p50"), band["p90"]
             if "racha_observada_max" in rec:
                 rec["pico_en_banda"] = bool(band["p10"] <= rec["racha_observada_max"] <= band["p90"])
+        said = outlook.get(str(dist.get("id"))) or {}
+        if said.get("nivel"):
+            rec["nivel_dos_dias"], rec["probabilidad_dos_dias"] = said["nivel"], said.get("probabilidad")
         above = (bands.get(str(dist.get("id"))) or {}).get("supera") or {}
         if above and "racha_observada_max" in rec:
             # The chance of every threshold that the runs gave, and whether the stations passed it: the calibration of the ensemble.
@@ -357,7 +366,9 @@ def verify(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> dict:
         risk = archived_forecast(folder, day)
         if not risk:
             continue
-        records = verify_day(both, risk, cfg, day, archived_forecast(folder, day, "ensemble"), archived_forecast(folder, day, "aemet"))
+        before = archived_forecast(folder, day - timedelta(days=1)) or {}
+        records = verify_day(both, risk, cfg, day, archived_forecast(folder, day, "ensemble"), archived_forecast(folder, day, "aemet"),
+                             before.get("pasado_manana"))
         if day == today:
             today_records = records
         else:

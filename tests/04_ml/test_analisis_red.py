@@ -315,8 +315,12 @@ def test_tiepi_by_factor_matches_hand_calculation(result):
     assert row["tiepi_h"] == pytest.approx(1650.0 / 2600.0)
     assert row["tiepi_incentivo_h"] == pytest.approx(1250.0 / 2600.0)
     # The client incident of Pitarch and the interruption without incident stay out.
-    pit = summary[(summary["distribuidora"] == "Calser_Pitarch") & (summary["anio"] == 2025)]
+    # Distribuidora 2 is shown with the name of riesgo_manana.nombres, never with its database.
+    assert "Calser_Pitarch" not in set(summary["distribuidora"])
+    pit = summary[(summary["distribuidora"] == "Distribuidora 2") & (summary["anio"] == 2025)]
     assert pit.empty or pit.iloc[0]["tiepi_h"] == pytest.approx(0.0)
+    assert set(table.loc[table["distribuidora_id"] == 2, "source_database"]) == {"Calser_Pitarch"}
+    assert set(table.loc[table["distribuidora_id"] == 2, "distribuidora"]) == {"Distribuidora 2"}
     no_incident = table[(table["grupo"] == "sin_incidencia") & (table["anio"] == 2025)]
     assert no_incident["kva_h"].sum() == pytest.approx(800.0)
 
@@ -377,6 +381,22 @@ def test_transformer_load(result):
     assert trends.loc[1002, "p99_ultimo"] == pytest.approx(np.hypot(200, 60) / 250, abs=0.03)
     voltage = read(folder, "tension_ct.csv")
     assert voltage["horas_bajo_93"].sum() > 0
+
+
+def test_sector_benchmark_from_the_official_indices(result):
+    """Without l1_bronze.gecos_indice_zonal the section reads the CSV next to the configuration."""
+    _, folder = result
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "## 1b. Frente al sector" in text and "imprevista_caceres_h" in text
+    sector = read(folder, "tiepi_sector.csv")
+    assert {"Calser_EOSA"} <= set(sector["distribuidora"]) and sector["anios_sector"].iloc[0] == "2019-2021"
+    rural = sector[sector["zona"] == "rural_concentrada"].iloc[0]
+    # Caceres, rural concentrated, 2019 - 2021: unplanned TIEPI of 1,06 h and 0,88 h of incentive TIEPI.
+    assert rural["imprevista_caceres_h"] == pytest.approx(1.06, abs=0.01) and rural["incentivo_caceres_h"] == pytest.approx(0.88, abs=0.01)
+    assert rural["imprevista_espana_h"] > rural["imprevista_caceres_h"]
+    assert (sector["imprevista_nuestra_h"] >= 0).all() and sector["anios_nuestros"].iloc[0] == "2023-2025"
+    series = read(folder, "sector_series.csv")
+    assert set(series["nombre"]) == {"Cáceres", "Badajoz", "Extremadura", "España"} and series["anio"].min() == 2003
 
 
 def test_money_and_tables(result, spark):

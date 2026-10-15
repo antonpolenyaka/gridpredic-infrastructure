@@ -112,7 +112,7 @@ def get(url: str, tok: str, timeout: float, label: str) -> bytes:
     """GET with the token, three tries on 429, 5xx and network errors; Expired on 401."""
     for attempt in range(1, 4):
         request = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}",
-                                                       "User-Agent": "GridPredict-TFM/1.0"})
+                                                       "User-Agent": "GridPredic-TFM/1.0"})
         try:
             with urllib.request.urlopen(request, timeout=timeout) as answer:
                 return answer.read()
