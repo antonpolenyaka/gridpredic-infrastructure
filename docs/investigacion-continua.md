@@ -260,6 +260,27 @@ En esta ventana el orden entre ICON-EU y GFS se da la vuelta respecto a 2024 - 2
 
 **Lectura.** El verdor medido no añade nada a lo que ya dicen el calendario (que lleva la estación), la racha frente al clima de cada celda y la lluvia; la interacción racha x verdor, que era la apuesta (la hoja medida en lugar de abril - octubre), tampoco, y con la previsión en crudo incluso resta, porque hereda el sesgo al alza de la racha de ICON-EU. Cierra la fila de fenología de la revisión con una medida en vez de un "necesita cuenta", y deja dos cosas útiles: el camino sin registro al NDVI de MODIS (que sirve igual para VIIRS cuando Terra y Aqua se apaguen) y la serie de verdor por celda, que vale como contexto de sequía de combustible para el apartado de incendios de la memoria. El bloque queda en el job, apagado en producción (no está en `operativa`).
 
+## 3l. Prueba: la densidad de copa y el tipo de hoja del HRL de Copernicus (15.10.2026)
+
+**De dónde sale.** La fila del HRL de la revisión: la densidad de copa y la fracción de frondosas son las variables de arbolado que usan Cerrai y otros (2019) y McRoberts y otros para la caída de ramas, y la hoja es la que convierte la racha de primavera y verano en carga sobre el conductor. En 3h y 3n el arbolado salió de la altura del dosel; el HRL añade el tipo de hoja, que es lo único que no teníamos.
+
+**Cómo lo bajamos.** La API de recortes del CLMS aceptó las dos peticiones (densidad de copa y tipo de hoja de 2021, 10 m) a las 09:27 y a las 14:30 seguían "en preparación". Las mismas capas están por teselas de 100 km en el S3 de Copernicus Data Space, con una cuenta gratuita y unas claves S3: `experimentos/arbolado/bajar_hrl_s3.py` baja las ocho teselas que tocan la caja de las redes (unos 400 MB), las junta recortadas a esa caja y `celdas_hrl.py` deja por celda la densidad media de copa, la parte con copa del 30 % o más, la parte de frondosas y de coníferas y la parte de frondosas entre los árboles, en `etl/config/01_bronze/hrl_celdas.csv`. En total unos veinte minutos.
+
+**Los datos.** La densidad media de copa va del 1,6 % de la penillanura al 45 % del Jerte (media 16,6 %). Lo que no esperábamos: el 98 % de los píxeles con árbol son frondosas, porque en el HRL "frondosa" incluye las perennifolias, y la encina y el alcornoque de la dehesa lo son. El tipo de hoja, por tanto, no separa la hoja caduca del castaño y el roble del norte de la encina del resto; la parte de la celda con frondosas (media 42 %, de 6 a 91 %) acaba siendo otra medida de cuánto árbol hay.
+
+**Resultados.** En el modelo anual (`rct_hoja_20261015_1458`, captura de kVA·h del año siguiente, 2021 - 2025):
+
+| bloque | cabecera, top 10 % | cabecera, top 20 % | CT, top 10 % | CT, top 20 % |
+| --- | --- | --- | --- | --- |
+| historia + estructura | 68,4 % | 82,0 % | 27,5 % | 49,3 % |
+| + arbolado de la celda (3h) | 68,8 % | 81,8 % | 30,3 % | 50,7 % |
+| + HRL | 70,9 % | 81,7 % | 26,5 % | 50,7 % |
+| + los dos | 69,0 % | 81,1 % | 26,9 % | 50,6 % |
+
+Por cabecera el HRL sube 2,5 puntos en el 10 %, pero todo sale de 2022 (56 % frente a 47 %); en los otros cuatro años queda igual o a una décima. Por CT baja un punto. En el modelo del día (`dia_hoja_20261015_1501`, previsión real de 2024 - 2026, 84 días con avería), `operativa_hoja` da 0,151 de PR-AUC frente a 0,156 (-0,005 [-0,020, +0,007], probabilidad de ser mejor 22 %), con la captura igual (45 % y 65 % frente a 45 % y 64 %); sobre el reanálisis de los años comunes, 0,000 [-0,005, +0,007].
+
+**Lectura.** El HRL no aporta, igual que la altura del dosel por celda y en el corredor. La subida por cabecera es la misma historia que la del arbolado en 2025: un año en el que una cabecera con mucho árbol tuvo un mal año. El tipo de hoja, que era lo nuevo, no sirve aquí porque el HRL no distingue caducas de perennes. Con esto quedan medidas las tres capas públicas de arbolado que propusimos (WorldCover y altura del dosel, el corredor de OSM y el HRL) y ninguna mejora el modelo con la coordenada del municipio. El bloque queda en el código, apagado en producción.
+
 ## 3m. Las pruebas otra vez con 2026 dentro (15.10.2026)
 
 **Por qué.** Todas las comparaciones de 3e a 3k se hicieron con la previsión real de 2024 y 2025, 58 días con avería. Calser está cargado hasta el 02.08.2026, así que repetimos las doce variantes con la ventana hasta el 03.08.2026 y la previsión real de 2024, 2025 y 2026 (`dia_2026_20261015_1119`, regresión logística, cada año puntuado por un modelo que solo vio los anteriores): 84 días con avería en lugar de 58, con el temporal de enero de 2026 dentro.
@@ -323,7 +344,7 @@ Preguntamos qué datos de los equipos instalados en los clientes podrían cruzar
 ## 6. Lo que queda en la lista
 
 - Volver a probar el suelo y la duración del viento cuando haya dos temporadas más etiquetadas (2027), con el mismo banco de pruebas.
-- De la revisión de literatura ([revision-literatura.md](revision-literatura.md)), lo que no cabe antes del 18.10 (el modelo de conteos está medido en 3g, el arbolado por celda en 3h, la sequía y el hielo en 3i, el segundo modelo de previsión en 3j, la fenología en 3k y los árboles en el corredor de las líneas de OSM en 3n): el tipo de hoja y la densidad de copa del HRL de Copernicus (pedidos el 15.10, el servidor todavía los prepara) y, con el trazado real de las líneas si algún día lo hay, el LiDAR del PNOA; el índice de presión de nidos de cigüeña por cabecera (la distribuidora no tiene inventario que dar, y con GBIF ya se midió); CERRA como climatología del p98; y la dirección del viento prevista en el archivo de previsiones (`wind_direction_10m_previous_day1`) si la prueba 3f con el reanálisis la justifica.
+- De la revisión de literatura ([revision-literatura.md](revision-literatura.md)), lo que no cabe antes del 18.10 (el modelo de conteos está medido en 3g, el arbolado por celda en 3h, la sequía y el hielo en 3i, el segundo modelo de previsión en 3j, la fenología en 3k y los árboles en el corredor de las líneas de OSM en 3n y el HRL en 3l): con el trazado real de las líneas si algún día lo hay, el LiDAR del PNOA (el HRL quedó medido en 3l); el índice de presión de nidos de cigüeña por cabecera (la distribuidora no tiene inventario que dar, y con GBIF ya se midió); CERRA como climatología del p98; y la dirección del viento prevista en el archivo de previsiones (`wind_direction_10m_previous_day1`) si la prueba 3f con el reanálisis la justifica.
 - Pedir los cortes de los contadores de telegestión a una de las distribuidoras para medir cuántos cortes de baja tensión no vemos.
 - Hecho el 14.10.2026: el replay da ya la detección y las falsas alarmas por día de cada política (apartado 2b de [caso-de-negocio.md](caso-de-negocio.md)): el sistema en alerta detecta el 71 % de los días con dos o más incidencias marcando el 12,5 % de los días, frente al 73 % con el 3 % de falsas alarmas del trabajo de Alcalá, que cuenta averías de una provincia entera. Queda pendiente definir el día extremo como ellos (por número de averías) cuando entre una red mayor.
 - Con los avisos de AEMET, una política mixta por fenómeno (viento y tormenta sí, calor no) frente a la unión que ya medimos.
