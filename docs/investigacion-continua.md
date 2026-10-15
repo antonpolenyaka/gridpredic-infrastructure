@@ -325,6 +325,56 @@ En el modelo del día (`dia_corredor_20261015_1243`, previsión real de 2024 - 2
 
 **Lectura.** El corredor no aporta en ninguno de los dos modelos. Lo que más nos dice es lo que pasa en 2025: la mejora del arbolado de la celda ese año no aparece cuando se mide el árbol junto a la línea, y juntar los dos la borra. Eso apunta a que en 3h el arbolado funcionaba como marca geográfica del norte de Cáceres, donde cayó el temporal, más que como riesgo de contacto con la línea. Hay dos límites que no podemos quitar con datos públicos: las líneas de OSM no son las de nuestros CT, y el CT sigue con la coordenada de su municipio, así que el corredor se asigna a la celda y no al circuito. Decisión: los dos bloques quedan en el código, apagados en producción, y en la memoria el arbolado pasa de indicio a "no medible con este grano". La geometría real de las líneas sigue siendo lo que haría falta, y la distribuidora ya nos ha dicho que no la va a dar.
 
+## 3o. Prueba: el régimen del tiempo y una curva de fragilidad (15.10.2026)
+
+**De dónde sale.** Dos ideas de modelado de la revisión que no necesitan datos nuevos. La 6, el régimen: Yang y otros (2020) bajan el error un 30 % entrenando por severidad, Cerrai y otros (2019) separan por tipo de tormenta y Garland y otros (2026) encuentran daños distintos según el régimen; en nuestras redes los regímenes naturales son el temporal atlántico de invierno, la tormenta de verano y el calor. La 9, la curva de fragilidad: Dunn y otros (2018) y Panteli y otros (2017) describen la relación entre racha y faltas con una curva monótona de pocos parámetros, que es lo más estable con pocos datos.
+
+**Diseño.** En `job_ml_riesgo_dia.py`, el bloque `regimen` tiene `reg_temporal` (el exceso de racha sobre el clima de la celda de octubre a abril en un día con 5 mm de lluvia o más), `reg_conveccion` (la lluvia de la hora más lluviosa de mayo a septiembre, con tope de 30 mm), `reg_conveccion_racha` (esa lluvia por el exceso de racha) y `reg_calor` (los grados de máxima por encima de 35 de mayo a septiembre). Todo sale de la previsión de la víspera a través de los gemelos `prev_reg_*`. El bloque `fragilidad` ajusta una regresión isotónica de la tasa de días con avería sobre la racha frente al p98 de la celda, solo con los días anteriores a 2022 (`fragilidad_hasta`), y la lee para cada día como `frag_prob` y su logit, con los gemelos de previsión. Los años que se puntúan nunca ven la curva por dentro. Variantes `operativa_regimen` y `operativa_fragilidad`, con el mismo banco que 3m (`dia_regimen_20261015_1639`, previsión real de 2024 - 2026, 84 días con avería).
+
+**La curva.** Con los 5.457 días de red de 2017 - 2021, un día con la racha en el 73 % del p98 de la celda tiene avería el 2,5 % de las veces, en el 109 % el 4,9 % y en el 154 % el 16,7 %. Es la curva de fragilidad de nuestras redes y vale como figura para la memoria.
+
+**Resultados.**
+
+| variante | PR-AUC con la previsión real | días con avería en el 10 % de más riesgo | en el 20 % | diferencia frente a `operativa` [IC 95 %] | prob. de ser mejor |
+| --- | --- | --- | --- | --- | --- |
+| `operativa` (producción) | 0,156 | 45 % | 64 % | | |
+| curva de fragilidad | 0,158 | 46 % | 64 % | +0,003 [-0,017, +0,031] | 62 % |
+| régimen del tiempo | 0,143 | 40 % | 60 % | -0,012 [-0,030, +0,001] | 4 % |
+
+Sobre el reanálisis de los años comunes (2022 - 2026), la curva da 0,139 de PR-AUC frente a 0,131 (+0,006 [-0,006, +0,022], 75 %) y gana en 2023, 2024 y 2026 (0,163 frente a 0,123), pero pierde en 2022 y 2025 y la captura del 10 % y del 20 % queda medio punto y un punto por debajo. El régimen pierde sobre el reanálisis también (-0,009, 10 %).
+
+**Lectura.** El régimen no entra: separar la racha por estación y tipo de tiempo divide una muestra que ya es pequeña, y lo poco que dice ya lo recogen el calendario y la interacción racha x verano de 3f. La curva de fragilidad es lo más cerca que ha estado una variante de la de producción en todo el cuaderno: gana en PR-AUC en los dos bancos y en tres de cinco años. No cumple la regla porque la captura no sube y los intervalos incluyen el cero. La dejamos en el código como primera candidata para volver a medir con la temporada de 2027, y la curva entra en la memoria como resultado descriptivo.
+
+## 3p. Prueba: las frondosas caducas del Mapa Forestal de España (15.10.2026)
+
+**De dónde sale.** En 3l el HRL no sirvió para separar la hoja caduca de la perenne: cuenta la encina como frondosa. El Mapa Forestal de España de MITECO sí da la especie: hasta tres especies por polígono, cada una con su ocupación y la fracción de cabida cubierta. Usamos el MFE50 porque está en descarga directa por provincia (Badajoz y Cáceres, Banco de Datos de la Naturaleza).
+
+**Diseño.** `experimentos/arbolado/celdas_mfe.py` cruza los polígonos con las 43 celdas y deja la parte de cada celda bajo copa de frondosas caducas (melojo, castaño, quejigo, robles, chopos, fresnos, alisos), de perennes (encina, alcornoque, acebuche), de eucalipto y de coníferas, en `etl/config/01_bronze/mfe_celdas.csv`. El modelo anual lo lee como bloque `mfe` y el del día como `caducas` (`cad_copa` de la red y `cad_int_racha`, la racha por esa parte de abril a octubre, con gemelos de previsión). Las celdas que cruzan a Salamanca o Ávila quedan algo cortas, porque solo bajamos las dos provincias extremeñas.
+
+**Los datos.** Ahora sí se separan las redes: la copa caduca cubre de media el 10,1 % del terreno de las celdas de la Distribuidora 1 (en el Jerte y el Ambroz el 75 - 99 % de la copa es caduca) y el 0,03 % de las de la Distribuidora 2, donde todo es encina.
+
+**Resultados.** En el modelo anual (`rct_mfe_20261015_1654`), la captura por CT del 10 % sube de 27,5 % a 29,4 %, con la mayor parte en 2025 (26,7 % frente a 18,7 %) y una pérdida en 2021; por cabecera baja de 68,4 % a 67,8 %. En el del día (`dia_caducas_20261015_1657`), `operativa_caducas` da 0,152 de PR-AUC frente a 0,156 (-0,003 [-0,012, +0,001], probabilidad de ser mejor 11 %), con la misma captura; sobre el reanálisis, -0,001 (6 %).
+
+**Lectura.** Con la especie bien medida el resultado es el mismo que con el HRL: nada en el día y un año bueno en el anual por CT, otra vez 2025. La hoja caduca del norte existe y el MFE la ve, pero en la Distribuidora 1 va con la misma geografía que ya marcan la historia y el relieve, y en la Distribuidora 2 no hay. Cierra la fila del MFE de la revisión.
+
+## 3q. Prueba: las líneas declaradas peligrosas para las aves (15.10.2026)
+
+**De dónde sale.** El quinto punto de la revisión, el módulo de aves (Burdett y otros, 2022; Moreira y otros, 2018 y 2023). La distribuidora no nos va a dar su inventario de nidos, pero hay un dato público equivalente: la Junta de Extremadura publica qué líneas de alta tensión están en zona de protección de avifauna sin las medidas del RD 1432/2008. La Resolución de 15.11.2021 (DOE 227) lista 262 líneas de nuestras tres redes: 135 de la Distribuidora 1, 123 de la Distribuidora 2 y 4 de la Distribuidora 3, cada una con su término municipal. Las zonas de protección de 2014 solo están como mapa en PDF, así que usamos la lista, que ya es su cruce con las líneas.
+
+**Diseño.** `experimentos/aves/lineas_rd1432.py` pasa el anexo a `etl/config/01_bronze/avifauna_municipios.csv` (líneas peligrosas por distribuidora y municipio); el modelo anual lo lee como bloque `avifauna` (`muni_lineas_rd1432` y por CT del municipio). Lo medimos donde tiene sentido, en el modelo anual de la familia de fauna (`--causas fauna`, la etiqueta y la historia solo de las incidencias de fauna), frente a la historia, la estructura y el bloque `naturaleza` (las cigüeñas de GBIF). Ejecución `rct_avifauna_20261015_1702`; 255 de las 262 líneas caen en municipios con CT.
+
+**Resultados**, captura de los kVA·h por fauna del año siguiente (2021 - 2025):
+
+| bloque | CT, top 10 % | CT, top 20 % | cabecera, top 10 % |
+| --- | --- | --- | --- |
+| historia + estructura | 14,7 % | 30,1 % | 48,6 % |
+| + cigüeñas de GBIF | 11,4 % | 29,0 % | 57,9 % |
+| + líneas peligrosas | 18,8 % | 33,9 % | 54,4 % |
+| + las dos | 18,9 % | 40,4 % | 58,0 % |
+| lista naif (fauna de los dos años anteriores en el CT) | 30,7 % | 51,4 % | 65,4 % |
+
+**Lectura.** Es la única fuente pública de aves que mejora el modelo de fauna: +4 puntos por CT en el 10 % y en tres de los cinco años (2021, 2024 y 2025), y las cigüeñas de GBIF, que solas restaban, suman con ella en el 20 %. Pero la historia de fauna del propio CT ordena mejor que cualquier modelo: las cigüeñas vuelven a los mismos apoyos. Para el negocio la lista sirve tal cual: son las líneas que la distribuidora tiene que adaptar por ley, y cruzarlas con la historia de fauna de sus CT dice por cuáles empezar. El bloque queda en el código; el ranking de fauna en producción sigue con historia y estructura.
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
@@ -344,7 +394,7 @@ Preguntamos qué datos de los equipos instalados en los clientes podrían cruzar
 ## 6. Lo que queda en la lista
 
 - Volver a probar el suelo y la duración del viento cuando haya dos temporadas más etiquetadas (2027), con el mismo banco de pruebas.
-- De la revisión de literatura ([revision-literatura.md](revision-literatura.md)), lo que no cabe antes del 18.10 (el modelo de conteos está medido en 3g, el arbolado por celda en 3h, la sequía y el hielo en 3i, el segundo modelo de previsión en 3j, la fenología en 3k y los árboles en el corredor de las líneas de OSM en 3n y el HRL en 3l): con el trazado real de las líneas si algún día lo hay, el LiDAR del PNOA (el HRL quedó medido en 3l); el índice de presión de nidos de cigüeña por cabecera (la distribuidora no tiene inventario que dar, y con GBIF ya se midió); CERRA como climatología del p98; y la dirección del viento prevista en el archivo de previsiones (`wind_direction_10m_previous_day1`) si la prueba 3f con el reanálisis la justifica.
+- De la revisión de literatura ([revision-literatura.md](revision-literatura.md)), lo que no cabe antes del 18.10 (el modelo de conteos está medido en 3g, el arbolado por celda en 3h, la sequía y el hielo en 3i, el segundo modelo de previsión en 3j, la fenología en 3k, los árboles en el corredor de las líneas de OSM en 3n, el HRL en 3l, el régimen y la curva de fragilidad en 3o, el MFE en 3p y las líneas peligrosas para las aves en 3q): con el trazado real de las líneas si algún día lo hay, el LiDAR del PNOA; la curva de fragilidad de 3o con la temporada de 2027; el conjunto de ICON-EU cuando haya una temporada de miembros guardada; CERRA como climatología del p98; y la dirección del viento prevista en el archivo de previsiones (`wind_direction_10m_previous_day1`) si la prueba 3f con el reanálisis la justifica.
 - Pedir los cortes de los contadores de telegestión a una de las distribuidoras para medir cuántos cortes de baja tensión no vemos.
 - Hecho el 14.10.2026: el replay da ya la detección y las falsas alarmas por día de cada política (apartado 2b de [caso-de-negocio.md](caso-de-negocio.md)): el sistema en alerta detecta el 71 % de los días con dos o más incidencias marcando el 12,5 % de los días, frente al 73 % con el 3 % de falsas alarmas del trabajo de Alcalá, que cuenta averías de una provincia entera. Queda pendiente definir el día extremo como ellos (por número de averías) cuando entre una red mayor.
 - Con los avisos de AEMET, una política mixta por fenómeno (viento y tormenta sí, calor no) frente a la unión que ya medimos.
