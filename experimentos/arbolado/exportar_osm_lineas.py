@@ -1,4 +1,5 @@
-import json, sys
+import json
+import sys
 sys.path.insert(0, "/app/jobs/00_landing")
 from job_landing_meteo_openmeteo import filesystem
 fs = filesystem()

@@ -5,7 +5,11 @@ dosel de 5, 8 y 12 m o mas (altura del dosel de Meta y WRI, 1 m) y la altura med
 
     python corredor_lineas.py osm_lineas.json chm etl\\config\\01_bronze\\corredor_celdas.csv
 """
-import json, os, sys, glob, math
+import json
+import os
+import sys
+import glob
+import math
 import numpy as np
 import pandas as pd
 import rasterio
