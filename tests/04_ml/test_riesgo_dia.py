@@ -691,6 +691,33 @@ def test_the_tall_trees_along_the_lines_multiply_the_gust(spark, tables, config_
     assert (pdf.loc[pdf["ext_racha_clima_max"] < 0.5, "corr_int_racha"] == 0).all()
 
 
+def test_the_regimes_and_the_fragility_curve_of_the_gust(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    cfg = rd.settings(config)
+    pdf, blocks, _ = rd.build_dataset(spark, config, cfg)
+    assert set(blocks["regimen"]) == {"reg_temporal", "reg_conveccion", "reg_conveccion_racha", "reg_calor"}
+    assert {"prev_reg_temporal", "prev_reg_calor"} <= set(blocks["prevision"])
+    month = pdf["fecha"].dt.month
+    warm = month.between(5, 9)
+    # The storm term only lives in the cold season and the convection and heat terms only in the warm one.
+    assert (pdf.loc[warm, "reg_temporal"] == 0).all()
+    assert (pdf.loc[~warm, ["reg_conveccion", "reg_calor"]].fillna(0) == 0).all().all()
+    wet_storms = pdf[~warm & (pdf["ext_racha_clima_max"] > 1.2) & (pdf["dia_lluvia_max"] >= 5)]
+    assert len(wet_storms) and (wet_storms["reg_temporal"] > 0).all()
+    assert (pdf["reg_conveccion"].dropna() <= 30).all()
+    # The fragility curve is fitted on the days before fragilidad_hasta only and grows with the gust.
+    assert set(blocks["fragilidad"]) == {"frag_prob", "frag_logit"}
+    assert {"prev_frag_prob", "prev_frag_logit"} <= set(blocks["prevision"])
+    ordered = pdf.dropna(subset=["ext_racha_clima_max", "frag_prob"]).sort_values("ext_racha_clima_max")
+    assert ordered["frag_prob"].is_monotonic_increasing
+    assert ordered["frag_prob"].iloc[-1] > ordered["frag_prob"].iloc[0]
+    # Fitted on other days the curve is another one: the years after the cut never shape it.
+    late = rd.add_fragility(pdf.copy(), {}, pd.Timestamp("2020-01-01"))
+    assert late == ["frag_prob", "frag_logit"]
+    assert rd.add_fragility(pdf.copy(), {}, pd.Timestamp("2019-02-01")) == []
+
+
 def test_metrics_and_run_saved(result, spark):
     assert spark.table("l3_gold.ml_metricas").where(f"run_id = '{RUN_ID}'").count() > 100
     run = spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}'").first()
