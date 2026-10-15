@@ -64,6 +64,7 @@ def test_day_labels_and_calendar():
     assert out["y_dia"].tolist() == [1, 0, 1, 1]
     assert out["y_dia_meteo"].tolist() == [1, 0, 0, 1]
     assert out["y_dia_varias"].tolist() == [0, 0, 0, 0]
+    assert out["n_dia"].tolist() == [1, 0, 1, 1]
     # Two incidents on 30.03 (one of them with two CT) make a busy day; one incident with two CT does not.
     busy = pd.DataFrame({"distribuidora_id": [1, 1, 1, 2, 2], "periodo_id": [2024] * 5,
                          "incidencia_id": [7, 8, 8, 9, 9],
@@ -72,6 +73,7 @@ def test_day_labels_and_calendar():
                          "causa": ["meteorologia"] * 5})
     out = rd.day_labels(grid, busy, ["aguas_arriba"], several=2)
     assert out["y_dia_varias"].tolist() == [0, 0, 1, 0]
+    assert out["n_dia"].tolist() == [0, 0, 2, 1]
 
     cal = rd.day_calendar(grid["fecha"])
     # Good Friday 2024 is a holiday; 30.03.2024 is a Saturday.
@@ -236,7 +238,7 @@ def spark(workdir):
         .config("spark.ui.enabled", "false")
     )
     session = configure_spark_with_delta_pip(builder).getOrCreate()
-    for db in ("l2_silver", "l3_gold"):
+    for db in ("l1_bronze", "l2_silver", "l3_gold"):
         session.sql(f"CREATE DATABASE IF NOT EXISTS {db}")
     yield session
     session.stop()
@@ -248,8 +250,10 @@ def save(spark, pdf: pd.DataFrame, table: str):
 
 
 def synthetic():
-    """(weather per cell and hour, principal events with cause, warnings of AEMET)."""
+    """(weather per cell and hour, principal events with cause, warnings of AEMET, forecast of a second model)."""
     rng = np.random.default_rng(11)
+    # When AEMET sends each warning, drawn apart so the storms and the incidents stay the same.
+    lead = np.random.default_rng(12)
     hours = pd.date_range("2019-01-01", "2025-12-31 23:00", freq="h")
     days = pd.date_range("2019-01-02", "2025-12-30", freq="D")
     weather, events, warnings = [], [], []
@@ -257,25 +261,39 @@ def synthetic():
     for dist, cell in CELLS.items():
         gust = rng.gamma(4.0, 6.0, len(hours))
         rain = np.where(rng.random(len(hours)) < 0.05, rng.gamma(1.0, 2.0, len(hours)), 0.0)
+        # The wind blows from anywhere; the storms come from the south-west, one in four from the north-east.
+        direction = rng.uniform(0.0, 360.0, len(hours))
         for day in rng.choice(days, size=7 * 20, replace=False):
             start = int((pd.Timestamp(day) + pd.Timedelta(hours=10) - hours[0]) / pd.Timedelta(hours=1))
             gust[start:start + 6] = rng.uniform(80, 110, 6)
             rain[start:start + 6] = rng.uniform(2, 8, 6)
+            direction[start:start + 6] = (45.0 if pd.Timestamp(day).day % 4 == 0 else 225.0) + rng.normal(0, 5, 6)
             if rng.random() < 0.7:
                 events.append((dist, pd.Timestamp(day) + pd.Timedelta(hours=12), "meteorologia"))
-            # AEMET warns of most storms the day before at noon.
+            # AEMET warns of most storms the day before at noon, and of half of those two days before.
             if rng.random() < 0.8:
                 warnings.append({"celda_id": cell, "fenomeno_codigo": "VI", "nivel_num": 2, "tipo_mensaje": "Alert",
-                                 "enviado_ts": pd.Timestamp(day) - pd.Timedelta(hours=12),
+                                 "enviado_ts": pd.Timestamp(day) - pd.Timedelta(hours=12 if lead.random() < 0.5 else 36),
                                  "inicio_ts": pd.Timestamp(day) + pd.Timedelta(hours=6),
                                  "fin_ts": pd.Timestamp(day) + pd.Timedelta(hours=22)})
         for _ in range(7 * 15):
             events.append((dist, pd.Timestamp(rng.choice(days)) + pd.Timedelta(hours=int(rng.integers(0, 24))),
                            "equipo" if rng.random() < 0.5 else "aguas_arriba"))
+        temp = 15 + 10 * np.sin(2 * np.pi * (hours.dayofyear.to_numpy() - 100) / 365)
+        # A freezing rain episode: the morning of 10.01.2024, rain at -2 degrees.
+        freezing = (hours >= "2024-01-10 03:00") & (hours < "2024-01-10 09:00")
+        temp = np.where(freezing, -2.0, temp)
+        rain = np.where(freezing, 1.5, rain)
+        # The reference evapotranspiration of the week: more in summer, with a dry 2025 (half the rain, more ET0).
+        et0_day = 3.0 + 2.5 * np.sin(2 * np.pi * (hours.dayofyear.to_numpy() - 110) / 365)
+        dry = hours.year.to_numpy() == 2025
+        rain = np.where(dry, rain * 0.5, rain)
         weather.append(pd.DataFrame({
             "celda_id": cell, "hora": hours, "met_racha_1h": gust, "met_viento_1h": gust * 0.6,
-            "met_lluvia_1h": rain, "met_temp_1h": 15 + 10 * np.sin(2 * np.pi * (hours.dayofyear.to_numpy() - 100) / 365),
+            "met_lluvia_1h": rain, "met_temp_1h": temp,
             "met_humedad_1h": 60.0, "met_presion_1h": 1013.0, "met_presion_delta_24h": 0.0, "met_nieve_24h": 0.0,
+            "met_dir_viento_sin": np.sin(np.radians(direction)), "met_dir_viento_cos": np.cos(np.radians(direction)),
+            "met_et0_7d": 7.0 * np.where(dry, et0_day * 1.3, et0_day),
         }))
 
     for dist in CELLS:
@@ -292,22 +310,42 @@ def synthetic():
     weather["metp1_lluvia_1h"] = np.where(archived, weather["met_lluvia_1h"] * noise.clip(0), np.nan)
     weather["metp1_temp_1h"] = np.where(archived, weather["met_temp_1h"] + 1.0, np.nan)
     weather["metp1_humedad_1h"] = np.where(archived, 60.0, np.nan)
+    # Two days before, only gusts and rain, with twice the noise and a storm in four missed (the gust forecast
+    # of that day is calm); without the extremes of Gold (metp2_racha_clima_1h), the daily model derives them.
+    noise2 = rng.normal(1.0, 0.3, len(weather))
+    missed = weather["hora"].dt.floor("D").isin(rng.choice(days, size=len(days) // 4, replace=False))
+    weather["metp2_racha_1h"] = np.where(archived, np.where(missed, 25.0, weather["met_racha_1h"] * 1.15) * noise2,
+                                         np.nan)
+    weather["metp2_lluvia_1h"] = np.where(archived, weather["met_lluvia_1h"] * noise2.clip(0), np.nan)
     # The gusts against the climate of each cell, as Gold computes them for the reanalysis and the forecast.
     p98 = weather[weather["hora"] < "2022-01-01"].groupby("celda_id")["met_racha_1h"].quantile(0.98)
     for prefix in ("met", "metp1"):
         ratio = weather[f"{prefix}_racha_1h"] / weather["celda_id"].map(p98)
         weather[f"{prefix}_racha_clima_1h"] = ratio
         weather[f"{prefix}_racha_ku_1h"] = np.clip(ratio - 1.0, 0.0, None) ** 3
+    # A second model of the day before, as Bronze keeps it (the raw names of the Previous Runs API, without the wind
+    # speed): the same weather with its own noise and a storm in three missed (a calm, dry forecast that day), from
+    # 2024 like ICON-EU.
+    noise3 = rng.normal(1.0, 0.2, len(weather))
+    missed3 = weather["hora"].dt.floor("D").isin(rng.choice(days, size=len(days) // 3, replace=False)).to_numpy()
+    second = weather.loc[archived, ["celda_id", "hora"]].copy()
+    second["wind_gusts_10m_previous_day1"] = np.where(missed3, 25.0, weather["met_racha_1h"] * 1.1)[archived] * noise3[archived]
+    second["precipitation_previous_day1"] = np.where(missed3, 0.0, weather["met_lluvia_1h"] * noise3.clip(0))[archived]
+    second["temperature_2m_previous_day1"] = (weather["met_temp_1h"] - 1.0)[archived]
+    second["relative_humidity_2m_previous_day1"] = 55.0
+    second["anio"] = second["hora"].dt.year.astype("int32")
+    second["modelo"] = "gfs_seamless"
     # The archive of warnings starts in the middle of 2019, as the real one in 2018.
     warnings = pd.DataFrame(warnings)
     warnings = warnings[warnings["enviado_ts"] >= "2019-06-18"].reset_index(drop=True)
-    return weather, events, warnings
+    return weather, events, warnings, second.reset_index(drop=True)
 
 
 @pytest.fixture(scope="module")
 def tables(spark):
-    weather, events, warnings = synthetic()
+    weather, events, warnings, second = synthetic()
     save(spark, weather, "l3_gold.meteo_celda_hora")
+    save(spark, second, "l1_bronze.meteo_openmeteo_previo_gfs_hora")
     save(spark, pd.DataFrame([{"distribuidora_id": d, "ct_id": f"{d}-{i}", "celda_id": c}
                               for d, c in CELLS.items() for i in range(3)]), "l3_gold.map_ct_celda")
     facts, causes = [], []
@@ -322,6 +360,27 @@ def tables(spark):
     return events
 
 
+def ndvi_csv(workdir) -> str:
+    """The 16 day NDVI composites of MODIS per cell as bajar_ndvi.py writes them: a seasonal curve with noise."""
+    rng = np.random.default_rng(21)
+    rows = []
+    for platform, offset in (("terra", 0), ("aqua", 8)):
+        for year in range(2017, 2026):
+            for k in range(23):
+                start = pd.Timestamp(year, 1, 1) + pd.Timedelta(days=16 * k + offset)
+                if start.year != year:
+                    continue
+                end = start + pd.Timedelta(days=15)
+                season = 0.45 + 0.25 * np.cos(2 * np.pi * (start.dayofyear - 40) / 365.25)
+                for cell in CELLS.values():
+                    rows.append({"celda_id": cell, "plataforma": platform, "fecha_inicio": start.date().isoformat(),
+                                 "fecha_fin": end.date().isoformat(), "ndvi": round(season + rng.normal(0, 0.03), 4),
+                                 "n_validos": 480, "n_pixeles": 500, "_item": f"{platform}_{start:%Y%j}"})
+    path = os.path.join(workdir, "ndvi_celdas.csv")
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
 @pytest.fixture(scope="module")
 def config_path(workdir):
     with open(CONFIG, encoding="utf-8") as file:
@@ -334,7 +393,8 @@ def config_path(workdir):
         "hasta": "2026-01-01",
         "anios_evaluacion": [2023, 2024, 2025],
         "bootstrap_reps": 50,
-        "busqueda": {"logistica": [{"C": 0.1}],
+        "modelos": ["tasa_base", "logistica", "xgboost", "poisson"],
+        "busqueda": {"logistica": [{"C": 0.1}], "poisson": [{"alpha": 1.0}],
                      "xgboost": [{"max_depth": 2, "min_child_weight": 5, "learning_rate": 0.1, "subsample": 0.8,
                                   "colsample_bytree": 0.8, "n_estimators": 200, "early_stopping_rounds": 20,
                                   "verbose": 0}]},
@@ -353,11 +413,35 @@ def config_path(workdir):
              "bloques": ["calendario", "historia", "ayer", "avisos", "dia_comun", "extremos"]},
             {"nombre": "comun_avisos_detalle", "desde": "2019-06-25",
              "bloques": ["calendario", "historia", "ayer", "avisos", "avisos_detalle", "dia_comun"]},
+            {"nombre": "operativa_racha", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "avisos", "dia_comun_48h", "extremos_racha"],
+             "variables": ["ayer_racha_max", "ayer_lluvia_max"], "horizonte": 1},
+            {"nombre": "operativa_48h", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "avisos_48h", "dia_comun_48h", "extremos_racha"],
+             "variables": ["hace2_racha_max", "hace2_lluvia_max"], "horizonte": 2},
+            {"nombre": "operativa_72h", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "avisos_72h", "dia_comun_72h", "extremos_racha"],
+             "variables": ["hace3_racha_max", "hace3_lluvia_max"], "horizonte": 3},
+            {"nombre": "operativa_mas", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "extension", "interacciones",
+                         "pendiente_red"],
+             "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+            {"nombre": "operativa_fenologia", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "fenologia"],
+             "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
         ],
-        "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos"],
+        "fenologia": {"csv": ndvi_csv(workdir), "latencia_dias": 7, "clima_hasta": "2022-01-01"},
+        "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "operativa_racha",
+                               "operativa_48h", "operativa_72h", "operativa_mas", "operativa_fenologia"],
         "anios_prevision": [2024, 2025],
+        # A second model in Bronze and one that is not there (left out with a warning).
+        "previsiones_extra": [{"clave": "gfs", "tabla": "l1_bronze.meteo_openmeteo_previo_gfs_hora", "nombre": "GFS"},
+                              {"clave": "gem", "tabla": "l1_bronze.meteo_openmeteo_previo_gem_hora", "nombre": "GEM"}],
         "comparaciones_prevision": [["comun_avisos_extremos__logistica__prevision",
-                                     "comun_avisos__logistica__prevision"]],
+                                     "comun_avisos__logistica__prevision"],
+                                    ["operativa_48h__logistica__prevision", "operativa_racha__logistica__prevision"],
+                                    ["operativa_mas__logistica__prevision",
+                                     "comun_avisos_extremos__logistica__prevision"]],
         "comparaciones": [["perfecta__logistica", "ayer__logistica"], ["avisos__logistica", "ayer__logistica"]],
     }
     path = os.path.join(workdir, "config.json")
@@ -368,7 +452,7 @@ def config_path(workdir):
 
 @pytest.fixture(scope="module")
 def result(spark, tables, config_path, workdir):
-    code = rd.main(["--run-id", RUN_ID, "--config", config_path])
+    code = rd.main(["--run-id", RUN_ID, "--config", config_path, "--previsiones-extra"])
     return code, os.path.join(workdir, "resultados", RUN_ID)
 
 
@@ -407,13 +491,18 @@ def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
     # The two models of every variant together by their percentiles in the year.
     assert table.loc[("perfecta", "rango"), "pr_auc"] > 2 * nothing
     assert len(read(folder, "diferencias.csv")) == 2
+    # The model of counts (fitted on n_dia) ranks the days like the logistic regression.
+    counted = table.loc[("perfecta", "poisson"), "pr_auc"]
+    assert counted > 2 * nothing and counted > 0.7 * perfect
 
 
 def test_the_real_forecast_scores_the_years_it_covers(result):
     _, folder = result
     full = read(folder, "prevision.csv")
-    # The variants of the forecast, with the models of yesterday once.
-    assert set(full["variante"]) == {"perfecta_comun", "comun_avisos", "comun_avisos_extremos", "ayer"}
+    # The variants of the forecast, with the models of yesterday once; the one of three days ahead has no
+    # forecast in Gold (no metp3_*) and is skipped.
+    assert set(full["variante"]) == {"perfecta_comun", "comun_avisos", "comun_avisos_extremos", "ayer",
+                                     "operativa_racha", "operativa_48h", "operativa_mas", "operativa_fenologia"}
     table = full[full["variante"].isin(["perfecta_comun", "ayer"])].set_index(["tiempo_del_dia", "modelo"])
     assert {"reanalisis", "prevision", "prevision_cuantiles", "solo_ayer"} <= set(table.index.get_level_values(0))
     warned = full[full["variante"] == "comun_avisos"].set_index(["tiempo_del_dia", "modelo"])
@@ -435,6 +524,126 @@ def test_the_real_forecast_scores_the_years_it_covers(result):
     assert "## Con la previsión real del día anterior (2024, 2025)" in text
 
 
+def test_two_days_ahead_scores_with_the_older_forecast_and_warnings(result):
+    _, folder = result
+    full = read(folder, "prevision.csv").set_index(["variante", "tiempo_del_dia", "modelo"])
+    near = full.loc[("operativa_racha", "prevision", "logistica"), "pr_auc"]
+    far = full.loc[("operativa_48h", "prevision", "logistica"), "pr_auc"]
+    only_before = full.loc[("ayer", "solo_ayer", "logistica"), "pr_auc"]
+    # The forecast of two days before misses a storm in four and warns of half: worse than the day before, still
+    # far above knowing only the weather of the days before.
+    assert only_before < far < near
+    assert far > 0.5 * near
+    # On the reanalysis (a perfect forecast) both variants see the same gusts and rain.
+    assert full.loc[("operativa_48h", "reanalisis", "logistica"), "pr_auc"] == pytest.approx(
+        full.loc[("operativa_racha", "reanalisis", "logistica"), "pr_auc"], rel=0.15)
+    differences = read(folder, "prevision_diferencias.csv")
+    pair = differences[(differences["a"] == "operativa_48h__logistica__prevision")
+                       & (differences["b"] == "operativa_racha__logistica__prevision")]
+    assert len(pair) == 1 and pair["dif_p50"].iloc[0] < 0
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "operativa_48h (48 h)" in text and "dos o tres días antes" in text
+    variants = read(folder, "variantes.csv").set_index("variante")
+    assert variants.loc["operativa_48h", "horizonte_dias"] == 2 and variants.loc["operativa_racha", "horizonte_dias"] == 1
+
+
+def test_a_second_model_and_the_mean_of_the_models_score_the_same_days(result):
+    _, folder = result
+    full = read(folder, "prevision.csv")
+    table = full[full["variante"] == "perfecta_comun"].set_index(["tiempo_del_dia", "modelo"])
+    sources = set(table.index.get_level_values(0))
+    assert {"prevision", "prevision_gfs", "prevision_gfs_cuantiles", "prevision_media", "prevision_media_cuantiles"} <= sources
+    # The model that is not in Bronze is left out, not invented.
+    assert not any("_gem" in s for s in sources)
+    # On the scale of the reanalysis (by quantiles, so the bias of each model does not count): the second model
+    # misses a storm in three and is worse than ICON-EU alone; the mean of both keeps most of the storms ICON-EU
+    # sees (a missed storm still scores half way), so it sits between them.
+    icon = table.loc[("prevision_cuantiles", "logistica"), "pr_auc"]
+    second = table.loc[("prevision_gfs_cuantiles", "logistica"), "pr_auc"]
+    mean = table.loc[("prevision_media_cuantiles", "logistica"), "pr_auc"]
+    assert second < 0.9 * icon
+    assert second < mean and mean > 0.8 * icon
+    assert ("prevision_media_cuantiles", "rango") in table.index and ("prevision_gfs", "xgboost") in table.index
+    differences = read(folder, "prevision_diferencias.csv").set_index(["a", "b"])
+    for a in ("perfecta_comun__logistica__prevision_gfs", "perfecta_comun__logistica__prevision_media"):
+        assert (a, "perfecta_comun__logistica__prevision") in differences.index
+    for key in ("gfs", "media"):
+        assert (f"perfecta_comun__rango__prevision_{key}_cuantiles",
+                "perfecta_comun__rango__prevision_cuantiles") in differences.index
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "GFS (prevision_gfs, 100 % de los días)" in text and "prevision_media" in text
+    # Two days ahead there is no second model: only the three usual weathers of the day.
+    far = full[full["variante"] == "operativa_48h"]
+    assert set(far["tiempo_del_dia"]) == {"reanalisis", "prevision", "prevision_cuantiles"}
+
+
+def test_the_second_model_is_joined_from_bronze_and_is_never_a_feature(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    cfg = {**rd.settings(config), "comparar_previsiones_extra": True}
+    pdf, blocks, _ = rd.build_dataset(spark, config, cfg)
+    # Its daily weather, extremes over the same climate, freezing hours and interactions, from 2024 like ICON-EU,
+    # without the wind speed Bronze does not have.
+    names = ["prevgfs_racha_max", "prevgfs_lluvia_max", "prevgfs_temp_max", "prevgfs_humedad_media",
+             "prevgfs_ext_racha_clima_max", "prevgfs_ext_racha_ku", "prevgfs_ext_dias_calor", "prevgfs_hie_horas",
+             "prevgfs_ext_int_racha_lluvia_previa"]
+    assert set(names) <= set(pdf.columns) and "prevgfs_viento_max" not in pdf.columns
+    assert not any(n.startswith("prevgfs_") for block in blocks.values() for n in block)
+    known = pdf[pdf["prevgfs_racha_max"].notna()]
+    assert known["fecha"].min() == pd.Timestamp("2024-01-01")
+    assert len(known) == pytest.approx(len(pdf[pdf["prev_racha_max"].notna()]), rel=0.01)
+    # Over the same p98 of the cell as the forecast of ICON-EU.
+    ratio = (known["prevgfs_ext_racha_clima_max"] / known["prevgfs_racha_max"]).median()
+    ratio1 = (known["prev_ext_racha_clima_max"] / known["prev_racha_max"]).median()
+    assert ratio == pytest.approx(ratio1, rel=0.05)
+    # Only the model that is in Bronze stays in the settings for the forecast comparison.
+    assert [e["clave"] for e in cfg["previsiones_extra"]] == ["gfs"]
+    assert cfg["previsiones_extra"][0]["cobertura"] == pytest.approx(1.0, abs=0.01)
+    # Without the flag nothing of it is read or built.
+    plain, _, _ = rd.build_dataset(spark, config, rd.settings(config))
+    assert not any(c.startswith("prevgfs_") for c in plain.columns)
+
+
+def test_the_greenness_of_the_network_is_known_with_the_latency_of_the_composites(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    cfg = rd.settings(config)
+    pdf, blocks, _ = rd.build_dataset(spark, config, cfg)
+    assert set(blocks["fenologia"]) == {"fen_ndvi", "fen_ndvi_anom", "fen_ndvi_cambio_1m", "fen_int_racha_ndvi"}
+    assert "prev_fen_int_racha_ndvi" in blocks["prevision"] and "prev2_fen_int_racha_ndvi" in blocks["prevision_48h"]
+    assert not any(c.startswith("fen_") for c in blocks["extremos"] + blocks["interacciones"])
+    # A composite every eight days and a week of latency: every day of the dataset has a value.
+    assert pdf["fen_ndvi"].notna().all()
+    # The value of D is the latest composite whose period had ended a week before D, the CT weighted mean of the cells.
+    rows = pd.read_csv(cfg["fenologia"]["csv"], parse_dates=["fecha_inicio", "fecha_fin"])
+    day = pd.Timestamp("2024-03-10")
+    known = rows[rows["fecha_fin"] + pd.Timedelta(days=7) <= day]
+    latest = known[known["fecha_fin"] == known["fecha_fin"].max()]
+    dist = min(CELLS)
+    expected = latest[latest["celda_id"] == CELLS[dist]]["ndvi"].mean()
+    found = pdf.set_index(["distribuidora_id", "fecha"]).loc[(dist, day)]
+    assert found["fen_ndvi"] == pytest.approx(expected, abs=1e-6)
+    assert latest["fecha_fin"].iloc[0] >= day - pd.Timedelta(days=7 + 8)
+    # The anomaly is a z-score of the period of the year over the years before 2022: centred there, and it follows
+    # the season (greener in winter in this curve), so the raw value and the anomaly are different things.
+    before = pdf[pdf["fecha"] < "2022-01-01"]
+    assert abs(before["fen_ndvi_anom"].mean()) < 0.3 and 0.6 < before["fen_ndvi_anom"].std() < 1.4
+    winter = pdf[pdf["fecha"].dt.month == 2]["fen_ndvi"].mean()
+    summer = pdf[pdf["fecha"].dt.month == 8]["fen_ndvi"].mean()
+    assert winter > summer + 0.3
+    assert (pdf["fen_ndvi_cambio_1m"] > 0).any() and (pdf["fen_ndvi_cambio_1m"] < 0).any()
+    # The gust over the greenness, and its forecast twin, are zero on calm days and positive on storm days.
+    calm = pdf[pdf["ext_racha_clima_max"] < 0.5]
+    storms = pdf[pdf["ext_racha_clima_max"] > 1.2]
+    assert (calm["fen_int_racha_ndvi"] == 0).all() and (storms["fen_int_racha_ndvi"] > 0).all()
+    archived = pdf[pdf["prev_ext_racha_clima_max"].notna()]
+    assert archived["prev_fen_int_racha_ndvi"].notna().all()
+    # Without the file there is no block and nothing breaks.
+    plain = {**cfg, "fenologia": {"csv": os.path.join(os.path.dirname(cfg["fenologia"]["csv"]), "no_esta.csv")}}
+    pdf2, blocks2, _ = rd.build_dataset(spark, config, plain)
+    assert "fenologia" not in blocks2 and not any(c.startswith("fen_") for c in pdf2.columns)
+
+
 def test_metrics_and_run_saved(result, spark):
     assert spark.table("l3_gold.ml_metricas").where(f"run_id = '{RUN_ID}'").count() > 100
     run = spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}'").first()
@@ -448,6 +657,28 @@ def test_the_extremes_of_the_forecast_are_never_a_block(spark, tables, config_pa
     names = ["prev_ext_racha_clima_max", "prev_ext_racha_clima_media", "prev_ext_racha_ku", "prev_ext_dias_calor"]
     assert set(names) <= set(blocks["prevision"])
     assert not any(c.startswith("prev_") for c in blocks["extremos"])
+    # Two days ahead: gusts and rain, their extremes derived from the climate of the cells, the warnings sent
+    # before 20:00 of D - 2 and the weather of D - 2; nothing of three days ahead without metp3_* in Gold.
+    assert set(blocks["dia_comun_48h"]) == {"dia_racha_max", "dia_racha_media_max", "dia_lluvia_max",
+                                            "dia_lluvia_media", "dia_lluvia_hora_max"}
+    assert {"prev2_racha_max", "prev2_ext_racha_clima_max", "prev2_ext_racha_ku"} <= set(blocks["prevision_48h"])
+    assert "prev2_ext_dias_calor" not in pdf.columns and "dia_comun_72h" not in blocks
+    assert set(blocks["extremos_racha"]) == {"ext_racha_clima_max", "ext_racha_clima_media", "ext_racha_ku"}
+    assert "hace2_racha_max" in blocks["hace2"] and "aviso48_max_nivel" in blocks["avisos_48h"]
+    assert "aviso48_det_viento_ct" in blocks["avisos_detalle_48h"]
+    archived = pdf[pdf["fecha"] >= "2019-06-20"]
+    # Fewer warnings are known two evenings before than one.
+    assert archived["aviso48_max_nivel"].gt(0).sum() < archived["aviso_max_nivel"].gt(0).sum()
+    assert (archived["aviso48_max_nivel"].fillna(0) <= archived["aviso_max_nivel"].fillna(0)).all()
+    shifted = pdf.set_index(["distribuidora_id", "fecha"])
+    day, dist = pd.Timestamp("2024-03-10"), min(CELLS)
+    assert shifted.loc[(dist, day), "hace2_racha_max"] == pytest.approx(
+        shifted.loc[(dist, day - pd.Timedelta(days=2)), "dia_racha_max"])
+    # The derived extremes of two days before go over the same climate as the ones of the day before.
+    known = pdf[pdf["prev2_racha_max"].notna()]
+    ratio = known["prev2_ext_racha_clima_max"] / known["prev2_racha_max"]
+    ratio1 = known["prev_ext_racha_clima_max"] / known["prev_racha_max"]
+    assert ratio.median() == pytest.approx(ratio1.median(), rel=0.05)
     # The details of the warnings are a block of their own, 0 without warning once the archive exists.
     assert set(rd.WARNING_DETAILS) == set(blocks["avisos_detalle"])
     assert not any(c.startswith("aviso_det_") for c in blocks["avisos"])
@@ -457,6 +688,79 @@ def test_the_extremes_of_the_forecast_are_never_a_block(spark, tables, config_pa
     known = pdf[pdf["prev_ext_racha_clima_max"].notna()]
     assert known["fecha"].min() == pd.Timestamp("2024-01-01")
     assert known["prev_ext_racha_clima_max"].mean() > known["ext_racha_clima_max"].mean()
+
+
+def test_the_extent_the_interactions_and_the_direction_of_the_gusts(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    cfg = {**rd.settings(config), "bloque_direccion": True}
+    pdf, blocks, _ = rd.build_dataset(spark, config, cfg)
+    # The new blocks, apart from the extremes the operational variant already uses.
+    assert set(blocks["extension"]) == {"ext_fraccion_p98_max", "ext_fraccion_p98_horas", "ext_fraccion_72_max",
+                                        "ext_fraccion_72_horas"}
+    assert set(blocks["interacciones"]) == {"ext_int_racha_lluvia_previa", "ext_int_racha_lluvia_dia",
+                                            "ext_int_racha_hoja", "ext_int_racha_verano"}
+    assert set(blocks["pendiente_red"]) == {f"ext_pend_racha_dist_{d}" for d in CELLS}
+    assert set(blocks["direccion"]) == {"ext_dir_anomalia", "ext_dir_int_racha"}
+    assert set(blocks["extremos"]) == {"ext_racha_clima_max", "ext_racha_clima_media", "ext_racha_ku", "ext_dias_calor"}
+    assert set(blocks["extremos_racha"]) == {"ext_racha_clima_max", "ext_racha_clima_media", "ext_racha_ku"}
+    # One cell per network: the share under a strong gust is 0 or 1, and 1 exactly when the worst hour is at the p98.
+    known = pdf[pdf["ext_racha_clima_max"].notna()]
+    assert set(known["ext_fraccion_p98_max"].unique()) <= {0.0, 1.0}
+    assert (known["ext_fraccion_p98_max"] == (known["ext_racha_clima_max"] >= 1.0)).all()
+    assert (known["ext_fraccion_72_max"] == (known["dia_racha_max"] >= 72.0)).all()
+    assert known["ext_fraccion_72_horas"].between(0, 24).all() and known["ext_fraccion_72_horas"].max() >= 6
+    assert (known["ext_fraccion_p98_horas"] >= known["ext_fraccion_p98_max"]).all()
+    # The interactions multiply the excess of the gust over 0.9 times the p98 by rain and season.
+    excess = (known["ext_racha_clima_max"] - 0.9).clip(lower=0.0)
+    assert np.allclose(known["ext_int_racha_lluvia_previa"], excess * known["ayer_lluvia_max"], equal_nan=True)
+    assert np.allclose(known["ext_int_racha_lluvia_dia"], excess * known["dia_lluvia_max"], equal_nan=True)
+    july, january = known[known["fecha"].dt.month == 7], known[known["fecha"].dt.month == 1]
+    assert np.allclose(july["ext_int_racha_hoja"], (july["ext_racha_clima_max"] - 0.9).clip(lower=0.0))
+    assert np.allclose(july["ext_int_racha_verano"], july["ext_int_racha_hoja"])
+    assert (january["ext_int_racha_hoja"] == 0).all() and (january["ext_int_racha_verano"] == 0).all()
+    # A slope of the gust per network: the ratio in its own rows, 0 in the others.
+    for dist in CELLS:
+        own = known[known["distribuidora_id"] == dist]
+        assert np.allclose(own[f"ext_pend_racha_dist_{dist}"], own["ext_racha_clima_max"])
+        assert (known.loc[known["distribuidora_id"] != dist, f"ext_pend_racha_dist_{dist}"] == 0).all()
+    # The direction: the storms blow from the south-west, the ones on days multiple of four from the north-east.
+    storms = known[known["dia_racha_max"] >= 80.0]
+    usual, odd = storms[storms["fecha"].dt.day % 4 != 0], storms[storms["fecha"].dt.day % 4 == 0]
+    assert usual["ext_dir_anomalia"].median() < 25 and odd["ext_dir_anomalia"].median() > 155
+    calm = known[known["ext_racha_clima_max"] < 1.0]
+    assert (calm["ext_dir_anomalia"] == 0).all() and (calm["ext_dir_int_racha"] == 0).all()
+    assert np.allclose(odd["ext_dir_int_racha"], (odd["ext_racha_clima_max"] - 0.9).clip(lower=0.0)
+                       * odd["ext_dir_anomalia"] / 90.0)
+    # The forecast twins, at every horizon, with the rain of the last day known at that horizon.
+    for name in ("ext_fraccion_p98_max", "ext_fraccion_72_horas", "ext_int_racha_hoja", "ext_int_racha_lluvia_previa",
+                 "ext_pend_racha_dist_1"):
+        assert f"prev_{name}" in blocks["prevision"] and f"prev2_{name}" in blocks["prevision_48h"]
+    assert "prev_ext_dir_anomalia" not in pdf.columns and not any("dir" in c for c in blocks["prevision"])
+    archived = pdf[pdf["prev2_ext_racha_clima_max"].notna()]
+    excess2 = (archived["prev2_ext_racha_clima_max"] - 0.9).clip(lower=0.0)
+    assert np.allclose(archived["prev2_ext_int_racha_lluvia_previa"], excess2 * archived["hace2_lluvia_max"],
+                       equal_nan=True)
+    assert np.allclose(archived["prev_ext_int_racha_lluvia_dia"],
+                       (archived["prev_ext_racha_clima_max"] - 0.9).clip(lower=0.0) * archived["prev_lluvia_max"],
+                       equal_nan=True)
+    # Without the flag, no direction and nothing else changes.
+    _, plain, _ = rd.build_dataset(spark, config, rd.settings(config))
+    assert "direccion" not in plain and set(plain["extension"]) == set(blocks["extension"])
+    # The drought: the balance of 90 and 180 days as a z-score of the month; 2025 is the dry year of the fixture.
+    assert set(blocks["sequia"]) == {"seq_3m", "seq_6m"}
+    known = pdf[pdf["seq_6m"].notna()]
+    assert known["fecha"].min() <= pd.Timestamp("2019-07-01")  # the 180 days need the weather before them
+    dry = known[(known["fecha"] >= "2025-06-01") & (known["fecha"] < "2025-12-31")]
+    wet = known[(known["fecha"] >= "2023-06-01") & (known["fecha"] < "2023-12-31")]
+    assert dry["seq_6m"].mean() < -1.0 and abs(wet["seq_6m"].mean()) < 1.0
+    # The freezing rain of 10.01.2024: CT-hours of precipitation at 0,5 degrees or less, in the reanalysis and in
+    # the forecast of the day before (one degree warmer, still freezing); nothing the other days.
+    assert set(blocks["hielo"]) == {"hie_horas"} and "prev_hie_horas" in blocks["prevision"]
+    day = pdf[pdf["fecha"] == "2024-01-10"]
+    assert day["hie_horas"].tolist() == pytest.approx([6.0, 6.0]) and day["prev_hie_horas"].tolist() == pytest.approx([6.0, 6.0])
+    others = pdf[(pdf["fecha"] != "2024-01-10") & pdf["hie_horas"].notna()]
+    assert (others["hie_horas"] == 0).all()
 
 
 def test_the_models_of_the_hours_never_see_the_forecast_of_the_day_before(spark, tables):

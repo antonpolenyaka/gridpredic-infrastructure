@@ -13,7 +13,7 @@
     },
     "wikidata": {
       "url": "https://query.wikidata.org/sparql",
-      "agente": "GridPredict-TFM-UPC/1.0 (datos abiertos para un trabajo de master)"
+      "agente": "GridPredic-TFM-UPC/1.0 (datos abiertos para un trabajo de master)"
     },
     "elevacion": {
       "url": "https://api.open-meteo.com/v1/elevation",
@@ -47,6 +47,10 @@
     "proyecciones": {
       "ficheros": ["ieex_proyecciones_ame.csv", "ieex_ame_municipios.csv"],
       "origen": "https://www.juntaex.es/w/proyecciones-de-poblacion"
+    },
+    "calidad_sector": {
+      "ficheros": ["gecos_indices_zonales.csv"],
+      "origen": "https://energia.serviciosmin.gob.es/Gecos/DatosPublicos/CalidadServicio"
     },
     "aves": {
       "api": "https://api.gbif.org/v1/occurrence/search",
@@ -129,7 +133,8 @@
       "incendios": "l1_bronze.effis_area_quemada",
       "avisos": "l1_bronze.aemet_aviso",
       "focos": "l1_bronze.firms_foco",
-      "fwi": "l1_bronze.cems_fwi_dia"
+      "fwi": "l1_bronze.cems_fwi_dia",
+      "calidad_sector": "l1_bronze.gecos_indice_zonal"
     }
   }
 }

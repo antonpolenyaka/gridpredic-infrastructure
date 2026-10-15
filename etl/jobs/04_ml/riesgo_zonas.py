@@ -459,7 +459,7 @@ def osrm_table(points: list, api: str = "https://router.project-osrm.org", timeo
     """
     coords = ";".join(f"{lon:.5f},{lat:.5f}" for lat, lon in points)
     url = f"{api.rstrip('/')}/table/v1/driving/{coords}?annotations=duration"
-    request = urllib.request.Request(url, headers={"User-Agent": "GridPredict-TFM/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "GridPredic-TFM/1.0"})
     with urllib.request.urlopen(request, timeout=timeout) as answer:
         payload = json.loads(answer.read())
     if payload.get("code") != "Ok" or "durations" not in payload:
@@ -598,8 +598,10 @@ def shift_sheets(payload: dict) -> dict:
     summary, lines, munis, cts, crews, curve = [], [], [], [], [], []
     for d in dists:
         imp, fr, plan = d.get("impacto") or {}, d.get("franja") or {}, d.get("brigadas") or {}
+        guard = d.get("guardia") or {}
         summary.append({
             "distribuidora": d.get("nombre"), "nivel": d.get("nivel"), "probabilidad": d.get("probabilidad"),
+            "guardia": ("reforzar: " + str(guard.get("motivo", ""))) if guard.get("reforzar") else "normal",
             "veces la tasa base": d.get("veces_tasa_base"), "averías esperadas": d.get("esperadas"),
             "CT esperados sin luz": imp.get("ct_esperados"), "clientes esperados sin luz": imp.get("clientes_esperados"),
             "kVA esperados": imp.get("kva_esperados"), "franja de más riesgo": fr.get("texto"),

@@ -1,0 +1,22 @@
+{
+  "generado_utc": "2026-10-14T22:23:57+00:00",
+  "worldcover": [
+    "ESA_WorldCover_10m_2021_v200_N36W009_Map.tif",
+    "ESA_WorldCover_10m_2021_v200_N39W006_Map.tif",
+    "ESA_WorldCover_10m_2021_v200_N39W009_Map.tif"
+  ],
+  "altura_dosel": [
+    "033110131",
+    "033110132",
+    "033110133",
+    "033110112",
+    "033110113",
+    "033110130",
+    "033110310"
+  ],
+  "celdas": 43,
+  "fuentes": {
+    "worldcover": "ESA WorldCover 2021 v200, CC BY 4.0",
+    "altura_dosel": "Meta y WRI, Tolan y otros 2024, CC BY 4.0"
+  }
+}

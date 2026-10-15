@@ -44,7 +44,7 @@ CAPITALS = {"0615": "06015", "0616": "06083", "1015": "10037"}
 
 
 def get(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": "GridPredict-TFM/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "GridPredic-TFM/1.0"})
     with urllib.request.urlopen(request, timeout=300) as response:
         return response.read()
 
