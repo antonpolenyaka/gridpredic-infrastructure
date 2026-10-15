@@ -417,19 +417,28 @@
        "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
       {"nombre": "operativa_fenologia", "desde": "2018-06-25",
        "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "fenologia"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_hoja", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "hoja"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_corredor", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "corredor"],
        "variables": ["ayer_racha_max", "ayer_lluvia_max"]}
     ],
+    "hoja": {"csv": "/app/config/01_bronze/hrl_celdas.csv"},
+    "corredor": {"csv": "/app/config/01_bronze/corredor_celdas.csv"},
     "fenologia": {"csv": "/app/config/01_bronze/ndvi_celdas.csv", "latencia_dias": 7, "clima_hasta": "2022-01-01"},
     "modelos": ["tasa_base", "logistica", "xgboost", "logistica_equilibrada", "poisson"],
     "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "comun_avisos_detalle",
                            "comun_avisos_detalle_extremos", "operativa", "operativa_racha", "operativa_48h",
                            "operativa_72h", "operativa_extension", "operativa_interacciones",
                            "operativa_pendiente_red", "operativa_direccion", "operativa_mas", "operativa_sequia",
-                           "operativa_hielo", "operativa_fenologia"],
+                           "operativa_hielo", "operativa_fenologia", "operativa_hoja", "operativa_corredor"],
     "anios_prevision": [2024, 2025],
     "previsiones_extra": [
       {"clave": "gfs", "tabla": "l1_bronze.meteo_openmeteo_previo_gfs_hora", "nombre": "GFS 0,25 grados"},
-      {"clave": "gem", "tabla": "l1_bronze.meteo_openmeteo_previo_gem_hora", "nombre": "GEM 15 km"}
+      {"clave": "gem", "tabla": "l1_bronze.meteo_openmeteo_previo_gem_hora", "nombre": "GEM 15 km"},
+      {"clave": "ukmo", "tabla": "l1_bronze.meteo_openmeteo_previo_ukmo_hora", "nombre": "UKMO 10 km (desde 2025)"}
     ],
     "comparaciones_prevision": [
       ["comun_avisos_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
@@ -459,6 +468,9 @@
       ["operativa_hielo__logistica__prevision", "operativa__logistica__prevision"],
       ["operativa_fenologia__logistica__prevision", "operativa__logistica__prevision"],
       ["operativa_fenologia__logistica__prevision_cuantiles", "operativa__logistica__prevision_cuantiles"],
+      ["operativa_hoja__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_corredor__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_hoja__logistica__prevision_cuantiles", "operativa__logistica__prevision_cuantiles"],
       ["operativa__poisson__prevision", "operativa__logistica__prevision"],
       ["operativa__logistica_equilibrada__prevision", "operativa__logistica__prevision"],
       ["operativa__poisson__prevision_cuantiles", "operativa__logistica__prevision_cuantiles"]
@@ -494,6 +506,8 @@
       ["operativa_sequia__logistica", "operativa__logistica"],
       ["operativa_hielo__logistica", "operativa__logistica"],
       ["operativa_fenologia__logistica", "operativa__logistica"],
+      ["operativa_hoja__logistica", "operativa__logistica"],
+      ["operativa_corredor__logistica", "operativa__logistica"],
       ["operativa__poisson", "operativa__logistica"],
       ["operativa__logistica_equilibrada", "operativa__logistica"]
     ]
@@ -511,7 +525,7 @@
   },
   "riesgo_manana": {
     "variante": "operativa",
-    "variante_pasado_manana": null,
+    "variante_pasado_manana": "operativa_48h",
     "tabla_pasado_manana": "l3_gold.riesgo_pasado_manana",
     "modelo": "logistica",
     "zona_horaria": "Europe/Madrid",
