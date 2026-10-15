@@ -193,6 +193,12 @@ def test_the_trees_of_the_cell_are_a_block(result, workdir):
     metrics = pd.read_csv(os.path.join(folder, "captura.csv"))
     assert "historia+estructura+arbolado" in set(metrics["modelo"])
     assert set(rc.TREES) <= set(rc.block_columns(pd.DataFrame(columns=["anios_desde_ultima"]))["arbolado"])
+    assert rc.block_columns(pd.DataFrame(columns=["anios_desde_ultima"]))["mfe"] == rc.MFE
+    # The species of the forest map come in the same way, with their own columns.
+    species = os.path.join(workdir, "mfe_celdas.csv")
+    pd.DataFrame({"celda_id": ["39.10_-6.10"], "mfe_copa_caducifolia_pct": [12.5]}).to_csv(species, index=False)
+    mapped = rc.add_trees(pd.DataFrame({"celda_id": ["39.10_-6.10", "39.90_-6.10"]}), species, rc.MFE, "mfe")
+    assert mapped["celda_mfe_copa_caducifolia_pct"].tolist()[0] == pytest.approx(12.5)
     # The merge by the cell of the CT, and nothing without the file.
     grid = pd.DataFrame({"distribuidora_id": [1, 1, 1], "ct_id": ["C000", "C001", "C002"],
                          "celda_id": ["39.10_-6.10", "39.30_-6.10", "39.90_-6.10"]})

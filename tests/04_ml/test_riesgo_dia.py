@@ -397,6 +397,14 @@ def corridor_csv(workdir) -> str:
     return path
 
 
+def mfe_csv(workdir) -> str:
+    """The canopy of each group of species in the cells as celdas_mfe.py writes it, in % of the cell."""
+    path = os.path.join(workdir, "mfe_celdas.csv")
+    pd.DataFrame({"celda_id": ["c1", "c2"], "mfe_copa_caducifolia_pct": [20.0, 0.5],
+                  "mfe_copa_perennifolia_pct": [3.0, 15.0]}).to_csv(path, index=False)
+    return path
+
+
 @pytest.fixture(scope="module")
 def config_path(workdir):
     with open(CONFIG, encoding="utf-8") as file:
@@ -449,6 +457,7 @@ def config_path(workdir):
         "fenologia": {"csv": ndvi_csv(workdir), "latencia_dias": 7, "clima_hasta": "2022-01-01"},
         "hoja": {"csv": hrl_csv(workdir)},
         "corredor": {"csv": corridor_csv(workdir)},
+        "caducas": {"csv": mfe_csv(workdir)},
         "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "operativa_racha",
                                "operativa_48h", "operativa_72h", "operativa_mas", "operativa_fenologia"],
         "anios_prevision": [2024, 2025],
@@ -689,6 +698,22 @@ def test_the_tall_trees_along_the_lines_multiply_the_gust(spark, tables, config_
     storms = pdf[pdf["ext_racha_clima_max"] > 1.2]
     assert (storms["corr_int_racha"] > 0).all()
     assert (pdf.loc[pdf["ext_racha_clima_max"] < 0.5, "corr_int_racha"] == 0).all()
+
+
+def test_the_deciduous_canopy_of_the_forest_map_multiplies_the_gust_in_the_leaf_season(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    pdf, blocks, _ = rd.build_dataset(spark, config, rd.settings(config))
+    assert set(blocks["caducas"]) == {"cad_copa", "cad_int_racha"}
+    assert "prev_cad_int_racha" in blocks["prevision"]
+    shares = pdf.groupby("distribuidora_id")["cad_copa"].first()
+    assert shares[1] == pytest.approx(0.20) and shares[2] == pytest.approx(0.005)
+    storms = pdf[pdf["ext_racha_clima_max"] > 1.2]
+    winter = storms[storms["fecha"].dt.month.isin([12, 1, 2])]
+    summer = storms[storms["fecha"].dt.month.isin([6, 7, 8])]
+    assert (winter["cad_int_racha"] == 0).all() and (summer["cad_int_racha"] > 0).all()
+    # The leaf block of the HRL is still there, next to it.
+    assert set(blocks["hoja"]) == {"hoja_frondosa", "hoja_int_racha"}
 
 
 def test_the_regimes_and_the_fragility_curve_of_the_gust(spark, tables, config_path):
