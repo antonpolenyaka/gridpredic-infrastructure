@@ -11,7 +11,7 @@ El script nunca escribe ni imprime la clave.
 Pasos (cada uno se puede repetir):
 
     python bajar_hrl.py buscar   "Tree Cover Density 2018"   # UID e ids de descarga de los productos
-    python bajar_hrl.py pedir    <UID> <id de descarga>        # pide el recorte de la caja de las redes
+    python bajar_hrl.py pedir    <UID> <id de descarga> [anio] # pide el recorte de la caja de las redes
     python bajar_hrl.py estado                                 # en que va cada peticion y su enlace
     python bajar_hrl.py bajar    <url> <fichero>               # baja el zip preparado
 
@@ -24,6 +24,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 API = "https://land.copernicus.eu/api"
 KEY = os.environ.get("CLMS_KEY", r"D:\DockerData\arbolado\clms_key.json")
@@ -73,10 +74,17 @@ def search(token: str, text: str):
                   f"{row.get('full_format') or ''} {row.get('full_source') or ''}")
 
 
-def request(token: str, uid: str, download_id: str):
+def request(token: str, uid: str, download_id: str, year: int = None):
     west, south, east, north = BOX
-    body = {"Datasets": [{"DatasetID": uid, "DatasetDownloadInformationID": download_id, "OutputFormat": "Geotiff",
-                          "OutputGCS": "EPSG:4326", "BoundingBox": [north, east, south, west]}]}
+    item = {"DatasetID": uid, "DatasetDownloadInformationID": download_id, "OutputFormat": "Geotiff",
+            "OutputGCS": "EPSG:4326", "BoundingBox": [north, east, south, west]}
+    if year:
+        # The yearly products (2018-present) are stamped on the 1st of January of their year: the API wants that
+        # day as a range in milliseconds since 1970 (a whole year, or a date as text, is refused).
+        start = int(datetime(year, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        end = start + 86_399_000
+        item["TemporalFilter"] = {"StartDate": start, "EndDate": end}
+    body = {"Datasets": [item]}
     print(json.dumps(call("@datarequest_post", token, body), indent=1)[:2000])
 
 
@@ -104,7 +112,7 @@ def main(argv):
     if step == "buscar":
         search(token, " ".join(argv[1:]) or "Tree Cover Density")
     elif step == "pedir":
-        request(token, argv[1], argv[2])
+        request(token, argv[1], argv[2], int(argv[3]) if len(argv) > 3 else None)
     elif step == "estado":
         status(token)
     else:

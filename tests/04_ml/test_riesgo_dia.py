@@ -381,6 +381,14 @@ def ndvi_csv(workdir) -> str:
     return path
 
 
+def hrl_csv(workdir) -> str:
+    """The leaf type of the cells as celdas_hrl.py writes it: the first network among broadleaved trees."""
+    path = os.path.join(workdir, "hrl_celdas.csv")
+    pd.DataFrame({"celda_id": ["c1", "c2"], "hrl_copa_media_pct": [55.0, 12.0], "hrl_pct_frondosa": [0.6, 0.1],
+                  "hrl_pct_conifera": [0.05, 0.02], "hrl_caducifolio_de_arbol": [0.9, 0.2]}).to_csv(path, index=False)
+    return path
+
+
 @pytest.fixture(scope="module")
 def config_path(workdir):
     with open(CONFIG, encoding="utf-8") as file:
@@ -431,6 +439,7 @@ def config_path(workdir):
              "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
         ],
         "fenologia": {"csv": ndvi_csv(workdir), "latencia_dias": 7, "clima_hasta": "2022-01-01"},
+        "hoja": {"csv": hrl_csv(workdir)},
         "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "operativa_racha",
                                "operativa_48h", "operativa_72h", "operativa_mas", "operativa_fenologia"],
         "anios_prevision": [2024, 2025],
@@ -642,6 +651,22 @@ def test_the_greenness_of_the_network_is_known_with_the_latency_of_the_composite
     plain = {**cfg, "fenologia": {"csv": os.path.join(os.path.dirname(cfg["fenologia"]["csv"]), "no_esta.csv")}}
     pdf2, blocks2, _ = rd.build_dataset(spark, config, plain)
     assert "fenologia" not in blocks2 and not any(c.startswith("fen_") for c in pdf2.columns)
+
+
+def test_the_leaf_type_of_the_network_multiplies_the_gust_in_the_leaf_season(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    pdf, blocks, _ = rd.build_dataset(spark, config, rd.settings(config))
+    assert set(blocks["hoja"]) == {"hoja_frondosa", "hoja_int_racha"}
+    assert "prev_hoja_int_racha" in blocks["prevision"] and "prev2_hoja_int_racha" in blocks["prevision_48h"]
+    by_dist = pdf.groupby("distribuidora_id")["hoja_frondosa"].first()
+    assert by_dist[1] == pytest.approx(0.6) and by_dist[2] == pytest.approx(0.1)
+    storms = pdf[pdf["ext_racha_clima_max"] > 1.2]
+    winter = storms[storms["fecha"].dt.month.isin([12, 1, 2])]
+    summer = storms[storms["fecha"].dt.month.isin([6, 7, 8])]
+    assert (winter["hoja_int_racha"] == 0).all() and (summer["hoja_int_racha"] > 0).all()
+    # The same storm weighs more on the network among broadleaved trees.
+    assert summer[summer["distribuidora_id"] == 1]["hoja_int_racha"].mean() > 3 * summer[summer["distribuidora_id"] == 2]["hoja_int_racha"].mean()
 
 
 def test_metrics_and_run_saved(result, spark):

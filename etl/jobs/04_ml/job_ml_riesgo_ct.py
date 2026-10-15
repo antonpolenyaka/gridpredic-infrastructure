@@ -102,9 +102,11 @@ DEFAULTS = {
                 "tweedie_variance_power": 1.3},
     "bloques": ["historia", "historia+estructura", "historia+estructura+scada", "historia+estructura+publicos",
                 "historia+estructura+obras", "historia+estructura+clima", "historia+estructura+naturaleza",
-                "historia+estructura+arbolado", "todo"],
+                "historia+estructura+arbolado", "historia+estructura+hoja", "historia+estructura+arbolado+hoja", "todo"],
     # The trees of every cell, from the public maps (None or a missing file: the block stays empty).
     "arbolado_csv": "/app/config/01_bronze/arbolado_celdas.csv",
+    # The canopy density and the leaf type of every cell, from the HRL of Copernicus (block hoja).
+    "hrl_csv": "/app/config/01_bronze/hrl_celdas.csv",
     # One model per family of causes (label and history of that family only), added up: the fauna of a line
     # repeats in the same supports, the failures of equipment follow the age and the load, the weather follows
     # the exposure. resto takes every other incident, the ones without a cause included, so the sum stands
@@ -140,6 +142,11 @@ NATURE = ["celda_ciguena_5a", "celda_aves_5a", "celda_ciguena_parte_aves_5a", "c
 # more, the trees that reach a medium voltage conductor. Static: the maps are of 2020 - 2021.
 TREES = ["celda_pct_arbol", "celda_pct_matorral", "celda_pct_dosel", "celda_dosel_media_m", "celda_dosel_p90_m",
          "celda_pct_dosel_5m", "celda_pct_dosel_8m", "celda_pct_dosel_12m"]
+# The canopy density (Tree Cover Density, 0 - 100 %) and the leaf type (Dominant Leaf Type: the share of the cell
+# with broadleaved and coniferous trees and the deciduous share of the trees) of the cell, from the high resolution
+# layers of Copernicus at 10 m (experimentos/arbolado/bajar_hrl.py and celdas_hrl.py, hrl_celdas.csv).
+LEAF = ["celda_hrl_copa_media_pct", "celda_hrl_copa_30_pct", "celda_hrl_pct_frondosa", "celda_hrl_pct_conifera",
+        "celda_hrl_caducifolio_de_arbol"]
 CAUSES_TABLE = "l2_silver.f_incidencia_causa"
 
 
@@ -323,6 +330,7 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
         cell_of["ct_id"] = cell_of["ct_id"].astype(str)
         grid = grid.merge(cell_of, on=["distribuidora_id", "ct_id"], how="left")
         grid = add_trees(grid, cfg.get("arbolado_csv"))
+        grid = add_trees(grid, cfg.get("hrl_csv"), LEAF, "hoja")
     if not clim.empty and cells is not None:
         rows = []
         for year in sorted(grid["anio"].unique()):
@@ -335,7 +343,7 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
             means = pd.concat(rows).rename(columns={"horas_racha": "clima_horas_racha", "dias_lluvia": "clima_dias_lluvia"})
             grid = grid.merge(means, on=["celda_id", "anio"], how="left")
 
-    for column in STRUCTURE + PUBLIC + WORKS + CLIMATE + NATURE + TREES:
+    for column in STRUCTURE + PUBLIC + WORKS + CLIMATE + NATURE + TREES + LEAF:
         if column not in grid.columns:
             grid[column] = np.nan
     grid["tiene_telemetria"] = grid["tiene_telemetria"].astype(float)
@@ -373,17 +381,21 @@ def family_grids(data: Data, grid: pd.DataFrame, keys: dict, last_year: int) -> 
     return out
 
 
-def add_trees(grid: pd.DataFrame, path: str) -> pd.DataFrame:
-    """The columns of TREES from the CSV of the cells (celda_pct_arbol...), by the celda_id of the CT; NaN without file."""
+def add_trees(grid: pd.DataFrame, path: str, columns: list = None, block: str = "arbolado") -> pd.DataFrame:
+    """
+    The columns (TREES by default) from a CSV of the cells (celda_pct_arbol is pct_arbol in the file), by the
+    celda_id of the CT; NaN without file.
+    """
+    columns = columns or TREES
     if not path or not os.path.exists(path) or "celda_id" not in grid.columns:
         if path:
-            logger.info("No trees of the cells (%s): the block arbolado stays empty", path)
+            logger.info("No cell file %s: the block %s stays empty", path, block)
         return grid
     trees = pd.read_csv(path)
-    wanted = [c[len("celda_"):] for c in TREES]
+    wanted = [c[len("celda_"):] for c in columns]
     trees = trees[["celda_id"] + [c for c in wanted if c in trees.columns]].rename(
         columns={c: f"celda_{c}" for c in wanted})
-    logger.info("Trees of %s cells from %s", len(trees), path)
+    logger.info("Block %s: %s cells from %s", block, len(trees), path)
     return grid.merge(trees, on="celda_id", how="left")
 
 
@@ -392,7 +404,8 @@ def block_columns(grid: pd.DataFrame) -> dict:
             and not c.startswith(("horas_racha",))] + ["anios_desde_ultima"]
     scada = [c for c in grid.columns if c.startswith(("microcortes_", "cortes_scada_", "episodios_scada_"))]
     return {"historia": hist, "estructura": STRUCTURE, "scada": scada, "publicos": PUBLIC, "obras": WORKS,
-            "clima": CLIMATE, "naturaleza": NATURE, "arbolado": TREES}
+            "clima": CLIMATE, "naturaleza": NATURE, "arbolado": TREES,
+            "hoja": LEAF}
 
 
 def features_of(name: str, blocks: dict) -> list:
