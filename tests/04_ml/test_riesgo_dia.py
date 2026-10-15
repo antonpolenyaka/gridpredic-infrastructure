@@ -389,6 +389,14 @@ def hrl_csv(workdir) -> str:
     return path
 
 
+def corridor_csv(workdir) -> str:
+    """The trees along the power lines of each cell as corredor_lineas.py writes them."""
+    path = os.path.join(workdir, "corredor_celdas.csv")
+    pd.DataFrame({"celda_id": ["c1", "c2"], "corr_km_linea": [30.0, 10.0], "corr_pct_dosel_8m": [0.05, 0.002],
+                  "corr_pct_dosel_5m": [0.1, 0.01]}).to_csv(path, index=False)
+    return path
+
+
 @pytest.fixture(scope="module")
 def config_path(workdir):
     with open(CONFIG, encoding="utf-8") as file:
@@ -440,6 +448,7 @@ def config_path(workdir):
         ],
         "fenologia": {"csv": ndvi_csv(workdir), "latencia_dias": 7, "clima_hasta": "2022-01-01"},
         "hoja": {"csv": hrl_csv(workdir)},
+        "corredor": {"csv": corridor_csv(workdir)},
         "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "operativa_racha",
                                "operativa_48h", "operativa_72h", "operativa_mas", "operativa_fenologia"],
         "anios_prevision": [2024, 2025],
@@ -667,6 +676,19 @@ def test_the_leaf_type_of_the_network_multiplies_the_gust_in_the_leaf_season(spa
     assert (winter["hoja_int_racha"] == 0).all() and (summer["hoja_int_racha"] > 0).all()
     # The same storm weighs more on the network among broadleaved trees.
     assert summer[summer["distribuidora_id"] == 1]["hoja_int_racha"].mean() > 3 * summer[summer["distribuidora_id"] == 2]["hoja_int_racha"].mean()
+
+
+def test_the_tall_trees_along_the_lines_multiply_the_gust(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    pdf, blocks, _ = rd.build_dataset(spark, config, rd.settings(config))
+    assert set(blocks["corredor"]) == {"corr_dosel_8m", "corr_int_racha"}
+    assert "prev_corr_int_racha" in blocks["prevision"]
+    shares = pdf.groupby("distribuidora_id")["corr_dosel_8m"].first()
+    assert shares[1] == pytest.approx(0.05) and shares[2] == pytest.approx(0.002)
+    storms = pdf[pdf["ext_racha_clima_max"] > 1.2]
+    assert (storms["corr_int_racha"] > 0).all()
+    assert (pdf.loc[pdf["ext_racha_clima_max"] < 0.5, "corr_int_racha"] == 0).all()
 
 
 def test_metrics_and_run_saved(result, spark):
