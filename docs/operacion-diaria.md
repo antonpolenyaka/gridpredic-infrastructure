@@ -75,12 +75,12 @@ Todo el sistema vive en Docker sobre el disco D: y sobrevive a un apagado normal
 Antes de apagar:
 
 1. Mirar `_runlogs\cola\historial.log`: si un trabajo de la cola sigue en marcha (línea "INICIO" sin su "FIN"), esperar a que acabe o crear el fichero `_runlogs\cola\parar` (la cola termina el trabajo en curso y se para). Cerrar la ventana a medias no rompe nada: cada tabla Delta se escribe entera o no se escribe, y el trabajo se vuelve a encolar.
-2. Cerrar las ventanas de `cola.ps1` y `vigilar_airflow.ps1`.
+2. La cola y el vigilante se cierran solos con Windows (corren ocultos, sin ventana).
 3. Docker no se toca: todos los contenedores llevan `restart: unless-stopped`. Apagar Windows (mejor apagar que hibernar); nunca "Quit" y "Reset to factory defaults" en Docker Desktop.
 
 Al encender:
 
 1. Con el disco D: conectado antes de iniciar sesión; Docker Desktop no debe arrancar sin D:. Si no arranca solo, abrirlo cuando D: esté en el Explorador.
 2. `docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml ps`: todo "Up" y "healthy". Si falta alguno, `docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml up -d`. Para una revisión completa, `& "D:\GitHub\gridpredic-infrastructure\_runlogs\comprobar_disco_d.ps1"`.
-3. Abrir de nuevo `& "D:\GitHub\gridpredic-infrastructure\_runlogs\cola.ps1"` y `& "D:\GitHub\gridpredic-infrastructure\_runlogs\vigilar_airflow.ps1"`.
+3. La cola y el vigilante arrancan solos al iniciar sesión: desde el 15.10.2026 hay dos tareas programadas de Windows del usuario ("GridPredic cola" y "GridPredic vigilar Airflow") que lanzan `_runlogs\arrancar_si_falta.ps1`, que espera a que Docker responda y arranca cada script solo si no está ya corriendo. Para arrancarlos a mano: `Start-ScheduledTask -TaskName "GridPredic cola"` (y la otra).
 4. La ejecución de las 20:30 corre sola si Airflow está arriba antes de esa hora. Si el portátil se enciende más tarde, Airflow no recupera la hora pasada (`catchup=False`): lanzar `dag_riesgo_manana` a mano en http://localhost:8080 (Trigger) o con `docker compose -f ... exec airflow airflow dags trigger dag_riesgo_manana`. Las observaciones y los rayos se reanudan solos en su siguiente hora.
