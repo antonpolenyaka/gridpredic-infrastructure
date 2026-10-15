@@ -248,6 +248,29 @@ Llevados por cuantiles a la escala del reanálisis, donde el sesgo de cada model
 
 **Lectura.** El verdor medido no añade nada a lo que ya dicen el calendario (que lleva la estación), la racha frente al clima de cada celda y la lluvia; la interacción racha x verdor, que era la apuesta (la hoja medida en lugar de abril - octubre), tampoco, y con la previsión en crudo incluso resta, porque hereda el sesgo al alza de la racha de ICON-EU. Cierra la fila de fenología de la revisión con una medida en vez de un "necesita cuenta", y deja dos cosas útiles: el camino sin registro al NDVI de MODIS (que sirve igual para VIIRS cuando Terra y Aqua se apaguen) y la serie de verdor por celda, que vale como contexto de sequía de combustible para el apartado de incendios de la memoria. El bloque queda en el job, apagado en producción (no está en `operativa`).
 
+## 3m. Las pruebas otra vez con 2026 dentro (15.10.2026)
+
+**Por qué.** Todas las comparaciones de 3e a 3k se hicieron con la previsión real de 2024 y 2025, 58 días con avería. Calser está cargado hasta el 02.08.2026, así que repetimos las doce variantes con la ventana hasta el 03.08.2026 y la previsión real de 2024, 2025 y 2026 (`dia_2026_20261015_1119`, regresión logística, cada año puntuado por un modelo que solo vio los anteriores): 84 días con avería en lugar de 58, con el temporal de enero de 2026 dentro.
+
+**Resultados** con la previsión real de 2024 - 2026:
+
+| variante | PR-AUC | veces la tasa base | días con avería en el 10 % de más riesgo | en el 20 % | diferencia frente a `operativa` [IC 95 %] |
+| --- | --- | --- | --- | --- | --- |
+| `operativa` (producción) | 0,161 | 5,3 | 46 % | 64 % | |
+| solo racha y lluvia (`operativa_racha`) | 0,160 | 5,3 | 46 % | 64 % | -0,004 [-0,018, +0,011] |
+| sequía | 0,158 | 5,2 | 46 % | 58 % | -0,006 [-0,022, +0,009] |
+| pendiente por red | 0,157 | 5,2 | 46 % | 64 % | -0,002 [-0,012, +0,002] |
+| interacciones | 0,156 | 5,1 | 46 % | 63 % | -0,004 [-0,015, +0,004] |
+| verdor por satélite | 0,153 | 5,0 | 46 % | 64 % | -0,006 [-0,019, +0,001] |
+| precipitación helada | 0,152 | 5,0 | 46 % | 63 % | -0,006 [-0,023, +0,001] |
+| extensión del viento fuerte | 0,152 | 5,0 | 45 % | 66 % | -0,008 [-0,028, +0,006] |
+| las tres de 3f juntas | 0,150 | 4,9 | 46 % | 64 % | -0,009 [-0,032, +0,004] |
+| dos tardes antes (`operativa_48h`) | 0,146 | 4,8 | 39 % | 63 % | |
+| tres tardes antes (`operativa_72h`) | 0,135 | 4,4 | 38 % | 62 % | |
+| solo el tiempo de ayer | 0,082 | 2,7 | 26 % | 46 % | |
+
+**Lectura.** Con un 45 % más de días con avería el orden no cambia: ninguna variante supera a la de producción y los intervalos se estrechan alrededor de cero o por debajo (el verdor por satélite queda por debajo en el 96 % de las réplicas). Las cifras bajan respecto a 2024 - 2025 porque 2026 es un año más difícil para el modelo (0,12 de PR-AUC sobre el reanálisis frente a 0,19 - 0,24 en 2024 y 2025, con 27 días con avería hasta agosto). A dos y tres días el sistema conserva casi todo lo que da con el 20 % de días (63 % y 62 % frente a 64 %) y pierde siete u ocho puntos con el 10 %, como con dos años. Estas son las cifras con tres años de previsión real que usamos desde ahora en la memoria.
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
