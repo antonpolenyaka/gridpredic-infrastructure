@@ -433,7 +433,8 @@
     "anios_prevision": [2024, 2025],
     "previsiones_extra": [
       {"clave": "gfs", "tabla": "l1_bronze.meteo_openmeteo_previo_gfs_hora", "nombre": "GFS 0,25 grados"},
-      {"clave": "gem", "tabla": "l1_bronze.meteo_openmeteo_previo_gem_hora", "nombre": "GEM 15 km"}
+      {"clave": "gem", "tabla": "l1_bronze.meteo_openmeteo_previo_gem_hora", "nombre": "GEM 15 km"},
+      {"clave": "ukmo", "tabla": "l1_bronze.meteo_openmeteo_previo_ukmo_hora", "nombre": "UKMO 10 km (desde 2025)"}
     ],
     "comparaciones_prevision": [
       ["comun_avisos_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
