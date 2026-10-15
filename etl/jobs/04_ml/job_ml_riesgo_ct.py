@@ -102,11 +102,14 @@ DEFAULTS = {
                 "tweedie_variance_power": 1.3},
     "bloques": ["historia", "historia+estructura", "historia+estructura+scada", "historia+estructura+publicos",
                 "historia+estructura+obras", "historia+estructura+clima", "historia+estructura+naturaleza",
-                "historia+estructura+arbolado", "historia+estructura+hoja", "historia+estructura+arbolado+hoja", "todo"],
+                "historia+estructura+arbolado", "historia+estructura+hoja", "historia+estructura+arbolado+hoja",
+                "historia+estructura+corredor", "historia+estructura+arbolado+corredor", "todo"],
     # The trees of every cell, from the public maps (None or a missing file: the block stays empty).
     "arbolado_csv": "/app/config/01_bronze/arbolado_celdas.csv",
     # The canopy density and the leaf type of every cell, from the HRL of Copernicus (block hoja).
     "hrl_csv": "/app/config/01_bronze/hrl_celdas.csv",
+    # The trees in a corridor of 15 m at each side of the power lines of OpenStreetMap in the cell (block corredor).
+    "corredor_csv": "/app/config/01_bronze/corredor_celdas.csv",
     # One model per family of causes (label and history of that family only), added up: the fauna of a line
     # repeats in the same supports, the failures of equipment follow the age and the load, the weather follows
     # the exposure. resto takes every other incident, the ones without a cause included, so the sum stands
@@ -145,6 +148,11 @@ TREES = ["celda_pct_arbol", "celda_pct_matorral", "celda_pct_dosel", "celda_dose
 # The canopy density (Tree Cover Density, 0 - 100 %) and the leaf type (Dominant Leaf Type: the share of the cell
 # with broadleaved and coniferous trees and the deciduous share of the trees) of the cell, from the high resolution
 # layers of Copernicus at 10 m (experimentos/arbolado/bajar_hrl.py and celdas_hrl.py, hrl_celdas.csv).
+# The trees along the lines: the power lines of OpenStreetMap in the cell (power=line and minor_line), a corridor of
+# 15 m at each side and the canopy height of Meta and WRI inside it (experimentos/arbolado/corredor_lineas.py,
+# corredor_celdas.csv): km of line, the share of the corridor with a canopy of 5 and 8 m or more and its hectares.
+CORRIDOR = ["celda_corr_km_linea", "celda_corr_pct_dosel_5m", "celda_corr_pct_dosel_8m", "celda_corr_ha_dosel_8m",
+            "celda_corr_dosel_media_m"]
 LEAF = ["celda_hrl_copa_media_pct", "celda_hrl_copa_30_pct", "celda_hrl_pct_frondosa", "celda_hrl_pct_conifera",
         "celda_hrl_caducifolio_de_arbol"]
 CAUSES_TABLE = "l2_silver.f_incidencia_causa"
@@ -331,6 +339,7 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
         grid = grid.merge(cell_of, on=["distribuidora_id", "ct_id"], how="left")
         grid = add_trees(grid, cfg.get("arbolado_csv"))
         grid = add_trees(grid, cfg.get("hrl_csv"), LEAF, "hoja")
+        grid = add_trees(grid, cfg.get("corredor_csv"), CORRIDOR, "corredor")
     if not clim.empty and cells is not None:
         rows = []
         for year in sorted(grid["anio"].unique()):
@@ -343,7 +352,7 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
             means = pd.concat(rows).rename(columns={"horas_racha": "clima_horas_racha", "dias_lluvia": "clima_dias_lluvia"})
             grid = grid.merge(means, on=["celda_id", "anio"], how="left")
 
-    for column in STRUCTURE + PUBLIC + WORKS + CLIMATE + NATURE + TREES + LEAF:
+    for column in STRUCTURE + PUBLIC + WORKS + CLIMATE + NATURE + TREES + LEAF + CORRIDOR:
         if column not in grid.columns:
             grid[column] = np.nan
     grid["tiene_telemetria"] = grid["tiene_telemetria"].astype(float)
@@ -405,7 +414,7 @@ def block_columns(grid: pd.DataFrame) -> dict:
     scada = [c for c in grid.columns if c.startswith(("microcortes_", "cortes_scada_", "episodios_scada_"))]
     return {"historia": hist, "estructura": STRUCTURE, "scada": scada, "publicos": PUBLIC, "obras": WORKS,
             "clima": CLIMATE, "naturaleza": NATURE, "arbolado": TREES,
-            "hoja": LEAF}
+            "hoja": LEAF, "corredor": CORRIDOR}
 
 
 def features_of(name: str, blocks: dict) -> list:
