@@ -593,34 +593,35 @@ def add_corridor(pdf: pd.DataFrame, shares: dict, forecasts: dict) -> list:
     return names
 
 
-def leaf_exposure(spark, cfg: dict) -> dict:
+def leaf_exposure(spark, cfg: dict, key: str = "hoja", column: str = "hrl_pct_frondosa") -> dict:
     """
     {distribuidora_id: share of broadleaved trees}: the share of the cells of
     the network covered by broadleaved trees (Dominant Leaf Type of the HRL of
     Copernicus, hrl_celdas.csv of meteo_dia.hoja.csv), weighted by the CT of
     each cell. Empty without the file or the cells.
     """
-    path = (cfg.get("hoja") or {}).get("csv")
+    path = (cfg.get(key) or {}).get("csv")
     if not path or not os.path.exists(path) or not spark.catalog.tableExists(CELLS_TABLE):
         if path:
             logger.warning("No leaf type: %s or %s not found", path, CELLS_TABLE)
         return {}
     leaves = pd.read_csv(path)
-    if "hrl_pct_frondosa" not in leaves.columns:
+    if column not in leaves.columns:
         return {}
     weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
                .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
                .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
-    joined = weights.merge(leaves[["celda_id", "hrl_pct_frondosa"]].dropna(), on="celda_id", how="inner")
+    joined = weights.merge(leaves[["celda_id", column]].dropna(), on="celda_id", how="inner")
     if joined.empty:
         return {}
-    joined["_w"] = joined["hrl_pct_frondosa"] * joined["n_ct"]
+    joined["_w"] = joined[column] * joined["n_ct"]
     out = (joined.groupby("distribuidora_id")["_w"].sum() / joined.groupby("distribuidora_id")["n_ct"].sum()).to_dict()
-    logger.info("Broadleaved share of the networks from %s: %s", path, {int(k): round(v, 3) for k, v in out.items()})
+    logger.info("%s of the networks from %s: %s", column, path, {int(k): round(v, 3) for k, v in out.items()})
     return {int(k): float(v) for k, v in out.items()}
 
 
-def add_leaf(pdf: pd.DataFrame, shares: dict, forecasts: dict) -> list:
+def add_leaf(pdf: pd.DataFrame, shares: dict, forecasts: dict, prefix_name: str = "hoja_",
+             share_name: str = "hoja_frondosa") -> list:
     """
     Adds the block hoja to pdf and returns its names: hoja_frondosa (the
     broadleaved share of the network) and hoja_int_racha, the gust excess times
@@ -631,14 +632,14 @@ def add_leaf(pdf: pd.DataFrame, shares: dict, forecasts: dict) -> list:
         return []
     share = pdf["distribuidora_id"].map(shares).astype("float64")
     leaf = pdf["fecha"].dt.month.between(4, 10).astype("float64")
-    pdf["hoja_frondosa"] = share
-    names = ["hoja_frondosa"]
+    pdf[share_name] = share
+    names = [share_name]
     versions = [("", "ext_racha_clima_max")] + [(f"{HORIZONS[h]['prev']}_", f"{HORIZONS[h]['prev']}_ext_racha_clima_max")
                                                 for h in sorted(forecasts)]
     for prefix, gust in versions:
         if gust in pdf.columns:
-            pdf[f"{prefix}hoja_int_racha"] = gust_excess(pdf[gust]) * share * leaf
-            names.append(f"{prefix}hoja_int_racha")
+            pdf[f"{prefix}{prefix_name}int_racha"] = gust_excess(pdf[gust]) * share * leaf
+            names.append(f"{prefix}{prefix_name}int_racha")
     return names
 
 
@@ -1081,7 +1082,7 @@ def block_of(name: str) -> str:
                           ("ext_fraccion_", "extension"), ("ext_int_", "interacciones"),
                           ("ext_pend_", "pendiente_red"), ("ext_dir_", "direccion"), ("ext_", "extremos"),
                           ("seq_", "sequia"), ("hie_", "hielo"), ("fen_", "fenologia"), ("hoja_", "hoja"), ("corr_", "corredor"),
-                          ("reg_", "regimen"), ("frag_", "fragilidad")):
+                          ("reg_", "regimen"), ("frag_", "fragilidad"), ("cad_", "caducas")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -1234,6 +1235,12 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     leaf_names = add_leaf(pdf, leaf_exposure(spark, cfg), forecasts)
     forecast_columns += [n for n in leaf_names if not n.startswith("hoja_")]
     leaf_names = [n for n in leaf_names if n.startswith("hoja_")]
+    # The same with the deciduous broadleaves of the Mapa Forestal de España (block caducas, cad_*): the HRL counts
+    # the holm oak as broadleaved, the MFE tells the leaves that fall from the ones that stay.
+    deciduous = add_leaf(pdf, {k: v / 100.0 for k, v in leaf_exposure(
+        spark, cfg, "caducas", "mfe_copa_caducifolia_pct").items()}, forecasts, "cad_", "cad_copa")
+    forecast_columns += [n for n in deciduous if not n.startswith("cad_")]
+    leaf_names += [n for n in deciduous if n.startswith("cad_")]
     corridor_names = add_corridor(pdf, corridor_exposure(spark, cfg), forecasts)
     forecast_columns += [n for n in corridor_names if not n.startswith("corr_")]
     leaf_names += [n for n in corridor_names if n.startswith("corr_")]
@@ -1519,9 +1526,9 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
     swap = [(f"dia_{name}", f"{prefix}_{name}") for name in common]
     swap += [(c, f"{prefix}_{c}") for c in features
-             if c.startswith(("ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_")) and f"{prefix}_{c}" in pdf.columns]
+             if c.startswith(("ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_", "cad_int_")) and f"{prefix}_{c}" in pdf.columns]
     swapped = {column for column, _ in swap}
-    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_")) and c not in swapped]
+    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_", "cad_int_")) and c not in swapped]
     if perfect:
         logger.warning("Variant %s at %s day(s): %s stay from the reanalysis (no forecast of them at this horizon)",
                        variant["nombre"], horizon, perfect)
