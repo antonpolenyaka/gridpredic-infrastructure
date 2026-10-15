@@ -1,8 +1,12 @@
 """
 Pasa los recortes del HRL de Copernicus (bajar_hrl.py) a las celdas de 0,1
-grados de las redes: la densidad media de copa (Tree Cover Density 2018,
-0 - 100 %) y, de los pixeles con arbol, la parte caducifolia (Dominant Leaf
-Type 2018: 1 frondosa, 2 conifera, 0 sin arbol, 255 sin dato).
+grados de las redes: la densidad media de copa (Tree Cover Density, 0 - 100 %)
+y, de los pixeles con arbol, la parte de frondosas (Dominant Leaf Type: 1
+frondosa, 2 conifera, 0 sin arbol, 255 sin dato). Ojo: "frondosa" en el HRL
+incluye las perennifolias (la encina y el alcornoque de la dehesa), asi que
+hrl_caducifolio_de_arbol es en realidad la parte de frondosas entre los arboles.
+Los rasteres salen de bajar_hrl.py (recortes del CLMS) o de bajar_hrl_s3.py
+(teselas del S3 de Copernicus Data Space, 2021).
 
     python celdas_hrl.py <tcd.tif> <dlt.tif> etl\\config\\01_bronze\\hrl_celdas.csv
 
