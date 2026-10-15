@@ -199,6 +199,16 @@ def test_the_trees_of_the_cell_are_a_block(result, workdir):
     pd.DataFrame({"celda_id": ["39.10_-6.10"], "mfe_copa_caducifolia_pct": [12.5]}).to_csv(species, index=False)
     mapped = rc.add_trees(pd.DataFrame({"celda_id": ["39.10_-6.10", "39.90_-6.10"]}), species, rc.MFE, "mfe")
     assert mapped["celda_mfe_copa_caducifolia_pct"].tolist()[0] == pytest.approx(12.5)
+    # The dangerous lines for the birds of each distribuidora come by its municipality, whatever the accents.
+    birds = os.path.join(workdir, "avifauna_municipios.csv")
+    pd.DataFrame({"distribuidora_id": [1, 2], "municipio": ["Cáceres", "Cáceres"], "lineas_rd1432": [6, 9]}).to_csv(
+        birds, index=False)
+    cts = pd.DataFrame({"distribuidora_id": [1, 1, 1], "ct_id": ["A", "B", "C"], "anio": [2024] * 3,
+                        "municipio_nombre": ["CACERES", "cáceres ", "Plasencia"]})
+    out = rc.add_birds(cts, birds)
+    assert out["muni_lineas_rd1432"].tolist() == [6.0, 6.0, 0.0]
+    assert out["muni_lineas_rd1432_por_ct"].tolist() == [3.0, 3.0, 0.0]
+    assert "avifauna" in rc.block_columns(pd.DataFrame(columns=["anios_desde_ultima"]))
     # The merge by the cell of the CT, and nothing without the file.
     grid = pd.DataFrame({"distribuidora_id": [1, 1, 1], "ct_id": ["C000", "C001", "C002"],
                          "celda_id": ["39.10_-6.10", "39.30_-6.10", "39.90_-6.10"]})
