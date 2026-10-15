@@ -110,7 +110,7 @@
     ],
     "celda_grados": 0.1,
     "desde": "2024-01-01",
-    "hasta": "2025-12-31",
+    "hasta": "2026-08-31",
     "pausa_s": 22,
     "reintentos": 5,
     "espera_reintento_s": 60,
@@ -131,11 +131,30 @@
     ],
     "celda_grados": 0.1,
     "desde": "2024-01-01",
-    "hasta": "2025-12-31",
+    "hasta": "2026-08-31",
     "pausa_s": 22,
     "reintentos": 5,
     "espera_reintento_s": 60,
     "zona_horaria": "Europe/Madrid",
     "tabla_horas": "l1_bronze.meteo_openmeteo_previo_gem_hora"
+  },
+  "openmeteo_previo_ukmo": {
+    "api": "https://previous-runs-api.open-meteo.com/v1/forecast",
+    "referencia_municipios": "s3://datalake/00_landing/reference_data/municipios.xlsx",
+    "landing": "s3://datalake/00_landing/meteo/openmeteo_previo_ukmo",
+    "modelo": "ukmo_global_deterministic_10km",
+    "variables": [
+      "wind_gusts_10m_previous_day1",
+      "precipitation_previous_day1",
+      "temperature_2m_previous_day1"
+    ],
+    "celda_grados": 0.1,
+    "desde": "2025-01-01",
+    "hasta": "2026-08-31",
+    "pausa_s": 22,
+    "reintentos": 5,
+    "espera_reintento_s": 60,
+    "zona_horaria": "Europe/Madrid",
+    "tabla_horas": "l1_bronze.meteo_openmeteo_previo_ukmo_hora"
   }
 }

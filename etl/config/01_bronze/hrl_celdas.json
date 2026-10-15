@@ -1,0 +1,9 @@
+{
+  "generado_utc": "2026-10-15T12:56:09+00:00",
+  "fuentes": {
+    "tcd": "hrl_tcd_2021.tif",
+    "dlt": "hrl_dlt_2021.tif",
+    "licencia": "Copernicus Land Monitoring Service, acceso libre y abierto"
+  },
+  "celdas": 43
+}

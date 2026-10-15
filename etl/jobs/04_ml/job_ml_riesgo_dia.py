@@ -109,6 +109,10 @@ Features, every one known before D starts except the block dia:
   (fen_ndvi_cambio_1m); and the gust excess times the greenness
   (fen_int_racha_ndvi, the leaf measured instead of the calendar of the
   interactions), with its forecast twin prev_fen_int_racha_ndvi.
+- hoja_* (block hoja, with meteo_dia.hoja.csv, the HRL of Copernicus per cell
+  of experimentos/arbolado/celdas_hrl.py): the broadleaved share of the
+  network (hoja_frondosa, CT weighted) and the gust excess times that share
+  in the leaf season (hoja_int_racha), with its forecast twins.
 - Two and three days ahead (HORIZONS): Gold also keeps what ICON-EU forecast
   two days before (metp2_*, gusts and rain) and, once landed, three days
   before (metp3_*). They give prev2_* / prev3_* (the daily weather and the
@@ -542,6 +546,102 @@ def phenology_features(spark, cfg: dict, start: pd.Timestamp, end: pd.Timestamp)
     return out[["distribuidora_id", "fecha", "fen_ndvi", "fen_ndvi_anom", "fen_ndvi_cambio_1m"]]
 
 
+def corridor_exposure(spark, cfg: dict) -> dict:
+    """
+    {distribuidora_id: share of the line corridor with a canopy of 8 m or more}: the trees that can reach a
+    conductor along the power lines of OpenStreetMap (corredor_celdas.csv of meteo_dia.corredor.csv), the cells
+    weighted by the km of line times the CT of the network in them. Empty without the file or the cells.
+    """
+    path = (cfg.get("corredor") or {}).get("csv")
+    if not path or not os.path.exists(path) or not spark.catalog.tableExists(CELLS_TABLE):
+        if path:
+            logger.warning("No line corridor: %s or %s not found", path, CELLS_TABLE)
+        return {}
+    corridor = pd.read_csv(path)
+    if not {"corr_pct_dosel_8m", "corr_km_linea"} <= set(corridor.columns):
+        return {}
+    weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
+               .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
+               .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+    joined = weights.merge(corridor[["celda_id", "corr_pct_dosel_8m", "corr_km_linea"]].dropna(), on="celda_id", how="inner")
+    if joined.empty:
+        return {}
+    joined["_w"] = joined["n_ct"] * joined["corr_km_linea"]
+    joined["_v"] = joined["corr_pct_dosel_8m"] * joined["_w"]
+    sums = joined.groupby("distribuidora_id")[["_v", "_w"]].sum()
+    out = (sums["_v"] / sums["_w"].where(sums["_w"] > 0)).dropna().to_dict()
+    logger.info("Tall trees along the lines of the networks from %s: %s", path, {int(k): round(v, 4) for k, v in out.items()})
+    return {int(k): float(v) for k, v in out.items()}
+
+
+def add_corridor(pdf: pd.DataFrame, shares: dict, forecasts: dict) -> list:
+    """
+    The block corredor: corr_dosel_8m (the share of the line corridor of the network with trees of 8 m or more)
+    and corr_int_racha, the gust excess times that share, with the forecast twins of every horizon.
+    """
+    if not shares:
+        return []
+    share = pdf["distribuidora_id"].map(shares).astype("float64")
+    pdf["corr_dosel_8m"] = share
+    names = ["corr_dosel_8m"]
+    versions = [("", "ext_racha_clima_max")] + [(f"{HORIZONS[h]['prev']}_", f"{HORIZONS[h]['prev']}_ext_racha_clima_max")
+                                                for h in sorted(forecasts)]
+    for prefix, gust in versions:
+        if gust in pdf.columns:
+            pdf[f"{prefix}corr_int_racha"] = gust_excess(pdf[gust]) * share
+            names.append(f"{prefix}corr_int_racha")
+    return names
+
+
+def leaf_exposure(spark, cfg: dict) -> dict:
+    """
+    {distribuidora_id: share of broadleaved trees}: the share of the cells of
+    the network covered by broadleaved trees (Dominant Leaf Type of the HRL of
+    Copernicus, hrl_celdas.csv of meteo_dia.hoja.csv), weighted by the CT of
+    each cell. Empty without the file or the cells.
+    """
+    path = (cfg.get("hoja") or {}).get("csv")
+    if not path or not os.path.exists(path) or not spark.catalog.tableExists(CELLS_TABLE):
+        if path:
+            logger.warning("No leaf type: %s or %s not found", path, CELLS_TABLE)
+        return {}
+    leaves = pd.read_csv(path)
+    if "hrl_pct_frondosa" not in leaves.columns:
+        return {}
+    weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
+               .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
+               .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+    joined = weights.merge(leaves[["celda_id", "hrl_pct_frondosa"]].dropna(), on="celda_id", how="inner")
+    if joined.empty:
+        return {}
+    joined["_w"] = joined["hrl_pct_frondosa"] * joined["n_ct"]
+    out = (joined.groupby("distribuidora_id")["_w"].sum() / joined.groupby("distribuidora_id")["n_ct"].sum()).to_dict()
+    logger.info("Broadleaved share of the networks from %s: %s", path, {int(k): round(v, 3) for k, v in out.items()})
+    return {int(k): float(v) for k, v in out.items()}
+
+
+def add_leaf(pdf: pd.DataFrame, shares: dict, forecasts: dict) -> list:
+    """
+    Adds the block hoja to pdf and returns its names: hoja_frondosa (the
+    broadleaved share of the network) and hoja_int_racha, the gust excess times
+    that share in the leaf season (April to October), the leaves that catch
+    the wind; with the forecast twins of every horizon (<prev>_hoja_int_racha).
+    """
+    if not shares:
+        return []
+    share = pdf["distribuidora_id"].map(shares).astype("float64")
+    leaf = pdf["fecha"].dt.month.between(4, 10).astype("float64")
+    pdf["hoja_frondosa"] = share
+    names = ["hoja_frondosa"]
+    versions = [("", "ext_racha_clima_max")] + [(f"{HORIZONS[h]['prev']}_", f"{HORIZONS[h]['prev']}_ext_racha_clima_max")
+                                                for h in sorted(forecasts)]
+    for prefix, gust in versions:
+        if gust in pdf.columns:
+            pdf[f"{prefix}hoja_int_racha"] = gust_excess(pdf[gust]) * share * leaf
+            names.append(f"{prefix}hoja_int_racha")
+    return names
+
+
 def derived_direction(weather):
     """
     The frame of Gold with met_dir_anomalia_1h: in the hours with a gust at
@@ -902,7 +1002,7 @@ def block_of(name: str) -> str:
                           ("prev_", "prevision"), ("prev2_", "prevision_48h"), ("prev3_", "prevision_72h"),
                           ("ext_fraccion_", "extension"), ("ext_int_", "interacciones"),
                           ("ext_pend_", "pendiente_red"), ("ext_dir_", "direccion"), ("ext_", "extremos"),
-                          ("seq_", "sequia"), ("hie_", "hielo"), ("fen_", "fenologia")):
+                          ("seq_", "sequia"), ("hie_", "hielo"), ("fen_", "fenologia"), ("hoja_", "hoja"), ("corr_", "corredor")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -1052,6 +1152,12 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     interaction_names = [n for n in created if n.startswith(("ext_", "fen_"))]
     other_models = tuple(f"{extra['prev']}_" for extra in extras)
     forecast_columns += [n for n in created if not n.startswith(("ext_", "fen_")) and not n.startswith(other_models)]
+    leaf_names = add_leaf(pdf, leaf_exposure(spark, cfg), forecasts)
+    forecast_columns += [n for n in leaf_names if not n.startswith("hoja_")]
+    leaf_names = [n for n in leaf_names if n.startswith("hoja_")]
+    corridor_names = add_corridor(pdf, corridor_exposure(spark, cfg), forecasts)
+    forecast_columns += [n for n in corridor_names if not n.startswith("corr_")]
+    leaf_names += [n for n in corridor_names if n.startswith("corr_")]
 
     warnings_first = None
     warning_names = []
@@ -1094,7 +1200,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     features = ([f"dist_{d}" for d in dists] + list(cal.columns) + history
                 + [name for horizon in sorted(before) for name in before[horizon]]
                 + [f"dia_{c}" for c in weather_names] + extreme_names + interaction_names + ice_names + drought_names
-                + phenology_names + warning_names + forecast_columns
+                + phenology_names + leaf_names + warning_names + forecast_columns
                 + (["prev_hie_horas"] if "prev_hie_horas" in pdf.columns else []))
     for name in features:
         blocks.setdefault(block_of(name), []).append(name)
@@ -1330,9 +1436,9 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
     swap = [(f"dia_{name}", f"{prefix}_{name}") for name in common]
     swap += [(c, f"{prefix}_{c}") for c in features
-             if c.startswith(("ext_", "hie_", "fen_int_")) and f"{prefix}_{c}" in pdf.columns]
+             if c.startswith(("ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_")) and f"{prefix}_{c}" in pdf.columns]
     swapped = {column for column, _ in swap}
-    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_")) and c not in swapped]
+    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_")) and c not in swapped]
     if perfect:
         logger.warning("Variant %s at %s day(s): %s stay from the reanalysis (no forecast of them at this horizon)",
                        variant["nombre"], horizon, perfect)
