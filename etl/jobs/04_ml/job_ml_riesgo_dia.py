@@ -101,6 +101,14 @@ Features, every one known before D starts except the block dia:
 - hie_horas (block hielo): the CT-hours of D with precipitation at a
   temperature of 0,5 degrees or less (freezing rain or wet snow on the
   conductors), from the reanalysis, with its forecast twin prev_hie_horas.
+- fen_* (block fenologia, with meteo_dia.fenologia.csv, the NDVI of MODIS
+  per cell of experimentos/fenologia/bajar_ndvi.py): the greenness of the
+  network as the latest 16 day composite published latencia_dias before D
+  (fen_ndvi), its anomaly against the same period of the years before
+  clima_hasta (fen_ndvi_anom) and its change over a month
+  (fen_ndvi_cambio_1m); and the gust excess times the greenness
+  (fen_int_racha_ndvi, the leaf measured instead of the calendar of the
+  interactions), with its forecast twin prev_fen_int_racha_ndvi.
 - Two and three days ahead (HORIZONS): Gold also keeps what ICON-EU forecast
   two days before (metp2_*, gusts and rain) and, once landed, three days
   before (metp3_*). They give prev2_* / prev3_* (the daily weather and the
@@ -458,6 +466,82 @@ def drought_features(spark, weather, start: pd.Timestamp, end: pd.Timestamp, cli
     return out[(out["fecha"] >= start) & (out["fecha"] < end)].reset_index(drop=True)
 
 
+def phenology_features(spark, cfg: dict, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    """
+    (distribuidora_id, fecha, fen_ndvi, fen_ndvi_anom, fen_ndvi_cambio_1m):
+    the greenness of the network from the 16 day NDVI composites of MODIS
+    per cell (experimentos/fenologia/bajar_ndvi.py, meteo_dia.fenologia.csv),
+    weighted by the CT of each cell: the latest composite whose period had
+    ended latencia_dias before D (what is published by that evening), its
+    anomaly as a z-score of its 16 day period of the year over the
+    composites before clima_hasta, and its change against the composite of
+    the same satellite a month before (leaves coming or going). Empty
+    without the file or the cells.
+    """
+    settings = cfg.get("fenologia") or {}
+    path = settings.get("csv")
+    empty = pd.DataFrame(columns=["distribuidora_id", "fecha"])
+    if not path or not os.path.exists(path) or not spark.catalog.tableExists(CELLS_TABLE):
+        if path:
+            logger.warning("No phenology: %s or %s not found", path, CELLS_TABLE)
+        return empty
+    latency = int(settings.get("latencia_dias", 7))
+    until = pd.Timestamp(settings.get("clima_hasta", "2022-01-01"))
+    rows = pd.read_csv(path, usecols=["celda_id", "plataforma", "fecha_inicio", "fecha_fin", "ndvi", "n_validos",
+                                      "n_pixeles"])
+    rows = rows[rows["ndvi"].notna() & (rows["n_validos"] > 0)]
+    if rows.empty:
+        return empty
+    # A cell on the edge of two MODIS tiles has a row per tile: one value per cell and composite, weighted by the
+    # reliable pixels of each part.
+    rows = rows.assign(_w=rows["ndvi"] * rows["n_validos"], fecha_fin=rows["fecha_fin"].astype(str))
+    rows = (rows.groupby(["celda_id", "plataforma", "fecha_inicio"], as_index=False)
+            .agg(_w=("_w", "sum"), n_validos=("n_validos", "sum"), n_pixeles=("n_pixeles", "sum"), fecha_fin=("fecha_fin", "max")))
+    rows["ndvi"] = rows["_w"] / rows["n_validos"]
+    rows = rows[rows["n_validos"] >= float(settings.get("fraccion_valida", 0.5)) * rows["n_pixeles"]].drop(columns="_w")
+    if rows.empty:
+        return empty
+    weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
+               .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
+               .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+    joined = rows.merge(weights, on="celda_id", how="inner")
+    if joined.empty:
+        logger.warning("No phenology: the cells of %s are not the ones of %s", path, CELLS_TABLE)
+        return empty
+    joined["_w"] = joined["ndvi"] * joined["n_ct"]
+    keys = ["distribuidora_id", "plataforma", "fecha_inicio"]
+    per = joined.groupby(keys).agg(_w=("_w", "sum"), n_ct=("n_ct", "sum"), fecha_fin=("fecha_fin", "first")).reset_index()
+    total = weights.groupby("distribuidora_id")["n_ct"].sum()
+    # A composite that covers less than half of the CT of the network (a tile missing) is left out.
+    per = per[per["n_ct"] >= 0.5 * per["distribuidora_id"].map(total)]
+    per["ndvi"] = per["_w"] / per["n_ct"]
+    per["fecha_inicio"] = pd.to_datetime(per["fecha_inicio"])
+    per["fecha_fin"] = pd.to_datetime(per["fecha_fin"])
+    per["_periodo"] = (per["fecha_inicio"].dt.dayofyear - 1) // 16
+    climate = per[per["fecha_inicio"] < until].groupby(["distribuidora_id", "_periodo"])["ndvi"].agg(["mean", "std"]).reset_index()
+    per = per.merge(climate, on=["distribuidora_id", "_periodo"], how="left")
+    per["anom"] = (per["ndvi"] - per["mean"]) / per["std"].where(per["std"] > 0)
+    per = per.sort_values(["distribuidora_id", "plataforma", "fecha_inicio"])
+    # The same satellite two composites before: about a month.
+    per["cambio"] = per["ndvi"] - per.groupby(["distribuidora_id", "plataforma"])["ndvi"].shift(2)
+    per["conocido"] = per["fecha_fin"] + pd.Timedelta(days=latency)
+    per = per.sort_values("conocido")
+
+    days = pd.date_range(start, end - pd.Timedelta(days=1), freq="D")
+    parts = []
+    for dist, g in per.groupby("distribuidora_id"):
+        frame = pd.DataFrame({"fecha": days})
+        found = pd.merge_asof(frame, g[["conocido", "ndvi", "anom", "cambio"]].rename(columns={"conocido": "fecha"}),
+                              on="fecha", direction="backward", tolerance=pd.Timedelta(days=60))
+        found["distribuidora_id"] = dist
+        parts.append(found)
+    out = pd.concat(parts, ignore_index=True).rename(columns={"ndvi": "fen_ndvi", "anom": "fen_ndvi_anom",
+                                                                "cambio": "fen_ndvi_cambio_1m"})
+    logger.info("Phenology of %s composites from %s: %.1f %% of the days with a value", len(per), path,
+                100 * out["fen_ndvi"].notna().mean())
+    return out[["distribuidora_id", "fecha", "fen_ndvi", "fen_ndvi_anom", "fen_ndvi_cambio_1m"]]
+
+
 def derived_direction(weather):
     """
     The frame of Gold with met_dir_anomalia_1h: in the hours with a gust at
@@ -540,6 +624,9 @@ def add_interactions(pdf: pd.DataFrame, dists: list, forecasts: dict, extras: li
             new[f"{prefix}ext_pend_racha_dist_{dist}"] = ratio * pdf[f"dist_{dist}"]
         if prefix == "" and "ext_dir_anomalia" in pdf.columns:
             new["ext_dir_int_racha"] = excess * (pdf["ext_dir_anomalia"] / 90.0)
+        # The gust over the greenness of the network (block fenologia): the leaf as measured, not as a calendar.
+        if "fen_ndvi" in pdf.columns:
+            new[f"{prefix}fen_int_racha_ndvi"] = excess * pdf["fen_ndvi"]
         for name, values in new.items():
             if values is None:
                 continue
@@ -815,7 +902,7 @@ def block_of(name: str) -> str:
                           ("prev_", "prevision"), ("prev2_", "prevision_48h"), ("prev3_", "prevision_72h"),
                           ("ext_fraccion_", "extension"), ("ext_int_", "interacciones"),
                           ("ext_pend_", "pendiente_red"), ("ext_dir_", "direccion"), ("ext_", "extremos"),
-                          ("seq_", "sequia"), ("hie_", "hielo")):
+                          ("seq_", "sequia"), ("hie_", "hielo"), ("fen_", "fenologia")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -891,6 +978,11 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     drought_names = [c for c in drought.columns if c.startswith("seq_")]
     if drought_names:
         pdf = pdf.merge(drought, on=["distribuidora_id", "fecha"], how="left")
+    # The greenness of the network (MODIS NDVI per cell, known with the latency of the composites).
+    phenology = phenology_features(spark, cfg, start, end)
+    phenology_names = [c for c in phenology.columns if c.startswith("fen_")]
+    if phenology_names:
+        pdf = pdf.merge(phenology, on=["distribuidora_id", "fecha"], how="left")
     # A day with gusts but none strong enough to measure the direction: no anomaly, not a missing one.
     if "ext_dir_anomalia" in pdf.columns:
         pdf["ext_dir_anomalia"] = pdf["ext_dir_anomalia"].where(
@@ -952,9 +1044,9 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     for dist in dists:
         pdf[f"dist_{dist}"] = (pdf["distribuidora_id"] == dist).astype("float64")
     created = add_interactions(pdf, dists, forecasts, extras)
-    interaction_names = [n for n in created if n.startswith("ext_")]
+    interaction_names = [n for n in created if n.startswith(("ext_", "fen_"))]
     other_models = tuple(f"{extra['prev']}_" for extra in extras)
-    forecast_columns += [n for n in created if not n.startswith("ext_") and not n.startswith(other_models)]
+    forecast_columns += [n for n in created if not n.startswith(("ext_", "fen_")) and not n.startswith(other_models)]
 
     warnings_first = None
     warning_names = []
@@ -997,7 +1089,8 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     features = ([f"dist_{d}" for d in dists] + list(cal.columns) + history
                 + [name for horizon in sorted(before) for name in before[horizon]]
                 + [f"dia_{c}" for c in weather_names] + extreme_names + interaction_names + ice_names + drought_names
-                + warning_names + forecast_columns + (["prev_hie_horas"] if "prev_hie_horas" in pdf.columns else []))
+                + phenology_names + warning_names + forecast_columns
+                + (["prev_hie_horas"] if "prev_hie_horas" in pdf.columns else []))
     for name in features:
         blocks.setdefault(block_of(name), []).append(name)
     # The weather of the day that the forecast of each horizon also gives: the fair reference of the real forecast.
@@ -1231,9 +1324,10 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     prefix = HORIZONS[horizon]["prev"]
     common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
     swap = [(f"dia_{name}", f"{prefix}_{name}") for name in common]
-    swap += [(c, f"{prefix}_{c}") for c in features if c.startswith(("ext_", "hie_")) and f"{prefix}_{c}" in pdf.columns]
+    swap += [(c, f"{prefix}_{c}") for c in features
+             if c.startswith(("ext_", "hie_", "fen_int_")) and f"{prefix}_{c}" in pdf.columns]
     swapped = {column for column, _ in swap}
-    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_")) and c not in swapped]
+    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_")) and c not in swapped]
     if perfect:
         logger.warning("Variant %s at %s day(s): %s stay from the reanalysis (no forecast of them at this horizon)",
                        variant["nombre"], horizon, perfect)
