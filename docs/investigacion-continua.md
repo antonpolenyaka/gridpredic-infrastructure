@@ -236,6 +236,18 @@ Llevados por cuantiles a la escala del reanálisis, donde el sesgo de cada model
 
 **Lectura.** La media de modelos no mejora a ICON-EU, y ninguno de los dos globales lo mejora solo: ICON-EU a 7 km es el mejor de los modelos que guardan la racha prevista y la media con otros más bastos (GFS a 25 km, GEM a 15 km) se queda entre medias, como pasa cuando los errores no son independientes y uno de los miembros es claramente mejor. Lo que sí deja la prueba es el precio del respaldo: la Landing de la tarde ya cae a GFS cuando ICON-EU no responde, y ahora sabemos lo que cuesta esa tarde (0,172 frente a 0,188 de PR-AUC, un punto menos de captura en el 10 % y en el 20 %), un recorte aceptable para un día de respaldo. Decisión: la tarde sigue pidiendo solo ICON-EU; los dos modelos quedan en Bronze y en el job (`--previsiones-extra`) para volver a medirlos si entra una red fuera del dominio de ICON-EU o si algún día el archivo guarda un modelo de más resolución (AROME, UKMO a 10 km desde 2025).
 
+**Con 2026 y el UKMO** (`dia_modelos_2026_20261015_1126`). Bajamos GFS y GEM hasta el 31.08.2026 y el UKMO de 10 km desde 2025 (racha, viento y lluvia; el archivo no guarda más de él) y repetimos la comparación. Como el UKMO empieza en 2025, la ventana es 2025 - 2026, 54 días con avería, y no 2024 - 2026. Con la regresión logística de producción:
+
+| el tiempo del día que entra al modelo | PR-AUC | por cuantiles | días con avería en el 10 % de más riesgo | en el 20 % | diferencia por cuantiles frente a ICON-EU [IC 95 %] | prob. de ser mejor |
+| --- | --- | --- | --- | --- | --- | --- |
+| ICON-EU solo (producción) | 0,145 | 0,150 | 37 % | 59 % | | |
+| GFS solo | 0,160 | 0,159 | 39 % | 56 % | +0,008 [-0,005, +0,027] | 91 % |
+| media de los modelos | 0,151 | 0,154 | 37 % | 59 % | +0,004 [-0,007, +0,017] | 78 % |
+| GEM solo | 0,154 | 0,130 | 35 % | 59 % | -0,012 [-0,048, +0,019] | 23 % |
+| UKMO 10 km (47 % de los días; el resto, ICON-EU) | 0,135 | 0,125 | 35 % | 54 % | -0,018 [-0,048, +0,009] | 11 % |
+
+En esta ventana el orden entre ICON-EU y GFS se da la vuelta respecto a 2024 - 2025 (allí ICON-EU 0,188 y GFS 0,172), y los intervalos de las dos ventanas incluyen el cero. Lo leemos como lo mismo que antes, sin diferencia que se pueda medir entre los dos modelos, ahora con el signo cambiado: con 54 días con avería, unos pocos temporales que un modelo clava y el otro no deciden el orden. La captura del 20 % no mejora con ninguno. El UKMO, que era el único candidato con más resolución que los globales, queda el último, aunque solo cubre la mitad de los días y su prueba es débil. Decisión: no cambia nada. La tarde sigue con ICON-EU y GFS como respaldo, que con estas cifras no cuesta nada medible; el UKMO queda en Bronze y en el job para cuando tenga dos años completos.
+
 ## 3k. Prueba: el verdor de la red medido por satélite (fenología, 15.10.2026)
 
 **De dónde sale.** La fila de fenología de la tabla de fuentes de la revisión: Cerrai y otros (2019) postprocesan la hoja, Cerrai y otros (2020) ponen el LAI entre lo que más pesa en los temporales de nieve, y Manning y otros (2025) encuentran el verano como multiplicador de la racha. En 3f probamos la hoja como calendario (abril - octubre) sin resultado; lo que faltaba era medirla. La fila decía "necesita cuenta (WEkEO o Earthdata)", pero el Planetary Computer de Microsoft sirve los compuestos de 16 días de NDVI de MODIS (MOD13A1 de Terra y MYD13A1 de Aqua, colección 6.1, 500 m) como COG con catálogo STAC y firma de enlaces anónimos: sin registro, y en lecturas por ventana de unos KB por celda. Lo que se mide no es solo la hoja: el NDVI de la dehesa y el pasto sigue la lluvia (verde en invierno y primavera, seco en verano), así que es a la vez estado de la hoja y sequedad del combustible, la señal lenta que la sequía de 3i buscaba por otro camino.
@@ -271,6 +283,27 @@ Llevados por cuantiles a la escala del reanálisis, donde el sesgo de cada model
 
 **Lectura.** Con un 45 % más de días con avería el orden no cambia: ninguna variante supera a la de producción y los intervalos se estrechan alrededor de cero o por debajo (el verdor por satélite queda por debajo en el 96 % de las réplicas). Las cifras bajan respecto a 2024 - 2025 porque 2026 es un año más difícil para el modelo (0,12 de PR-AUC sobre el reanálisis frente a 0,19 - 0,24 en 2024 y 2025, con 27 días con avería hasta agosto). A dos y tres días el sistema conserva casi todo lo que da con el 20 % de días (63 % y 62 % frente a 64 %) y pierde siete u ocho puntos con el 10 %, como con dos años. Estas son las cifras con tres años de previsión real que usamos desde ahora en la memoria.
 
+## 3n. Prueba: los árboles altos en el corredor de las líneas (15.10.2026)
+
+**De dónde sale.** En 3h el arbolado de la celda de 10 km mejoró la captura por CT solo en 2025, y la lectura fue que el grano era demasiado grueso: Wanik y otros (2017) miden los árboles a 15 m de la línea. La distribuidora no nos va a dar el trazado de sus líneas, pero OpenStreetMap tiene las líneas de media y alta tensión de la zona (las teníamos en Landing desde septiembre, `00_landing/publicos/osm`, con su geometría). No son las líneas de nuestras redes una a una, porque OSM no dice de quién es cada línea, pero en una celda rural casi todas las líneas aéreas son de la distribuidora de la zona, y es la mejor aproximación pública al corredor.
+
+**Diseño.** `experimentos/arbolado/exportar_osm_lineas.py` saca las líneas de Landing y `corredor_lineas.py` las recorta a cada celda, las parte en tramos de unos 300 m, les pone una banda de 15 m a cada lado y lee en ella la altura del dosel de Meta y WRI a 1 m (los mismos mosaicos de 3h). Por celda queda: km de línea, la parte del corredor con dosel de 5 y de 8 m o más, las hectáreas con 8 m o más y la altura media, en `etl/config/01_bronze/corredor_celdas.csv` (42 celdas con línea). El modelo anual por CT lo lee como bloque `corredor`; el del día, como `corr_dosel_8m` de la red (ponderado por km de línea y CT) y `corr_int_racha`, el exceso de racha por esa parte, con su gemelo de previsión (variante `operativa_corredor`).
+
+**Los datos.** El corredor tiene mucho menos árbol alto que la celda: de media el 1,6 % del corredor tiene dosel de 8 m o más (máximo 21 %, en el Jerte), porque las líneas se trazan y se podan lejos del arbolado. La correlación con el valor de toda la celda es 0,69: el corredor dice algo distinto, pero no tanto.
+
+**Resultados.** En el modelo anual (`rct_corredor_20261015_1240`, misma prueba que 3h, captura de kVA·h del año siguiente, 2021 - 2025):
+
+| bloque | cabecera, top 10 % | cabecera, top 20 % | CT, top 10 % | CT, top 20 % | CT, top 10 % en 2025 |
+| --- | --- | --- | --- | --- | --- |
+| historia + estructura | 68,4 % | 82,0 % | 27,5 % | 49,3 % | 18,7 % |
+| + arbolado de la celda | 68,8 % | 81,8 % | 30,3 % | 50,7 % | 33,7 % |
+| + corredor | 67,8 % | 82,0 % | 26,1 % | 49,6 % | 17,3 % |
+| + los dos | 68,8 % | 80,9 % | 26,2 % | 49,2 % | 13,4 % |
+
+En el modelo del día (`dia_corredor_20261015_1243`, previsión real de 2024 - 2026, 84 días con avería): `operativa` 0,156 de PR-AUC y `operativa_corredor` 0,158, con la misma captura (45 % en el 10 %, 64 % en el 20 %); diferencia emparejada -0,001 [-0,015, +0,012]. Sobre el reanálisis de los años comunes, +0,002 [-0,007, +0,012].
+
+**Lectura.** El corredor no aporta en ninguno de los dos modelos. Lo que más nos dice es lo que pasa en 2025: la mejora del arbolado de la celda ese año no aparece cuando se mide el árbol junto a la línea, y juntar los dos la borra. Eso apunta a que en 3h el arbolado funcionaba como marca geográfica del norte de Cáceres, donde cayó el temporal, más que como riesgo de contacto con la línea. Hay dos límites que no podemos quitar con datos públicos: las líneas de OSM no son las de nuestros CT, y el CT sigue con la coordenada de su municipio, así que el corredor se asigna a la celda y no al circuito. Decisión: los dos bloques quedan en el código, apagados en producción, y en la memoria el arbolado pasa de indicio a "no medible con este grano". La geometría real de las líneas sigue siendo lo que haría falta, y la distribuidora ya nos ha dicho que no la va a dar.
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
@@ -290,7 +323,7 @@ Preguntamos qué datos de los equipos instalados en los clientes podrían cruzar
 ## 6. Lo que queda en la lista
 
 - Volver a probar el suelo y la duración del viento cuando haya dos temporadas más etiquetadas (2027), con el mismo banco de pruebas.
-- De la revisión de literatura ([revision-literatura.md](revision-literatura.md)), lo que no cabe antes del 18.10 (el modelo de conteos está medido en 3g, el arbolado por celda en 3h, la sequía y el hielo en 3i, el segundo modelo de previsión en 3j y la fenología en 3k): la exposición al arbolado en el corredor de la línea (hace falta la geometría de las líneas) junto a las líneas (densidad de copa y tipo de hoja del HRL de Copernicus, altura del dosel del LiDAR del PNOA o de los modelos globales de 10 m) como interacción con la racha, sobre todo para el modelo anual por cabecera; el índice de presión de nidos de cigüeña por cabecera (SEO/BirdLife, GBIF, vertederos y agua) para el modelo horario y el anual; CERRA como climatología del p98; y la dirección del viento prevista en el archivo de previsiones (`wind_direction_10m_previous_day1`) si la prueba 3f con el reanálisis la justifica.
+- De la revisión de literatura ([revision-literatura.md](revision-literatura.md)), lo que no cabe antes del 18.10 (el modelo de conteos está medido en 3g, el arbolado por celda en 3h, la sequía y el hielo en 3i, el segundo modelo de previsión en 3j, la fenología en 3k y los árboles en el corredor de las líneas de OSM en 3n): el tipo de hoja y la densidad de copa del HRL de Copernicus (pedidos el 15.10, el servidor todavía los prepara) y, con el trazado real de las líneas si algún día lo hay, el LiDAR del PNOA; el índice de presión de nidos de cigüeña por cabecera (la distribuidora no tiene inventario que dar, y con GBIF ya se midió); CERRA como climatología del p98; y la dirección del viento prevista en el archivo de previsiones (`wind_direction_10m_previous_day1`) si la prueba 3f con el reanálisis la justifica.
 - Pedir los cortes de los contadores de telegestión a una de las distribuidoras para medir cuántos cortes de baja tensión no vemos.
 - Hecho el 14.10.2026: el replay da ya la detección y las falsas alarmas por día de cada política (apartado 2b de [caso-de-negocio.md](caso-de-negocio.md)): el sistema en alerta detecta el 71 % de los días con dos o más incidencias marcando el 12,5 % de los días, frente al 73 % con el 3 % de falsas alarmas del trabajo de Alcalá, que cuenta averías de una provincia entera. Queda pendiente definir el día extremo como ellos (por número de averías) cuando entre una red mayor.
 - Con los avisos de AEMET, una política mixta por fenómeno (viento y tormenta sí, calor no) frente a la unión que ya medimos.
