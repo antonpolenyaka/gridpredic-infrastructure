@@ -360,6 +360,27 @@ def tables(spark):
     return events
 
 
+def ndvi_csv(workdir) -> str:
+    """The 16 day NDVI composites of MODIS per cell as bajar_ndvi.py writes them: a seasonal curve with noise."""
+    rng = np.random.default_rng(21)
+    rows = []
+    for platform, offset in (("terra", 0), ("aqua", 8)):
+        for year in range(2017, 2026):
+            for k in range(23):
+                start = pd.Timestamp(year, 1, 1) + pd.Timedelta(days=16 * k + offset)
+                if start.year != year:
+                    continue
+                end = start + pd.Timedelta(days=15)
+                season = 0.45 + 0.25 * np.cos(2 * np.pi * (start.dayofyear - 40) / 365.25)
+                for cell in CELLS.values():
+                    rows.append({"celda_id": cell, "plataforma": platform, "fecha_inicio": start.date().isoformat(),
+                                 "fecha_fin": end.date().isoformat(), "ndvi": round(season + rng.normal(0, 0.03), 4),
+                                 "n_validos": 480, "n_pixeles": 500, "_item": f"{platform}_{start:%Y%j}"})
+    path = os.path.join(workdir, "ndvi_celdas.csv")
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
 @pytest.fixture(scope="module")
 def config_path(workdir):
     with open(CONFIG, encoding="utf-8") as file:
@@ -405,9 +426,13 @@ def config_path(workdir):
              "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "extension", "interacciones",
                          "pendiente_red"],
              "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+            {"nombre": "operativa_fenologia", "desde": "2019-06-25",
+             "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos", "fenologia"],
+             "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
         ],
+        "fenologia": {"csv": ndvi_csv(workdir), "latencia_dias": 7, "clima_hasta": "2022-01-01"},
         "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "operativa_racha",
-                               "operativa_48h", "operativa_72h", "operativa_mas"],
+                               "operativa_48h", "operativa_72h", "operativa_mas", "operativa_fenologia"],
         "anios_prevision": [2024, 2025],
         # A second model in Bronze and one that is not there (left out with a warning).
         "previsiones_extra": [{"clave": "gfs", "tabla": "l1_bronze.meteo_openmeteo_previo_gfs_hora", "nombre": "GFS"},
@@ -477,7 +502,7 @@ def test_the_real_forecast_scores_the_years_it_covers(result):
     # The variants of the forecast, with the models of yesterday once; the one of three days ahead has no
     # forecast in Gold (no metp3_*) and is skipped.
     assert set(full["variante"]) == {"perfecta_comun", "comun_avisos", "comun_avisos_extremos", "ayer",
-                                     "operativa_racha", "operativa_48h", "operativa_mas"}
+                                     "operativa_racha", "operativa_48h", "operativa_mas", "operativa_fenologia"}
     table = full[full["variante"].isin(["perfecta_comun", "ayer"])].set_index(["tiempo_del_dia", "modelo"])
     assert {"reanalisis", "prevision", "prevision_cuantiles", "solo_ayer"} <= set(table.index.get_level_values(0))
     warned = full[full["variante"] == "comun_avisos"].set_index(["tiempo_del_dia", "modelo"])
@@ -577,6 +602,46 @@ def test_the_second_model_is_joined_from_bronze_and_is_never_a_feature(spark, ta
     # Without the flag nothing of it is read or built.
     plain, _, _ = rd.build_dataset(spark, config, rd.settings(config))
     assert not any(c.startswith("prevgfs_") for c in plain.columns)
+
+
+def test_the_greenness_of_the_network_is_known_with_the_latency_of_the_composites(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    cfg = rd.settings(config)
+    pdf, blocks, _ = rd.build_dataset(spark, config, cfg)
+    assert set(blocks["fenologia"]) == {"fen_ndvi", "fen_ndvi_anom", "fen_ndvi_cambio_1m", "fen_int_racha_ndvi"}
+    assert "prev_fen_int_racha_ndvi" in blocks["prevision"] and "prev2_fen_int_racha_ndvi" in blocks["prevision_48h"]
+    assert not any(c.startswith("fen_") for c in blocks["extremos"] + blocks["interacciones"])
+    # A composite every eight days and a week of latency: every day of the dataset has a value.
+    assert pdf["fen_ndvi"].notna().all()
+    # The value of D is the latest composite whose period had ended a week before D, the CT weighted mean of the cells.
+    rows = pd.read_csv(cfg["fenologia"]["csv"], parse_dates=["fecha_inicio", "fecha_fin"])
+    day = pd.Timestamp("2024-03-10")
+    known = rows[rows["fecha_fin"] + pd.Timedelta(days=7) <= day]
+    latest = known[known["fecha_fin"] == known["fecha_fin"].max()]
+    dist = min(CELLS)
+    expected = latest[latest["celda_id"] == CELLS[dist]]["ndvi"].mean()
+    found = pdf.set_index(["distribuidora_id", "fecha"]).loc[(dist, day)]
+    assert found["fen_ndvi"] == pytest.approx(expected, abs=1e-6)
+    assert latest["fecha_fin"].iloc[0] >= day - pd.Timedelta(days=7 + 8)
+    # The anomaly is a z-score of the period of the year over the years before 2022: centred there, and it follows
+    # the season (greener in winter in this curve), so the raw value and the anomaly are different things.
+    before = pdf[pdf["fecha"] < "2022-01-01"]
+    assert abs(before["fen_ndvi_anom"].mean()) < 0.3 and 0.6 < before["fen_ndvi_anom"].std() < 1.4
+    winter = pdf[pdf["fecha"].dt.month == 2]["fen_ndvi"].mean()
+    summer = pdf[pdf["fecha"].dt.month == 8]["fen_ndvi"].mean()
+    assert winter > summer + 0.3
+    assert (pdf["fen_ndvi_cambio_1m"] > 0).any() and (pdf["fen_ndvi_cambio_1m"] < 0).any()
+    # The gust over the greenness, and its forecast twin, are zero on calm days and positive on storm days.
+    calm = pdf[pdf["ext_racha_clima_max"] < 0.5]
+    storms = pdf[pdf["ext_racha_clima_max"] > 1.2]
+    assert (calm["fen_int_racha_ndvi"] == 0).all() and (storms["fen_int_racha_ndvi"] > 0).all()
+    archived = pdf[pdf["prev_ext_racha_clima_max"].notna()]
+    assert archived["prev_fen_int_racha_ndvi"].notna().all()
+    # Without the file there is no block and nothing breaks.
+    plain = {**cfg, "fenologia": {"csv": os.path.join(os.path.dirname(cfg["fenologia"]["csv"]), "no_esta.csv")}}
+    pdf2, blocks2, _ = rd.build_dataset(spark, config, plain)
+    assert "fenologia" not in blocks2 and not any(c.startswith("fen_") for c in pdf2.columns)
 
 
 def test_metrics_and_run_saved(result, spark):

@@ -212,6 +212,14 @@ Por cabecera, que es la unidad con la que se decide (revisar, podar, telemandar)
 
 **Resultados.** Pendientes de `dia_modelos_*` (cola 53 del 15.10, tras la cadena de las 02:10 por el cupo de Open-Meteo).
 
+## 3k. Prueba: el verdor de la red medido por satélite (fenología, en marcha, 15.10.2026)
+
+**De dónde sale.** La fila de fenología de la tabla de fuentes de la revisión: Cerrai y otros (2019) postprocesan la hoja, Cerrai y otros (2020) ponen el LAI entre lo que más pesa en los temporales de nieve, y Manning y otros (2025) encuentran el verano como multiplicador de la racha. En 3f probamos la hoja como calendario (abril - octubre) sin resultado; lo que faltaba era medirla. La fila decía "necesita cuenta (WEkEO o Earthdata)", pero el Planetary Computer de Microsoft sirve los compuestos de 16 días de NDVI de MODIS (MOD13A1 de Terra y MYD13A1 de Aqua, colección 6.1, 500 m) como COG con catálogo STAC y firma de enlaces anónimos: sin registro, y en lecturas por ventana de unos KB por celda. Lo que se mide no es solo la hoja: el NDVI de la dehesa y el pasto sigue la lluvia (verde en invierno y primavera, seco en verano), así que es a la vez estado de la hoja y sequedad del combustible, la señal lenta que la sequía de 3i buscaba por otro camino.
+
+**Diseño.** `experimentos/fenologia/bajar_ndvi.py` deja en `etl/config/01_bronze/ndvi_celdas.csv`, para cada compuesto desde 2017 (uno cada 8 días contando los dos satélites) y cada una de las 43 celdas, la media del NDVI de los píxeles fiables (`pixel_reliability` 0 o 1) y cuántos eran. `job_ml_riesgo_dia.py` (bloque `fenologia`, `meteo_dia.fenologia`) lo pasa a red y día ponderando las celdas por sus CT: `fen_ndvi`, el último compuesto cuyo periodo había acabado siete días antes de D (la latencia con la que se publican; lo que se sabría esa tarde), `fen_ndvi_anom`, su anomalía como z-score del mismo periodo de 16 días del año sobre los compuestos anteriores a 2022, `fen_ndvi_cambio_1m`, el cambio frente al compuesto del mismo satélite un mes antes (la hoja llegando o cayendo), y `fen_int_racha_ndvi`, el exceso de la racha sobre 0,9 veces el p98 de la celda por el verdor (la interacción de 3f con la hoja medida en vez del calendario), con su gemelo desde la previsión. Variante `operativa_fenologia` frente a `operativa`, mismo banco que 3f.
+
+**Resultados.** Pendientes (cola 54 del 15.10, tras la 53).
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
