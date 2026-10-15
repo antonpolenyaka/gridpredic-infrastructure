@@ -642,6 +642,84 @@ def add_leaf(pdf: pd.DataFrame, shares: dict, forecasts: dict) -> list:
     return names
 
 
+def add_regimes(pdf: pd.DataFrame, forecasts: dict) -> list:
+    """
+    The block regimen: the gust read by the kind of weather that brings it
+    (idea 6 of docs/revision-literatura.md; Yang 2020, Cerrai 2019, Garland
+    2026 find different damage per regime). Three terms, all known the
+    evening before through their forecast twins (<prev>_reg_*):
+    reg_temporal, the gust excess over the climate of the cell in the cold
+    season (October to April) on a day with 5 mm of rain or more, the
+    Atlantic storm; reg_conveccion, the rain of the wettest hour in the warm
+    season (May to September), capped at 30 mm, the summer thunderstorm, and
+    reg_conveccion_racha, that rain times the gust excess; reg_calor, the
+    degrees of the maximum temperature over 35 in the warm season.
+    """
+    month = pdf["fecha"].dt.month
+    cold = (~month.between(5, 9)).astype("float64")
+    warm = month.between(5, 9).astype("float64")
+    names = []
+    versions = [("", "ext_racha_clima_max", "dia_lluvia_max", "dia_lluvia_hora_max", "dia_temp_max")]
+    for horizon in sorted(forecasts):
+        prev = HORIZONS[horizon]["prev"]
+        versions.append((f"{prev}_", f"{prev}_ext_racha_clima_max", f"{prev}_lluvia_max", f"{prev}_lluvia_hora_max",
+                         f"{prev}_temp_max"))
+    for prefix, gust, rain, rain_hour, temp in versions:
+        if gust not in pdf.columns:
+            continue
+        excess = gust_excess(pdf[gust])
+        new = {}
+        if rain in pdf.columns:
+            new[f"{prefix}reg_temporal"] = excess * cold * (pdf[rain] >= 5.0).astype("float64")
+        if rain_hour in pdf.columns:
+            burst = pdf[rain_hour].clip(lower=0.0, upper=30.0) * warm
+            new[f"{prefix}reg_conveccion"] = burst
+            new[f"{prefix}reg_conveccion_racha"] = burst * excess
+        if temp in pdf.columns:
+            new[f"{prefix}reg_calor"] = (pdf[temp] - 35.0).clip(lower=0.0) * warm
+        for name, values in new.items():
+            pdf[name] = values.astype("float64")
+            names.append(name)
+    return names
+
+
+def add_fragility(pdf: pd.DataFrame, forecasts: dict, until: pd.Timestamp, label: str = MAIN_LABEL) -> list:
+    """
+    The block fragilidad: a fragility curve (idea 9 of the review; Dunn 2018,
+    Panteli 2017), the share of days with a failure as a monotone function of
+    the gust over the climate of the cell, fitted by isotonic regression on the
+    days before until only (the years scored later never see it), and read for
+    every day: frag_prob and its log-odds frag_logit, with the twins from the
+    forecast of every horizon (<prev>_frag_*). Empty with too few days to fit.
+    """
+    from sklearn.isotonic import IsotonicRegression
+
+    fit = pdf[(pdf["fecha"] < until) & pdf["ext_racha_clima_max"].notna() & pdf[label].notna()]
+    if len(fit) < 365 or fit[label].sum() < 10:
+        logger.warning("No fragility curve: %s days and %s with a failure before %s", len(fit),
+                       int(fit[label].sum()) if len(fit) else 0, until.date())
+        return []
+    curve = IsotonicRegression(increasing=True, out_of_bounds="clip", y_min=1e-4, y_max=1 - 1e-4)
+    curve.fit(fit["ext_racha_clima_max"].to_numpy(), fit[label].to_numpy().astype("float64"))
+    knots = np.quantile(fit["ext_racha_clima_max"], [0.5, 0.9, 0.99])
+    logger.info("Fragility curve on %s days before %s: %s", len(fit), until.date(),
+                {round(float(k), 2): round(float(curve.predict([k])[0]), 4) for k in knots})
+    names = []
+    versions = [("", "ext_racha_clima_max")] + [(f"{HORIZONS[h]['prev']}_", f"{HORIZONS[h]['prev']}_ext_racha_clima_max")
+                                                for h in sorted(forecasts)]
+    for prefix, gust in versions:
+        if gust not in pdf.columns:
+            continue
+        values = pdf[gust]
+        prob = pd.Series(np.nan, index=pdf.index)
+        ok = values.notna()
+        prob[ok] = curve.predict(values[ok].to_numpy())
+        pdf[f"{prefix}frag_prob"] = prob.astype("float64")
+        pdf[f"{prefix}frag_logit"] = np.log(prob / (1 - prob)).astype("float64")
+        names += [f"{prefix}frag_prob", f"{prefix}frag_logit"]
+    return names
+
+
 def derived_direction(weather):
     """
     The frame of Gold with met_dir_anomalia_1h: in the hours with a gust at
@@ -1002,7 +1080,8 @@ def block_of(name: str) -> str:
                           ("prev_", "prevision"), ("prev2_", "prevision_48h"), ("prev3_", "prevision_72h"),
                           ("ext_fraccion_", "extension"), ("ext_int_", "interacciones"),
                           ("ext_pend_", "pendiente_red"), ("ext_dir_", "direccion"), ("ext_", "extremos"),
-                          ("seq_", "sequia"), ("hie_", "hielo"), ("fen_", "fenologia"), ("hoja_", "hoja"), ("corr_", "corredor")):
+                          ("seq_", "sequia"), ("hie_", "hielo"), ("fen_", "fenologia"), ("hoja_", "hoja"), ("corr_", "corredor"),
+                          ("reg_", "regimen"), ("frag_", "fragilidad")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -1158,6 +1237,10 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     corridor_names = add_corridor(pdf, corridor_exposure(spark, cfg), forecasts)
     forecast_columns += [n for n in corridor_names if not n.startswith("corr_")]
     leaf_names += [n for n in corridor_names if n.startswith("corr_")]
+    regime_names = add_regimes(pdf, forecasts) + add_fragility(
+        pdf, forecasts, pd.Timestamp(cfg.get("fragilidad_hasta", "2022-01-01")))
+    forecast_columns += [n for n in regime_names if not n.startswith(("reg_", "frag_"))]
+    leaf_names += [n for n in regime_names if n.startswith(("reg_", "frag_"))]
 
     warnings_first = None
     warning_names = []
@@ -1436,9 +1519,9 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
     swap = [(f"dia_{name}", f"{prefix}_{name}") for name in common]
     swap += [(c, f"{prefix}_{c}") for c in features
-             if c.startswith(("ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_")) and f"{prefix}_{c}" in pdf.columns]
+             if c.startswith(("ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_")) and f"{prefix}_{c}" in pdf.columns]
     swapped = {column for column, _ in swap}
-    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_")) and c not in swapped]
+    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_")) and c not in swapped]
     if perfect:
         logger.warning("Variant %s at %s day(s): %s stay from the reanalysis (no forecast of them at this horizon)",
                        variant["nombre"], horizon, perfect)
