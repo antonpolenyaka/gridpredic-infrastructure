@@ -13,18 +13,29 @@ Los parámetros están en `config_ml.json` (`analisis_red`, `riesgo_ct`, `horas_
 
 ## 1. Reglas comunes
 
-- **TIEPI como lo calcula Calser.** Interrupciones de nivel CT de más de 180 s, con incidencia asociada y sin el factor cliente. Potencia de cada CT la de TIEPI (`potencia_tiepi_kva`) y potencia instalada la de los CT vigentes ese año. Lo contrastamos con el TIEPI medio de tres años que usó la CNMC para el incentivo de 2019 (Orden TED/749/2022): para 2015-2017 nos sale 0,61 h en EOSA, 0,88 h en Pitarch y 3,22 h en Valle de Santa Ana, frente a 0,67, 1,04 y 3,28 h. La diferencia está entre el 2 % y el 16 %, siempre por debajo, y la atribuimos a las interrupciones de nivel salida y abonado, que Calser declara pero nosotros no contamos.
+- **TIEPI como lo calcula Calser.** Interrupciones de nivel CT de más de 180 s, con incidencia asociada y sin el factor cliente. Potencia de cada CT la de TIEPI (`potencia_tiepi_kva`) y potencia instalada la de los CT vigentes ese año. Lo contrastamos con el TIEPI medio de tres años que usó la CNMC para el incentivo de 2019 (Orden TED/749/2022): para 2015-2017 nos sale 0,61 h en la Distribuidora 1, 0,88 h en la Distribuidora 2 y 3,22 h en la Distribuidora 3, frente a 0,67, 1,04 y 3,28 h. La diferencia está entre el 2 % y el 16 %, siempre por debajo, y la atribuimos a las interrupciones de nivel salida y abonado, que Calser declara pero nosotros no contamos.
 - **Qué cuenta para qué.** El incentivo de calidad de la CNMC cuenta las programadas (transporte y distribución) y las imprevistas de transporte y propias; las de terceros, fuerza mayor y generación no cuentan. Los límites de calidad zonal e individual del RD 1955/2000 solo cuentan las imprevistas.
-- **El apagón del 28.04.2025.** Dejó sin suministro a 749 CT de EOSA durante el día (10,7 h de TIEPI), 563 de Pitarch (7,2 h) y los 10 de Valle de Santa Ana (14,3 h), todo como terceros. Es más que todo el resto de 2025 junto y no dice nada de la red de cada distribuidora, así que lo mostramos aparte y lo quitamos del resto del análisis (`analisis_red.dias_excluidos`).
+- **El apagón del 28.04.2025.** Dejó sin suministro a 749 CT de la Distribuidora 1 durante el día (10,7 h de TIEPI), 563 de la Distribuidora 2 (7,2 h) y los 10 de la Distribuidora 3 (14,3 h), todo como terceros. Es más que todo el resto de 2025 junto y no dice nada de la red de cada distribuidora, así que lo mostramos aparte y lo quitamos del resto del análisis (`analisis_red.dias_excluidos`).
 - **Interrupciones sin incidencia.** El 82 % de los kVA·h de las interrupciones de CT de Calser no tienen incidencia asociada y no cuentan en el TIEPI. Dos tercios de esos kVA·h son registros de más de 72 horas: CT fuera de servicio por obras o bajas, no averías. Quedan fuera.
 
 ## 2. De dónde sale el TIEPI
 
 | Distribuidora | 2021 | 2022 | 2023 | 2024 | 2025 | Media de incentivo 2023-2025 |
 | --- | --- | --- | --- | --- | --- | --- |
-| EOSA | 1,19 h | 0,43 h | 0,55 h | 0,35 h | 0,41 h | 0,37 h |
-| Pitarch | 0,30 h | 0,76 h | 0,25 h | 0,39 h | 0,30 h | 0,28 h |
-| Valle de Santa Ana | 0,29 h | 0,68 h | 3,20 h | 0,40 h | 0,27 h | 0,27 h |
+| Distribuidora 1 | 1,19 h | 0,43 h | 0,55 h | 0,35 h | 0,41 h | 0,37 h |
+| Distribuidora 2 | 0,30 h | 0,76 h | 0,25 h | 0,39 h | 0,30 h | 0,28 h |
+| Distribuidora 3 | 0,29 h | 0,68 h | 3,20 h | 0,40 h | 0,27 h | 0,27 h |
+
+**Frente al sector.** El Ministerio publica en GECOS el TIEPI oficial de todo el sector por tipo de zona y por causa, para España, cada comunidad y cada provincia (de 2003 a 2021; publica con varios años de retraso). Lo cargamos como `l1_bronze.gecos_indice_zonal` (`extract_gecos_indices.py`, fuente `calidad_sector`) y la sección 1b del análisis compara nuestro TIEPI imprevisto por zona con el oficial (`tiepi_sector.csv`, `sector_series.csv` y `sector.json` para `negocio.html`):
+
+| zona | clientes | Distribuidora 1 2023-2025 | Distribuidora 2 2023-2025 | Cáceres 2019-2021 | Extremadura 2019-2021 | España 2019-2021 |
+| --- | --- | --- | --- | --- | --- | --- |
+| urbana | Distribuidora 2 4.310 | - | 0,03 h | 0,16 h | 0,47 h | 0,59 h |
+| semiurbana | Distribuidora 1 6.146, la Distribuidora 2 7.293 | 0,22 h | 0,07 h | 0,41 h | 0,57 h | 0,89 h |
+| rural concentrada | Distribuidora 1 30.658, la Distribuidora 2 16.664 | 0,38 h | 0,20 h | 1,06 h | 1,26 h | 1,67 h |
+| rural dispersa | Distribuidora 1 581, la Distribuidora 2 470 | 0,46 h | 0,24 h | 1,43 h | 1,96 h | 2,55 h |
+
+Con su mezcla de zonas, el TIEPI imprevisto de la Distribuidora 1 (0,34 h al año) es un tercio del que tendría el sector de Cáceres con esa misma red (0,92 h) y menos de un cuarto del de España (1,51 h); el de la Distribuidora 2 (0,12 h) es un quinto del de Cáceres (0,63 h). En los mismos años que el sector (2019-2021) la Distribuidora 1 estaba en la media de Cáceres en rural concentrada (1,12 h frente a 1,06 h) por un solo año, 2019, en el que el 92 % de su TIEPI fue fuerza mayor; la Distribuidora 2, en 0,31 h. Dos salvedades: nuestro TIEPI queda entre un 2 % y un 16 % por debajo del declarado (arriba) y la tendencia del sector es a la baja, así que la distancia real es algo menor que la de la tabla. Sobre el TIEPI de incentivo (programadas, transporte y propias) la referencia de la CNMC para 2026-2028 (1,0648 h en rural concentrada) está en la línea del valor nacional de 2021 (1,11 h); la Distribuidora 1 (0,40 h en 2023-2025) y la Distribuidora 2 (0,33 h) quedan muy por debajo, que es lo que les da la bonificación del apartado 6. Y la serie nacional dice lo mismo que nuestras redes: el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (0,88 h en 2009 con Klaus y 1,06 h en 2010 con Xynthia, frente a 0,04 h en 2008) y vuelve a casi cero al siguiente.
 
 **Por factor** (2015-2025): las imprevistas propias son el 46,8 % de los kVA·h que cuentan para el TIEPI, las programadas de distribución el 28,2 %, las de terceros el 13,9 % y las de fuerza mayor el 11,1 %.
 
@@ -42,9 +53,9 @@ Y se repite. Si ordenamos las cabeceras por los kVA·h de los dos años anterior
 
 ## 4. Reposición por maniobra: dónde compensa el telemando
 
-En una incidencia que corta varios CT, los que vuelven antes que los últimos se repusieron con maniobras (aislar el tramo averiado y cerrar el resto), no con la reparación. Si hubiera un elemento telemandado en el punto adecuado, esa reposición bajaría de 3 minutos y dejaría de contar en el TIEPI. Entre 2016 y 2025, el 33 % de los kVA·h imprevistos de EOSA y el 31 % de los de Pitarch fueron tiempo de maniobra, con una mediana de 11 minutos por CT: de media 0,19 h de TIEPI al año en EOSA y 0,09 h en Pitarch. Es un máximo, porque supone que siempre había un punto de maniobra entre el CT y la avería.
+En una incidencia que corta varios CT, los que vuelven antes que los últimos se repusieron con maniobras (aislar el tramo averiado y cerrar el resto), no con la reparación. Si hubiera un elemento telemandado en el punto adecuado, esa reposición bajaría de 3 minutos y dejaría de contar en el TIEPI. Entre 2016 y 2025, el 33 % de los kVA·h imprevistos de la Distribuidora 1 y el 31 % de los de la Distribuidora 2 fueron tiempo de maniobra, con una mediana de 11 minutos por CT: de media 0,19 h de TIEPI al año en la Distribuidora 1 y 0,09 h en la Distribuidora 2. Es un máximo, porque supone que siempre había un punto de maniobra entre el CT y la avería.
 
-Con el precio del minuto de TIEPI del apartado 6 y el coste de un interruptor-seccionador telemandado (valor unitario de referencia TI-187A de la Orden IET/2660/2015: 11.174 EUR y 61 EUR al año de mantenimiento, unos 837 EUR al año a 30 años y 5,58 %), en 8 cabeceras el interruptor se paga si evita un 25 % o menos de ese máximo. La primera, R89-1T1 de EOSA, tuvo 43 incidencias en 2023-2025. La lista completa está en `economia_telemando_cabeceras.csv`.
+Con el precio del minuto de TIEPI del apartado 6 y el coste de un interruptor-seccionador telemandado (valor unitario de referencia TI-187A de la Orden IET/2660/2015: 11.174 EUR y 61 EUR al año de mantenimiento, unos 837 EUR al año a 30 años y 5,58 %), en 8 cabeceras el interruptor se paga si evita un 25 % o menos de ese máximo. La primera, R89-1T1 de la Distribuidora 1, tuvo 43 incidencias en 2023-2025. La lista completa está en `economia_telemando_cabeceras.csv`.
 
 ## 5. Meteorología: cuánto sube la probabilidad de avería
 
@@ -64,15 +75,15 @@ Con lluvia de 30 mm o más en el día la probabilidad de incidencia también lle
 
 | Distribuidora | TIEPI de incentivo medio | Incentivo estimado | Valor de un minuto | Margen hasta el tope | Pérdida con un año malo |
 | --- | --- | --- | --- | --- | --- |
-| EOSA | 0,37 h | +3,51 %, 421.000 EUR/año | 12.600 EUR | 59.000 EUR | 220.000 EUR/año (un año como 2021) |
-| Pitarch | 0,28 h | +3,55 %, 385.000 EUR/año | 14.900 EUR | 49.000 EUR | 226.000 EUR/año (un año como 2016) |
-| Valle de Santa Ana | 0,27 h | +4 % (tope), 8.400 EUR/año | 0 | 0 | 17.000 EUR/año |
+| Distribuidora 1 | 0,37 h | +3,51 %, 421.000 EUR/año | 12.600 EUR | 59.000 EUR | 220.000 EUR/año (un año como 2021) |
+| Distribuidora 2 | 0,28 h | +3,55 %, 385.000 EUR/año | 14.900 EUR | 49.000 EUR | 226.000 EUR/año (un año como 2016) |
+| Distribuidora 3 | 0,27 h | +4 % (tope), 8.400 EUR/año | 0 | 0 | 17.000 EUR/año |
 
 Las dos distribuidoras grandes ya están cerca del tope de bonificación: lo que queda por ganar es poco, pero un año malo les quita más de 200.000 EUR al año durante los tres años que dura en la media. El valor de predecir y prevenir está sobre todo en no perder la bonificación que ya tienen.
 
-**Energía no suministrada.** Con un 25 % de utilización de la potencia instalada y un factor de potencia de 0,9, el TIEPI de 2023-2025 (sin el apagón) supone unos 11.000 kWh al año no suministrados en EOSA y 6.900 en Pitarch. Al valor de la energía no suministrada del estudio de CEPA para ACER (7,88 EUR/kWh doméstico) y de la DGPEM (22,88 EUR/kWh, BOE-A-2025-14438), son entre 87.000 y 252.000 EUR al año de coste para los clientes de EOSA y entre 54.000 y 158.000 EUR en Pitarch.
+**Energía no suministrada.** Con un 25 % de utilización de la potencia instalada y un factor de potencia de 0,9, el TIEPI de 2023-2025 (sin el apagón) supone unos 11.000 kWh al año no suministrados en la Distribuidora 1 y 6.900 en la Distribuidora 2. Al valor de la energía no suministrada del estudio de CEPA para ACER (7,88 EUR/kWh doméstico) y de la DGPEM (22,88 EUR/kWh, BOE-A-2025-14438), son entre 87.000 y 252.000 EUR al año de coste para los clientes de la Distribuidora 1 y entre 54.000 y 158.000 EUR en la Distribuidora 2.
 
-**Límites del RD 1955/2000.** EOSA y Pitarch están muy por debajo de los límites de calidad zonal (en rural concentrada, entre 0,2 y 1,3 h de TIEPI imprevisto frente a 6 h). Valle de Santa Ana los superó en 2016 y 2017 (11,5 y 16,7 h) y en NIEPI en 2017 y 2020. En calidad individual, sin el apagón, solo 2017 (10 CT, 733 clientes) y 2019 (47 CT, 2.515 clientes, unos 3.700 EUR de descuentos del art. 105) pasan los límites de baja tensión. Para estas empresas lo que pesa es el incentivo; el límite legal queda lejos.
+**Límites del RD 1955/2000.** La Distribuidora 1 y la Distribuidora 2 están muy por debajo de los límites de calidad zonal (en rural concentrada, entre 0,2 y 1,3 h de TIEPI imprevisto frente a 6 h). La Distribuidora 3 los superó en 2016 y 2017 (11,5 y 16,7 h) y en NIEPI en 2017 y 2020. En calidad individual, sin el apagón, solo 2017 (10 CT, 733 clientes) y 2019 (47 CT, 2.515 clientes, unos 3.700 EUR de descuentos del art. 105) pasan los límites de baja tensión. Para estas empresas lo que pesa es el incentivo; el límite legal queda lejos.
 
 ## 7. Riesgo de cada CT y cabecera para el año siguiente
 
@@ -91,7 +102,7 @@ Por cabecera el modelo cierra casi la mitad de la distancia entre la lista naif 
 
 Los bloques nuevos aportan poco a este horizonte. El clima de la celda sube algo la captura por CT y el SCADA la de las cabeceras en el top 20 %; los datos públicos y el bloque de obras y edificación (70,4 % por cabecera y 25,7 % por CT en el top 10 %) no la mejoran, y juntar todos los bloques la empeora un poco. La variable con más ganancia del modelo completo es el relieve de la celda (desviación de la altitud), pero coincide con las líneas de montaña del Jerte y del Ambroz que la historia ya marca. Con cinco años de evaluación y unas 30 incidencias al año, diferencias de uno o dos puntos entre bloques no son significativas.
 
-Para 2026, el modelo con todos los años pone en cabeza R89-1T1 (EOSA, 491 CT), CC52-3 y CECLAV_2 (Pitarch); las cinco primeras cabeceras concentran el 77 % de los kVA·h esperados (`prioridades_cabecera.csv` y `l3_gold.ml_riesgo_ct_ranking`). R89-1T1 es también la primera de la lista del telemando del apartado 4, así que es la candidata clara a una actuación combinada: revisión de la línea y un punto de maniobra telemandado.
+Para 2026, el modelo con todos los años pone en cabeza R89-1T1 (la Distribuidora 1, 491 CT), CC52-3 y CECLAV_2 (la Distribuidora 2); las cinco primeras cabeceras concentran el 77 % de los kVA·h esperados (`prioridades_cabecera.csv` y `l3_gold.ml_riesgo_ct_ranking`). R89-1T1 es también la primera de la lista del telemando del apartado 4, así que es la candidata clara a una actuación combinada: revisión de la línea y un punto de maniobra telemandado.
 
 ## 8. Cuántas distribuidoras harían falta
 
@@ -109,7 +120,7 @@ Las dos curvas siguen subiendo con todos los datos y la de XGBoost sube más dep
 
 **Potencia.** La regresión logística con la meteorología supera hoy a la regla de la racha en el 84 % de las réplicas del bootstrap por días, sin llegar al 95 %. Si la diferencia se mantuviera, haría falta 3,7 veces más datos para que fuera significativa: unos 33 años-distribuidora del tamaño medio de estas, frente a los 9 actuales (3 distribuidoras por 3 años). Dicho de otra forma, unas 11 distribuidoras parecidas durante tres años, o estas tres durante once. XGBoost con las tres fuentes empata hoy con la regla, y con estos datos no hay cantidad razonable que lo haga significativo.
 
-**Transferencia.** Un modelo entrenado solo con EOSA ordena las horas de Pitarch mejor que el propio modelo de Pitarch (PR-AUC 0,0145 frente a 0,0082) y uno entrenado con Pitarch funciona en EOSA casi igual que el de EOSA (0,0158 frente a 0,0168). En Valle de Santa Ana, con solo 24 horas positivas de entrenamiento al año, el modelo de EOSA da lo mismo que el suyo. El riesgo meteorológico es común a la zona, así que los datos de una distribuidora sirven a las demás: el MVP puede arrancar en una distribuidora nueva con el modelo de las otras y mejorar todos a la vez con cada una que se suma.
+**Transferencia.** Un modelo entrenado solo con la Distribuidora 1 ordena las horas de la Distribuidora 2 mejor que el propio modelo de la Distribuidora 2 (PR-AUC 0,0145 frente a 0,0082) y uno entrenado con la Distribuidora 2 funciona en la Distribuidora 1 casi igual que el de la Distribuidora 1 (0,0158 frente a 0,0168). En la Distribuidora 3, con solo 24 horas positivas de entrenamiento al año, el modelo de la Distribuidora 1 da lo mismo que el suyo. El riesgo meteorológico es común a la zona, así que los datos de una distribuidora sirven a las demás: el MVP puede arrancar en una distribuidora nueva con el modelo de las otras y mejorar todos a la vez con cada una que se suma.
 
 Para la propuesta del MVP sacamos de aquí una cifra de trabajo: entre 10 y 12 distribuidoras del mismo SCADA y de la misma zona climática, con tres años de historia cada una, para que el modelo por horas aporte algo demostrable sobre una regla meteorológica. Con previsión meteorológica real la cifra bajaría: con la previsión perfecta del reanálisis el bosque aleatorio ya casi duplicaba la PR-AUC de la regla observada (0,0177 frente a 0,0094, ver [ml-training.md](ml-training.md)).
 
@@ -124,6 +135,7 @@ Para la propuesta del MVP sacamos de aquí una cifra de trabajo: entre 10 y 12 d
 | Plataforma de Contratación del Sector Público | Licitaciones de obra de las dos provincias desde 2018: órgano, objeto, CPV, importe, plazo, adjudicación y lugar | Ficheros anuales abiertos (ATOM CODICE, hasta 2,2 GB por año), filtrados a la zona al descargarlos | `l1_bronze.placsp_licitacion_obra` -> `l2_silver.f_licitacion_obra` |
 | Catastro, INSPIRE Buildings | Edificios de cada municipio con año de construcción, uso, viviendas y superficie | Descarga ATOM por municipio, sin clave | `l1_bronze.catastro_edificio` -> `l2_silver.f_edificacion_municipio` |
 | Instituto de Estadística de Extremadura | Proyección de población 2024-2039 por agrupación de municipios (AME) y la AME de cada municipio | Excel 97 en 7z y un mapa en PDF, pasados una vez a CSV con `extract_ieex_proyecciones.py` | `l1_bronze.ieex_proyeccion_ame` -> `l2_silver.f_proyeccion_ame`, `d_ame_municipio` |
+| GECOS (MITECO), calidad de suministro | TIEPI y NIEPI oficiales del sector por tipo de zona y causa: España, comunidades y provincias, 2003-2021 | Páginas públicas de GECOS, pasadas una vez al año a CSV con `extract_gecos_indices.py` (fuente `calidad_sector`) | `l1_bronze.gecos_indice_zonal` (lo lee `job_analisis_red.py`, sección 1b) |
 
 Gold las junta en `l3_gold.contexto_ct_anio`: una fila por CT y año con la población del municipio a 1 de enero del año anterior (la que estaba publicada), su variación en uno y en cinco años, la densidad, la potencia y los clientes del municipio por habitante, la altitud y el entorno de su celda, las obras licitadas el año anterior y los meses de obra previstos para el año, y las viviendas construidas según el Catastro. El riesgo anual las usa en dos bloques, `publicos` y `obras`. Aparte, `l3_gold.obras_municipio_anio` guarda por municipio y año las obras publicadas y en ejecución y la edificación, para el cruce con las averías del apartado siguiente.
 
@@ -151,15 +163,15 @@ Con estos datos, las obras públicas por municipio y año no anticipan las aver�
 | Sierra de Montánchez | 21 | 315 | -10,8 % |
 | Rivera de Fresnedosa | 9 | 142 | -9,5 % |
 | Tajo - Salor | 8 | 209 | -7,7 % |
-| Sierra Suroeste (Valle de Santa Ana) | 1 | 10 | -6,4 % |
+| Sierra Suroeste (la Distribuidora 3) | 1 | 10 | -6,4 % |
 | Trujillo | 2 | 28 | -5,9 % |
 | Riberos del Tajo | 3 | 55 | -0,5 % |
 | Valle del Jerte | 12 | 245 | +1,0 % |
 | Cáceres | 1 | 55 | +1,5 % |
 
-En esta zona no va a hacer falta más potencia por población ni por construcción nueva. Si hace falta, será por la electrificación de lo que ya existe (bomba de calor, coche eléctrico, autoconsumo), y para eso los datos señalan dónde mirar primero: los 196 CT con menos de 2 kVA instalados por cliente y las cabeceras cuya punta crece de forma sostenida, como V52-01 de EOSA (de 37 a 73 A entre 2021 y 2025, con 358 CT), J252-5 (de 117 a 145 A entre 2023 y 2025) o A52-1 de Pitarch (de 26 a 52 A entre 2021 y 2024). Dos CT tienen en Calser una potencia que no es creíble (10 kVA para 330 clientes en Torremocha, 14 kVA para 94 en Casas de Millán) y conviene revisar su ficha. Para confirmar qué trafo concreto va al límite hace falta su curva de carga.
+En esta zona no va a hacer falta más potencia por población ni por construcción nueva. Si hace falta, será por la electrificación de lo que ya existe (bomba de calor, coche eléctrico, autoconsumo), y para eso los datos señalan dónde mirar primero: los 196 CT con menos de 2 kVA instalados por cliente y las cabeceras cuya punta crece de forma sostenida, como V52-01 de la Distribuidora 1 (de 37 a 73 A entre 2021 y 2025, con 358 CT), J252-5 (de 117 a 145 A entre 2023 y 2025) o A52-1 de la Distribuidora 2 (de 26 a 52 A entre 2021 y 2024). Dos CT tienen en Calser una potencia que no es creíble (10 kVA para 330 clientes en Torremocha, 14 kVA para 94 en Casas de Millán) y conviene revisar su ficha. Para confirmar qué trafo concreto va al límite hace falta su curva de carga.
 
-Y lo que aprendimos del resto de fuentes: la población de los 73 municipios está estancada o baja (Hervás pasa de 3.976 habitantes en 2019 a 3.898 en 2025; Valle de Santa Ana de 1.139 a 1.090), y el relieve de la celda pesa en el riesgo anual, pero porque marca las líneas de montaña que la historia ya conoce. Incendios (Estadística General de Incendios Forestales, consolidada solo hasta 2021) y rayos (AEMET, sin datos históricos abiertos) quedan como propuesta.
+Y lo que aprendimos del resto de fuentes: la población de los 73 municipios está estancada o baja (Hervás pasa de 3.976 habitantes en 2019 a 3.898 en 2025; la Distribuidora 3 de 1.139 a 1.090), y el relieve de la celda pesa en el riesgo anual, pero porque marca las líneas de montaña que la historia ya conoce. Incendios (Estadística General de Incendios Forestales, consolidada solo hasta 2021) y rayos (AEMET, sin datos históricos abiertos) quedan como propuesta.
 
 ## 11. Lo que falta para predecir mejor
 

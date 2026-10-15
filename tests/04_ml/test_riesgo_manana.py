@@ -372,6 +372,10 @@ def synthetic():
         weather[f"metp1_{name}_1h"] = np.where(archived, weather[f"met_{name}_1h"] * noise.clip(0), np.nan)
     weather["metp1_temp_1h"] = np.where(archived, weather["met_temp_1h"] + 1.0, np.nan)
     weather["metp1_humedad_1h"] = np.where(archived, 60.0, np.nan)
+    # Two days ahead, gusts and rain with more noise (the outlook of pasado manana learns from them).
+    noise2 = rng.normal(1.0, 0.3, len(weather))
+    weather["metp2_racha_1h"] = np.where(archived, weather["met_racha_1h"] * noise2.clip(0), np.nan)
+    weather["metp2_lluvia_1h"] = np.where(archived, weather["met_lluvia_1h"] * noise2.clip(0), np.nan)
     p98 = weather[weather["hora"] < "2022-01-01"].groupby("celda_id")["met_racha_1h"].quantile(0.98)
     for prefix in ("met", "metp1"):
         ratio = weather[f"{prefix}_racha_1h"] / weather["celda_id"].map(p98)
@@ -426,7 +430,11 @@ def config_path(workdir):
     config["exportar_dir"] = os.path.join(workdir, "resultados")
     config["spark_conf"] = {}
     config["riesgo_manana"]["dashboard_dir"] = os.path.join(workdir, "dashboard")
+    # The outlook of pasado manana is off in production until the 72 h backtest is in; the tests keep it on.
+    config["riesgo_manana"]["variante_pasado_manana"] = "operativa_48h"
     config["riesgo_manana"]["riesgo_zonas"] = {"brigadas": {"1": 1, "2": 1}, "bases_fijas": {"1": ["Torre de Santa María"]}}
+    # The names shown (the fixture has the distribuidoras 1 and 2, with Calser_EOSA and Calser_Pitarch as databases).
+    config["riesgo_manana"]["nombres"] = {"1": "Distribuidora 1", "2": "Distribuidora 2"}
     os.makedirs(config["riesgo_manana"]["dashboard_dir"])
     config["meteo_dia"] = {
         **config.get("meteo_dia", {}),
@@ -435,7 +443,10 @@ def config_path(workdir):
         "busqueda": {"logistica": [{"C": 0.1}, {"C": 1.0}]},
         "variantes": [{"nombre": "operativa", "desde": "2021-06-25",
                        "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos"],
-                       "variables": ["ayer_racha_max", "ayer_lluvia_max"]}],
+                       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+                      {"nombre": "operativa_48h", "desde": "2021-06-25",
+                       "bloques": ["calendario", "historia", "avisos_48h", "dia_comun_48h", "extremos_racha"],
+                       "variables": ["hace2_racha_max", "hace2_lluvia_max"], "horizonte": 2}],
     }
     path = os.path.join(workdir, "config.json")
     with open(path, "w", encoding="utf-8") as file:
@@ -443,8 +454,12 @@ def config_path(workdir):
     return path
 
 
-def land(workdir: str, day: pd.Timestamp, storm: bool, warned: bool) -> str:
-    """The live Landing of the day: 31 days before today and 3 days ahead, a storm on the day in the first cell."""
+def land(workdir: str, day: pd.Timestamp, storm: bool, warned: bool, storm_after: bool = False) -> str:
+    """
+    The live Landing of the day: 31 days before today and 3 days ahead, a
+    storm on the day in the first cell and, with storm_after, another one
+    the day after (pasado manana).
+    """
     landing = os.path.join(workdir, "vivo")
     folder = os.path.join(landing, f"{day:%Y%m%d}")
     shutil.rmtree(folder, ignore_errors=True)
@@ -452,11 +467,15 @@ def land(workdir: str, day: pd.Timestamp, storm: bool, warned: bool) -> str:
     today = day - pd.Timedelta(days=1)
     start, end = f"{today - pd.Timedelta(days=31):%Y-%m-%d}", f"{today + pd.Timedelta(days=3):%Y-%m-%d}"
 
+    stormy = {day} if storm else set()
+    if storm_after:
+        stormy.add(day + pd.Timedelta(days=1))
+
     def gust(t):
-        return 105.0 if storm and t.floor("D") == day and 10 <= t.hour < 16 else 25.0
+        return 105.0 if t.floor("D") in stormy and 10 <= t.hour < 16 else 25.0
 
     def rain(t):
-        return 4.0 if storm and t.floor("D") == day and 10 <= t.hour < 16 else 0.0
+        return 4.0 if t.floor("D") in stormy and 10 <= t.hour < 16 else 0.0
 
     for cell, answer in ((CELLS[1], payload(CELLS[1], start, end, gust, rain)),
                          (CELLS[2], payload(CELLS[2], start, end, 20.0))):
@@ -474,7 +493,7 @@ def land(workdir: str, day: pd.Timestamp, storm: bool, warned: bool) -> str:
 
 @pytest.fixture(scope="module")
 def first(spark, tables, config_path, workdir):
-    landing = land(workdir, DAY, storm=True, warned=True)
+    landing = land(workdir, DAY, storm=True, warned=True, storm_after=True)
     code = rm.main(["--run-id", RUN_ID, "--config", config_path, "--fecha", f"{DAY:%Y-%m-%d}", "--landing", landing])
     rows = spark.table("l3_gold.riesgo_dia_siguiente").toPandas().set_index("distribuidora_id")
     return code, rows, landing
@@ -486,7 +505,7 @@ def test_the_storm_with_a_warning_is_the_riskiest_day(first):
     assert sorted(rows.index) == [1, 2]
     assert (rows["fecha"].astype(str) == "2026-01-15").all()
     storm, calm = rows.loc[1], rows.loc[2]
-    assert storm["distribuidora"] == "EOSA" and calm["distribuidora"] == "Pitarch"
+    assert storm["distribuidora"] == "Distribuidora 1" and calm["distribuidora"] == "Distribuidora 2"
     assert storm["probabilidad"] > 3 * calm["probabilidad"]
     assert storm["nivel"] in ("muy alto", "alto") and storm["percentil"] >= 0.9
     assert storm["veces_tasa_base"] > 2
@@ -498,6 +517,10 @@ def test_the_storm_with_a_warning_is_the_riskiest_day(first):
     assert storm["zonas"].startswith("Montánchez (105 km/h")
     assert storm["racha_max_kmh"] == 105.0 and storm["aviso_max_nivel"] == 2.0 and calm["aviso_max_nivel"] == 0.0
     assert storm["lluvia_mm"] == pytest.approx(24.0)
+    # The guard: reinforced by the level and by the wind warning on the storm; normal on the calm day.
+    assert storm["guardia_reforzada"] and "aviso de viento de AEMET (naranja)" in storm["guardia_motivo"]
+    assert not calm["guardia_reforzada"] and calm["guardia_motivo"] == "normal"
+    assert storm["aviso_viento_nivel"] == 2.0 and calm["aviso_tormenta_nivel"] == 0.0
     assert rows["avisos_disponibles"].all() and rows["historia_al_dia"].all()
     assert (rows["cobertura_prevision"] == 1.0).all()
     assert str(storm["calser_hasta"]) == "2026-01-13"
@@ -538,7 +561,7 @@ def test_the_zones_split_the_risk_of_the_day(first, spark, workdir):
     for name in ("parte_guardia.xlsx", "parte_guardia_20260115.xlsx"):
         assert os.path.getsize(os.path.join(workdir, "dashboard", name)) > 5000
     text = open(os.path.join(workdir, "resultados", RUN_ID, "resumen.md"), encoding="utf-8").read()
-    assert "## EOSA: dónde, cuándo, por qué y cuánto" in text and "### Brigadas" in text
+    assert "## Distribuidora 1: dónde, cuándo, por qué y cuánto" in text and "### Brigadas" in text
 
 
 def test_the_summary_and_the_run(first, spark, workdir):
@@ -552,6 +575,24 @@ def test_the_summary_and_the_run(first, spark, workdir):
     runs = spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}'").toPandas()
     assert len(runs) == 1 and runs.loc[0, "etiqueta"] == "riesgo_manana:y_dia"
     assert "operativa" in runs.loc[0, "modelos_json"]
+
+
+def test_the_outlook_of_two_days_ahead_is_scored_the_same_evening(first, spark, workdir):
+    """D + 2 with the variant of two days ahead: the storm of the 16th in the first cell, calm in the second."""
+    outlook = spark.table("l3_gold.riesgo_pasado_manana").toPandas().set_index("distribuidora_id")
+    assert sorted(outlook.index) == [1, 2] and (outlook["fecha"].astype(str) == "2026-01-16").all()
+    assert (outlook["variante"] == "operativa_48h").all() and (outlook["run_id"] == RUN_ID).all()
+    assert outlook.loc[1, "racha_max_kmh"] == pytest.approx(105.0, abs=0.5) and outlook.loc[2, "racha_max_kmh"] < 30
+    assert outlook.loc[1, "nivel"] in ("alto", "muy alto") and outlook.loc[1, "probabilidad"] > outlook.loc[2, "probabilidad"]
+    assert outlook.loc[2, "nivel"] in ("bajo", "medio")
+    # The warning of the test is for the 15th only: nothing for the 16th.
+    assert outlook.loc[1, "aviso_max_nivel"] == 0.0 and outlook.loc[1, "cobertura_prevision"] == 1.0
+    # In riesgo.json, after the day of tomorrow, as an orientation.
+    payload = json.load(open(os.path.join(workdir, "dashboard", "riesgo.json"), encoding="utf-8"))
+    block = payload["pasado_manana"]
+    assert block["fecha"] == "2026-01-16" and block["fecha_texto"] == "16.01.2026" and block["variante"] == "operativa_48h"
+    assert [d["id"] for d in block["distribuidoras"]] == [1, 2] and block["distribuidoras"][0]["nivel"] in ("alto", "muy alto")
+    assert "planificar" in block["nota"]
 
 
 def test_a_new_run_of_the_same_day_replaces_it_and_says_when_aemet_is_missing(first, spark, config_path, workdir):
@@ -582,6 +623,48 @@ def test_an_old_copy_of_calser_leaves_the_history_empty(first, spark, config_pat
     assert "La copia de Calser llega hasta el 13.01.2026" in text
 
 
+def test_a_past_day_is_played_again_from_gold_without_touching_the_live_day(first, spark, config_path, workdir):
+    """A storm day of 2025 with the forecast of the day before (metp1_*) and the warnings of the archive."""
+    weather = spark.table("l3_gold.meteo_celda_hora").toPandas()
+    weather["hora"] = pd.to_datetime(weather["hora"])
+    of_2025 = weather[(weather["hora"] >= "2025-01-01") & (weather["hora"] < "2025-12-01") & (weather["celda_id"] == CELLS[1])]
+    storm_day = of_2025.loc[of_2025["metp1_racha_1h"].idxmax(), "hora"].floor("D")
+    live = os.path.join(workdir, "dashboard", "riesgo.json")
+    before = open(live, encoding="utf-8").read()
+    code = rm.main(["--run-id", "repetido", "--config", config_path, "--fecha", f"{storm_day:%Y-%m-%d}", "--desde-gold",
+                    "--solo-archivo", "--landing", os.path.join(workdir, "vivo")])
+    assert code == 0
+    rows = spark.table("l3_gold.riesgo_dia_siguiente").toPandas()
+    played = rows[rows["fecha"].astype(str) == f"{storm_day:%Y-%m-%d}"].set_index("distribuidora_id")
+    assert sorted(played.index) == [1, 2] and (played["run_id"] == "repetido").all()
+    storm = played.loc[1]
+    # The forecast of the day before, the warning sent the day before, training only with the days before.
+    assert storm["racha_max_kmh"] == pytest.approx(of_2025["metp1_racha_1h"].max(), abs=0.5)
+    assert storm["aviso_max_nivel"] == 2.0 and storm["avisos_disponibles"]
+    assert pd.Timestamp(storm["entrenado_hasta"]) < storm_day
+    assert storm["prevision_pedida_utc"] == "gold" and storm["nivel"] in ("alto", "muy alto")
+    # The dashboard keeps the live day and gets the dated copy.
+    assert open(live, encoding="utf-8").read() == before
+    dated = os.path.join(workdir, "dashboard", f"riesgo_{storm_day:%Y%m%d}.json")
+    payload = json.load(open(dated, encoding="utf-8"))
+    assert payload["fecha"] == f"{storm_day:%Y-%m-%d}" and "Gold" in payload["fuentes"]["prevision_pedida"]
+    assert payload.get("pasado_manana") is None
+    assert os.path.exists(os.path.join(workdir, "dashboard", f"parte_guardia_{storm_day:%Y%m%d}.xlsx"))
+    # The index of the dashboard lists the live day and the days played again, newest first, with the files each has.
+    index = json.load(open(os.path.join(workdir, "dashboard", "indice.json"), encoding="utf-8"))
+    live_day = json.loads(before)["fecha"]
+    assert index["vivo"]["fecha"] == live_day and [d["fecha"] for d in index["dias"]] == sorted(
+        [d["fecha"] for d in index["dias"]], reverse=True)
+    played_entry = next(d for d in index["dias"] if d["dia"] == f"{storm_day:%Y%m%d}")
+    assert played_entry["repetido"] and played_entry["run_id"] == "repetido"
+    assert played_entry["ficheros"]["parte_guardia"] == f"parte_guardia_{storm_day:%Y%m%d}.xlsx"
+    assert "ensemble" not in played_entry["ficheros"]
+    entry_1 = next(d for d in played_entry["distribuidoras"] if d["id"] == 1)
+    assert entry_1["nivel"] in ("alto", "muy alto") and entry_1["guardia_reforzada"] is True and entry_1["franja"]
+    live_entry = next(d for d in index["dias"] if d["dia"] == live_day.replace("-", ""))
+    assert not live_entry["repetido"] and "historico.json" not in index["otros"]
+
+
 def test_without_the_forecast_there_is_nothing_to_score(config_path, workdir):
     with pytest.raises(FileNotFoundError):
         rm.main(["--run-id", "sin_prevision", "--config", config_path, "--fecha", "2026-06-01",
@@ -604,3 +687,24 @@ def test_the_second_opinions_of_the_evening_are_attached_to_the_payload(tmp_path
     assert rm.attach_second_opinions({"fecha": "2026-10-15", "distribuidoras": [{"id": 3}]}, str(tmp_path / "no")) == {"fecha": "2026-10-15", "distribuidoras": [{"id": 3}]}
     sheets = rm.rz.shift_sheets({**out, "fecha_texto": "15.10.2026"})
     assert sheets["Resumen"]["escenarios de ICON-EU EPS"].tolist() == ["40 escenarios", None]
+
+
+def test_the_index_of_the_dashboard_survives_a_broken_file(tmp_path):
+    folder = str(tmp_path)
+    good = {"fecha": "2026-02-03", "fecha_texto": "03.02.2026", "generado": "02.02.2026 18:31 UTC", "run_id": "scheduled__x",
+            "fuentes": {"prevision_pedida": "02.02.2026 18:31 UTC"}, "modelo": {"descripcion": "regresión logística"},
+            "distribuidoras": [{"id": 3, "nombre": "EOSA", "nivel": "alto", "probabilidad": 0.12, "percentil": 0.95,
+                                "aviso_max_nivel": 1.0, "guardia": {"reforzar": True, "motivo": "nivel alto"},
+                                "franja": {"texto": "de 6:00 a 14:00"}, "racha_max_kmh": 88.0}]}
+    with open(os.path.join(folder, "riesgo_20260203.json"), "w", encoding="utf-8") as file:
+        json.dump(good, file)
+    with open(os.path.join(folder, "riesgo_20260101.json"), "w", encoding="utf-8") as file:
+        file.write("{ not json")
+    with open(os.path.join(folder, "riesgo_prueba.json"), "w", encoding="utf-8") as file:
+        json.dump({}, file)
+    rm.write_index(folder)
+    index = json.load(open(os.path.join(folder, "indice.json"), encoding="utf-8"))
+    assert [d["dia"] for d in index["dias"]] == ["20260203"] and index["vivo"] is None
+    entry = index["dias"][0]
+    assert entry["fecha_texto"] == "03.02.2026" and not entry["repetido"] and entry["ficheros"] == {}
+    assert entry["distribuidoras"][0]["guardia_motivo"] == "nivel alto"

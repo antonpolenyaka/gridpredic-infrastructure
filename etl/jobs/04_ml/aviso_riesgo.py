@@ -15,10 +15,28 @@ import os
 import sys
 import urllib.request
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("aviso")
 
-DEFAULTS = {"url_env": "AVISO_WEBHOOK_URL", "nivel_minimo": "alto", "campo": "text", "timeout_s": 30, "rayos_cada_min": 60}
+DEFAULTS = {"url_env": "AVISO_WEBHOOK_URL", "nivel_minimo": "alto", "campo": "text", "timeout_s": 30, "rayos_cada_min": 60,
+            "parte_manana_hora": 7}
+LEVEL_NAMES = {1: "amarillo", 2: "naranja", 3: "rojo"}
+# The guard: reinforce it the days in alert (alto or muy alto) and the days with a wind or thunderstorm warning of
+# AEMET, the policy that covers most customer-hours per day spent in the replay of 2024 - 2026 (caso-de-negocio.md, 2b).
+GUARD_LEVELS = ("alto", "muy alto")
+
+
+def guard_advice(level: str, wind: float, storm: float) -> dict:
+    """{"reforzar": bool, "motivo": text}: why the guard of the day is reinforced, or "normal"."""
+    reasons = []
+    if level in GUARD_LEVELS:
+        reasons.append(f"nivel {level}")
+    if wind is not None and wind == wind and wind >= 1:
+        reasons.append(f"aviso de viento de AEMET ({LEVEL_NAMES.get(int(wind), int(wind))})")
+    if storm is not None and storm == storm and storm >= 1:
+        reasons.append(f"aviso de tormenta de AEMET ({LEVEL_NAMES.get(int(storm), int(storm))})")
+    return {"reforzar": bool(reasons), "motivo": "; ".join(reasons) if reasons else "normal"}
 ORDER = ["bajo", "medio", "alto", "muy alto"]
 
 
@@ -36,12 +54,14 @@ def reached(level: str, minimum: str) -> bool:
 def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) -> str:
     """
     The text of the evening from riesgo.json of the dashboard: one line per
-    distribuidora in alert with the level, the probability, the expected
+    distribuidora in alert, or whose guard is reinforced by a wind or
+    thunderstorm warning of AEMET, with the level, the probability, the expected
     incidents and customers, the window, the zones of most risk, the bases
     of the crews and, with ensemble.json of the same day, the spread of the
     runs; empty when no distribuidora reaches minimum.
     """
-    blocks = [d for d in payload.get("distribuidoras", []) if reached(d.get("nivel", "bajo"), minimum)]
+    blocks = [d for d in payload.get("distribuidoras", [])
+              if reached(d.get("nivel", "bajo"), minimum) or (d.get("guardia") or {}).get("reforzar")]
     if not blocks:
         return ""
     bands = {str(b.get("id")): b for b in (ensemble or {}).get("distribuidoras", [])} if (ensemble or {}).get("fecha") == payload.get("fecha") else {}
@@ -52,6 +72,9 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         line = (f"- {d.get('nombre')}: {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %, "
                 f"{float(d.get('veces_tasa_base') or 0):.1f} veces su tasa base); averías esperadas {float(d.get('esperadas') or 0):.1f}, "
                 f"clientes esperados sin luz {float(imp.get('clientes_esperados') or 0):.0f}")
+        guard = d.get("guardia") or {}
+        if guard.get("reforzar"):
+            line += f"; guardia reforzada ({guard.get('motivo', '')})"
         if fr.get("inicio") is not None:
             line += f"; franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00 (pico {float(fr.get('racha_pico') or 0):.0f} km/h)"
         if zones:
@@ -69,6 +92,9 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         if (d.get("aemet") or {}).get("texto"):
             line += f"; {d['aemet']['texto']}"
         lines.append(line + ".")
+    outlook = outlook_line(payload, minimum)
+    if outlook:
+        lines.append(outlook)
     rule = (payload.get("reglas") or {}).get("texto")
     if rule:
         lines.append(rule)
@@ -76,11 +102,26 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
     return "\n".join(lines)
 
 
+def outlook_line(payload: dict, minimum: str = "alto") -> str:
+    """
+    One line with the distribuidoras whose outlook of the day after tomorrow
+    (pasado_manana of riesgo.json) reaches minimum, as an orientation; empty
+    without it.
+    """
+    block = payload.get("pasado_manana") or {}
+    reached_ones = [d for d in block.get("distribuidoras", []) if reached(d.get("nivel", "bajo"), minimum)]
+    if not reached_ones:
+        return ""
+    parts = ", ".join(f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
+                      for d in reached_ones)
+    return f"Pasado mañana {block.get('fecha_texto') or block.get('fecha', '')}, orientación a dos días: {parts}."
+
+
 def post(url: str, message: str, field: str = "text", timeout: float = 30.0) -> int:
     """POST {field: message} as JSON; returns the HTTP status. The URL never goes to the log."""
     body = json.dumps({field: message}, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json",
-                                                               "User-Agent": "GridPredict-TFM/1.0"})
+                                                               "User-Agent": "GridPredic-TFM/1.0"})
     with urllib.request.urlopen(request, timeout=timeout) as answer:
         return int(answer.status)
 
@@ -188,6 +229,129 @@ def send_storm(payload: dict, rcfg: dict, state_path: str, now: datetime = None)
     return "enviado"
 
 
+def day_text(iso: str) -> str:
+    """'2026-10-15' -> '15.10.2026'; anything else as it comes."""
+    try:
+        return datetime.strptime(str(iso)[:10], "%Y-%m-%d").strftime("%d.%m.%Y")
+    except ValueError:
+        return str(iso or "")
+
+
+def morning_message(verification: dict, risk: dict = None, today_iso: str = None) -> str:
+    """
+    The text of the morning: what we said for yesterday and what the stations
+    measured (verificacion.json, block ayer), and what the system says for
+    today (riesgo.json when its fecha is today, else the block hoy of the
+    verification). With today_iso, a warning when riesgo.json is older than
+    today (the evening run did not leave the risk). Empty when there is
+    nothing of yesterday nor of today.
+    """
+    yesterday = (verification or {}).get("ayer") or {}
+    today = (verification or {}).get("hoy") or {}
+    lines = []
+    if today_iso and (risk or {}).get("fecha") and str(risk["fecha"]) < today_iso:
+        lines.append(f"Atención: no hay riesgo calculado para hoy (el último es del {day_text(risk['fecha'])}); "
+                     "mirar dag_riesgo_manana en Airflow (http://localhost:8080).")
+    if yesterday.get("distribuidoras"):
+        parts = []
+        for d in yesterday["distribuidoras"]:
+            if d.get("racha_observada_max") is None:
+                continue
+            text = (f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %): "
+                    f"pico previsto {float(d.get('racha_prevista_max') or 0):.0f} km/h a las {d.get('hora_prevista')} h, "
+                    f"medido {float(d['racha_observada_max']):.0f} km/h a las {d.get('hora_observada')} h")
+            marks = []
+            if d.get("pico_en_franja") is not None:
+                marks.append("en la franja" if d["pico_en_franja"] else "fuera de la franja")
+            if d.get("pico_en_banda") is not None:
+                marks.append("en la banda de los escenarios" if d["pico_en_banda"] else "fuera de la banda de los escenarios")
+            if d.get("racha_aemet_max") is not None:
+                marks.append(f"AEMET decía {float(d['racha_aemet_max']):.0f} km/h")
+            if d.get("aviso_aemet"):
+                marks.append(f"aviso de AEMET de nivel {int(d['aviso_aemet'])}")
+            parts.append(text + (" (" + ", ".join(marks) + ")" if marks else ""))
+        if parts:
+            lines.append(f"Ayer {day_text(yesterday.get('fecha'))}: " + "; ".join(parts) + ".")
+    source = risk if (risk or {}).get("fecha") and risk.get("fecha") == today.get("fecha", risk.get("fecha")) else None
+    if source and source.get("distribuidoras"):
+        parts = []
+        for d in sorted(source["distribuidoras"], key=lambda b: -(b.get("probabilidad") or 0)):
+            fr = d.get("franja") or {}
+            text = f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
+            if fr.get("inicio") is not None:
+                text += f", franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico {float(fr.get('racha_pico') or 0):.0f} km/h"
+            if (d.get("aemet") or {}).get("pico"):
+                text += f", AEMET {float(d['aemet']['pico'].get('racha_kmh') or 0):.0f} km/h"
+            if (d.get("guardia") or {}).get("reforzar"):
+                text += f", guardia reforzada ({d['guardia'].get('motivo', '')})"
+            parts.append(text)
+        lines.append(f"Hoy {day_text(source.get('fecha'))}: " + "; ".join(parts) + ".")
+    elif today.get("distribuidoras"):
+        parts = [f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
+                 for d in today["distribuidoras"]]
+        lines.append(f"Hoy {day_text(today.get('fecha'))}: " + "; ".join(parts) + ".")
+    if not lines:
+        return ""
+    return "GridPredic, parte de la mañana.\n" + "\n".join(lines) + "\nCuadro de mando: http://localhost:8086"
+
+
+def send_morning(folder: str, rcfg: dict, state_path: str, now: datetime = None) -> str:
+    """
+    The morning report to the webhook once a day, in the run of
+    aviso.parte_manana_hora (local hour of the risk configuration) or the
+    first run after it; state_path remembers the last day sent. Returns
+    "enviado", "no es la hora", "ya enviado", "sin datos", "sin url" or
+    "error: ...".
+    """
+    cfg = alert_settings(rcfg)
+    zone = ZoneInfo(rcfg.get("zona_horaria", "Europe/Madrid"))
+    now = (now or datetime.now(timezone.utc)).astimezone(zone)
+    if now.hour < int(cfg.get("parte_manana_hora", 7)):
+        return "no es la hora"
+    state = {}
+    if state_path and os.path.exists(state_path):
+        try:
+            with open(state_path, encoding="utf-8") as file:
+                state = json.load(file)
+        except (OSError, ValueError):
+            state = {}
+    today = now.strftime("%Y-%m-%d")
+    if state.get("enviado") == today:
+        return "ya enviado"
+    verification, risk = {}, {}
+    for name, target in (("verificacion.json", "verification"), ("riesgo.json", "risk")):
+        path = os.path.join(folder, name)
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as file:
+                    if target == "verification":
+                        verification = json.load(file)
+                    else:
+                        risk = json.load(file)
+            except (OSError, ValueError):
+                pass
+    message = morning_message(verification, risk, today)
+    if not message:
+        return "sin datos"
+    url = os.environ.get(cfg["url_env"], "").strip()
+    if not url:
+        logger.info("No %s in the environment: the morning report is not sent\n%s", cfg["url_env"], message)
+        return "sin url"
+    try:
+        post(url, message, cfg["campo"], float(cfg["timeout_s"]))
+    except Exception as error:  # noqa: BLE001
+        logger.error("The webhook did not take the morning report: %s", type(error).__name__)
+        return f"error: {type(error).__name__}"
+    if state_path:
+        try:
+            with open(state_path, "w", encoding="utf-8") as file:
+                json.dump({"enviado": today}, file)
+        except OSError as error:
+            logger.warning("Morning state not written in %s: %s", state_path, error)
+    logger.info("Morning report sent\n%s", message)
+    return "enviado"
+
+
 def failure_message(context: dict) -> str:
     """What a task failure of Airflow looks like in the webhook: DAG, task, attempt, day and the error."""
     ti = context.get("task_instance") or context.get("ti")
@@ -196,7 +360,7 @@ def failure_message(context: dict) -> str:
     attempt = getattr(ti, "try_number", None)
     when = context.get("logical_date") or context.get("execution_date") or context.get("run_id") or ""
     error = str(context.get("exception") or "")[:300]
-    return (f"GridPredict: la tarea {task_id} de {dag_id} ha fallado" + (f" (intento {attempt})" if attempt else "")
+    return (f"GridPredic: la tarea {task_id} de {dag_id} ha fallado" + (f" (intento {attempt})" if attempt else "")
             + (f", ejecución {str(when)[:16]}" if when else "") + (f": {error}" if error else "") + ". Airflow: http://localhost:8080")
 
 

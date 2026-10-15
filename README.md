@@ -2,7 +2,7 @@
 
 Entorno local de desarrollo para ejecutar la plataforma de datos de GridPredic con Docker Compose.
 
-GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka en el Máster en Data Science and Engineering de la UPC School (2025-2026): un sistema que predice, con 1 a 3 horas de antelación, las interrupciones de suministro en la red de media tensión de una distribuidora eléctrica, a partir del histórico de interrupciones (aplicación Calser) y de la telemetría del SCADA TedisNet. Este repositorio contiene la plataforma de datos y el pipeline que construye el dataset de entrenamiento, de Landing a Gold, y el entrenamiento y la evaluación de los modelos sobre ese dataset.
+GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka en el Máster en Data Science and Engineering de la UPC School (2025-2026): un sistema que dice cada tarde qué riesgo de interrupción de suministro tiene al día siguiente la red de media tensión de una distribuidora eléctrica, en qué franja horaria, en qué líneas y dónde dejar las brigadas, a partir del histórico de interrupciones (aplicación Calser), de la telemetría del SCADA TedisNet, de la previsión meteorológica y de los avisos de AEMET; la pregunta original, el aviso de 1 a 3 horas por CT, se midió y se descartó como alerta (ver [docs/model_card.md](docs/model_card.md)). Este repositorio contiene la plataforma de datos y el pipeline que construye el dataset, de Landing a Gold, el entrenamiento y la evaluación de los modelos, la operación diaria en Airflow con su cuadro de mando y el caso de negocio con los datos reales de 2022 - 2026.
 
 ## Documentación
 
@@ -16,6 +16,12 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 | [docs/project-structure.md](docs/project-structure.md) | Estructura del repositorio y su relación con Cookiecutter Data Science |
 | [docs/caso-de-negocio.md](docs/caso-de-negocio.md) | Lo que habría dicho el sistema cada tarde desde 2022 y lo que pasó: resultados, guardia a igual presupuesto, frente a los avisos de AEMET y lo que vale |
 | [docs/operacion-diaria.md](docs/operacion-diaria.md) | Manual de la operación en marcha: los DAG, sus horas, lo que dejan, los avisos y qué mirar si falla |
+| [docs/cifras.md](docs/cifras.md) | Las cifras que van a la memoria y a la presentación, en una página, con el documento y la ejecución de la que sale cada una |
+| [docs/guion-presentacion.md](docs/guion-presentacion.md) | El guion de la defensa: 14 diapositivas con el mensaje, la figura y la cifra de cada una |
+| [docs/memoria-lo-que-pide-el-tutor.md](docs/memoria-lo-que-pide-el-tutor.md) | Lo que pide el tutor de negocio para la memoria (tutorías del 06.07 y del 14.10.2026), lo que ya cubrimos y los textos propuestos: propuesta de valor, marca y posicionamiento, marketing mix, DAFO por fases, riesgos, validación y plan financiero |
+| [docs/memoria-texto-experimentos.md](docs/memoria-texto-experimentos.md) | Borrador del apartado de resultados de la memoria sobre las pruebas de mejora del modelo del día (método, revisión de literatura, diez pruebas con su PR-AUC, el arbolado y el riesgo a 48 y 72 h), listo para pegar |
+| [docs/revision-literatura.md](docs/revision-literatura.md) | Revisión de la literatura (modelos de interrupciones por meteorología, 2012 - 2026, con los DOI comprobados), las fuentes públicas que no usamos todavía y las ideas de modelado con respaldo, con las cinco pruebas recomendadas |
+| [docs/investigacion-continua.md](docs/investigacion-continua.md) | Cuaderno de laboratorio: las hipótesis probadas con los datos (literatura, humedad del suelo y duración del viento, datos públicos, dispositivos de los clientes), cómo se probaron y qué se descartó; el código de cada prueba está en `experimentos/` |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | GitHub Flow tal como lo aplicamos, reglas de commits y versionado de datos |
 | [CHANGELOG.md](CHANGELOG.md) | Historial de versiones |
 
@@ -590,6 +596,12 @@ SELECT fecha, distribuidora_id, nombre, nivel, ROUND(probabilidad, 3) AS probabi
 FROM lakehouse.l3_gold.riesgo_zona_siguiente
 ORDER BY fecha DESC, probabilidad DESC;
 ```
+
+La misma ejecución deja la orientación de pasado mañana (`l3_gold.riesgo_pasado_manana` y el bloque `pasado_manana` de `riesgo.json`): el nivel de cada red a dos días con el modelo de dos tardes antes, que conserva la mayor parte de la señal del de mañana (5,4 frente a 6,9 veces la tasa base en 2024 - 2025) y pierde sobre todo los avisos que AEMET aún no ha emitido; sirve para planificar, no lleva zonas ni guardia.
+
+El cuadro de mando son cuatro páginas con el mismo menú y el mismo sistema de diseño (`dashboard/gridpredic.css`, tema claro y oscuro, de móvil a pantalla grande): `index.html` (el riesgo de mañana), `dias.html` (todos los días con riesgo guardado, de las ejecuciones de la tarde y de los días repetidos, cada uno con su enlace y su parte de guardia; lee `data/indice.json`, que el job reescribe cada vez que guarda un día), `historial.html` (día a día desde 2022) y `negocio.html` (las cifras).
+
+La página pública de GridPredic.com está en `web/` (ver [web/README.md](web/README.md)): una sola página estática con los mismos tokens de diseño que el cuadro de mando, que cuenta el producto con una escena ligada al scroll (la red se dibuja, los municipios toman su color de riesgo y la brigada va al punto medio), las cifras de 2022 - 2026 y tres capturas del cuadro de mando; se abre en local con `python -m http.server 8795 --directory D:\GitHub\gridpredic-infrastructure\web` (http://localhost:8795) y se publica copiando la carpeta a cualquier hosting estático.
 
 Con las credenciales del Data Store de EUMETSAT en `.env`, `dag_rayos_vivo` añade cada 15 minutos los rayos que ve el satélite MTG sobre la red (`dashboard/data/rayos.json`), que el cuadro de mando pinta sobre el mapa con una franja por distribuidora.
 

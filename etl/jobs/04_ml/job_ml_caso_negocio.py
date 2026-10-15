@@ -79,7 +79,7 @@ DEFAULTS = {
     "minimo_incidencias_nivel": 10,  # a distribuidora enters the tables by level with at least this many incidents in the period
 }
 ALERT = ("alto", "muy alto")
-WARNING_COLUMNS = ["aviso_max_nivel", "aviso_viento_nivel"]
+WARNING_COLUMNS = ["aviso_max_nivel", "aviso_viento_nivel", "aviso_tormenta_nivel"]
 MODES = {"reanalisis": "tiempo del día del reanálisis (previsión perfecta)",
          "prevision": "previsión real de ICON-EU de la víspera"}
 
@@ -343,6 +343,7 @@ def replay(days: pd.DataFrame, zone_days: pd.DataFrame, ct: pd.DataFrame, cuts: 
                              "nivel": level, "alerta": bool(alert), "franja_inicio": window.get("inicio"), "franja_fin": window.get("fin"),
                              "aviso_max_nivel": number_or_none(getattr(r, "aviso_max_nivel", np.nan)),
                              "aviso_viento_nivel": number_or_none(getattr(r, "aviso_viento_nivel", np.nan)),
+                             "aviso_tormenta_nivel": number_or_none(getattr(r, "aviso_tormenta_nivel", np.nan)),
                              "bases": "; ".join(bases[max(bases)]) if bases else "", "incidencias": int(n_inc),
                              "clientes_afectados": float(today["clientes"].sum()) if today is not None else 0.0,
                              "clientes_hora": hours, "clientes_hora_recortadas": hours_cut,
@@ -397,18 +398,8 @@ def policy_table(d: pd.DataFrame) -> pd.DataFrame:
     total_days, total_inc, total_h, total_raw = len(d), d["incidencias"].sum(), d["clientes_hora_recortadas"].sum(), d["clientes_hora"].sum()
     if not total_days:
         return pd.DataFrame()
-    warn = d["aviso_max_nivel"].fillna(0) if "aviso_max_nivel" in d.columns else pd.Series(0.0, index=d.index)
-    wind = d["aviso_viento_nivel"].fillna(0) if "aviso_viento_nivel" in d.columns else pd.Series(0.0, index=d.index)
-    same = pd.Series(False, index=d.index)
-    for (_, _), g in d.groupby(["distribuidora_id", "anio"]):
-        n = int((warn.loc[g.index] >= 1).sum())
-        same.loc[g.sort_values("probabilidad", ascending=False).index[:n]] = True
-    policies = [("aviso de AEMET amarillo o más (cualquier fenómeno)", warn >= 1), ("aviso de AEMET de viento, amarillo o más", wind >= 1),
-                ("aviso de AEMET naranja o rojo", warn >= 2), ("GridPredict en alerta (alto o muy alto)", d["alerta"].astype(bool)),
-                ("GridPredict en alerta o aviso naranja o rojo", d["alerta"].astype(bool) | (warn >= 2)),
-                ("GridPredict con tantos días como avisos amarillos", same)]
     rows = []
-    for name, mask in policies:
+    for name, mask in policy_masks(d):
         g = d[mask]
         rows.append({"política": name, "días": int(len(g)), "parte de días": round(len(g) / total_days, 3),
                      "incidencias cubiertas": int(g["incidencias"].sum()), "parte": round(g["incidencias"].sum() / total_inc, 2) if total_inc else 0.0,
@@ -416,6 +407,54 @@ def policy_table(d: pd.DataFrame) -> pd.DataFrame:
                      "parte de horas-cliente": round(g["clientes_hora_recortadas"].sum() / total_h, 2) if total_h else 0.0,
                      "parte sin recortar": round(g["clientes_hora"].sum() / total_raw, 2) if total_raw else 0.0})
     return pd.DataFrame(rows)
+
+
+def policy_masks(d: pd.DataFrame) -> list:
+    """The policies of policy_table as (name, boolean mask), on the same days."""
+    warn = d["aviso_max_nivel"].fillna(0) if "aviso_max_nivel" in d.columns else pd.Series(0.0, index=d.index)
+    wind = d["aviso_viento_nivel"].fillna(0) if "aviso_viento_nivel" in d.columns else pd.Series(0.0, index=d.index)
+    storm = d["aviso_tormenta_nivel"].fillna(0) if "aviso_tormenta_nivel" in d.columns else pd.Series(0.0, index=d.index)
+    same = pd.Series(False, index=d.index)
+    for (_, _), g in d.groupby(["distribuidora_id", "anio"]):
+        n = int((warn.loc[g.index] >= 1).sum())
+        same.loc[g.sort_values("probabilidad", ascending=False).index[:n]] = True
+    return [("aviso de AEMET amarillo o más (cualquier fenómeno)", warn >= 1), ("aviso de AEMET de viento, amarillo o más", wind >= 1),
+            ("aviso de AEMET de viento o tormenta, amarillo o más", (wind >= 1) | (storm >= 1)),
+            ("aviso de AEMET naranja o rojo", warn >= 2), ("GridPredic en alerta (alto o muy alto)", d["alerta"].astype(bool)),
+            ("GridPredic en alerta o aviso de viento o tormenta", d["alerta"].astype(bool) | (wind >= 1) | (storm >= 1)),
+            ("GridPredic en alerta o aviso naranja o rojo", d["alerta"].astype(bool) | (warn >= 2)),
+            ("GridPredic con tantos días como avisos amarillos", same)]
+
+
+def detection_table(d: pd.DataFrame) -> pd.DataFrame:
+    """
+    Detection and false alarms of every policy, the metrics of the works that forecast the days with outages
+    (Prieto-Godino et al. 2025 for Valencia and Albacete): a day to detect is one with an incident, one with
+    two or more, or one of the 10 worst days of its distribuidora and year by customer-hours (among the days
+    with some); detection is the part of those days the policy marks, false alarms the part of the other days
+    it marks too.
+    """
+    if d.empty:
+        return pd.DataFrame()
+    hours = d["clientes_hora_recortadas"]
+    worst = pd.Series(False, index=d.index)
+    for (_, _), g in d.groupby(["distribuidora_id", "anio"]):
+        with_hours = g[g["clientes_hora_recortadas"] > 0]
+        worst.loc[with_hours.sort_values("clientes_hora_recortadas", ascending=False).index[:10]] = True
+    targets = [("día con alguna incidencia", d["incidencias"] > 0), ("día con dos incidencias o más", d["incidencias"] >= 2),
+               ("los 10 peores días del año por horas-cliente", worst)]
+    rows = []
+    for name, mask in policy_masks(d):
+        row = {"política": name, "parte de días marcados": round(float(mask.mean()), 3)}
+        for label, target in targets:
+            positives, negatives = target.sum(), (~target).sum()
+            row[f"detección: {label}"] = round(float((mask & target).sum() / positives), 2) if positives else np.nan
+            row[f"falsas alarmas: {label}"] = round(float((mask & ~target).sum() / negatives), 3) if negatives else np.nan
+        rows.append(row)
+    out = pd.DataFrame(rows)
+    out.attrs["positivos"] = {label: int(target.sum()) for label, target in targets}
+    out.attrs["horas_cubiertas"] = {name: round(float(hours[mask].sum() / hours.sum()), 2) if hours.sum() else np.nan for name, mask in policy_masks(d)}
+    return out
 
 
 def summarise(day_table: pd.DataFrame, ct_table: pd.DataFrame, installed: dict, cap: float) -> pd.DataFrame:
@@ -469,6 +508,7 @@ def history_payload(day_table: pd.DataFrame, levels: dict, names: dict) -> dict:
                                     "c": int(r.clientes_afectados), "m": round(float(r.corte_max_min)),
                                     "a": None if r.aviso_max_nivel is None or pd.isna(r.aviso_max_nivel) else int(r.aviso_max_nivel),
                                     "av": None if r.aviso_viento_nivel is None or pd.isna(r.aviso_viento_nivel) else int(r.aviso_viento_nivel),
+                                    "at": None if r.aviso_tormenta_nivel is None or pd.isna(r.aviso_tormenta_nivel) else int(r.aviso_tormenta_nivel),
                                     "b": r.bases if r.alerta else None} for r in x.itertuples()]
         payload["distribuidoras"].append(block)
     return payload
@@ -553,6 +593,13 @@ def report_text(summary: pd.DataFrame, day_table: pd.DataFrame, ct_table: pd.Dat
         if len(policies):
             parts.append("### Frente a los avisos de AEMET (los mismos días; avisos enviados antes de la tarde anterior)\n\n"
                          + ml_metrics.markdown_table(policies, 3))
+        detection = detection_table(d)
+        if len(detection):
+            positives = ", ".join(f"{k}: {v}" for k, v in detection.attrs.get("positivos", {}).items())
+            parts.append("### Detección y falsas alarmas por día (las métricas de los trabajos que predicen los días con averías)\n\n"
+                         f"Días a detectar en el periodo ({len(d)} días de distribuidora): {positives}. Detección: parte de esos días que la "
+                         "política marca; falsas alarmas: parte de los demás días que también marca.\n\n"
+                         + ml_metrics.markdown_table(detection, 3))
         worst = d[d["incidencias"] > 0].sort_values("clientes_hora_recortadas", ascending=False).head(int(ccfg["peores_dias"]))
         if len(worst):
             w = pd.DataFrame({"día": [f"{pd.Timestamp(f):%d.%m.%Y}" for f in worst["fecha"]], "distribuidora": worst["distribuidora"],
