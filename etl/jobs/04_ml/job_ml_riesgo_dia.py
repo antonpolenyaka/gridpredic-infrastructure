@@ -978,8 +978,13 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     drought_names = [c for c in drought.columns if c.startswith("seq_")]
     if drought_names:
         pdf = pdf.merge(drought, on=["distribuidora_id", "fecha"], how="left")
-    # The greenness of the network (MODIS NDVI per cell, known with the latency of the composites).
-    phenology = phenology_features(spark, cfg, start, end)
+    # The greenness of the network (MODIS NDVI per cell, known with the latency of the composites). An optional
+    # block: a problem with its file must not stop the evening run that only uses the operational variant.
+    try:
+        phenology = phenology_features(spark, cfg, start, end)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("No phenology (%s): the dataset goes on without the block fenologia", str(error)[:200])
+        phenology = pd.DataFrame(columns=["distribuidora_id", "fecha"])
     phenology_names = [c for c in phenology.columns if c.startswith("fen_")]
     if phenology_names:
         pdf = pdf.merge(phenology, on=["distribuidora_id", "fecha"], how="left")
