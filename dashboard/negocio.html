@@ -103,7 +103,7 @@
   const CAP = 110, MIN_INCIDENTS = 10, WINTER = new Set([11, 12, 1, 2, 3]);
   // What the distribuidoras get and what the system costs: the retribution of 2022 of every network by its id (resolution
   // of the CNMC of 06.11.2025) and the business plan of the TFM. The name shown is the one of the JSON.
-  const RETRIBUCION = { 3: { euros: 11821045 }, 2: { euros: 10541790 }, 1366: { euros: 206434 } };
+  const RETRIBUCION = { 3: { euros: 11994208 }, 2: { euros: 10833762 }, 1366: { euros: 208986 } };
   const LICENCIA = 18000, IMPLANTACION = 20000;
   let DATA = null;
 
@@ -313,14 +313,14 @@
 
     html += `<section><h2>Cuánto cuesta y de qué depende la retribución</h2>
       <p>Las distribuidoras no facturan al cliente: cobran la retribución regulada que fija la CNMC. La Circular 8/2025 (metodología 2026 - 2031) liga parte de esa retribución a la calidad del suministro con un incentivo calculado sobre el TIEPI de los años n-4 a n-2 frente a una referencia sectorial (artículos 24 y 25) y permite reconocer, con cargo a los costes de distribución, inversiones en proyectos piloto con beneficio cuantificable, incluidos los de adaptación de la red al cambio climático (artículo 15).</p>
-      <table><thead><tr><th>Distribuidora</th><th class="num">Retribución 2022 (euros)</th><th class="num">Licencia anual del sistema</th><th class="num">Parte de la retribución</th><th class="num">Implantación (una vez)</th></tr></thead><tbody>`;
+      <table><thead><tr><th>Distribuidora</th><th class="num">Retribución 2023 (euros)</th><th class="num">Licencia anual del sistema</th><th class="num">Parte de la retribución</th><th class="num">Implantación (una vez)</th></tr></thead><tbody>`;
     for (const d of DATA.distribuidoras) {
       const r = RETRIBUCION[d.id];
       if (!r) continue;
       html += `<tr><td>${esc(d.nombre)}</td><td class="num">${num(r.euros)}</td><td class="num">${num(LICENCIA)}</td><td class="num">${pct(LICENCIA / r.euros, 2)}</td><td class="num">${num(IMPLANTACION)}</td></tr>`;
     }
     html += `</tbody></table>
-      <p class="notas">Retribución de 2022 según la resolución de la CNMC de 6 de noviembre de 2025 (el sector: 5.317 millones de euros). Licencia e implantación según el plan de negocio. Lo que no afirmamos con estos datos: una cifra en euros del incentivo de calidad de cada distribuidora, que depende de la referencia sectorial y de los límites que publique la CNMC, ni el ahorro en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
+      <p class="notas">Retribución de 2023 según la resolución de la CNMC publicada en el BOE (BOE-A-2026-19941), la misma con la que la memoria calcula lo que vale un minuto de TIEPI. Licencia e implantación según el plan de negocio. Ese minuto, unos 12.600 euros de incentivo al año en la Distribuidora 1 y 14.900 en la 2, es una estimación con la fórmula de la Circular y la referencia del sector, no la cifra que publicará la CNMC. Lo que no afirmamos es el ahorro en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
       </section>`;
 
     html += `<section id="sector" style="display:none"><h2>Dónde está cada red frente al sector</h2>
