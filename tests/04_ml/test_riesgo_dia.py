@@ -405,6 +405,14 @@ def mfe_csv(workdir) -> str:
     return path
 
 
+def nao_csv(workdir) -> str:
+    """The daily NAO index as the job reads it: a sine over the year, so every day has its own value."""
+    path = os.path.join(workdir, "nao_diario.csv")
+    days = pd.date_range("2018-12-01", "2026-01-31", freq="D")
+    pd.DataFrame({"fecha": days, "nao": np.sin(np.arange(len(days)) / 30.0)}).to_csv(path, index=False)
+    return path
+
+
 @pytest.fixture(scope="module")
 def config_path(workdir):
     with open(CONFIG, encoding="utf-8") as file:
@@ -458,6 +466,7 @@ def config_path(workdir):
         "hoja": {"csv": hrl_csv(workdir)},
         "corredor": {"csv": corridor_csv(workdir)},
         "caducas": {"csv": mfe_csv(workdir)},
+        "nao": {"csv": nao_csv(workdir)},
         "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "operativa_racha",
                                "operativa_48h", "operativa_72h", "operativa_mas", "operativa_fenologia"],
         "anios_prevision": [2024, 2025],
@@ -714,6 +723,18 @@ def test_the_deciduous_canopy_of_the_forest_map_multiplies_the_gust_in_the_leaf_
     assert (winter["cad_int_racha"] == 0).all() and (summer["cad_int_racha"] > 0).all()
     # The leaf block of the HRL is still there, next to it.
     assert set(blocks["hoja"]) == {"hoja_frondosa", "hoja_int_racha"}
+
+
+def test_the_nao_is_known_two_days_late_and_is_the_same_for_every_network(spark, tables, config_path):
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    pdf, blocks, _ = rd.build_dataset(spark, config, rd.settings(config))
+    assert set(blocks["nao"]) == {"nao_d2", "nao_30d"}
+    nao = pd.read_csv(json.load(open(config_path))["meteo_dia"]["nao"]["csv"], parse_dates=["fecha"]).set_index("fecha")["nao"]
+    day = pd.Timestamp("2024-03-10")
+    row = pdf[pdf["fecha"] == day]
+    assert row["nao_d2"].nunique() == 1 and row["nao_d2"].iloc[0] == pytest.approx(nao[day - pd.Timedelta(days=2)])
+    assert row["nao_30d"].iloc[0] == pytest.approx(nao[day - pd.Timedelta(days=31): day - pd.Timedelta(days=2)].mean())
 
 
 def test_the_regimes_and_the_fragility_curve_of_the_gust(spark, tables, config_path):

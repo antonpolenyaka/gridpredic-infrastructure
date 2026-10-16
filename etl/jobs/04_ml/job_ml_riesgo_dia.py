@@ -721,6 +721,24 @@ def add_fragility(pdf: pd.DataFrame, forecasts: dict, until: pd.Timestamp, label
     return names
 
 
+def nao_features(cfg: dict, days: pd.Series) -> pd.DataFrame:
+    """
+    The block nao: the daily North Atlantic Oscillation index of NOAA CPC
+    (meteo_dia.nao.csv, from norm.daily.nao.cdas.z500.19500101_current.csv) as known the evening before: the value
+    of D - 2 (CPC publishes with a day or two of delay) and the mean of the 30 days ending then. A negative NAO
+    sends the Atlantic storms further south, over the Peninsula. Empty without the file.
+    """
+    path = (cfg.get("nao") or {}).get("csv")
+    if not path or not os.path.exists(path):
+        return pd.DataFrame(columns=["fecha"])
+    nao = pd.read_csv(path, parse_dates=["fecha"]).set_index("fecha")["nao"].asfreq("D")
+    month = nao.rolling(30, min_periods=20).mean()
+    wanted = pd.DatetimeIndex(sorted(days.unique()))
+    lag = pd.Timedelta(days=2)
+    return pd.DataFrame({"fecha": wanted, "nao_d2": nao.reindex(wanted - lag).to_numpy(),
+                         "nao_30d": month.reindex(wanted - lag).to_numpy()})
+
+
 def derived_direction(weather):
     """
     The frame of Gold with met_dir_anomalia_1h: in the hours with a gust at
@@ -1082,7 +1100,7 @@ def block_of(name: str) -> str:
                           ("ext_fraccion_", "extension"), ("ext_int_", "interacciones"),
                           ("ext_pend_", "pendiente_red"), ("ext_dir_", "direccion"), ("ext_", "extremos"),
                           ("seq_", "sequia"), ("hie_", "hielo"), ("fen_", "fenologia"), ("hoja_", "hoja"), ("corr_", "corredor"),
-                          ("reg_", "regimen"), ("frag_", "fragilidad"), ("cad_", "caducas")):
+                          ("reg_", "regimen"), ("frag_", "fragilidad"), ("cad_", "caducas"), ("nao_", "nao")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -1246,6 +1264,10 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     corridor_names = add_corridor(pdf, corridor_exposure(spark, cfg), forecasts)
     forecast_columns += [n for n in corridor_names if not n.startswith("corr_")]
     leaf_names += [n for n in corridor_names if n.startswith("corr_")]
+    teleconnection = nao_features(cfg, pdf["fecha"])
+    if len(teleconnection.columns) > 1:
+        pdf = pdf.merge(teleconnection, on="fecha", how="left")
+        leaf_names += ["nao_d2", "nao_30d"]
     regime_names = add_regimes(pdf, forecasts) + add_fragility(
         pdf, forecasts, pd.Timestamp(cfg.get("fragilidad_hasta", "2022-01-01")))
     forecast_columns += [n for n in regime_names if not n.startswith(("reg_", "frag_"))]
