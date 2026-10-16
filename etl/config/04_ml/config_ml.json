@@ -442,7 +442,7 @@
     ],
     "fragilidad_hasta": "2022-01-01",
     "caducas": {"csv": "/app/config/01_bronze/mfe_celdas.csv"},
-    "nao": {"csv": "/app/config/01_bronze/nao_diario.csv"},
+    "nao": {"csv": "/app/config/01_bronze/nao_diario.csv", "retraso_dias": 3},
     "hoja": {"csv": "/app/config/01_bronze/hrl_celdas.csv"},
     "corredor": {"csv": "/app/config/01_bronze/corredor_celdas.csv"},
     "fenologia": {"csv": "/app/config/01_bronze/ndvi_celdas.csv", "latencia_dias": 7, "clima_hasta": "2022-01-01"},
