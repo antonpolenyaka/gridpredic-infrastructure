@@ -1032,11 +1032,7 @@ def reasons(terms: np.ndarray, values: np.ndarray, features: list, k: int) -> st
     return "; ".join(f"{reason_text(group, named)} (x{number(math.exp(total), 1)})" for total, group in chosen[:int(k)])
 
 
-def level_of(percentile: float, levels: dict) -> str:
-    for name, threshold in sorted(levels.items(), key=lambda item: -float(item[1])):
-        if percentile >= float(threshold):
-            return name
-    return "bajo"
+level_of = rz.level_of
 
 
 def windiest_places(hours: pd.DataFrame, places: pd.DataFrame, day: pd.Timestamp, k: int) -> dict:
@@ -1494,7 +1490,8 @@ def main(argv=None):
     # Tomorrow, from the live Landing.
     dists = sorted(rows["distribuidora_id"].unique().tolist())
     weights = cell_weights(spark)
-    hours = gold_columns(cells_hours, cell_climate(spark))
+    climate = cell_climate(spark)
+    hours = gold_columns(cells_hours, climate)
     hourly = distributor_hours(hours, weights)
     live = pd.DataFrame({"distribuidora_id": dists})
     live = live.merge(weather_features(hourly, day, cfg), on="distribuidora_id", how="left")
@@ -1539,7 +1536,6 @@ def main(argv=None):
     coverage = covered.groupby("distribuidora_id")["n_ct"].sum() / weights.groupby("distribuidora_id")["n_ct"].sum()
     places = windiest_places(hours, cell_places(spark), day, int(rcfg["zonas"]))
     names = {**distributor_names(spark), **{int(k): str(v) for k, v in rcfg.get("nombres", {}).items()}}
-    climate = cell_climate(spark)
     zone_out = {}
     if spark.catalog.tableExists(DIM_TABLE):
         zone_out = zone_outputs(spark, config, rcfg, cfg, variant, pdf, events, live, probability, cells_hours, climate,
