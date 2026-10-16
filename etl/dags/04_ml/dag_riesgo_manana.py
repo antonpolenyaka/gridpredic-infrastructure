@@ -121,6 +121,17 @@ def aemet_municipios(day: str) -> None:
 
 
 @task(retries=0)
+def nao(day: str) -> None:
+    # Never a failure: without tonight's NAO the model takes the median of the training days.
+    try:
+        code = land("nao", day)
+    except Exception as error:  # noqa: BLE001
+        raise AirflowSkipException(f"The NAO index did not land: {str(error)[:200]}") from error
+    if code != 0:
+        raise AirflowSkipException("The NAO index of NOAA did not land: scored without it")
+
+
+@task(retries=0)
 def ensemble(day: str) -> None:
     # Never a failure: the score does not need it, and a failed upstream would stop puntuar.
     try:
@@ -175,4 +186,4 @@ with DAG(
         trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,
     )
 
-    [prevision(day), avisos(day), ensemble(day), aemet_municipios(day)] >> puntuar >> avisar()
+    [prevision(day), avisos(day), ensemble(day), aemet_municipios(day), nao(day)] >> puntuar >> avisar()

@@ -25,6 +25,7 @@ CONFIG = os.path.join(ROOT, "etl", "config", "04_ml", "config_ml.json")
 if ML_DIR not in sys.path:
     sys.path.insert(0, ML_DIR)
 
+import calendario  # noqa: E402
 import job_ml_meteo_historia as mh  # noqa: E402
 from delta import configure_spark_with_delta_pip  # noqa: E402
 from pyspark.sql import SparkSession  # noqa: E402
@@ -49,10 +50,10 @@ def test_labelled_hours_follow_the_rule_of_the_labels():
 
 
 def test_easter_and_holidays():
-    assert mh.easter(2019).isoformat() == "2019-04-21"
-    assert mh.easter(2024).isoformat() == "2024-03-31"
-    assert mh.easter(2025).isoformat() == "2025-04-20"
-    days = {d.isoformat() for d in mh.holidays([2024])}
+    assert calendario.easter(2019).isoformat() == "2019-04-21"
+    assert calendario.easter(2024).isoformat() == "2024-03-31"
+    assert calendario.easter(2025).isoformat() == "2025-04-20"
+    days = {d.isoformat() for d in calendario.holidays([2024])}
     assert {"2024-03-28", "2024-03-29", "2024-09-08", "2024-10-12", "2024-12-25"} <= days
     assert "2024-04-01" not in days
 
