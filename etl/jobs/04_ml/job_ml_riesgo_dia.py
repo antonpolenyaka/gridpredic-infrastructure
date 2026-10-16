@@ -973,8 +973,6 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
                                          prefixes=("met_",) + gold_prefixes, derive=derive)
     if weather is None:
         raise ValueError("No weather in Gold (meteo_celda_hora and map_ct_celda): nothing to learn from")
-    # Read twice below (the hours of the dataset and the drought windows): keep it instead of rebuilding the join.
-    weather = weather.persist()
     extras = [extra for extra in extras if extra.get("presente")]
 
     # The daily weather of every forecast of Gold: horizon -> (daily mapping, extremes mapping).
@@ -1178,7 +1176,6 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     # The extremes of the gusts alone, the ones every forecast gives (the run of heat needs the temperature).
     blocks["extremos_racha"] = [c for c in blocks.get("extremos", []) if "racha" in c]
 
-    weather.unpersist()
     return pdf.sort_values(["distribuidora_id", "fecha"]).reset_index(drop=True), blocks, warnings_first
 
 
