@@ -124,7 +124,7 @@ Se recomienda asignar a Docker Desktop al menos **4 CPU y 12 GB de RAM**.
 
 | Concepto | Dónde se almacena | Tamaño aproximado |
 | --- | --- | --- |
-| Los cuatro backups `.bak` | Carpeta del repositorio | 61,4 GB |
+| Los cuatro backups `.bak` | Carpeta del repositorio | Unos 66 GB (61,4 GiB) |
 | `sqlserver-data` (las cuatro bases restauradas) | Disco virtual de Docker | 200 - 250 GB |
 | `minio-data` (Landing y Delta Lake, crece con el uso) | Disco virtual de Docker | 50 GB en adelante |
 | Imágenes y caché de construcción (Spark, Hive, Airflow, Trino, Kafka) | Disco virtual de Docker | 25 - 35 GB |
@@ -541,11 +541,11 @@ FROM lakehouse.l3_gold.dataset_train
 GROUP BY split;
 ```
 
-Las filas con `split = 'purga'` son las 6 horas antes de cada frontera, cuya etiqueta mira al período siguiente: no se usan ni para entrenar ni para evaluar. Tampoco entran en el dataset las horas en las que el CT ya estaba en corte, las que no tienen muestras del SCADA ni aquellas en las que el CT todavía no existía en Calser o ya había desaparecido (`ct_vigente = 0` en `labels_ct_hora`, sacado de los períodos que listan cada CT).
+Las filas con `split = 'purga'` son las cinco horas de cada CT antes de cada frontera, cuya ventana de etiqueta de 6 horas mira al período siguiente: no se usan ni para entrenar ni para evaluar. Tampoco entran en el dataset las horas en las que el CT ya estaba en corte, las que no tienen muestras del SCADA ni aquellas en las que el CT todavía no existía en Calser o ya había desaparecido (`ct_vigente = 0` en `labels_ct_hora`, sacado de los períodos que listan cada CT).
 
 Calidad de cada ejecución en `lakehouse.l3_gold.dq_metrics`, con el mismo esquema que la de Silver.
 
-Las tablas Delta de las tres capas se compactan una vez por semana: `dag_mantenimiento_delta` corre los domingos a las 04:10 (hora de Madrid) y lanza `job_mantenimiento_delta.py`, que hace OPTIMIZE y VACUUM con 168 horas de retención sobre `l1_bronze`, `l2_silver` y `l3_gold`. Con esa retención, el time travel solo llega a las versiones de la última semana. Como todo DAG nuevo, llega pausado:
+Las tablas Delta de las tres capas se compactan una vez por semana: `dag_mantenimiento_delta` corre los domingos a las 04:10 (hora de Madrid) y lanza `job_mantenimiento_delta.py`, que hace OPTIMIZE y VACUUM con 168 horas de retención sobre `l1_bronze`, `l2_silver` y `l3_gold`. Con esa retención, el time travel solo llega a las versiones de la última semana. La primera pasada, lanzada a mano el viernes 16.10.2026, tardó 3 h 4 min y dejó 225 tablas en 559 ficheros, pero se saltó las cinco más grandes por falta de memoria del ejecutor; para ellas queda compactar por particiones. Como todo DAG nuevo, llega pausado:
 
 ```bash
 docker compose exec airflow airflow dags unpause dag_mantenimiento_delta
@@ -612,7 +612,7 @@ FROM lakehouse.l3_gold.riesgo_zona_siguiente
 ORDER BY fecha DESC, probabilidad DESC;
 ```
 
-Desde el 15.10.2026 la misma ejecución deja también la orientación de pasado mañana (`l3_gold.riesgo_pasado_manana` y el bloque `pasado_manana` de `riesgo.json`, con `riesgo_manana.variante_pasado_manana` en `operativa_48h`): el nivel de cada red a dos días con el modelo de dos tardes antes, que conserva la mayor parte de la señal del de mañana (5,4 frente a 6,9 veces la tasa base en 2024 - 2025) y lo que pierde es a medias la previsión a dos días y los avisos que AEMET aún no ha emitido. Sirve para planificar y no lleva zonas ni guardia.
+Desde el 15.10.2026 la misma ejecución deja también la orientación de pasado mañana (`l3_gold.riesgo_pasado_manana` y el bloque `pasado_manana` de `riesgo.json`, con `riesgo_manana.variante_pasado_manana` en `operativa_48h`): el nivel de cada red a dos días con el modelo de dos tardes antes, que conserva la mayor parte de la señal del de mañana (5,4 veces la tasa base frente a 6,5 la víspera con las mismas variables, en 2024 - 2025) y lo que pierde es a medias la previsión a dos días y los avisos que AEMET aún no ha emitido. Sirve para planificar y no lleva zonas ni guardia.
 
 El cuadro de mando son cuatro páginas con el mismo menú y el mismo sistema de diseño (`dashboard/gridpredic.css`, tema claro y oscuro, de móvil a pantalla grande): `index.html` (el riesgo de mañana), `dias.html` (todos los días con riesgo guardado, de las ejecuciones de la tarde y de los días repetidos, cada uno con su enlace y su parte de guardia; lee `data/indice.json`, que el job reescribe cada vez que guarda un día), `historial.html` (día a día desde 2022) y `negocio.html` (las cifras).
 
