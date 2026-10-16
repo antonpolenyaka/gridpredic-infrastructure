@@ -11,6 +11,7 @@ sitios); no se imprime.
 
 import os
 import sys
+from datetime import date
 
 import cdsapi
 
@@ -38,7 +39,9 @@ def main(argv):
         if os.path.exists(target) and os.path.getsize(target) > 0:
             print(year, "ya estaba", flush=True)
             continue
-        months = [f"{m:02d}" for m in range(1, 13)]
+        # El año en curso solo hasta el mes pasado: ERA5 va unos días por detrás.
+        upto = 12 if year < date.today().year else date.today().month - 1
+        months = [f"{m:02d}" for m in range(1, upto + 1)]
         print(year, "pidiendo", flush=True)
         client.retrieve("reanalysis-era5-single-levels", {
             "product_type": ["reanalysis"], "variable": VARIABLES, "year": [str(year)], "month": months,
