@@ -579,18 +579,23 @@ def add_fragility(pdf: pd.DataFrame, forecasts: dict, until: pd.Timestamp, label
 def nao_features(cfg: dict, days: pd.Series) -> pd.DataFrame:
     """
     The block nao: the daily North Atlantic Oscillation index of NOAA CPC
-    (meteo_dia.nao.csv, from norm.daily.nao.cdas.z500.19500101_current.csv) as known the evening before: the value
-    of D - 2 (CPC publishes with a day or two of delay) and the mean of the 30 days ending then. A negative NAO
-    sends the Atlantic storms further south, over the Peninsula. Empty without the file.
+    (meteo_dia.nao.csv, from norm.daily.nao.cdas.z500.19500101_current.csv) as known the evening before. CPC
+    updates the file around 14:00 UTC with the data up to two days before, so at 20:30 of D - 1 the last value is
+    the one of D - 3 (meteo_dia.nao.retraso_dias). nao_dia is that value and nao_30d the mean of the 30 days ending
+    there; a day missing at the end (CPC did not update) takes the one before. A negative NAO sends the Atlantic
+    storms further south, over the Peninsula. Empty without the file.
     """
-    path = (cfg.get("nao") or {}).get("csv")
+    nao_cfg = cfg.get("nao") or {}
+    path = nao_cfg.get("csv")
     if not path or not os.path.exists(path):
         return pd.DataFrame(columns=["fecha"])
     nao = pd.read_csv(path, parse_dates=["fecha"]).set_index("fecha")["nao"].asfreq("D")
-    month = nao.rolling(30, min_periods=20).mean()
     wanted = pd.DatetimeIndex(sorted(days.unique()))
-    lag = pd.Timedelta(days=2)
-    return pd.DataFrame({"fecha": wanted, "nao_d2": nao.reindex(wanted - lag).to_numpy(),
+    lag = pd.Timedelta(days=int(nao_cfg.get("retraso_dias", 3)))
+    end = max(nao.index.max(), wanted.max() - lag)
+    nao = nao.reindex(pd.date_range(nao.index.min(), end, freq="D")).ffill(limit=1)
+    month = nao.rolling(30, min_periods=20).mean()
+    return pd.DataFrame({"fecha": wanted, "nao_dia": nao.reindex(wanted - lag).to_numpy(),
                          "nao_30d": month.reindex(wanted - lag).to_numpy()})
 
 
@@ -1120,7 +1125,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     teleconnection = nao_features(cfg, pdf["fecha"])
     if len(teleconnection.columns) > 1:
         pdf = pdf.merge(teleconnection, on="fecha", how="left")
-        leaf_names += ["nao_d2", "nao_30d"]
+        leaf_names += ["nao_dia", "nao_30d"]
     regime_names = add_regimes(pdf, forecasts) + add_fragility(
         pdf, forecasts, pd.Timestamp(cfg.get("fragilidad_hasta", "2022-01-01")))
     forecast_columns += [n for n in regime_names if not n.startswith(("reg_", "frag_"))]
