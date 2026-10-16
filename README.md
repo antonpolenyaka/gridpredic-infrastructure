@@ -360,6 +360,17 @@ Username: <cualquier valor>
 
 No hay autenticación por contraseña configurada para Trino en este entorno local.
 
+Tiempos de consulta medidos el 16.10.2026 en el portátil, con el tiempo del propio servidor (`system.runtime.queries`), la primera vez y la segunda:
+
+| Consulta | Filas | Tiempo |
+| --- | --- | --- |
+| Recuento de `l3_gold.dataset_train` por conjunto (`split`) | 61,8 millones | 9,6 s y 5,6 s |
+| Un mes de una distribuidora en `l3_gold.dataset_train` (filtro por `distribuidora_id` y `hora`) | 546.066 | 3,9 s y 1,1 s |
+| Racha máxima de cada celda en `l3_gold.meteo_celda_hora` | 3,6 millones | 2,3 s y 1,0 s |
+| Las filas del riesgo de la última tarde en `l3_gold.riesgo_dia_siguiente` | 21 | 0,5 s y 0,4 s |
+
+El cuadro de mando no pasa por Trino: lee los ficheros que deja cada tarde en `dashboard/data`.
+
 ### MinIO
 
 Acceder a `http://localhost:9001` con `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD`.
