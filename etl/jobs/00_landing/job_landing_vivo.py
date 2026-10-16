@@ -128,6 +128,23 @@ def day_folder(landing: str, day: date) -> str:
     return f"{landing.rstrip('/')}/{day:%Y%m%d}"
 
 
+# How the ensemble models are named in the texts of the page.
+MODEL_NAMES = {"icon_eu": "ICON-EU EPS", "icon_seamless": "ICON EPS", "gfs025": "GFS"}
+
+
+def threshold_text(shares: dict, thresholds: list) -> str:
+    """'el 100 % supera 50 km/h, el 40 % supera 70 km/h, ninguno supera 90 km/h': it stops at the first threshold
+    no run reaches, since the higher ones are not reached either."""
+    parts = []
+    for u in thresholds:
+        share = shares[f"{float(u):g}"]
+        if share <= 0:
+            parts.append(f"ninguno supera {float(u):g} km/h")
+            break
+        parts.append(f"el {100 * share:.0f} % supera {float(u):g} km/h")
+    return ", ".join(parts)
+
+
 def forecast_url(lat: float, lon: float, prevision: dict) -> str:
     query = {
         "latitude": f"{lat:.4f}",
@@ -348,9 +365,12 @@ def land_ensemble(fs, cfg: dict, folder: str, day: date) -> tuple:
             block["supera"] = {f"{float(u):g}": round(float(np.mean(peaks >= float(u))), 2) for u in ecfg["umbrales_kmh"]}
             above = [u for u in ecfg["umbrales_kmh"] if block["supera"][f"{float(u):g}"] >= 0.5]
             spread = "escenarios muy de acuerdo" if hi - lo <= 15 else ("escenarios bastante de acuerdo" if hi - lo <= 30 else "escenarios muy repartidos")
-            where = f"{len(stacks)} celdas de la red" if ecfg.get("usar_celdas") else f"{len(stacks)} puntos de la red"
-            block["texto"] = (f"{depth} escenarios de {block['modelo']} en {where}: el 80 % central da el pico de racha entre {round(float(lo))} y {round(float(hi))} km/h "
-                              f"(mediana {round(float(mid))}); " + ", ".join(f"el {100 * block['supera'][f'{float(u):g}']:.0f} % supera {float(u):g} km/h" for u in ecfg["umbrales_kmh"])
+            n = len(stacks)
+            where = (f"{n} celda{'s' if n != 1 else ''} de la red" if ecfg.get("usar_celdas")
+                     else f"{n} punto{'s' if n != 1 else ''} de la red")
+            block["texto"] = (f"{depth} escenarios de {MODEL_NAMES.get(block['modelo'], block['modelo'])} en {where}: el 80 % central da el pico de racha "
+                              f"entre {round(float(lo))} y {round(float(hi))} km/h (mediana {round(float(mid))}); "
+                              + threshold_text(block["supera"], ecfg["umbrales_kmh"])
                               + f"; {spread}" + (f"; más de la mitad supera {float(above[-1]):g} km/h" if above else ""))
         else:
             block["texto"] = "sin previsión por conjuntos para el día"
@@ -486,9 +506,10 @@ def land_aemet_municipios(fs, cfg: dict, folder: str, day: date) -> tuple:
             block["pico"] = {"racha_kmh": round(float(peak)), "hora": peak_hour, "municipio": peak_place}
             storms = [r["tormenta_pct"] for r in block["horas"] if r["tormenta_pct"] is not None]
             rain_total = sum(r["lluvia_mm"] for r in block["horas"] if r["lluvia_mm"] is not None)
-            block["texto"] = (f"AEMET por municipios ({len(items)} municipios, elaborada {str(elaborated or '')[11:16]}): pico de racha "
-                              f"{round(float(peak))} km/h a las {peak_hour}:00 en {peak_place}"
-                              + (f"; hasta {round(float(rain_total), 1):g} mm de lluvia" if rain_total > 0 else "")
+            places = f"{len(items)} municipio{'s' if len(items) != 1 else ''}"
+            block["texto"] = (f"AEMET por municipios ({places}, elaborada {str(elaborated or '')[11:16]}): pico de racha "
+                              f"{round(float(peak))} km/h {'a la' if peak_hour == 1 else 'a las'} {peak_hour}:00 en {peak_place}"
+                              + (f"; hasta {round(float(rain_total), 1):g} mm de lluvia".replace(".", ",") if rain_total > 0 else "")
                               + (f"; probabilidad de tormenta hasta el {max(storms):.0f} %" if storms and max(storms) > 0 else ""))
         else:
             block["texto"] = "AEMET por municipios: sin rachas para el día"
