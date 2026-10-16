@@ -299,7 +299,7 @@ def read_distributor_map(spark: SparkSession) -> DataFrame:
     """
     Maps every Calser database to its distribuidora. The value of the
     DistributorId parameter is the Id of the distribuidora root element in
-    TedisNet (3 EOSA, 2 Pitarch, 1366 Valle de Santa Ana), so it is also the
+    TedisNet (3 Distribuidora 1, 2 Distribuidora 2, 1366 Distribuidora 3), so it is also the
     key that joins both systems. It is not an ordinal: never map by order.
     """
     parts = []

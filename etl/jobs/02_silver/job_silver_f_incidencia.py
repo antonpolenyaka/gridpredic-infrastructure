@@ -8,7 +8,7 @@ model filters on. The operator edits incidents after creating them, so the
 Bronze copy is the final classification.
 
 The association interruption to incident is 100 % manual in Calser, and
-26 - 28 % of the interruptions of EOSA and Pitarch have no incident. That is
+26 - 28 % of the interruptions of Distribuidora 1 and Distribuidora 2 have no incident. That is
 handled on the interruption side (flag sin_incidencia), not here.
 
 FECHA_ALTA can be weeks after the event: it is kept for auditing but it is

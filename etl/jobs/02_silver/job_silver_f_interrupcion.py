@@ -4,12 +4,12 @@ model.
 
 What was found in the real databases and how Silver handles it:
 
-- Rows recorded twice (984 in EOSA, 1.952 in Pitarch): collapsed by the
+- Rows recorded twice (984 in Distribuidora 1, 1.952 in Distribuidora 2): collapsed by the
   natural key, only when they are identical in element, level, period, start
   and duration. Two real cuts at the same minute with a different duration
   are both kept.
-- Overlapping interruptions of the same CT (1.605 pairs in EOSA, 2.388 in
-  Pitarch): not merged here. They get a common grupo_solape_id; the merge
+- Overlapping interruptions of the same CT (1.605 pairs in Distribuidora 1, 2.388
+  in Distribuidora 2): not merged here. They get a common grupo_solape_id; the merge
   rule is a modelling decision and is applied in Gold, where it can change
   without rebuilding Silver.
 - Zero duration (815 / 1.255 rows) and microcuts (up to 180 s): flagged.

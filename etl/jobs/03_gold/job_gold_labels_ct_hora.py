@@ -9,7 +9,7 @@ hora is the prediction instant. A label looks only forward from it:
   (hora + 1 h, hora + 3 h]. The target of the TFM.
 - y_0_1h, y_0_3h, y_0_6h: other horizons, to compare.
 - y_1_3h_local: y_1_3h counting only local interruptions (the incident
-  affects a single CT). In EOSA and Pitarch 94 % of the interruptions are
+  affects a single CT). In Distribuidora 1 and Distribuidora 2, 94 % of the interruptions are
   systemic; this label tells whether a model finds the "bad CT" and not only
   the "bad day".
 - y_1_3h_amplia: y_1_3h with the amplia variant (interruptions without
