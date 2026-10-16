@@ -855,13 +855,22 @@ def zone_rows_table(zone_out: dict, day: pd.Timestamp, run_id: str, created) -> 
     return pd.DataFrame(rows)
 
 
-def follow_up(spark, table: str, events: pd.DataFrame, end: pd.Timestamp, levels: dict) -> dict:
+def follow_up(spark, table: str, events: pd.DataFrame, end: pd.Timestamp, levels: dict, names: dict = None) -> dict:
     """
     What happened on the days already predicted: the level and probability of
     every past row of the table against the incidents of Calser (any cause),
     up to the last day with labels. Days without labels yet are kept with
-    averias null.
+    averias null. names ({distribuidora_id: name}, riesgo_manana.nombres)
+    names every row as today, not with the name saved with the old rows.
     """
+    names = names or {}
+
+    def name_of(row):
+        try:
+            return names.get(int(row.distribuidora_id), row.distribuidora)
+        except (TypeError, ValueError):
+            return row.distribuidora
+
     if not spark.catalog.tableExists(table):
         return {}
     past = spark.table(table).select("fecha", "distribuidora_id", "distribuidora", "probabilidad", "nivel", "run_id").toPandas()
@@ -884,7 +893,7 @@ def follow_up(spark, table: str, events: pd.DataFrame, end: pd.Timestamp, levels
                "dias_con_averia": int((done["averias"] > 0).sum()) if len(done) else 0,
                "acierto_alto": float((high["averias"] > 0).mean()) if len(high) else None,
                "averia_en_bajo": float((low["averias"] > 0).mean()) if len(low) else None}
-    days = [{"fecha": f"{r.fecha:%d.%m.%Y}", "distribuidora": r.distribuidora, "nivel": r.nivel,
+    days = [{"fecha": f"{r.fecha:%d.%m.%Y}", "distribuidora": name_of(r), "nivel": r.nivel,
              "probabilidad": float(r.probabilidad), "averias": None if pd.isna(r.averias) else int(r.averias)}
             for r in past.sort_values(["fecha", "distribuidora_id"]).itertuples()]
     return {"resumen": summary, "dias": days}
@@ -898,7 +907,7 @@ def dashboard_payload(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out
     cascade = common.get("cascada", {})
     rule_text = []
     if lags:
-        rule_text.append(f"El {100 * lags['en_3h']:.0f} % de las averías por viento empiezan a menos de 3 h del pico de racha del día "
+        rule_text.append(f"El {100 * lags['en_3h']:.0f} % de las averías por meteorología empiezan a menos de 3 h del pico de racha del día "
                          f"(el {100 * lags['en_6h']:.0f} % a menos de 6 h, {lags['n']} averías).")
     if cascade.get("todas") is not None:
         rule_text.append(f"Tras una avería, otra en las {cascade['horas']:.0f} h siguientes en el {100 * cascade['todas']:.0f} % de los casos"
@@ -1486,7 +1495,8 @@ def main(argv=None):
                                     "job_landing_vivo.py --fuente prevision first")
         spark = get_spark(config)
     cfg["hasta"] = f"{day:%Y-%m-%d}"
-    # The NAO landed this evening extends the file of the repository up to D - 2 (block nao).
+    # The NAO landed this evening extends the file of the repository up to the last day CPC has published
+    # (D - 3 of the day scored; block nao, only used when the variant has it).
     cfg["nao"] = live_nao(fs, folder, cfg.get("nao"))
     pdf, blocks, _ = build_dataset(spark, config, cfg)
     missing_blocks = [b for b in variant["bloques"] if not blocks.get(b)]
@@ -1653,7 +1663,7 @@ def main(argv=None):
         "calser_hasta": calser, "prevision_pedida_utc": forecast_asked, "avisos_texto": warning_text,
     }
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
-    seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"])
+    seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"], names)
     notes = report_notes(out, info)
     payload = attach_second_opinions(dashboard_payload(day, out, info, zone_out, seguimiento, args.run_id, notes), rcfg.get("dashboard_dir"))
     payload["pasado_manana"] = outlook_payload(outlook, day)

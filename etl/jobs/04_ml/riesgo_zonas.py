@@ -491,7 +491,7 @@ def crew_plan(municipalities: pd.DataFrame, crews: int, speed_kmh: float = 60.0,
     if weights.sum() <= 0:
         weights = m["n_ct"].to_numpy(dtype=float)
     minutes = haversine_km(pts, pts) * road_factor / speed_kmh * 60.0
-    source = f"línea recta por {road_factor:g} a {speed_kmh:g} km/h"
+    source = f"línea recta por {road_factor:g} a {speed_kmh:g} km/h".replace(".", ",")
     if road_minutes is not None and len(road_minutes):
         by_road = road_minutes.reindex(index=m["municipio"], columns=m["municipio"]).to_numpy(dtype=float)
         known = np.isfinite(by_road)
@@ -556,7 +556,8 @@ def positioning(window: dict, plan: dict, lead_min: int = 60) -> str:
         hour = max(0, int(window["inicio"]) - max(0, int(round(lead_min / 60.0))))
         return (f"brigadas en sus bases a las {hour}:00 (una hora antes de la franja de más riesgo, "
                 f"de {int(window['inicio'])}:00 a {int(window['fin']) + 1}:00)")
-    return "sin franja de viento: guardia normal, con las bases propuestas si hay que elegir"
+    # Not "guardia normal": a warning of AEMET can reinforce the guard of a day without wind (guardia of the payload).
+    return "sin franja de viento; si hay que elegir, las bases propuestas"
 
 
 # ---------------------------------------------------------------------------

@@ -730,3 +730,37 @@ def test_the_nao_of_the_evening_extends_the_file_of_the_repository(tmp_path):
     # If CPC did not update that afternoon, the day before stands in.
     assert rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-18")]))["nao_dia"].iloc[0] == -0.2
     assert pd.isna(rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-19")]))["nao_dia"].iloc[0])
+
+
+def test_the_follow_up_names_the_old_rows_as_today():
+    """The rows saved before the networks were renamed come out with the names of riesgo_manana.nombres."""
+    past = pd.DataFrame({"fecha": ["2026-01-28", "2026-01-28", "2026-10-16"], "distribuidora_id": [3, 2, 3],
+                         "distribuidora": ["Nombre viejo A", "Nombre viejo B", "Distribuidora 1"],
+                         "probabilidad": [0.18, 0.21, 0.05], "nivel": ["muy alto", "muy alto", "medio"], "run_id": ["a", "a", "b"]})
+
+    class Table:
+        def select(self, *columns):
+            return self
+
+        def toPandas(self):
+            return past.copy()
+
+    class Catalog:
+        def tableExists(self, name):
+            return True
+
+    class Spark:
+        catalog = Catalog()
+
+        def table(self, name):
+            return Table()
+
+    events = pd.DataFrame({"distribuidora_id": [3, 3], "periodo_id": ["202601", "202601"], "incidencia_id": ["A", "B"],
+                           "inicio_ts": ["2026-01-28 10:00", "2026-01-28 12:00"]})
+    levels = {"muy alto": 0.95, "alto": 0.9, "medio": 0.75}
+    out = rm.follow_up(Spark(), "t", events, pd.Timestamp("2026-08-02"), levels, {3: "Distribuidora 1", 2: "Distribuidora 2"})
+    assert [d["distribuidora"] for d in out["dias"]] == ["Distribuidora 2", "Distribuidora 1", "Distribuidora 1"]
+    assert [d["averias"] for d in out["dias"]] == [0, 2, None]
+    assert out["resumen"]["dias_con_resultado"] == 2 and out["resumen"]["acierto_alto"] == 0.5
+    # Without names, the ones saved with the rows.
+    assert rm.follow_up(Spark(), "t", events, pd.Timestamp("2026-08-02"), levels)["dias"][0]["distribuidora"] == "Nombre viejo B"
