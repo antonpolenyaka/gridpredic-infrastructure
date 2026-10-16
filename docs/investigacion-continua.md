@@ -377,6 +377,25 @@ Sobre el reanálisis de los años comunes (2022 - 2026), la curva da 0,139 de PR
 
 **Las aves grandes del Inventario Español de Especies Terrestres** (16.10.2026, `rct_especies_20261016_0903`). Con la misma prueba medimos una segunda fuente pública: el inventario de especies del MITECO (base de datos de 2015, malla UTM de 10 x 10 km). `experimentos/aves/ieet_municipios.py` busca la cuadrícula de cada municipio con CT y cuenta en ella si hay cigüeña blanca, cuántas especies de aves grandes (cigüeñas, rapaces y córvidos grandes) y cuántas rapaces (`especies_municipios.csv`, bloque `especies`). La cigüeña está en casi todas las cuadrículas; lo que cambia de un municipio a otro son las aves grandes, de 0 a 28 especies (16 de mediana). Resultado en el modelo de fauna: la captura por CT del 10 % sube de 14,7 % a 19,6 %, en cuatro de los cinco años, casi lo mismo que con las líneas peligrosas (18,8 %); juntas no suman más (18,2 % en el 10 %, 35,5 % en el 20 %). Las dos fuentes dicen lo mismo, dónde hay aves grandes, y ninguna llega a la historia de fauna del propio CT (30,7 %).
 
+## 3r. Prueba: la Oscilación del Atlántico Norte (16.10.2026)
+
+**De dónde sale.** Del informe de fuentes gratuitas del 16.10: el índice NAO diario de NOAA CPC (dominio público, desde 1950). Una NAO negativa baja la trayectoria de las borrascas atlánticas hacia la Península, así que es una señal de "semana de temporales" que no depende de la previsión del día. Es la misma para las tres redes.
+
+**Diseño.** `etl/config/01_bronze/nao_diario.csv` (desde 10.2016) y bloque `nao` en `job_ml_riesgo_dia.py`: `nao_d2`, el valor de D - 2 (CPC publica con uno o dos días de retraso, así que es lo que se sabe la tarde anterior), y `nao_30d`, la media de los 30 días que acaban ahí. Variantes `operativa_nao` y `operativa_nao_fragilidad` (con la curva de 3o), y `operativa_48h` en la misma ejecución.
+
+**Resultados.** Dos ejecuciones: `dia_nao_20261016_0907` (todos los días con la previsión de la víspera) y `dia_naofrag_20261016_0938` (los días que tienen también la previsión a 48 h, como 3m).
+
+| variante | PR-AUC, años comunes (reanálisis) | dif. frente a `operativa` [IC 95 %] | PR-AUC con la previsión real | dif. [IC 95 %] | días con avería en el 10 % / 20 % (previsión real) |
+| --- | --- | --- | --- | --- | --- |
+| `operativa` (producción) | 0,131 | | 0,161 | | 46 % / 64 % |
+| NAO | 0,137 | +0,004 [+0,001, +0,016] | 0,162 | +0,002 [-0,007, +0,008] | 46 % / 65 % |
+| curva de fragilidad | 0,139 | +0,006 [-0,006, +0,022] | 0,162 | +0,001 [-0,019, +0,025] | 46 % / 64 % |
+| NAO y curva de fragilidad | 0,147 | +0,013 [-0,002, +0,031] | 0,169 | +0,007 [-0,013, +0,032] | 45 % / 65 % |
+
+Con la previsión llevada por cuantiles, la NAO da 0,164 frente a 0,160 (+0,004 [-0,001, +0,013], mejor en el 94 % de las réplicas). Por años, sobre el reanálisis, la NAO gana en 2023, 2024, 2025 y 2026 (0,139 frente a 0,123) y empata en 2022; con la curva de fragilidad, 2022 cae (0,116 frente a 0,139) y los otros cuatro suben.
+
+**Lectura.** Es la primera variable de todo el cuaderno cuyo intervalo queda entero por encima de cero, aunque sea solo sobre el reanálisis y por poco. Con la previsión real la mejora es la misma en tamaño pero con el intervalo cruzando el cero, y la captura solo sube un día en el 20 %. No cumple la regla del apartado 1 y no la pasamos a producción a dos días de cerrar el desarrollo: obligaría a bajar el índice de NOAA cada tarde. Queda como la primera candidata para la temporada de 2027, junto a la curva de fragilidad; las dos juntas son lo que más se ha acercado (+0,013 sobre el reanálisis, mejor en el 95 % de las réplicas).
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
