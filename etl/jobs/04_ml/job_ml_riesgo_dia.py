@@ -165,6 +165,13 @@ EXTRA_FORECAST_COLUMNS = {
 MEAN_SOURCE = "prevision_media"
 
 
+def cell_weights(spark) -> pd.DataFrame:
+    """(distribuidora_id, celda_id, n_ct): how many CTs every distribuidora has in every cell (map_ct_celda)."""
+    return (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
+            .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
+            .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+
+
 def horizon_of(variant: dict) -> int:
     return int(variant.get("horizonte", 1))
 
@@ -359,9 +366,7 @@ def phenology_features(spark, cfg: dict, start: pd.Timestamp, end: pd.Timestamp)
     rows = rows[rows["n_validos"] >= float(settings.get("fraccion_valida", 0.5)) * rows["n_pixeles"]].drop(columns="_w")
     if rows.empty:
         return empty
-    weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-               .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-               .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+    weights = cell_weights(spark)
     joined = rows.merge(weights, on="celda_id", how="inner")
     if joined.empty:
         logger.warning("No phenology: the cells of %s are not the ones of %s", path, CELLS_TABLE)
@@ -414,9 +419,7 @@ def corridor_exposure(spark, cfg: dict) -> dict:
     corridor = pd.read_csv(path)
     if not {"corr_pct_dosel_8m", "corr_km_linea"} <= set(corridor.columns):
         return {}
-    weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-               .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-               .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+    weights = cell_weights(spark)
     joined = weights.merge(corridor[["celda_id", "corr_pct_dosel_8m", "corr_km_linea"]].dropna(), on="celda_id", how="inner")
     if joined.empty:
         return {}
@@ -462,9 +465,7 @@ def leaf_exposure(spark, cfg: dict, key: str = "hoja", column: str = "hrl_pct_fr
     leaves = pd.read_csv(path)
     if column not in leaves.columns:
         return {}
-    weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-               .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-               .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+    weights = cell_weights(spark)
     joined = weights.merge(leaves[["celda_id", column]].dropna(), on="celda_id", how="inner")
     if joined.empty:
         return {}
@@ -1133,9 +1134,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
         source = spark.table(WARNINGS_TABLE)
         columns = ["celda_id", "fenomeno_codigo", "nivel_num", "tipo_mensaje", "enviado_ts", "inicio_ts", "fin_ts"]
         warnings = source.select(*columns, *[c for c in ("parametro",) if c in source.columns]).toPandas()
-        cells = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-                 .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-                 .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+        cells = cell_weights(spark)
         base_names = ["aviso_max_nivel"] + [f"aviso_{name}_nivel" for name in WARNING_GROUPS] + WARNING_DETAILS
         # The warnings known the evening before (aviso_*) and two or three evenings before (aviso48_*, aviso72_*).
         for horizon, spec in HORIZONS.items():

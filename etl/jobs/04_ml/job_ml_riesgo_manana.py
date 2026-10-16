@@ -98,6 +98,7 @@ from job_ml_riesgo_dia import (  # noqa: E402
     WARNING_GROUPS,
     WARNINGS_TABLE,
     build_dataset,
+    cell_weights,
     daily_weather,
     day_calendar,
     extremes,
@@ -514,13 +515,6 @@ def warning_features(warnings: pd.DataFrame, cells: pd.DataFrame, day: pd.Timest
 # ---------------------------------------------------------------------------
 # Lakehouse
 # ---------------------------------------------------------------------------
-
-def cell_weights(spark) -> pd.DataFrame:
-    """(distribuidora_id, celda_id, n_ct): the CTs of every distribuidora in every cell (map_ct_celda)."""
-    return (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-            .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-            .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
-
 
 def cell_places(spark) -> pd.DataFrame:
     """(distribuidora_id, celda_id, municipio, n_ct): the municipalities of the CTs of every cell."""
