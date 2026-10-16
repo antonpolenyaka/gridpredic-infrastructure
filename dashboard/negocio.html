@@ -285,7 +285,7 @@
           <p class="notas">Las probabilidades que ve el usuario cuadran con lo que pasó: los días "muy alto" llevaban de media un ${pct(stats.by["muy alto"].dias ? stats.by["muy alto"].p / stats.by["muy alto"].dias : 0, 1)} y tuvieron avería el ${pct(rate("muy alto"), 1)}; los "bajo", un ${pct(stats.by.bajo.dias ? stats.by.bajo.p / stats.by.bajo.dias : 0, 1)} y tuvieron avería el ${pct(rate("bajo"), 1)}.</p></div>
       </div></section>`;
 
-    html += `<section><h2>La guardia: a igual presupuesto, más cobertura</h2>
+    html += `<section><h2>La guardia a igual presupuesto</h2>
       <p>Varias formas de decidir qué días reforzar la guardia de brigadas, con los mismos datos (${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}). La cobertura es la parte de las horas-cliente perdidas por causas locales que caen en los días reforzados.</p>
       <div class="calc noimprimir">
         <label>Coste de reforzar la guardia un día (euros, por distribuidora)<input type="number" id="coste" value="600" min="0" step="50"></label>
@@ -294,7 +294,7 @@
       <table id="tabla-guardia"></table>
       <h3>La misma comparación a cualquier presupuesto</h3>
       ${coverageCurve(days, pol)}
-      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. Los avisos de AEMET son los que ya se habían emitido para el día antes de las 20:00 de la víspera, en las celdas de la red: lo que hoy mira un jefe de brigadas. "Mismo número de días" toma, cada año, tantos días como la política con la que se compara pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. En estas redes las horas-cliente se concentran en los días de mal tiempo, que no caen en fechas fijas: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días. La regla "aviso de viento o tormenta" es la mejor de las reglas sencillas y con pocos días cubre tanto o más que el sistema con los mismos días; sumarla a la alerta es la política que recomendamos, porque cubre lo que cubren las dos por separado con pocos días más que la alerta sola.</p>
+      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. Los avisos de AEMET son los que ya se habían emitido para el día antes de las 20:00 de la víspera, en las celdas de la red: lo que hoy mira un jefe de brigadas. "Mismo número de días" toma, en cada red y cada año, tantos días como la política con la que se compara, elegidos por el sistema de mayor a menor riesgo, así que reparte los días entre los años igual que esa política. La curva, en cambio, toma los mismos días todos los años, y por eso con los días de los avisos amarillos la curva queda casi a la altura de los avisos y la tabla algo por encima. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. En estas redes las horas-cliente se concentran en los días de mal tiempo, que no caen en fechas fijas: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días. La regla "aviso de viento o tormenta" es la mejor de las reglas sencillas y con pocos días cubre tanto o más que el sistema con los mismos días; sumarla a la alerta es la política que recomendamos, porque cubre lo que cubren las dos por separado con pocos días más que la alerta sola.</p>
       </section>`;
 
     html += `<section><h2>Por distribuidora y año</h2><table><thead><tr><th>Distribuidora</th><th>Año</th><th class="num">Días puntuados</th><th class="num">Días en alerta</th><th class="num">Incidencias</th><th class="num">En días de alerta</th><th class="num">Horas-cliente</th><th class="num">En días de alerta</th></tr></thead><tbody>`;
@@ -312,7 +312,7 @@
     html += `</tbody></table></section>`;
 
     html += `<section><h2>Cuánto cuesta y de qué depende la retribución</h2>
-      <p>Las distribuidoras no facturan al cliente: cobran la retribución regulada que fija la CNMC. La Circular 8/2025 (metodología 2026 - 2031) liga parte de esa retribución a la calidad del suministro con un incentivo calculado sobre el TIEPI de los años n-4 a n-2 frente a una referencia sectorial (artículos 24 y 25) y permite reconocer, con cargo a los costes de distribución, inversiones en proyectos piloto con beneficio cuantificable, incluidos los de adaptación de la red al cambio climático (artículo 15).</p>
+      <p>Las distribuidoras no facturan al cliente: cobran la retribución regulada que fija la CNMC. La Circular 8/2025 (metodología 2026 - 2031) liga parte de esa retribución a la calidad del suministro con un incentivo calculado sobre el TIEPI de los años n-4 a n-2 frente a una referencia sectorial (artículos 24 y 25) y permite reconocer, con cargo a los costes de distribución y con la aprobación previa de la CNMC, inversiones en proyectos piloto con beneficio cuantificable, incluidos los de adaptación de la red al cambio climático (artículo 15). El incentivo va del -4 % al +4 % de la retribución, y en el plan no contamos con que se apruebe ningún piloto.</p>
       <table><thead><tr><th>Distribuidora</th><th class="num">Retribución 2023 (euros)</th><th class="num">Licencia anual del sistema</th><th class="num">Parte de la retribución</th><th class="num">Implantación (una vez)</th></tr></thead><tbody>`;
     for (const d of DATA.distribuidoras) {
       const r = RETRIBUCION[d.id];
@@ -320,21 +320,21 @@
       html += `<tr><td>${esc(d.nombre)}</td><td class="num">${num(r.euros)}</td><td class="num">${num(LICENCIA)}</td><td class="num">${pct(LICENCIA / r.euros, 2)}</td><td class="num">${num(IMPLANTACION)}</td></tr>`;
     }
     html += `</tbody></table>
-      <p class="notas">Retribución de 2023 según la resolución de la CNMC publicada en el BOE (BOE-A-2026-19941), la misma con la que la memoria calcula lo que vale un minuto de TIEPI. Licencia e implantación según el plan de negocio. Ese minuto, unos 12.600 euros de incentivo al año en la Distribuidora 1 y 14.900 en la 2, es una estimación con la fórmula de la Circular y la referencia del sector, no la cifra que publicará la CNMC. Lo que no afirmamos es el ahorro en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
+      <p class="notas">Retribución de 2023 según la resolución de la CNMC publicada en el BOE (BOE-A-2026-19941), la misma con la que la memoria calcula lo que vale un minuto de TIEPI. Licencia e implantación según el plan de negocio. Ese minuto, unos 12.600 euros de incentivo al año en la Distribuidora 1 y 14.900 en la 2, lo estimamos con la fórmula de la Circular y la referencia del sector; la cifra oficial la publicará la CNMC. Lo que todavía no podemos decir es cuántos minutos evita el sistema, que tiene que medirlo un piloto, ni cuánto se ahorra en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
       </section>`;
 
     html += `<section id="sector" style="display:none"><h2>Dónde está cada red frente al sector</h2>
-      <p>El Ministerio publica cada año el TIEPI oficial de todo el sector por tipo de zona (GECOS). Es la referencia con la que la CNMC compara a cada distribuidora para el incentivo de calidad, y lo que un comprador mira primero.</p>
+      <p>El Ministerio publica el TIEPI oficial de todo el sector por tipo de zona (GECOS, que hoy llega a 2021). Con él vemos dónde está cada red frente a las demás; la referencia del incentivo la fija la Circular 8/2025 por tipo de zona (1,0648 h en rural concentrada para 2026 - 2028).</p>
       <div id="sector-cuerpo"></div></section>`;
 
     html += `<section id="produccion" style="display:none"><h2>Lo que vale la previsión, medido en producción</h2>
-      <p>Desde que el sistema corre cada tarde, las estaciones de AEMET dicen al día siguiente qué viento hubo. Esto es lo medido hasta hoy, sin seleccionar días.</p>
+      <p>Desde que el sistema corre cada tarde, las estaciones de AEMET dicen al día siguiente qué viento hubo. Esto es lo medido hasta hoy, sin seleccionar días. Con tan pocas semanas todavía no dice qué previsión se acerca más al viento medido ni si la banda de los escenarios está bien calibrada.</p>
       <ul id="produccion-lista"></ul></section>`;
 
-    html += `<section><h2>Lo que el sistema no hace, para que nadie compre otra cosa</h2><ul>
+    html += `<section><h2>Lo que el sistema no hace</h2><ul>
       <li>No dice qué centro de transformación se quedará sin luz: da el día, la franja horaria, la zona y las líneas de más riesgo, y un ranking histórico de CT.</li>
       <li>No ve el estado de los equipos: las averías de equipos y de causa desconocida en días de calma caen en días "bajos", que se llevan el ${pct(stats.total ? stats.by.bajo.h / stats.total : 0)} de las horas-cliente.</li>
-      <li>Con ${num(totalInc / yearsOfData, 0)} incidencias al año por distribuidora, la cobertura de cada año se mueve entre el 30 % y el 70 %; el valor se mide con varios años juntos.</li>
+      <li>Con ${num(totalInc / yearsOfData, 0)} incidencias al año por distribuidora, la parte de las horas-cliente que cae en días de alerta suele quedar entre el 30 % y el 70 % según el año, y en estas redes ha ido del 3 % al 88 %; por eso el valor se mide con varios años juntos.</li>
       <li>Mover las brigadas de base según el riesgo del día gana menos de un minuto de TIEPI al año: el valor está en tener gente y material preparados los días y en la franja que toca.</li>
     </ul></section>`;
 
@@ -403,7 +403,7 @@
         const peaks = spain.filter((r) => r.fuerza_mayor >= 0.3);
         for (const r of peaks) { const i = spain.indexOf(r); svg += `<text x="${x(i).toFixed(1)}" y="${(y(r.fuerza_mayor) - 5).toFixed(1)}" font-size="9" text-anchor="middle" fill="var(--muy-alto)">${r.anio}</text>`; }
         svg += `<text x="${L}" y="${H - 4}" font-size="10" fill="var(--muted)">España, todas las zonas: TIEPI imprevisto (azul) y su parte por fuerza mayor (rojo)</text></svg>`;
-        html += `<h3>El tiempo manda también en la estadística oficial</h3><div class="dos"><div>${svg}</div><div><p>A escala nacional, el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (Klaus en enero de 2009, Xynthia en febrero de 2010, Ana en diciembre de 2017) y vuelve a casi cero al año siguiente. Es la parte del TIEPI que una red no puede evitar, pero sí preparar si sabe la víspera qué días van a ser malos.</p></div></div>`;
+        html += `<h3>El tiempo manda también en la estadística oficial</h3><div class="dos"><div>${svg}</div><div><p>A escala nacional, el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (Klaus en enero de 2009, Xynthia en febrero de 2010, Ana en diciembre de 2017) y en los años sin temporal se queda casi en cero. Una red no puede evitar esa parte del TIEPI, aunque sí puede prepararse si sabe la víspera qué días van a ser malos.</p></div></div>`;
       }
       html += `<p class="notas">Fuente: ${esc(j.fuente || "")} (generado el ${esc(sello(j.generado))}). Nuestro TIEPI sale de Calser con las reglas del cálculo oficial a nivel de CT y queda entre un 2 % y un 16 % por debajo del declarado; los años no coinciden porque el Ministerio publica con retraso.</p>`;
       body.innerHTML = html;
