@@ -162,7 +162,7 @@ Y el volumen. El job no trata nunca la tabla entera:
 - La salida está particionada por `fecha_mes` y cada ejecución sobrescribe solo los meses procesados (`replaceWhere`). Se puede reprocesar un mes sin tocar el resto.
 - Un mes cuenta como hecho cuando su última métrica (`tags_con_datos`) está en `dq_metrics`. Una ejecución nueva se salta los meses hechos, así que si el job muere a medias (en el portátil se puede perder un executor después de una hora de I/O) el reintento sigue desde el primer mes sin terminar. `--rehacer` fuerza todos los meses del rango.
 - La clave de deduplicación es `(tag, instante de rejilla)`: solo puede haber una muestra por tag e instante. `Id` no sirve como clave porque la tabla Big y la pequeña tienen espacios de `Id` distintos. Gana Historic, después el valor más reciente.
-- Los rechazos no se copian fila a fila (serían unos 470 millones): `f_tag_interval_value_rechazo_diario` guarda el recuento por tag, día y motivo. En la BD real alrededor del 22 % de las filas no tiene calidad Buena, y el umbral de revisión está en el 30 %.
+- Los rechazos no se copian fila a fila (serían cientos de millones): `f_tag_interval_value_rechazo_diario` guarda el recuento por tag, día y motivo, y la métrica pasa a `REVISAR` si el rechazo supera el 30 %. La proporción de la ventana completa no la hemos sacado; el 22 % que citábamos salió de una consulta de la exploración que no guardamos y ya no lo usamos.
 
 ### `d_tag`
 
