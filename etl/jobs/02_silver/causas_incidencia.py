@@ -450,7 +450,3 @@ def origin(out: dict, full: str, text: str, code, factor, low_voltage: bool) -> 
         return "ct"
     return "linea_mt"
 
-
-def classify_rows(rows: list) -> list:
-    """classify() for a list of dicts."""
-    return [classify(row) for row in rows]

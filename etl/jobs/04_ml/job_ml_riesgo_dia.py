@@ -183,7 +183,7 @@ if HERE not in sys.path:
 import ml_metrics  # noqa: E402
 from calendario import holiday_flags, season  # noqa: E402
 from job_ml_horas_riesgo import distributor_weather, export, rolling_evaluation  # noqa: E402
-from job_ml_meteo_historia import add_history, read_events  # noqa: E402
+from job_ml_meteo_historia import add_history, read_events, variant_years  # noqa: E402
 from job_ml_train import (  # noqa: E402
     METRICS_TABLE,
     RUNS_TABLE,
@@ -1100,6 +1100,8 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
                                          prefixes=("met_",) + gold_prefixes, derive=derive)
     if weather is None:
         raise ValueError("No weather in Gold (meteo_celda_hora and map_ct_celda): nothing to learn from")
+    # Read twice below (the hours of the dataset and the drought windows): keep it instead of rebuilding the join.
+    weather = weather.persist()
     extras = [extra for extra in extras if extra.get("presente")]
 
     # The daily weather of every forecast of Gold: horizon -> (daily mapping, extremes mapping).
@@ -1301,6 +1303,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     # The extremes of the gusts alone, the ones every forecast gives (the run of heat needs the temperature).
     blocks["extremos_racha"] = [c for c in blocks.get("extremos", []) if "racha" in c]
 
+    weather.unpersist()
     return pdf.sort_values(["distribuidora_id", "fecha"]).reset_index(drop=True), blocks, warnings_first
 
 
@@ -1325,11 +1328,6 @@ def variant_features(variant: dict, blocks: dict) -> list:
     every = {name for names in blocks.values() for name in names}
     chosen += [name for name in variant.get("variables", []) if name in every and name not in chosen]
     return chosen
-
-
-def variant_years(variant: dict, cfg: dict) -> list:
-    first = pd.Timestamp(variant["desde"]) + pd.Timedelta(days=int(cfg["dias_minimos_entreno"]))
-    return [int(y) for y in cfg["anios_evaluacion"] if pd.Timestamp(f"{int(y)}-01-01") >= first]
 
 
 def top_share(y: np.ndarray, score: np.ndarray, year: np.ndarray, share: float, seed: int = 0) -> float:

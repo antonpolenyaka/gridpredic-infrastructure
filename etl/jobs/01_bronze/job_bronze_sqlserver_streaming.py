@@ -343,7 +343,7 @@ def process_topic(df, topic: str):
         )
     )
 
-    # Ensure PK values always come from Kafka key.
+    # PK values come from the Kafka key.
     for key in key_fields:
         changes_df = changes_df.withColumn(
             key,
@@ -430,6 +430,8 @@ def process_batch(batch_df, batch_id: int):
         "Processing microbatch: %s",
         batch_id,
     )
+    # The topics and then every topic read the same micro-batch: keep it in memory instead of rereading the files.
+    batch_df = batch_df.persist()
     topics = [
         row["topic"]
         for row in (
@@ -440,13 +442,16 @@ def process_batch(batch_df, batch_id: int):
         )
     ]
 
-    for topic in topics:
-        process_topic(
-            batch_df.where(
-                col("topic") == topic
-            ),
-            topic,
-        )
+    try:
+        for topic in topics:
+            process_topic(
+                batch_df.where(
+                    col("topic") == topic
+                ),
+                topic,
+            )
+    finally:
+        batch_df.unpersist()
 
 
 spark = (
