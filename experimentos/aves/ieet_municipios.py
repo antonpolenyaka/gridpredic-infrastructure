@@ -47,7 +47,8 @@ def main(argv):
 
     meta, _, wkb, fields = pyogrio.raw.read(grid_path)
     names = list(meta["fields"])
-    code_field = next(n for n in names if n.upper() in ("CUADRICULA", "CUTM10X10", "UTMCODE"))
+    # CUADRICULA lleva el huso y la letra (29SQD38), como CUTM10x10 en la base de datos; UTMCODE no.
+    code_field = next(n for n in ("CUADRICULA", "CUTM10x10") if n in names)
     codes = list(fields[names.index(code_field)])
     squares = shapely.from_wkb(wkb)
     tree = shapely.STRtree(squares)
