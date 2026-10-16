@@ -6,7 +6,7 @@ municipality and year: l3_gold.obras_municipio_anio.
 The year of a row is the year a model predicts or describes, and the row only
 uses what was published before that year started:
 
-- Population of the municipality of the CT at 1 January of the year before
+- Population of the CT's municipality on 1 January of the year before
   (the INE publishes the Padron of 1 January of a year at the end of that
   year), its change in one year and its yearly change in five, and the
   density (inhabitants per km2 of the municipality).

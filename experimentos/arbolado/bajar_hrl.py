@@ -79,8 +79,8 @@ def request(token: str, uid: str, download_id: str, year: int = None):
     item = {"DatasetID": uid, "DatasetDownloadInformationID": download_id, "OutputFormat": "Geotiff",
             "OutputGCS": "EPSG:4326", "BoundingBox": [north, east, south, west]}
     if year:
-        # The yearly products (2018-present) are stamped on the 1st of January of their year: the API wants that
-        # day as a range in milliseconds since 1970 (a whole year, or a date as text, is refused).
+        # Los productos anuales (2018 en adelante) llevan la fecha del 1 de enero de su año: la API quiere ese día
+        # como un rango en milisegundos desde 1970 (rechaza el año entero o la fecha como texto).
         start = int(datetime(year, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
         end = start + 86_399_000
         item["TemporalFilter"] = {"StartDate": start, "EndDate": end}

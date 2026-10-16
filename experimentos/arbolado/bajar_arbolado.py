@@ -138,7 +138,7 @@ def cover_stats(paths: list, bounds: tuple) -> dict:
     if not parts:
         return {}
     values = np.concatenate(parts)
-    values = values[values != 0]  # 0 is no data in WorldCover
+    values = values[values != 0]  # en WorldCover, 0 es sin dato
     if not values.size:
         return {}
     out = {f"pct_{name}": float((values == code).mean()) for name, code in CLASSES.items()}
@@ -157,7 +157,7 @@ def height_stats(paths: list, bounds: tuple, factor: int = 4) -> dict:
     if not parts:
         return {}
     values = np.concatenate(parts)
-    values = values[values < 250]  # 255 would be no data
+    values = values[values < 250]  # 255 sería sin dato
     if not values.size:
         return {}
     trees = values[values >= 1.0]
