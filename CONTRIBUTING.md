@@ -4,7 +4,7 @@ Somos dos personas (Josep y Anton) trabajando en el mismo repositorio desde máq
 
 ## 1. `main` siempre funciona
 
-Lo que hay en `main` tiene que poder levantarse con `docker compose up -d --build --wait` y pasar los tests. Nadie hace commit directamente en `main`: todo entra por pull request. Al principio del repositorio (septiembre de 2026) sí hubo commits directos mientras solo trabajaba una persona; desde que somos dos, no.
+Lo que hay en `main` tiene que poder levantarse con `docker compose up -d --build --wait` y pasar los tests. Nadie hace commit directamente en `main`: todo entra por pull request. Al principio del repositorio, del 11.09 al 20.09.2026, los dos hicimos commits directos en `main`; desde el primer pull request (25.09.2026), ninguno.
 
 ## 2. Una rama por cambio
 
@@ -31,7 +31,7 @@ git checkout -b feat/12-gold-labels
 - Asunto en imperativo, sin punto final y de menos de 50 caracteres; si hace falta explicar el porqué, una línea en blanco y un cuerpo de hasta 72 caracteres por línea. Ejemplo real del historial:
 
 ```text
-cambia la imagen de MinIO a pgsty/minio porque Quay ahora pide autenticacion
+anade la capa Gold y el dataset de entrenamiento
 ```
 
 - Probar antes de hacer commit: `make lint` y `make test` (o `ruff check .` y `python -m pytest tests -q`).
@@ -43,7 +43,7 @@ Cuando el cambio está listo (o antes, como borrador, si se quiere opinión sobr
 
 ## 5. Revisión
 
-El otro miembro revisa el código, prueba lo que pueda y deja comentarios en el propio PR. Las respuestas van como commits nuevos en la misma rama; el PR se actualiza solo. Mientras tanto, la integración continua (`.github/workflows/ci.yml`) ejecuta el linter, valida `compose.yaml` y corre los tests de Silver y de Gold en un Spark local. Un PR con la CI en rojo no se mezcla.
+El otro miembro revisa el código, prueba lo que pueda y deja comentarios en el propio PR. Las respuestas van como commits nuevos en la misma rama; el PR se actualiza solo. Mientras tanto, la integración continua (`.github/workflows/ci.yml`) ejecuta el linter, valida `compose.yaml` y corre los tests de Silver, de Gold y de los modelos en un Spark local (los de `tests/01_bronze` no están en la CI: se pasan con `make test`). Un PR con la CI en rojo no se mezcla.
 
 ## 6. Desplegar antes de mezclar
 
@@ -70,15 +70,15 @@ git branch -d feat/12-gold-labels
 Git versiona el código, la configuración y el fichero de referencia de municipios. Los datos se versionan de otra manera:
 
 - El dato crudo es el backup fechado de SQL Server. Cambiar de backup es cambiar de versión.
-- Bronze, Silver y Gold son tablas Delta con transaction log y time travel. Cada ejecución del DAG de Silver deja su `run_id` en `dq_metrics`.
-- El dataset de entrenamiento se congelará por versiones en Gold y se registrará con el modelo en MLflow (hito M7).
-- Valoramos DVC y no lo adoptamos: los datos viven en el lakehouse, no en ficheros, y Delta ya cubre lo que DVC nos daría.
+- Bronze, Silver y Gold son tablas Delta con transaction log y time travel de una semana: `dag_mantenimiento_delta` hace cada domingo un VACUUM con 168 horas de retención. Cada ejecución de los DAG de Silver y de Gold deja su `run_id` en `dq_metrics`.
+- El dataset de entrenamiento se congela por versiones en Gold (`l3_gold.dataset_versions`) y cada entrenamiento guarda en `l3_gold.ml_runs` la versión que usó. El registro en MLflow sigue pendiente.
+- Valoramos DVC y no lo adoptamos: los datos viven en tablas del lakehouse y Delta ya cubre lo que DVC nos daría.
 
 ## Herramientas
 
 ```bash
-pip install -r requirements.txt   # pyspark, delta-spark, pytest, ruff, pre-commit
-pre-commit install                # ruff antes de cada commit (opcional)
+pip install -r requirements.txt   # pyspark, delta-spark, librerías del modelo, pytest, ruff, pre-commit
+pre-commit install                # ruff, YAML, JSON y claves privadas antes de cada commit (opcional)
 make lint                         # ruff check .
-make test                         # python -m pytest tests -q (Silver y Gold)
+make test                         # python -m pytest tests -q (de Bronze a los modelos)
 ```
