@@ -1,10 +1,10 @@
 # Riesgo del día siguiente: variables y bloques
 
-`etl/jobs/04_ml/job_ml_riesgo_dia.py` estima, para cada distribuidora y día D, si empezará alguna interrupción de causa local, con lo que se sabe la tarde anterior. Aquí está el catálogo de variables que antes iba en la cabecera del job. Las pruebas de cada bloque están en [investigacion-continua.md](investigacion-continua.md).
+`etl/jobs/04_ml/job_ml_riesgo_dia.py` estima, para cada distribuidora y día D, si empezará alguna interrupción imprevista en sus CT, con lo que se sabe la tarde anterior. Aquí está el catálogo de variables que antes iba en la cabecera del job. Las pruebas de cada bloque están en [investigacion-continua.md](investigacion-continua.md).
 
 ## Unidad y etiquetas
 
-Una fila por distribuidora y día, de `meteo_dia.desde` a `meteo_dia.hasta`, sin los días de `analisis_red.dias_excluidos` (el apagón del 28.04.2025). Las etiquetas salen de `fact_interrupciones_mt` con la causa de `l2_silver.f_incidencia_causa`:
+Una fila por distribuidora y día, de `meteo_dia.desde` a `meteo_dia.hasta`, sin los días de `analisis_red.dias_excluidos` (el apagón del 28.04.2025). Las etiquetas salen de la variante `principal` de `fact_interrupciones_mt` con la causa de `l2_silver.f_incidencia_causa`:
 
 | etiqueta | qué es |
 | --- | --- |
@@ -15,15 +15,16 @@ Una fila por distribuidora y día, de `meteo_dia.desde` a `meteo_dia.hasta`, sin
 
 ## Bloques
 
-Todo se conoce antes de que empiece D salvo el bloque `dia`, que es el tiempo del propio día sacado del reanálisis (una previsión perfecta, la cota de cualquier previsión real).
+Todo se conoce antes de que empiece D salvo el tiempo del propio día: el bloque `dia` y los que se calculan con la racha, la lluvia o la temperatura de D (`ext_`, `hie_`, `reg_`, `frag_` y las interacciones con la racha), que al entrenar salen del reanálisis (una previsión perfecta, la cota de cualquier previsión real) y al puntuar con la previsión real se cambian por sus gemelos de previsión.
 
 | prefijo | bloque | qué es | en producción |
 | --- | --- | --- | --- |
+| `dist_` | distribuidora | una columna por distribuidora (1 en sus filas): el término propio de cada red | sí (entra en todas las variantes) |
 | `cal_` | calendario | día de la semana (seno y coseno), fin de semana, festivo nacional o de Extremadura, día del año y estación | sí |
 | `hist_` | historia | incidencias conocidas en Calser antes de D en 7, 30 y 365 días, y días desde la última | sí |
 | `ayer_` | ayer | el tiempo de D - 1 del reanálisis: racha y viento de la peor celda y media por CT, lluvia, temperaturas, humedad, presión y su caída, nieve, tamaño del temporal, focos de FIRMS y FWI | solo `ayer_racha_max` y `ayer_lluvia_max` |
 | `aviso_` | avisos | el nivel más alto de los avisos de AEMET para D enviados antes de las 20:00 de D - 1, en total y por viento, lluvia, tormenta y nieve (0 sin aviso, nulo antes del 18.06.2018) | sí |
-| `aviso_det_` | avisos_detalle | lo que anuncian esos avisos (racha, lluvia en 12 h y en 1 h, horas con aviso de viento) y la parte de los CT bajo cada tipo | no |
+| `aviso_det_` | avisos_detalle | lo que anuncian esos avisos (racha, lluvia en 12 h y en 1 h, horas con aviso de viento) y la parte de los CT bajo aviso de viento, de tormenta o de cualquiera de los cuatro fenómenos | no |
 | `dia_` | dia | el mismo tiempo diario que `ayer_`, de D | `dia_comun`: lo que también da la previsión |
 | `ext_` | extremos | la racha de D frente al p98 de cada celda (peor celda y media por CT), el índice de pérdidas de Klawa y Ulbrich y los días seguidos de calor | sí |
 | `prev_` | prevision | el mismo tiempo diario de D según ICON-EU la víspera (`metp1_*` de Gold, desde 01.2024); nunca es variable: sustituye a `dia_` y `ext_` al puntuar con la previsión real | sí, al puntuar |
@@ -39,24 +40,24 @@ Todo se conoce antes de que empiece D salvo el bloque `dia`, que es el tiempo de
 | `reg_` | regimen | la racha leída como temporal de invierno, convección o calor | no (3o) |
 | `frag_` | fragilidad | la curva de fragilidad (tasa de avería según la racha, ajustada antes de `fragilidad_hasta`) | no (3o) |
 | `cad_` | caducas | la copa de frondosas caducas del MFE50 y la racha por ella en abril - octubre | no (3p) |
-| `nao_` | nao | el índice NAO diario de NOAA CPC con dos días de retraso y su media de 30 días | no (3r) |
+| `nao_` | nao | el índice NAO diario de NOAA CPC que se conoce la tarde anterior, el de D - 3 (`nao_dia`, con `meteo_dia.nao.retraso_dias`), y su media de 30 días (`nao_30d`) | no (3r); se descarga cada tarde para volver a medirlo |
 
 Los bloques que dependen de la racha o de la lluvia del día tienen su gemelo de previsión (`prev_<variable>`), que es el que se usa al puntuar con la previsión real.
 
 ## Horizontes y otros modelos
 
-- **A dos y tres días** (`HORIZONS`): Gold guarda también lo que ICON-EU preveía dos y tres días antes (`metp2_*`, `metp3_*`). Dan `prev2_*` y `prev3_*`, los avisos enviados antes de las 20:00 de D - 2 y D - 3 (`aviso48_*`, `aviso72_*`) y el último día de tiempo conocido esa tarde (`hace2_*`, `hace3_*`). Una variante con `"horizonte": 2` o `3` se puntúa con eso.
+- **A dos y tres días** (`HORIZONS`): Gold guarda también lo que ICON-EU preveía dos y tres días antes (`metp2_*`, `metp3_*`). Dan `prev2_*` y `prev3_*`, los avisos enviados antes de las 20:00 de D - 2 y D - 3 (`aviso48_*`, `aviso72_*`) y el último día de tiempo conocido esa tarde (`hace2_*`, `hace3_*`). Una variante con `"horizonte": 2` o `3` se puntúa con eso; en lugar de `dia_comun` y `extremos` lleva `dia_comun_48h` o `dia_comun_72h` (el tiempo del día que da esa previsión: racha y lluvia) y `extremos_racha` (los extremos de la racha, sin los días de calor). `operativa_48h` es, desde el 15.10.2026, la orientación de pasado mañana de la ejecución de la tarde (`riesgo_manana.variante_pasado_manana`).
 - **Otros modelos de previsión** (`meteo_dia.previsiones_extra`, con `--previsiones-extra`): GFS, GEM o UKMO del archivo de Open-Meteo, leídos de Bronze. Nunca son variables; la comparación con la previsión real puntúa también con cada uno y con la media de todos.
 
 ## Variantes y métricas
 
-Cada variante (`meteo_dia.variantes`) es una lista de bloques, unas variables sueltas y un primer día de entrenamiento. `operativa` es la que ajusta y puntúa cada tarde `job_ml_riesgo_manana`. Cada año lo puntúa un modelo elegido y ajustado solo con los años anteriores (`rolling_evaluation`), y cada variante lleva también `rango`, la media de los percentiles de su logística y su XGBoost.
+Cada variante (`meteo_dia.variantes`) es una lista de bloques, unas variables sueltas, un primer día de entrenamiento y, si no es la víspera, su horizonte; el bloque `distribuidora` entra siempre. `operativa` es la que ajusta y puntúa cada tarde `job_ml_riesgo_manana` (`riesgo_manana.variante`). Cada año lo puntúa un modelo elegido y ajustado solo con los años anteriores (`rolling_evaluation`), y cada variante lleva también `rango`, la media de los percentiles de su logística y su XGBoost.
 
-Las métricas se calculan sobre los años que puntúan todas las variantes: PR-AUC, veces la tasa base, la parte de los días con avería que cae en el 5, 10 y 20 % de días de más riesgo de cada año, PR-AUC por distribuidora y el bootstrap por fechas de las diferencias emparejadas (`meteo_dia.comparaciones`). La comparación con la previsión real se hace sobre los días que tienen todas las previsiones que piden las variantes de la misma ejecución.
+Las métricas se calculan sobre los años que puntúan todas las variantes: PR-AUC, ROC-AUC, veces la tasa base, la parte de los días con avería que cae en el 5, 10 y 20 % de días de más riesgo de cada año, PR-AUC por distribuidora y el bootstrap por fechas de las diferencias emparejadas (`meteo_dia.comparaciones`, y con la previsión real `meteo_dia.comparaciones_prevision`). La comparación con la previsión real se hace sobre los días que tienen todas las previsiones que piden las variantes de la misma ejecución: por eso, con la previsión real de 2024 - 2026, la misma `operativa` da 0,161 de PR-AUC en el apartado 3m del cuaderno, que lleva las variantes a 48 y 72 h, y 0,156 en las pruebas de después.
 
 ## Salidas
 
-`l3_gold.ml_runs` y `l3_gold.ml_metricas` con `run_id` `dia_*`, y en `exportar_dir/<run_id>/`: `resumen.md`, `metricas.csv`, `comparacion.csv`, `diferencias.csv`, `anios.csv`, `filas.csv`, `prevision.csv` y `prevision_diferencias.csv`.
+`l3_gold.ml_runs` y `l3_gold.ml_metricas` con `run_id` `dia_*`, y en `exportar_dir/<run_id>/`: `resumen.md`, `metricas.csv`, `comparacion.csv`, `anios.csv`, `distribuidoras.csv`, `intervalos.csv`, `diferencias.csv`, `filas.csv`, `prevision.csv`, `prevision_diferencias.csv` y `variantes.csv`.
 
 ```
 docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g \

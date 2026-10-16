@@ -13,13 +13,16 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 | [docs/silver-layer.md](docs/silver-layer.md) | Reglas de la capa Silver, tabla a tabla, y por qué |
 | [docs/gold-layer.md](docs/gold-layer.md) | Capa Gold: etiquetas, features, dataset de entrenamiento y sus decisiones |
 | [docs/ml-training.md](docs/ml-training.md) | Entrenamiento y evaluación de los modelos (XGBoost, Random Forest, logística y referencias) |
+| [docs/ml-riesgo-dia.md](docs/ml-riesgo-dia.md) | El riesgo del día siguiente, el modelo que corre cada tarde: etiquetas, bloques de variables, horizontes, variantes y salidas |
+| [docs/causas-incidencias.md](docs/causas-incidencias.md) | Las causas de todas las incidencias de Calser, qué datos podrían anunciar cada una, las fuentes públicas añadidas y los comandos de esos jobs y de la operación |
+| [docs/network-analysis.md](docs/network-analysis.md) | Análisis de la red: de dónde sale el TIEPI, dónde se repite, dónde compensa el telemando, cuánto dinero hay detrás, el riesgo anual por CT y cabecera y los datos públicos |
 | [docs/project-structure.md](docs/project-structure.md) | Estructura del repositorio y su relación con Cookiecutter Data Science |
 | [docs/caso-de-negocio.md](docs/caso-de-negocio.md) | Lo que habría dicho el sistema cada tarde desde 2022 y lo que pasó: resultados, guardia a igual presupuesto, frente a los avisos de AEMET y lo que vale |
 | [docs/operacion-diaria.md](docs/operacion-diaria.md) | Manual de la operación en marcha: los DAG, sus horas, lo que dejan, los avisos y qué mirar si falla |
 | [docs/cifras.md](docs/cifras.md) | Las cifras que van a la memoria y a la presentación, en una página, con el documento y la ejecución de la que sale cada una |
 | [docs/guion-presentacion.md](docs/guion-presentacion.md) | El guion de la defensa: 14 diapositivas con el mensaje, la figura y la cifra de cada una |
 | [docs/memoria-lo-que-pide-el-tutor.md](docs/memoria-lo-que-pide-el-tutor.md) | Lo que pide el tutor de negocio para la memoria (tutorías del 06.07 y del 14.10.2026), lo que ya cubrimos y los textos propuestos: propuesta de valor, marca y posicionamiento, marketing mix, DAFO por fases, riesgos, validación y plan financiero |
-| [docs/memoria-texto-experimentos.md](docs/memoria-texto-experimentos.md) | Borrador del apartado de resultados de la memoria sobre las pruebas de mejora del modelo del día (método, revisión de literatura, diez pruebas con su PR-AUC, el arbolado y el riesgo a 48 y 72 h), listo para pegar |
+| [docs/memoria-texto-experimentos.md](docs/memoria-texto-experimentos.md) | Borrador del apartado de resultados de la memoria sobre las pruebas de mejora del modelo del día (método, revisión de literatura, las dieciséis pruebas con su PR-AUC, el arbolado y el riesgo a 48 y 72 h), listo para pegar |
 | [docs/revision-literatura.md](docs/revision-literatura.md) | Revisión de la literatura (modelos de interrupciones por meteorología, 2012 - 2026, con los DOI comprobados), las fuentes públicas que no usamos todavía y las ideas de modelado con respaldo, con las cinco pruebas recomendadas |
 | [docs/investigacion-continua.md](docs/investigacion-continua.md) | Cuaderno de laboratorio: las hipótesis probadas con los datos (literatura, humedad del suelo y duración del viento, datos públicos, dispositivos de los clientes), cómo se probaron y qué se descartó; el código de cada prueba está en `experimentos/` |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | GitHub Flow tal como lo aplicamos, reglas de commits y versionado de datos |
@@ -38,17 +41,20 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 ├── etl/
 │   ├── dags/               # Orquestación con Airflow
 │   ├── config/             # Parámetros de los procesos
-│   └── jobs/               # Ingesta y transformación con Spark
+│   └── jobs/               # Ingesta, transformación y modelos con Spark
 ├── data/reference_data/    # Datos de referencia pequeños (municipios)
-├── docs/                   # Cards, diseño de Silver, flujo de datos, estructura
+├── dashboard/              # Cuadro de mando estático (lo sirve el contenedor dashboard)
+├── web/                    # Página pública de GridPredic.com, estática
+├── docs/                   # Cards, capas Silver y Gold, modelos, operación, flujo de datos
+├── experimentos/           # Código de las pruebas del cuaderno de laboratorio
 ├── notebooks/              # Exploración (convención en su README)
 ├── tests/                  # Pruebas locales de los jobs
-└── _runlogs/               # Scripts de pruebas manuales (los logs se ignoran)
+└── _runlogs/               # Scripts de pruebas manuales y de operación (los logs se ignoran)
 ```
 
 La estructura sigue la idea de Cookiecutter Data Science adaptada a un pipeline que corre en Spark y Airflow: la correspondencia carpeta a carpeta está en [docs/project-structure.md](docs/project-structure.md).
 
-Dentro de `dags/`, `config/` y `jobs/`, los archivos se agrupan por **capa de destino**: `00_landing/`, `01_bronze/`, `02_silver/`, `03_gold/` y `04_ml/` (entrenamiento del modelo). Solo se crean las carpetas que contienen archivos.
+Dentro de `dags/`, `config/` y `jobs/`, los archivos se agrupan por **capa de destino**: `00_landing/`, `01_bronze/`, `02_silver/`, `03_gold/` y `04_ml/` (modelos, análisis y operación de cada tarde). Solo se crean las carpetas que contienen archivos.
 
 Los nombres identifican el **tipo**, la **capa** y el **origen** (Landing/Bronze) o la **entidad** (Silver/Gold). Solo los jobs de Landing y Bronze añaden `batch` o `streaming`:
 
@@ -63,20 +69,22 @@ job_silver_d_salida.py
 
 ![Flujo de datos de GridPredic](docs/data-flow.jpeg)
 
-> El diagrama representa la arquitectura objetivo. Actualmente este repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, la capa Silver completa (apartado 11) y la capa Gold hasta el dataset de entrenamiento versionado (apartado 12) y el entrenamiento de los modelos (apartado 13).
+> El diagrama representa la arquitectura objetivo. Hoy el repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, la de la meteorología y las fuentes públicas, la capa Silver completa (apartado 11), la capa Gold hasta el dataset de entrenamiento versionado (apartado 12), el entrenamiento de los modelos y la operación de cada tarde con su cuadro de mando (apartado 13).
 
 ## Stack tecnológico
 
 | Área | Tecnología | Función |
 | --- | --- | --- |
 | Fuentes | **SQL Server 2022** | Bases de datos operacionales y fuentes batch |
+| Fuentes externas | **APIs públicas** | Meteorología de Open-Meteo, avisos, predicción y estaciones de AEMET, rayos de EUMETSAT y datos públicos |
 | CDC y mensajería | **Debezium, Kafka, Kafka Connect** | Captura y transporte de cambios en tiempo real |
-| Orquestación | **Apache Airflow** | Orquestación de las cargas batch |
-| Procesamiento | **Apache Spark 4 + Delta Lake** | Ingesta streaming/batch y transformaciones Bronze -> Silver -> Gold |
+| Orquestación | **Apache Airflow** | Cargas batch, operación de cada tarde y mantenimiento semanal de las tablas Delta |
+| Procesamiento | **Apache Spark 4 + Delta Lake** | Ingesta streaming/batch, transformaciones Bronze -> Silver -> Gold y entrenamiento de los modelos (scikit-learn y XGBoost en el driver) |
 | Almacenamiento | **MinIO** | Object Storage compatible con S3 para Landing y Delta Lake |
 | Catálogo | **Hive Metastore + PostgreSQL** | Catálogo compartido de las tablas Delta |
 | Consulta | **Trino** | Motor SQL sobre el lakehouse |
 | Operación | **Kafka UI + Spark History Server** | Inspección de Kafka y ejecuciones Spark |
+| Cuadro de mando | **nginx + Leaflet** | Páginas estáticas del riesgo sobre OpenStreetMap (apartado 13) |
 
 > **Nota sobre la imagen de MinIO.** MinIO dejó de publicar sus imágenes community en Docker Hub en octubre de 2025, por lo que `minio/minio` ya no puede descargarse de allí. El síntoma al levantar el stack es un error engañoso, porque habla de permisos cuando en realidad el repositorio no existe:
 >
@@ -146,7 +154,7 @@ docker compose version
 
 ## 3. Ubicar los datos de Docker fuera del disco del sistema
 
-**Motivo.** Los volúmenes declarados en `compose.yaml` (`sqlserver-data`, `minio-data`, `kafka-data`, `airflow-data`, `hive-db`) no son carpetas del sistema de archivos del anfitrión: viven dentro del **disco virtual de Docker**, junto con las imágenes y la caché de construcción. Ese disco se crea por defecto en la unidad del sistema, con independencia de dónde esté clonado el repositorio. Con `TedisNet_EOSA` restaurada se superan holgadamente los 250 GB, de modo que si la unidad del sistema no dispone de ese margen el arranque se interrumpe a media restauración y hay que empezar de cero.
+**Motivo.** Los volúmenes declarados en `compose.yaml` (`sqlserver-data`, `minio-data`, `kafka-data`, `airflow-data`, `hive-db` y las cachés de Ivy `ivy-spark-master` e `ivy-airflow`) no son carpetas del sistema de archivos del anfitrión: viven dentro del **disco virtual de Docker**, junto con las imágenes y la caché de construcción. Ese disco se crea por defecto en la unidad del sistema, con independencia de dónde esté clonado el repositorio. Con `TedisNet_EOSA` restaurada se superan holgadamente los 250 GB, de modo que si la unidad del sistema no dispone de ese margen el arranque se interrumpe a media restauración y hay que empezar de cero.
 
 **Windows (Docker Desktop).** Antes del primer arranque:
 
@@ -277,7 +285,7 @@ La restauración manda: el backup de `TedisNet_EOSA` son 63,5 GB y se lee desde 
 
 Los `start_period` de los healthchecks están dimensionados para ese primer arranque. Si se reducen, Compose da por fallidos servicios que en realidad están inicializándose y aborta la cadena de dependencias, aunque los contenedores acaben levantando solos.
 
-La resolución de dependencias de Spark merece una nota aparte. Entre `spark.jars.packages` y `spark.sql.hive.metastore.jars maven` se descargan unos 320 jars de Maven Central. Esa caché se guarda en los volúmenes `ivy-spark-master` e `ivy-airflow`, de forma que solo se paga una vez y sobrevive a la recreación de los contenedores. Son dos volúmenes separados a propósito: Ivy no usa bloqueo de ficheros por defecto y los dos servicios pueden resolver a la vez.
+En la resolución de dependencias de Spark se descargan unos 320 jars de Maven Central, entre `spark.jars.packages` y `spark.sql.hive.metastore.jars maven`. Esa caché se guarda en los volúmenes `ivy-spark-master` e `ivy-airflow`, de forma que solo se paga una vez y sobrevive a la recreación de los contenedores. Son dos volúmenes separados a propósito: Ivy no usa bloqueo de ficheros por defecto y los dos servicios pueden resolver a la vez.
 
 Durante el arranque se realiza automáticamente:
 
@@ -288,7 +296,7 @@ Durante el arranque se realiza automáticamente:
 - restauración de las cuatro bases de datos en **SQL Server**;
 - activación de **CDC** sobre las tablas configuradas de `TedisNet_EOSA`;
 - arranque de **Kafka** y registro del conector `tedisnet-eosa-connector` en **Kafka Connect**;
-- arranque del clúster **Spark**, **Airflow**, **Trino**, **Kafka UI** y **Spark History Server**.
+- arranque del clúster **Spark**, **Airflow**, **Trino**, **Kafka UI**, **Spark History Server** y el cuadro de mando (**nginx**).
 
 ---
 
@@ -297,7 +305,8 @@ Durante el arranque se realiza automáticamente:
 | Servicio | Dirección | Uso |
 | --- | --- | --- |
 | SQL Server | `localhost:1433` | Acceso a las cuatro bases de datos |
-| Spark Master | http://localhost:8080 | Estado del clúster Spark |
+| Spark UI de un job en marcha | http://localhost:4040 (lanzado desde Airflow) y http://localhost:4041 (lanzado a mano en `spark-master`) | Etapas y tareas del job mientras corre |
+| Spark Master | http://localhost:8080 por defecto; 8090 en el portátil, con `SPARK_MASTER_UI_PORT` | Estado del clúster Spark |
 | Spark Worker | http://localhost:8081 | Estado del worker Spark |
 | Kafka UI | http://localhost:8082 | Topics, mensajes y estado de Kafka Connect |
 | Airflow | http://localhost:8084 | Gestión y ejecución de DAGs |
@@ -346,7 +355,7 @@ Crear una conexión **Trino** en DBeaver:
 Host: localhost
 Port: 8085
 Database/Schema: lakehouse
-Username <cualquier valor>
+Username: <cualquier valor>
 ```
 
 No hay autenticación por contraseña configurada para Trino en este entorno local.
@@ -452,7 +461,7 @@ El DAG sube `data/reference_data/municipios.xlsx` a MinIO y carga la hoja `Munic
 
 Silver toma las tablas de Bronze y deja una sola versión válida de cada registro: sin duplicados, sin lecturas de calidad mala, sin huérfanos, con la distribuidora resuelta y con las anomalías marcadas en columnas booleanas en vez de borradas. Las reglas, el motivo de cada una y lo que queda para Gold están en [docs/silver-layer.md](docs/silver-layer.md).
 
-Requisito: haber ejecutado el DAG batch de Bronze y los dos jobs de streaming al menos una vez, porque `SystemElements`, `SystemTags` y `SystemNodes` llegan por CDC.
+Requisito: haber ejecutado el DAG batch de Bronze y los dos jobs de streaming al menos una vez, porque `SystemElements`, `SystemTags` y `SystemNodes` llegan por CDC. Los jobs de meteorología y de fuentes públicas (`d_meteo_celda`, `f_meteo_hora`, `contexto_publico`) necesitan además su Landing y su Bronze (apartado 10 de [docs/causas-incidencias.md](docs/causas-incidencias.md)); sin ellos no hacen nada y lo dicen en el log.
 
 Ejecutar manualmente el DAG:
 
@@ -470,7 +479,7 @@ docker compose exec spark-master \
   /app/jobs/02_silver/job_silver_f_interrupcion.py
 ```
 
-La serie grande de medidas se procesa por meses y solo sobrescribe los meses indicados:
+La serie grande de medidas se procesa por meses y solo sobrescribe los meses indicados. Se salta los meses que ya terminó una ejecución anterior (su última métrica está en `dq_metrics`), así que un job que se corta sigue donde lo dejó; con `--rehacer` los vuelve a procesar:
 
 ```bash
 docker compose exec spark-master \
@@ -510,7 +519,7 @@ Ejecutar manualmente el DAG:
 dag_gold
 ```
 
-Orden: `dim_ct`, los hechos de interrupciones de Calser y de cortes del SCADA, las etiquetas, los agregados horarios de medidas, las features, el dataset y los controles finales (`job_gold_dq_checks.py`).
+Orden: `dim_ct`, los hechos de interrupciones de Calser y de cortes del SCADA, las etiquetas, los agregados horarios de medidas, las features, el dataset y los controles finales (`job_gold_dq_checks.py`). En paralelo, después de `dim_ct`, van la meteorología de cada celda (`meteo_celda_hora`) y los datos públicos de cada CT (`contexto_ct`).
 
 Un job suelto desde el contenedor de Spark, que lee la configuración de `/app/config` (hay que recrear `spark-master` una vez con `docker compose up -d` para que monte esa carpeta):
 
@@ -535,6 +544,12 @@ GROUP BY split;
 Las filas con `split = 'purga'` son las 6 horas antes de cada frontera, cuya etiqueta mira al período siguiente: no se usan ni para entrenar ni para evaluar. Tampoco entran en el dataset las horas en las que el CT ya estaba en corte, las que no tienen muestras del SCADA ni aquellas en las que el CT todavía no existía en Calser o ya había desaparecido (`ct_vigente = 0` en `labels_ct_hora`, sacado de los períodos que listan cada CT).
 
 Calidad de cada ejecución en `lakehouse.l3_gold.dq_metrics`, con el mismo esquema que la de Silver.
+
+Las tablas Delta de las tres capas se compactan una vez por semana: `dag_mantenimiento_delta` corre los domingos a las 04:10 (hora de Madrid) y lanza `job_mantenimiento_delta.py`, que hace OPTIMIZE y VACUUM con 168 horas de retención sobre `l1_bronze`, `l2_silver` y `l3_gold`. Con esa retención, el time travel solo llega a las versiones de la última semana. Como todo DAG nuevo, llega pausado:
+
+```bash
+docker compose exec airflow airflow dags unpause dag_mantenimiento_delta
+```
 
 ---
 
@@ -570,7 +585,7 @@ Los modelos quedan en MinIO (`datalake/ml/modelos/<run_id>/`) y las puntuaciones
 
 ### Riesgo de mañana cada tarde
 
-El DAG `dag_riesgo_manana` corre solo todos los días a las 20:30 (hora de Madrid): baja la previsión de ICON-EU de cada celda y los avisos de AEMET en vigor, vuelve a entrenar el modelo del día siguiente con todos los días etiquetados y deja en `l3_gold.riesgo_dia_siguiente` el riesgo de mañana de cada distribuidora, con su nivel, sus motivos y las zonas con más racha prevista. Necesita la imagen de Airflow con las librerías del modelo y la clave de AEMET en `.env` (sin ella calcula el riesgo sin avisos):
+El DAG `dag_riesgo_manana` corre solo todos los días a las 20:30 (hora de Madrid): baja la previsión de ICON-EU de cada celda y los avisos de AEMET en vigor, vuelve a entrenar el modelo del día siguiente (la regresión logística de la variante `operativa`) con todos los días etiquetados y deja en `l3_gold.riesgo_dia_siguiente` el riesgo de mañana de cada distribuidora, con su nivel, sus motivos y las zonas con más racha prevista. Necesita la imagen de Airflow con las librerías del modelo y la clave de AEMET en `.env` (sin ella calcula el riesgo sin avisos):
 
 ```bash
 docker compose build airflow
@@ -597,7 +612,7 @@ FROM lakehouse.l3_gold.riesgo_zona_siguiente
 ORDER BY fecha DESC, probabilidad DESC;
 ```
 
-La misma ejecución deja la orientación de pasado mañana (`l3_gold.riesgo_pasado_manana` y el bloque `pasado_manana` de `riesgo.json`): el nivel de cada red a dos días con el modelo de dos tardes antes, que conserva la mayor parte de la señal del de mañana (5,4 frente a 6,9 veces la tasa base en 2024 - 2025) y pierde sobre todo los avisos que AEMET aún no ha emitido; sirve para planificar, no lleva zonas ni guardia.
+Desde el 15.10.2026 la misma ejecución deja también la orientación de pasado mañana (`l3_gold.riesgo_pasado_manana` y el bloque `pasado_manana` de `riesgo.json`, con `riesgo_manana.variante_pasado_manana` en `operativa_48h`): el nivel de cada red a dos días con el modelo de dos tardes antes, que conserva la mayor parte de la señal del de mañana (5,4 frente a 6,9 veces la tasa base en 2024 - 2025) y lo que pierde es a medias la previsión a dos días y los avisos que AEMET aún no ha emitido. Sirve para planificar y no lleva zonas ni guardia.
 
 El cuadro de mando son cuatro páginas con el mismo menú y el mismo sistema de diseño (`dashboard/gridpredic.css`, tema claro y oscuro, de móvil a pantalla grande): `index.html` (el riesgo de mañana), `dias.html` (todos los días con riesgo guardado, de las ejecuciones de la tarde y de los días repetidos, cada uno con su enlace y su parte de guardia; lee `data/indice.json`, que el job reescribe cada vez que guarda un día), `historial.html` (día a día desde 2022) y `negocio.html` (las cifras).
 
@@ -605,9 +620,9 @@ La página pública de GridPredic.com está en `web/` (ver [web/README.md](web/R
 
 Con las credenciales del Data Store de EUMETSAT en `.env`, `dag_rayos_vivo` añade cada 15 minutos los rayos que ve el satélite MTG sobre la red (`dashboard/data/rayos.json`), que el cuadro de mando pinta sobre el mapa con una franja por distribuidora.
 
-La tarea `ensemble` del mismo DAG pide los 40 escenarios de ICON-EU EPS (Open-Meteo, sin clave) para las celdas de cada red y deja `dashboard/data/ensemble.json`: el cuadro de mando pinta la banda p10 - p90 de la racha sobre el perfil y dice qué parte de los escenarios supera 50, 70 y 90 km/h. La tarea `aemet_municipios` trae la predicción horaria por municipios de AEMET (segunda previsión, línea verde sobre el perfil, verificada frente a las estaciones como la de ICON-EU). `dag_observacion_vivo` añade cada hora lo que miden las estaciones de AEMET (`dashboard/data/observado.json`): la racha observada se pinta en rojo sobre el perfil previsto del día y, con `dashboard/data/verificacion.json`, el cuadro de mando dice lo que valió la previsión de la víspera (pico previsto frente a observado, sesgo y error medio de los últimos días). Con `AVISO_WEBHOOK_URL` en `.env` (un webhook de Slack, Teams o similar), el DAG manda además el aviso de la tarde cuando alguna distribuidora queda en alto o muy alto.
+La tarea `ensemble` de `dag_riesgo_manana` pide los 40 escenarios de ICON-EU EPS (Open-Meteo, sin clave) para las celdas de cada red y deja `dashboard/data/ensemble.json`: el cuadro de mando pinta la banda p10 - p90 de la racha sobre el perfil y dice qué parte de los escenarios supera 50, 70 y 90 km/h. La tarea `aemet_municipios` trae la predicción horaria por municipios de AEMET (segunda previsión, línea verde sobre el perfil, verificada frente a las estaciones como la de ICON-EU). La tarea `nao` guarda cada tarde el índice NAO diario de NOAA CPC, que hoy no entra en el modelo (apartado 3r de [docs/investigacion-continua.md](docs/investigacion-continua.md)); igual que `ensemble` y `aemet_municipios`, si no hay respuesta se salta y la puntuación sigue. `dag_observacion_vivo` añade cada hora lo que miden las estaciones de AEMET (`dashboard/data/observado.json`): la racha observada se pinta en rojo sobre el perfil previsto del día y, con `dashboard/data/verificacion.json`, el cuadro de mando dice lo que valió la previsión de la víspera (pico previsto frente a observado, sesgo y error medio de los últimos días). Con `AVISO_WEBHOOK_URL` en `.env` (un webhook de Slack, Teams o similar), `dag_riesgo_manana` manda además el aviso de la tarde cuando alguna distribuidora queda en alto o muy alto o con la guardia reforzada.
 
-`job_ml_caso_negocio.py` repite la operación de cada tarde sobre 2022 - 2025 (qué habría dicho el sistema cada víspera y qué pasó: incidencias, clientes, horas-cliente, brigadas) y deja `historico.json` para las páginas `historial.html` (día a día) y `negocio.html` (las cifras para una distribuidora o un inversor, con la guardia a igual presupuesto) del cuadro de mando; los resultados y lo que valen para una distribuidora están en [docs/caso-de-negocio.md](docs/caso-de-negocio.md).
+`job_ml_caso_negocio.py` repite la operación de cada tarde desde 2022 hasta el último día con etiqueta conocida de la copia de Calser, el 02.08.2026 (qué habría dicho el sistema cada víspera y qué pasó: incidencias, clientes, horas-cliente, brigadas) y deja `historico.json` para las páginas `historial.html` (día a día) y `negocio.html` (las cifras para una distribuidora o un inversor, con la guardia a igual presupuesto) del cuadro de mando; los resultados y lo que valen para una distribuidora están en [docs/caso-de-negocio.md](docs/caso-de-negocio.md).
 
 Cómo se calcula, qué se puede predecir a cada escala y qué limitaciones tiene está en [docs/causas-incidencias.md](docs/causas-incidencias.md), apartado 8.
 
@@ -620,11 +635,11 @@ Para trabajar sobre el código sin levantar el stack hace falta Python 3.10 o su
 ```bash
 pip install -r requirements.txt   # pyspark, delta-spark, librerías del modelo, pytest, ruff
 make lint                         # ruff check .
-make test                         # python -m pytest tests -q (Silver, Gold y modelo)
+make test                         # python -m pytest tests -q (de Bronze a los modelos)
 make config                       # valida compose.yaml con el .env actual
 ```
 
-Las mismas tres comprobaciones se ejecutan en GitHub Actions en cada pull request (`.github/workflows/ci.yml`). El test de Silver monta tablas Bronze pequeñas con los problemas reales de los datos sembrados a propósito, ejecuta todos los jobs en un Spark local y comprueba el resultado. El de Gold hace lo mismo con una semana de datos de dos distribuidoras, comprueba las etiquetas hora a hora y termina con una prueba de leakage: borra de Silver todo lo que pasó a partir de una hora, recalcula y exige que las features anteriores no cambien. El del modelo monta un `dataset_train` sintético, entrena los cinco modelos con búsquedas pequeñas, evalúa valid y test y comprueba todas las tablas de resultados y los modelos guardados. La primera ejecución descarga los jars de Delta de Maven Central.
+Las mismas tres comprobaciones se ejecutan en GitHub Actions en cada pull request y en cada push a `main` (`.github/workflows/ci.yml`), salvo los tests de `tests/01_bronze`, que solo corren con `make test`. El test de Silver monta tablas Bronze pequeñas con los problemas reales de los datos sembrados a propósito, ejecuta todos los jobs en un Spark local y comprueba el resultado. El de Gold hace lo mismo con una semana de datos de dos distribuidoras, comprueba las etiquetas hora a hora y termina con una prueba de leakage: borra de Silver todo lo que pasó a partir de una hora, recalcula y exige que las features anteriores no cambien. El del modelo monta un `dataset_train` sintético, entrena los cinco modelos con búsquedas pequeñas, evalúa valid y test y comprueba todas las tablas de resultados y los modelos guardados. El resto de tests prueba, también sin Docker, la Landing y las fuentes públicas, la meteorología de Gold y los jobs del riesgo y del caso de negocio. La primera ejecución descarga los jars de Delta de Maven Central.
 
 Las versiones del runtime están fijadas en `compose.yaml`, en los `Dockerfile` de `infra/` y en `infra/spark/requirements.txt`; `requirements.txt` de la raíz reproduce en local las versiones de Spark y Delta de las imágenes.
 

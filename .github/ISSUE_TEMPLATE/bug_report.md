@@ -19,4 +19,4 @@ assignees: ""
 ## Entorno
 
 - Sistema operativo y versión de Docker Compose:
-- Servicio afectado (sqlserver, spark, airflow, kafka-connect, minio, hive, trino):
+- Servicio afectado (sqlserver, kafka, kafka-connect, kafka-ui, spark-master, spark-worker, spark-history, airflow, minio, postgres, hive, trino, dashboard):
