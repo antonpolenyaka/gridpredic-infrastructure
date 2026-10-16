@@ -10,7 +10,7 @@ Two scopes (column ambito):
   everything below it (map_tag_ct). Telecontrolled CTs only.
 - AGUAS_ARRIBA, clave_id = posicion_id: series of the bays of the switches
   that have cut each transformer (map_aguas_arriba), that is the tags of the
-  switch, of its siblings and of the bay itself. In EOSA the feeder currents
+  switch, of its siblings and of the bay itself. In our TedisNet copy the feeder currents
   of the substations (AI.INTENSIDAD, 800 tags with series) live there, so
   this is the scope that gives measurements to the CTs without telemetry.
 

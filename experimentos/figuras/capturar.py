@@ -1,6 +1,6 @@
 """
 Figuras de la memoria a partir del cuadro de mando: sirve la carpeta dashboard/
-en local, abre las tres páginas con Chromium (Playwright) y guarda en PNG, a
+en local, abre las cuatro páginas con Chromium (Playwright) y guarda en PNG, a
 doble resolución, cada bloque que se cita en el documento. Así las figuras
 salen siempre de los mismos datos que ve el usuario (dashboard/data) y se
 regeneran con una orden cuando cambian.
@@ -12,6 +12,7 @@ Qué deja (cuando la página tiene los datos):
 - index_<n>_<distribuidora>.png: la sección de cada distribuidora del riesgo de mañana (cifras, mapa, perfil, líneas);
   con --dias, index_<día>_<n>_<distribuidora>.png para cada día archivado o repetido (riesgo_<día>.json).
 - index_seguimiento.png: la tabla de lo que dijimos cada tarde y lo que pasó con el viento.
+- dias_archivados.png: la tabla de los días archivados (dias.html).
 - historial.png: el día a día desde 2022, e historial_<distribuidora>.png para cada red.
 - negocio_<bloque>.png: cada sección de la página de cifras (director, guardia, por año, peores días,
   retribución, sector, producción, límites), con todas las distribuidoras y con cada una por separado.

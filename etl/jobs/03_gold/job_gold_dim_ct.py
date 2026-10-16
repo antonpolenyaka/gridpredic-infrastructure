@@ -23,13 +23,13 @@ ShortName 0601), and the cells and switches of the CT hang from the same CT
 element. The anchor of an element is therefore its nearest ancestor of type
 144 (or of type 145 if there is none), and every tag below an anchor
 describes all the transformers of that CT. The element the anchor hangs from
-(the line or zone, "MONTANCHEZ" in /EODSLU/TORRE DE SANTA MARIA/MONTANCHEZ/
+(the line or zone, "MONTANCHEZ" in /<red>/TORRE DE SANTA MARIA/MONTANCHEZ/
 0601/06011:TRA) is its network group. A tag without element (the connection
 state of a device, for instance) takes the anchor most tags of its device
 have.
 
-Why the cuts are also used. In EOSA the switch that cuts a CT is usually a
-feeder breaker of a substation (CC/Estados/EPDSLU/S.T.R. CORIA/CAÑAVERAL/
+Why the cuts are also used. In our TedisNet copy the switch that cuts a CT is usually a
+feeder breaker of a substation (CC/Estados/<red>/S.T.R. CORIA/CAÑAVERAL/
 I.A.A.T./TORREJONCILLO 3), and that breaker does not sit above the CT in the
 functional hierarchy (the CT is under S.T.R. GARROVILLAS/CAÑAVERAL). The SCADA
 knows the electrical path because it floods the network graph. Until Gold
@@ -481,7 +481,7 @@ def build_dim(spark, params: dict):
         dim
         .withColumnRenamed("periodo_id", "periodo_id_vigente")
         # Power of the CT, imputed as Calser does when the installed power is
-        # 0 (37 % in EOSA, 48 % in Pitarch): administrative power first, then
+        # 0 (37 % in Distribuidora 1, 48 % in Distribuidora 2): administrative power first, then
         # the rated power of the transformer in the SCADA.
         .withColumn(
             "potencia_kva",

@@ -13,8 +13,8 @@ Two tables:
   of type 145 "TRAFO CT" under the same distribuidora. Not ExportCode and not
   type 144. The comparison is case sensitive, as the TedisNet collation.
 
-Nothing is imputed here. CT_POTENCIA_INSTAL is 0 in 37 % (EOSA) and 48 %
-(Pitarch) of the CTs: the rows are flagged with potencia_cero and Gold
+Nothing is imputed here. CT_POTENCIA_INSTAL is 0 in 37 % (Distribuidora 1) and 48 %
+(Distribuidora 2) of the CTs: the rows are flagged with potencia_cero and Gold
 decides how to impute, as Calser does with the administrative power.
 
 d_ct_scada also carries the electrical data of the transformer in TedisNet
