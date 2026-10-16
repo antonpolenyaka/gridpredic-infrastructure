@@ -1,164 +1,18 @@
 """
-Risk of the next day of every distribuidora: the crews of tomorrow.
+Risk of the next day for every distribuidora, with what is known the evening before.
 
-The hourly models (job_ml_horas_riesgo, job_ml_meteo_historia) look 1 - 3
-hours ahead with the weather already observed. The operator plans the crews
-the day before, with what is known that evening. This job asks how well the
-days with interruptions can be told apart with that, and how much a perfect
-forecast of the weather of the day would add (the reanalysis of the day
-itself, an upper bound of any real forecast).
+The hourly models (job_ml_horas_riesgo, job_ml_meteo_historia) look 1 - 3 hours ahead with the weather already
+observed; the operator plans tomorrow's crews the day before. This job measures how well the days with an
+interruption can be told apart with what is known that evening, and how much a perfect forecast would add (the
+reanalysis of D itself, an upper bound of any real forecast).
 
-Unit: distribuidora and day D (local time), from meteo_dia.desde to
-meteo_dia.hasta, without the days of analisis_red.dias_excluidos.
+One row per distribuidora and day. The labels, the feature blocks (cal_, hist_, ayer_, aviso_, dia_, ext_, prev_
+and the experimental ones), the horizons of two and three days, the variants and the outputs are described in
+docs/ml-riesgo-dia.md. The variant operativa is the one job_ml_riesgo_manana fits and scores every evening.
 
-Labels (fact_interrupciones_mt, variante principal, with the cause of
-l2_silver.f_incidencia_causa): y_dia = 1 when an interruption starts in some
-CT of the distribuidora on D; y_dia_meteo, the same without the causes of
-causas_no_meteo (upstream, blackout, third parties...); y_dia_varias, when
-incidencias_dia_varias or more incidents start on D (the busy days that need
-more than one crew). The models learn y_dia; the other two only measure them;
-n_dia, the number of incidents that start on D, is what the model poisson
-learns from (a count instead of a probability, scored on the same metrics).
-
-Features, every one known before D starts except the block dia:
-
-- cal_*: day of the week (sine and cosine), weekend, holiday (national or
-  Extremadura), day of the year (sine and cosine) and estacion.
-- hist_*: incidents of the distribuidora known in Calser (conocido_ts)
-  before D in the last 7, 30 and 365 days, and days since the last one.
-- ayer_*: the weather of D - 1 from the reanalysis, by day: strongest gust
-  and wind of the worst cell and of the mean of the cells weighted by their
-  CT, rain of the day (worst cell and mean), hottest hour, coldest mean
-  hour, mean humidity, lowest pressure and its biggest drop in 24 h, snow,
-  the strongest gust of the whole area (the size of the storm), the
-  active fires of FIRMS near the cells and the highest Fire Weather Index of
-  CEMS of the cells (when Gold has them; Gold gives every hour the index of
-  the day before, so dia_fwi_max is the one of D - 1, known that evening).
-- aviso_*: the warnings of AEMET for D (l2_silver.f_aviso_meteo) sent
-  before aviso_corte_h of D - 1: highest level (1 yellow, 2 orange, 3 red)
-  in the cells of the distribuidora, in total and for wind, rain,
-  thunderstorms and snow. 0 without warning, null before the archive starts
-  (18.06.2018). It is the only real forecast with a long archive.
-- aviso_det_* (block avisos_detalle): what those warnings announce and how
-  much they cover: the strongest gust (km/h) and the most rain (mm in 12 h
-  and in one hour) of their parametro, the most hours of D under a wind
-  warning and the share of the CT of the distribuidora in cells under a
-  wind warning, under any warning of wind, rain, thunderstorms or snow and
-  under a thunderstorm warning.
-- dia_*: the same daily weather as ayer_* for D itself, the perfect
-  forecast.
-- ext_*: how far the gusts of D go above the climate of each cell (the 98th
-  percentile of its hourly gusts before meteo.climatologia_hasta of Gold,
-  met_racha_clima_1h): the highest ratio of the worst cell and of the mean
-  of the cells weighted by their CT, and the sum over the hours of the CT
-  weighted max(0, ratio - 1)^3, the storm loss index of Klawa and Ulbrich;
-  and the days in a row up to D with the hottest hour of the worst cell at
-  calor_umbral_c or more. Like dia_*, they come from the reanalysis of D.
-- prev_*: the same daily weather for D from what ICON-EU forecast the day
-  before (metp1_* of Gold, Previous Runs API, from January 2024). It has no
-  history to train with, so it is never a block: the models of the variants
-  of variante_prevision (calendar, history, yesterday and the dia_* the
-  forecast also gives, with or without warnings and extremes) are fitted on
-  the reanalysis and then score the days of anios_prevision twice more, with
-  dia_* replaced by prev_*, raw and mapped to the distribution of the
-  reanalysis by quantiles (fitted on the other years of the forecast,
-  without the labels). The difference is what is lost going from a perfect
-  forecast to a real one. prev_ext_* are the extremes of the forecast (the
-  forecast gusts over the same climate of each cell, metp1_racha_clima_1h,
-  and the run of heat with the forecast hottest hour of D) and take the
-  place of ext_* the same way. meteo_dia.comparaciones_prevision compares
-  variants on the same weather of the day.
-- ext_fraccion_* (block extension, from the literature review of 14.10.2026:
-  the area under strong gusts matters more than the strongest point): the
-  share of the CT of the distribuidora whose cell has a gust at or above
-  its p98 (met_racha_fuerte_1h) and at or above 72 km/h (20 m/s,
-  met_racha_72_1h) in the worst hour of D, and the sum of that share over
-  the hours of D (CT-hours of strong gust). They come from the reanalysis
-  of D, and prev_ext_fraccion_* from the forecasts, like ext_*.
-- ext_int_* (block interacciones): the excess of the gust over 0.9 times the
-  p98 of its cell (the worst cell, max(0, ratio - 0.9)) times the rain of
-  the day before (what is known that evening), the rain of D, the leaf
-  season (April to October) and the summer (June to September). The
-  literature finds rain and season as multipliers of the gust, not as
-  effects of their own. ext_pend_* (block pendiente_red): the gust ratio
-  times each distribuidora, a slope of its own per network. Both have their
-  forecast twins (prev_ext_int_*, prev_ext_pend_*) built from the forecast
-  gust and rain, with the rain of the last day known at that horizon.
-- ext_dir_* (block direccion, only with --direccion): how far the wind of
-  the hours with gusts at or above the p98 of the cell blows from the
-  direction its strong gusts usually come from (the circular mean of the
-  reanalysis of the cell), in degrees: the CT weighted mean of the cells,
-  averaged over those hours of D (0 on a day without such an hour), and
-  that anomaly times the excess of the gust. There is no forecast of the
-  direction, so these stay from the reanalysis in the forecast comparison
-  (an upper bound).
-- seq_* (block sequia): the water balance of the 90 and 180 days before D
-  (rain minus the reference evapotranspiration of the reanalysis, per
-  distribuidora, ending on D - 1, known that evening) as a z-score of its
-  calendar month over the years before sequia_clima_hasta: a long dry spell
-  (dead trees, dry fuel) or a long wet one (soaked ground), the SPEI of the
-  drought literature computed from what Gold already has.
-- hie_horas (block hielo): the CT-hours of D with precipitation at a
-  temperature of 0,5 degrees or less (freezing rain or wet snow on the
-  conductors), from the reanalysis, with its forecast twin prev_hie_horas.
-- fen_* (block fenologia, with meteo_dia.fenologia.csv, the NDVI of MODIS
-  per cell of experimentos/fenologia/bajar_ndvi.py): the greenness of the
-  network as the latest 16 day composite published latencia_dias before D
-  (fen_ndvi), its anomaly against the same period of the years before
-  clima_hasta (fen_ndvi_anom) and its change over a month
-  (fen_ndvi_cambio_1m); and the gust excess times the greenness
-  (fen_int_racha_ndvi, the leaf measured instead of the calendar of the
-  interactions), with its forecast twin prev_fen_int_racha_ndvi.
-- hoja_* (block hoja, with meteo_dia.hoja.csv, the HRL of Copernicus per cell
-  of experimentos/arbolado/celdas_hrl.py): the broadleaved share of the
-  network (hoja_frondosa, CT weighted) and the gust excess times that share
-  in the leaf season (hoja_int_racha), with its forecast twins.
-- Two and three days ahead (HORIZONS): Gold also keeps what ICON-EU forecast
-  two days before (metp2_*, gusts and rain) and, once landed, three days
-  before (metp3_*). They give prev2_* / prev3_* (the daily weather and the
-  extremes of the forecast, prev2_ext_*, computed here from the climate of
-  each cell when Gold has no metp2_racha_clima_1h), the blocks dia_comun_48h
-  and dia_comun_72h (the dia_* those forecasts also give), the warnings of
-  AEMET sent before aviso_corte_h of D - 2 and D - 3 (aviso48_*, aviso72_*,
-  blocks avisos_48h and avisos_72h) and the last day of weather known that
-  evening (hace2_*, hace3_*, the weather of D - 2 and D - 3). A variant with
-  "horizonte": 2 (or 3) is scored in the forecast comparison with those
-  forecasts and warnings in place of the ones of the day before: what the
-  operator would have had two or three evenings before. The history
-  (hist_*) is the one known when D starts, a day or two later than that
-  evening; with retraso_conocido_dias of a week the difference is small.
-- Other weather models (meteo_dia.previsiones_extra, with
-  --previsiones-extra): the forecast of the day before of GFS, GEM or any
-  other model of the Previous Runs API, landed by
-  job_landing_meteo_openmeteo --fuente openmeteo_previo_<clave> and read
-  here from its Bronze table, joined per cell and hour (metp1<clave>_*) and
-  turned into the same daily weather and extremes (prev<clave>_*). They are
-  never features: the forecast comparison scores the variants of
-  variante_prevision also with each of them (prevision_<clave>) and with
-  the mean of all the models (prevision_media, prevision_media_cuantiles),
-  to measure what a second model, or the mean of several, adds to ICON-EU.
-
-Variants (meteo_dia.variantes): blocks, single variables of other blocks
-(variables) and first day of training. The variant operativa is the one that
-job_ml_riesgo_manana fits and scores every evening: of the day before it
-only takes the strongest gust and the rain, which are known that same
-evening. Every year Y is scored by models chosen and fitted only on the days
-before Y
-(rolling_evaluation of job_ml_horas_riesgo), with the strongest gust of the
-day before, of the day itself and the highest warning as references.
-
-Every variant also gets rango, the mean of the percentiles in the year of
-its logistic regression and its XGBoost.
-
-Metrics on the years every variant scored, against y_dia: PR-AUC of the
-days, lift, the share of the days with interruptions that falls in the 5,
-10 and 20 % of the days of each year with more risk (a crew on alert those
-days), PR-AUC by distribuidora and the block bootstrap by dates of the
-paired differences (meteo_dia.comparaciones).
-
-Outputs: ml_runs and ml_metricas with run_id dia_*, resumen.md,
-metricas.csv, comparacion.csv, diferencias.csv, anios.csv and filas.csv in
-exportar_dir/<run_id>/.
+Every year is scored by models chosen and fitted only on the days before it (rolling_evaluation of
+job_ml_horas_riesgo). The forecast comparison fits on the reanalysis and scores the days of anios_prevision again
+with what ICON-EU forecast the day before, raw and mapped to the reanalysis by quantiles.
 
     docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g \\
         --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py,/app/jobs/04_ml/job_ml_horas_riesgo.py \\
