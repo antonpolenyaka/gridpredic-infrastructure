@@ -78,7 +78,8 @@ CONFIG_CANDIDATES = [
     "/opt/airflow/config/04_ml/config_ml.json",
     os.path.join(HERE, "..", "..", "config", "04_ml", "config_ml.json"),
 ]
-SOURCES = ("prevision", "avisos", "ensemble", "aemet_municipios")
+SOURCES = ("prevision", "avisos", "ensemble", "aemet_municipios", "nao")
+NAO_URL = "https://ftp.cpc.ncep.noaa.gov/cwlinks/norm.daily.nao.cdas.z500.19500101_current.csv"
 AEMET_MUNICIPIOS_DEFAULTS = {
     "api": "https://opendata.aemet.es/opendata/api/prediccion/especifica/municipio/horaria/{ine}",
     "clave_env": "AEMET_API_KEY",
@@ -496,6 +497,24 @@ def land_aemet_municipios(fs, cfg: dict, folder: str, day: date) -> tuple:
     return done, failed, out
 
 
+def land_nao(fs, cfg: dict, folder: str) -> bool:
+    """The daily NAO index of NOAA CPC as it is this evening, in <folder>/nao.csv (the block nao of the day model)."""
+    url = (cfg.get("nao") or {}).get("url", NAO_URL)
+    try:
+        raw = fetch(url, retries=3, wait_s=20, timeout=120, label="NAO of NOAA CPC")
+    except Exception as error:  # noqa: BLE001
+        logger.warning("The NAO index did not land: %s", str(error)[:200])
+        return False
+    lines = raw.decode("utf-8", "replace").strip().splitlines()
+    if not lines or not lines[0].startswith("year,month,day"):
+        logger.warning("The NAO file does not look like the CSV of CPC: %s", lines[:1])
+        return False
+    with fs.open(f"{folder}/nao.csv", "w") as file:
+        file.write("\n".join(lines) + "\n")
+    logger.info("NAO index up to %s landed", lines[-1].split(",")[:3])
+    return True
+
+
 def write_json_pair(payload: dict, folder: str, name: str) -> bool:
     """<name>.json for the page and <name>_<day>.json for the verification, in the dashboard folder."""
     if not folder or not os.path.isdir(folder):
@@ -552,6 +571,9 @@ def main(argv=None, fs=None) -> int:
         if not done:
             return 2
         return 1 if failed > float(aemet_settings(cfg)["max_fallos"]) * (done + failed) else 0
+
+    if args.fuente == "nao":
+        return 0 if land_nao(fs, cfg, folder) else 1
 
     if args.fuente == "prevision":
         cells = study_cells(fs, load_meteo_config()["openmeteo"])
