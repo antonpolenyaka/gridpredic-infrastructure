@@ -133,7 +133,7 @@ def get(url: str, tok: str, timeout: float, label: str) -> bytes:
 
 
 def search(cfg: dict, tok: str, start: datetime, end: datetime) -> list:
-    """The ids of the products of the collection sensed between start and end (UTC)."""
+    """Ids of the collection products sensed between start and end (UTC)."""
     query = urllib.parse.urlencode({"format": "json", "pi": cfg["coleccion"], "c": 200, "si": 0,
                                     "dtstart": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
                                     "dtend": end.strftime("%Y-%m-%dT%H:%M:%SZ")})

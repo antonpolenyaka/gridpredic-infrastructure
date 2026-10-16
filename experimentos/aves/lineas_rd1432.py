@@ -26,7 +26,7 @@ ROW = re.compile(r"(?P<owner>" + "|".join(re.escape(o).replace(r",\ SL", r",?\s+
 
 
 def municipality(name: str) -> str:
-    """'Granja, La' -> 'La Granja', as the municipalities of the CT are written."""
+    """'Granja, La' pasa a 'La Granja', como se escriben los municipios de los CT."""
     name = name.strip()
     if ", " in name:
         base, article = name.rsplit(", ", 1)
