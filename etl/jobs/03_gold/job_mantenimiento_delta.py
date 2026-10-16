@@ -7,7 +7,7 @@ Nothing else in the project ran either, so MinIO kept every old file of the
 tables that are rewritten by month (features_ct_hora, labels_ct_hora,
 agg_medida_hora...) and thousands of small files in the CDC tables of Bronze.
 
-    spark-submit job_mantenimiento_delta.py [--bases l1_bronze,l2_silver,l3_gold] [--horas 168] [--sin-vacuum]
+    spark-submit job_mantenimiento_delta.py [--bases l1_bronze,l2_silver,l3_gold] [--horas 168] [--sin-vacuum] [--parar-a 18]
 
 A table that fails (a concurrent write of the streaming, say) is logged and
 skipped; the next week tries again.
@@ -16,6 +16,8 @@ skipped; the next week tries again.
 import argparse
 import logging
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from pyspark.sql import SparkSession
 
@@ -28,6 +30,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--bases", default="l1_bronze,l2_silver,l3_gold")
     parser.add_argument("--horas", type=int, default=168, help="VACUUM retention in hours (7 days, the Delta minimum)")
     parser.add_argument("--sin-vacuum", action="store_true", help="Only OPTIMIZE")
+    parser.add_argument("--parar-a", type=int, default=None,
+                        help="Local hour (Madrid) from which no new table is started, to leave Spark free for the evening")
     return parser.parse_args(argv)
 
 
@@ -59,6 +63,9 @@ def main(argv=None) -> int:
     before_files = after_files = 0
     for database in [b.strip() for b in args.bases.split(",") if b.strip()]:
         for name in delta_tables(spark, database):
+            if args.parar_a is not None and datetime.now(ZoneInfo("Europe/Madrid")).hour >= args.parar_a:
+                logger.info("Stopping at %s:00 before %s; the next run goes on", args.parar_a, name)
+                break
             start = time.time()
             try:
                 files, size = files_of(spark, name)

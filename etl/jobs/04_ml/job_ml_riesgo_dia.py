@@ -287,7 +287,7 @@ def derived_extent(weather, prefixes: list = None):
     return weather
 
 
-def drought_features(spark, weather, start: pd.Timestamp, end: pd.Timestamp, climatology_until: pd.Timestamp,
+def drought_features(weather, start: pd.Timestamp, end: pd.Timestamp, climatology_until: pd.Timestamp,
                      windows: dict = None) -> pd.DataFrame:
     """
     (distribuidora_id, fecha, seq_3m, seq_6m): the rain minus the reference
@@ -1027,7 +1027,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
         if "hie_horas" in ice_forecast.columns:
             pdf = pdf.merge(ice_forecast.rename(columns={"hie_horas": "prev_hie_horas"}),
                             on=["distribuidora_id", "fecha"], how="left")
-    drought = drought_features(spark, weather, start, end, pd.Timestamp(cfg.get("sequia_clima_hasta", "2022-01-01")))
+    drought = drought_features(weather, start, end, pd.Timestamp(cfg.get("sequia_clima_hasta", "2022-01-01")))
     drought_names = [c for c in drought.columns if c.startswith("seq_")]
     if drought_names:
         pdf = pdf.merge(drought, on=["distribuidora_id", "fecha"], how="left")

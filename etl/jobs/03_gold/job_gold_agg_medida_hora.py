@@ -269,7 +269,8 @@ def main():
         write_table(activity, ACTIVITY_TABLE, partition_by=["fecha_mes"], replace_where=condition)
 
         ambito = f"{lo:%Y-%m}"
-        written = spark.table(AGG_TABLE).where(
+        # The partition filter first, so the checks read only the months just written.
+        written = spark.table(AGG_TABLE).where(condition).where(
             (F.col("hora") >= ts_lit(lo)) & (F.col("hora") < ts_lit(hi))
         )
 
@@ -282,7 +283,7 @@ def main():
                    detalle=f"{row['claves']} keys, {row['muestras']} samples")
 
         hours = int((hi - lo).total_seconds() // 3600)
-        active = spark.table(ACTIVITY_TABLE).where(
+        active = spark.table(ACTIVITY_TABLE).where(condition).where(
             (F.col("hora") >= ts_lit(lo)) & (F.col("hora") < ts_lit(hi))
         ).select("hora").distinct().count()
 

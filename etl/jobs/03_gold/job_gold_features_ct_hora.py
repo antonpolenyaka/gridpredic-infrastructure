@@ -846,7 +846,9 @@ def main():
             replace_where=month_range_condition("fecha_mes", lo, hi),
         )
 
-        written = spark.table(TARGET_TABLE).where(in_range("hora", lo, hi))
+        # The partition filter first, so the check reads only the months just written.
+        written = (spark.table(TARGET_TABLE).where(month_range_condition("fecha_mes", lo, hi))
+                   .where(in_range("hora", lo, hi)))
         stats = written.agg(
             F.count(F.lit(1)).alias("filas"),
             F.sum("scada_activo").alias("activas"),

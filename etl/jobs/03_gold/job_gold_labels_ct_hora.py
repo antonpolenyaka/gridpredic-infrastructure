@@ -269,7 +269,8 @@ def main():
             replace_where=month_range_condition("fecha_mes", lo, hi),
         )
 
-        written = spark.table(TARGET_TABLE).where(
+        # The partition filter first, so the check reads only the months just written.
+        written = spark.table(TARGET_TABLE).where(month_range_condition("fecha_mes", lo, hi)).where(
             (F.col("hora") >= ts_lit(lo)) & (F.col("hora") < ts_lit(hi))
         )
 
