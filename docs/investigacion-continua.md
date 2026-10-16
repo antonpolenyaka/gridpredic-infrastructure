@@ -403,6 +403,17 @@ Era la primera variable de todo el cuaderno con el intervalo entero por encima d
 
 Con la previsión llevada por cuantiles, +0,001 [-0,013, +0,020], mejor en el 56 % de las réplicas.
 
+Sobre los días que tienen también la previsión a 48 h (`dia_naofrag3_20261016_1300`, como 3m):
+
+| variante | PR-AUC, años comunes (reanálisis) | dif. frente a `operativa` [IC 95 %] | PR-AUC con la previsión real | dif. [IC 95 %] | días con avería en el 10 % / 20 % (previsión real) |
+| --- | --- | --- | --- | --- | --- |
+| `operativa` (producción) | 0,131 | | 0,161 | | 46 % / 64 % |
+| NAO de D - 3 | 0,131 | +0,000 [-0,006, +0,006] | 0,158 | -0,002 [-0,015, +0,008] | 46 % / 64 % |
+| curva de fragilidad | 0,139 | +0,006 [-0,006, +0,022] | 0,162 | +0,001 [-0,019, +0,025] | 46 % / 64 % |
+| NAO de D - 3 y curva de fragilidad | 0,146 | +0,013 [-0,002, +0,030] | 0,169 | +0,007 [-0,013, +0,032] | 46 % / 64 % |
+
+La NAO sola no aporta, pero junto a la curva de fragilidad la combinación queda igual que con D - 2: +0,013 sobre el reanálisis (mejor en el 95 % de las réplicas) y +0,007 con la previsión real (75 %), sin subir la captura. No sabemos explicar bien por qué la NAO ayuda a la curva y no al modelo solo; con 84 días con avería puede ser ruido. Es la combinación que más se ha acercado a la regla y la primera que volveríamos a medir en 2027.
+
 **Lectura y decisión.** Con el retraso que de verdad tiene, la NAO no aporta nada: sobre el reanálisis la mejora desaparece y con la previsión real queda un poco por debajo. Casi toda la señal de la primera medida venía del día que todavía no se conoce, que es justo el día anterior a la víspera y se parece mucho al tiempo del día que se predice. No la pasamos a producción; `riesgo_manana.variante` sigue en `operativa`. La tarea `nao` de `dag_riesgo_manana` y `live_nao` de `job_ml_riesgo_manana` se quedan (la descarga son unos 600 kB y nunca bloquea la puntuación) para tener la serie al día y volver a medirla con la temporada de 2027. La lección vale para cualquier fuente nueva: antes de medirla hay que comprobar a qué hora se publica de verdad, no a la que suponemos.
 
 ## 4. Datos públicos de España que revisamos
