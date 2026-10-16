@@ -235,7 +235,7 @@ def history(per_ct: pd.DataFrame, grid: pd.DataFrame, dim: pd.DataFrame, level: 
     return out.fillna(0.0)
 
 
-def scada_counts(spark, dim: pd.DataFrame) -> pd.DataFrame:
+def scada_counts(spark) -> pd.DataFrame:
     df = read_table(spark, SCADA_TABLE, ["distribuidora_id", "ct_id", "inicio_ts", "es_microcorte", "es_maniobra",
                                          "es_corte_etiqueta"])
     if df is None:
@@ -329,7 +329,7 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
     grid = pd.concat(rows, ignore_index=True)
     grid = add_label_history(grid, yearly_events(data, keep), dim, last_year)
 
-    scada = scada_counts(spark, dim)
+    scada = scada_counts(spark)
     if not scada.empty:
         first_scada = int(scada["anio"].min())
         s = scada.assign(anio=scada["anio"] + 1)

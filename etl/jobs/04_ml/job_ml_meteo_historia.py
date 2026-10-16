@@ -76,7 +76,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import ml_metrics  # noqa: E402
-from calendario import easter, holiday_flags, holidays, season, working_days  # noqa: E402,F401
+from calendario import holiday_flags, season, working_days  # noqa: E402
 from job_ml_horas_riesgo import KEYS, distributor_weather, export, rolling_evaluation  # noqa: E402
 from job_ml_train import (  # noqa: E402
     IMPORTANCE_TABLE,

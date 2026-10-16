@@ -334,7 +334,7 @@ def gold_hours(spark, day: pd.Timestamp, days_before: int = 31) -> tuple:
     pdf["hora"] = pd.to_datetime(pdf["hora"])
     of_day = pdf["hora"].dt.floor("D") == day
     out = pdf[["celda_id", "hora"]].copy()
-    for variable, (name, low, high) in LIVE_VARIABLES.items():
+    for name, low, high in LIVE_VARIABLES.values():
         past = pd.to_numeric(pdf[f"met_{name}"], errors="coerce") if f"met_{name}" in pdf else pd.Series(np.nan, index=pdf.index)
         ahead = pd.to_numeric(pdf[f"metp1_{name}"], errors="coerce") if f"metp1_{name}" in pdf else pd.Series(np.nan, index=pdf.index)
         values = ahead.where(of_day, past)
