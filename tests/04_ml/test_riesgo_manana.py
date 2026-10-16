@@ -432,6 +432,8 @@ def config_path(workdir):
     config["riesgo_manana"]["dashboard_dir"] = os.path.join(workdir, "dashboard")
     # The outlook of pasado manana is off in production until the 72 h backtest is in; the tests keep it on.
     config["riesgo_manana"]["variante_pasado_manana"] = "operativa_48h"
+    # Production scores with operativa_nao; the fixture has no NAO file, so it keeps the plain variant.
+    config["riesgo_manana"]["variante"] = "operativa"
     config["riesgo_manana"]["riesgo_zonas"] = {"brigadas": {"1": 1, "2": 1}, "bases_fijas": {"1": ["Torre de Santa María"]}}
     # The names shown (the fixture has the distribuidoras 1 and 2, with Calser_EOSA and Calser_Pitarch as databases).
     config["riesgo_manana"]["nombres"] = {"1": "Distribuidora 1", "2": "Distribuidora 2"}
@@ -708,3 +710,22 @@ def test_the_index_of_the_dashboard_survives_a_broken_file(tmp_path):
     entry = index["dias"][0]
     assert entry["fecha_texto"] == "03.02.2026" and not entry["repetido"] and entry["ficheros"] == {}
     assert entry["distribuidoras"][0]["guardia_motivo"] == "nivel alto"
+
+
+def test_the_nao_of_the_evening_extends_the_file_of_the_repository(tmp_path):
+    base = tmp_path / "nao_diario.csv"
+    base.write_text("fecha,nao\n2026-10-12,0.5\n2026-10-13,0.8\n", encoding="utf-8")
+    folder = tmp_path / "vivo"
+    folder.mkdir()
+    fs = rm.LocalFiles()
+
+    # Without the file of the evening the configuration stays as it was.
+    assert rm.live_nao(fs, str(folder), {"csv": str(base)}) == {"csv": str(base)}
+
+    (folder / "nao.csv").write_text("year,month,day,nao_index_cdas\n2026,10,13,0.81\n2026,10,14,-0.2\n", encoding="utf-8")
+    cfg = {"nao": rm.live_nao(fs, str(folder), {"csv": str(base)})}
+    merged = pd.read_csv(cfg["nao"]["csv"])
+    assert list(merged["nao"]) == [0.5, 0.81, -0.2]
+
+    live = rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-16")]))
+    assert live["nao_d2"].iloc[0] == -0.2

@@ -66,6 +66,7 @@ import argparse
 import glob
 import hashlib
 import json
+import tempfile
 import math
 import os
 import re
@@ -99,6 +100,7 @@ from job_ml_riesgo_dia import (  # noqa: E402
     WARNINGS_TABLE,
     build_dataset,
     cell_weights,
+    nao_features,
     daily_weather,
     day_calendar,
     extremes,
@@ -515,6 +517,33 @@ def warning_features(warnings: pd.DataFrame, cells: pd.DataFrame, day: pd.Timest
 # ---------------------------------------------------------------------------
 # Lakehouse
 # ---------------------------------------------------------------------------
+
+def live_nao(fs, folder: str, nao_cfg: dict) -> dict:
+    """
+    meteo_dia.nao with csv pointing to a local copy of the file of the repository extended with the NAO landed this
+    evening (<folder>/nao.csv, the CSV of CPC). Without that file the configuration is returned as it was.
+    """
+    nao_cfg = dict(nao_cfg or {})
+    landed = f"{folder}/nao.csv"
+    try:
+        if not fs.exists(landed):
+            logger.info("No NAO landed in %s: the block nao stops at the file of the repository", landed)
+            return nao_cfg
+        with fs.open(landed, "r") as file:
+            fresh = pd.read_csv(file)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("NAO of %s not read (%s)", landed, str(error)[:200])
+        return nao_cfg
+    fresh = pd.DataFrame({"fecha": pd.to_datetime(fresh[["year", "month", "day"]]), "nao": fresh.iloc[:, 3]})
+    base = pd.read_csv(nao_cfg["csv"], parse_dates=["fecha"]) if nao_cfg.get("csv") and os.path.exists(nao_cfg["csv"]) \
+        else pd.DataFrame(columns=["fecha", "nao"])
+    merged = (pd.concat([base, fresh[fresh["fecha"] >= "2016-10-01"]]).drop_duplicates("fecha", keep="last")
+              .sort_values("fecha"))
+    path = os.path.join(tempfile.gettempdir(), "nao_diario_vivo.csv")
+    merged.to_csv(path, index=False)
+    logger.info("NAO index up to %s", merged["fecha"].max().date())
+    return {**nao_cfg, "csv": path}
+
 
 def cell_places(spark) -> pd.DataFrame:
     """(distribuidora_id, celda_id, municipio, n_ct): the municipalities of the CTs of every cell."""
@@ -1457,6 +1486,8 @@ def main(argv=None):
                                     "job_landing_vivo.py --fuente prevision first")
         spark = get_spark(config)
     cfg["hasta"] = f"{day:%Y-%m-%d}"
+    # The NAO landed this evening extends the file of the repository up to D - 2 (block nao).
+    cfg["nao"] = live_nao(fs, folder, cfg.get("nao"))
     pdf, blocks, _ = build_dataset(spark, config, cfg)
     missing_blocks = [b for b in variant["bloques"] if not blocks.get(b)]
     if missing_blocks:
@@ -1500,6 +1531,11 @@ def main(argv=None):
     logger.info("Warnings of AEMET (answered for every area: %s): %s CAP rows, %s in the cells of the network, %s in "
                 "force on %s", answered, len(cap_rows), len(warnings), len(warnings_of_day(warnings, day)), day.date())
     live = live.merge(warning_features(warnings, weights, day, dists), on="distribuidora_id", how="left")
+
+    teleconnection = nao_features(cfg, pd.Series([day]))
+    if len(teleconnection.columns) > 1:
+        for column in ("nao_d2", "nao_30d"):
+            live[column] = float(teleconnection[column].iloc[0])
 
     live["hora"] = day
     history = add_history(live, known, cfg["ventanas_historia_dias"])

@@ -307,3 +307,16 @@ def test_the_evening_does_not_wait_for_aemet_beyond_its_budget(fs, monkeypatch, 
     with open(tmp_path / "aemet.json", encoding="utf-8") as file:
         out = json.load(file)
     assert out["distribuidoras"][0]["municipios"] == len(landed) and out["distribuidoras"][0]["pico"]["racha_kmh"] == 40
+
+
+def test_the_nao_index_of_noaa(fs, monkeypatch):
+    text = "year,month,day,nao_index_cdas\n2026,10,13,0.806\n2026,10,14,-0.21\n"
+    monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: text.encode())
+    assert vivo.land_nao(fs, {}, "/vivo/20261016")
+    with fs.open("/vivo/20261016/nao.csv", "r") as file:
+        assert file.read().splitlines()[-1] == "2026,10,14,-0.21"
+
+    # Something that is not the CSV of CPC (a page of error) is not landed.
+    monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: b"<html>maintenance</html>")
+    assert not vivo.land_nao(fs, {}, "/vivo/20261017")
+    assert not fs.exists("/vivo/20261017/nao.csv")
