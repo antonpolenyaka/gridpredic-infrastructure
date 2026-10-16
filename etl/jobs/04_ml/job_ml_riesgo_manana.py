@@ -1534,7 +1534,7 @@ def main(argv=None):
 
     teleconnection = nao_features(cfg, pd.Series([day]))
     if len(teleconnection.columns) > 1:
-        for column in ("nao_d2", "nao_30d"):
+        for column in ("nao_dia", "nao_30d"):
             live[column] = float(teleconnection[column].iloc[0])
 
     live["hora"] = day

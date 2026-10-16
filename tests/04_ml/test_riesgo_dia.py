@@ -725,16 +725,16 @@ def test_the_deciduous_canopy_of_the_forest_map_multiplies_the_gust_in_the_leaf_
     assert set(blocks["hoja"]) == {"hoja_frondosa", "hoja_int_racha"}
 
 
-def test_the_nao_is_known_two_days_late_and_is_the_same_for_every_network(spark, tables, config_path):
+def test_the_nao_is_known_three_days_late_and_is_the_same_for_every_network(spark, tables, config_path):
     with open(config_path, encoding="utf-8") as file:
         config = json.load(file)
     pdf, blocks, _ = rd.build_dataset(spark, config, rd.settings(config))
-    assert set(blocks["nao"]) == {"nao_d2", "nao_30d"}
+    assert set(blocks["nao"]) == {"nao_dia", "nao_30d"}
     nao = pd.read_csv(json.load(open(config_path))["meteo_dia"]["nao"]["csv"], parse_dates=["fecha"]).set_index("fecha")["nao"]
     day = pd.Timestamp("2024-03-10")
     row = pdf[pdf["fecha"] == day]
-    assert row["nao_d2"].nunique() == 1 and row["nao_d2"].iloc[0] == pytest.approx(nao[day - pd.Timedelta(days=2)])
-    assert row["nao_30d"].iloc[0] == pytest.approx(nao[day - pd.Timedelta(days=31): day - pd.Timedelta(days=2)].mean())
+    assert row["nao_dia"].nunique() == 1 and row["nao_dia"].iloc[0] == pytest.approx(nao[day - pd.Timedelta(days=3)])
+    assert row["nao_30d"].iloc[0] == pytest.approx(nao[day - pd.Timedelta(days=32): day - pd.Timedelta(days=3)].mean())
 
 
 def test_the_regimes_and_the_fragility_curve_of_the_gust(spark, tables, config_path):

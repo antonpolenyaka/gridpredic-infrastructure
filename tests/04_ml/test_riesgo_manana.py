@@ -727,5 +727,8 @@ def test_the_nao_of_the_evening_extends_the_file_of_the_repository(tmp_path):
     merged = pd.read_csv(cfg["nao"]["csv"])
     assert list(merged["nao"]) == [0.5, 0.81, -0.2]
 
-    live = rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-16")]))
-    assert live["nao_d2"].iloc[0] == -0.2
+    live = rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-17")]))
+    assert live["nao_dia"].iloc[0] == -0.2
+    # If CPC did not update that afternoon, the day before stands in.
+    assert rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-18")]))["nao_dia"].iloc[0] == -0.2
+    assert pd.isna(rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-19")]))["nao_dia"].iloc[0])
