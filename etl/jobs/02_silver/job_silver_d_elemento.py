@@ -62,7 +62,7 @@ PARAMETROS_TABLES = {
 DISTRIBUTOR_PARAM_CODE = "DistributorId"
 
 # SystemElements.Name holds the full hierarchical path of the element, not a
-# short name: "/EODSLU/CASAS DEL MONTE/.../26011:TRA". Only the last segment
+# short name: "/<red>/CASAS DEL MONTE/.../26011:TRA". Only the last segment
 # carries the ":<type>" suffix, so comparing two paths means stripping it.
 # The short name lives in its own column, ShortName.
 PATH_SEPARATOR = "/"
@@ -95,8 +95,8 @@ def first_path_segment(path):
     """
     Returns the first segment of a hierarchical path, without the leading
     separator and without the type suffix a leaf segment carries. A
-    distribuidora root is "/EODSLU:DIS" while its elements hang from
-    "/EODSLU/...", so both only line up once the suffix is removed.
+    distribuidora root is "/<red>:DIS" while its elements hang from
+    "/<red>/...", so both only line up once the suffix is removed.
     """
     segment = element_at(
         split(

@@ -599,7 +599,7 @@ def easter_sunday(year: int) -> date:
 def holidays(first_year: int, last_year: int, params: dict) -> set:
     """
     National holidays plus the regional ones of Extremadura that the
-    configuration lists. LibElectricCalendarDates only has 9 rows in EOSA, so
+    configuration lists. LibElectricCalendarDates only has 9 rows in our TedisNet copy, so
     the calendar is computed here. Local holidays of each municipality are
     not included.
     """

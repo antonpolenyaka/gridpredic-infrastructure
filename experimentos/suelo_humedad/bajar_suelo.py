@@ -5,7 +5,7 @@ suelo a 0-7 y 7-28 cm y temperatura. Es la entrada de analizar.py.
 
     python experimentos/suelo_humedad/bajar_suelo.py salida.csv [2021-10-01 2026-08-05]
 
-Los puntos son cabeceras y zonas con CT de cada red (3 = EOSA, 2 = Pitarch);
+Los puntos son cabeceras y zonas con CT de cada red (3 = Distribuidora 1, 2 = Distribuidora 2);
 con cinco puntos la descarga son unos 50 MB y un par de minutos.
 """
 
