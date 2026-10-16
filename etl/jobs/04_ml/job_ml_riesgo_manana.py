@@ -585,7 +585,7 @@ def save_prediction(spark, pdf: pd.DataFrame, table: str, day: pd.Timestamp, col
 
 
 # ---------------------------------------------------------------------------
-# Zones (riesgo_zonas): where, when, why, how much and the crews
+# Zones and crews (riesgo_zonas)
 # ---------------------------------------------------------------------------
 
 def gold_cell_days(spark) -> pd.DataFrame:

@@ -20,13 +20,13 @@ tested on small synthetic data.
   exposure and local weather; they do not say which line will break.
 - The split keeps the probability of the day. The zone scores are rescaled
   (rescale_to_day) so that the probability that some zone fails equals the
-  probability of the day of the distribuidora, the one that is validated.
+  daily probability of the distribuidora, the one that is validated.
 - Municipalities and CTs inherit the risk of their lines (municipality_risk,
   ct_risk): a CT has the probability of its line times the share of the
   incidents of the line that cut it (shrunk towards the mean of the line).
 - When: the hours of the day with the forecast gust near its peak
   (risk_window). Three of five incidents of weather start within three
-  hours of the strongest gust of the day of their cell, more on the windy
+  hours of their cell's strongest gust of the day, more on the windy
   days (lag_stats, computed again every evening).
 - Why: the mix of causes of the incidents of days like tomorrow (cause_mix),
   by the strongest forecast gust: with gusts of 70 km/h or more, half of
