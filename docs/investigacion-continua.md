@@ -381,22 +381,29 @@ Sobre el reanálisis de los años comunes (2022 - 2026), la curva da 0,139 de PR
 
 **De dónde sale.** Del informe de fuentes gratuitas del 16.10: el índice NAO diario de NOAA CPC (dominio público, desde 1950). Una NAO negativa baja la trayectoria de las borrascas atlánticas hacia la Península, así que es una señal de "semana de temporales" que no depende de la previsión del día. Es la misma para las tres redes.
 
-**Diseño.** `etl/config/01_bronze/nao_diario.csv` (desde 10.2016) y bloque `nao` en `job_ml_riesgo_dia.py`: `nao_d2`, el valor de D - 2 (CPC publica con uno o dos días de retraso, así que es lo que se sabe la tarde anterior), y `nao_30d`, la media de los 30 días que acaban ahí. Variantes `operativa_nao` y `operativa_nao_fragilidad` (con la curva de 3o), y `operativa_48h` en la misma ejecución.
+**Diseño.** `etl/config/01_bronze/nao_diario.csv` (desde 10.2016) y bloque `nao` en `job_ml_riesgo_dia.py`: el último valor del índice que se conoce la tarde anterior y la media de los 30 días que acaban ahí. Variantes `operativa_nao` y `operativa_nao_fragilidad` (con la curva de 3o), y `operativa_48h` en la misma ejecución.
 
-**Resultados.** Dos ejecuciones: `dia_nao_20261016_0907` (todos los días con la previsión de la víspera) y `dia_naofrag_20261016_0938` (los días que tienen también la previsión a 48 h, como 3m).
+**Primera medida, con un día de más.** La primera versión tomaba el valor de D - 2 (`nao_d2`), pensando que CPC publica con uno o dos días de retraso. Dos ejecuciones: `dia_nao_20261016_0907` (todos los días con la previsión de la víspera) y `dia_naofrag_20261016_0938` (los días que tienen también la previsión a 48 h, como 3m).
 
 | variante | PR-AUC, años comunes (reanálisis) | dif. frente a `operativa` [IC 95 %] | PR-AUC con la previsión real | dif. [IC 95 %] | días con avería en el 10 % / 20 % (previsión real) |
 | --- | --- | --- | --- | --- | --- |
 | `operativa` (producción) | 0,131 | | 0,161 | | 46 % / 64 % |
-| NAO | 0,137 | +0,004 [+0,001, +0,016] | 0,162 | +0,002 [-0,007, +0,008] | 46 % / 65 % |
+| NAO de D - 2 | 0,137 | +0,004 [+0,001, +0,016] | 0,162 | +0,002 [-0,007, +0,008] | 46 % / 65 % |
 | curva de fragilidad | 0,139 | +0,006 [-0,006, +0,022] | 0,162 | +0,001 [-0,019, +0,025] | 46 % / 64 % |
-| NAO y curva de fragilidad | 0,147 | +0,013 [-0,002, +0,031] | 0,169 | +0,007 [-0,013, +0,032] | 45 % / 65 % |
+| NAO de D - 2 y curva de fragilidad | 0,147 | +0,013 [-0,002, +0,031] | 0,169 | +0,007 [-0,013, +0,032] | 45 % / 65 % |
 
-Con la previsión llevada por cuantiles, la NAO da 0,164 frente a 0,160 (+0,004 [-0,001, +0,013], mejor en el 94 % de las réplicas). Por años, sobre el reanálisis, la NAO gana en 2023, 2024, 2025 y 2026 (0,139 frente a 0,123) y empata en 2022; con la curva de fragilidad, 2022 cae (0,116 frente a 0,139) y los otros cuatro suben.
+Era la primera variable de todo el cuaderno con el intervalo entero por encima de cero, aunque solo sobre el reanálisis, y el 16.10 por la mañana decidimos pasarla a producción.
 
-**Lectura.** Es la primera variable de todo el cuaderno cuyo intervalo queda entero por encima de cero, aunque sea solo sobre el reanálisis y por poco. Con la previsión real la mejora es la misma en tamaño pero con el intervalo cruzando el cero, y la captura solo sube un día en el 20 %. No cumple la regla del apartado 1 al pie de la letra, porque con la previsión real el intervalo cruza el cero.
+**El retraso real.** Al montar la descarga de la tarde miramos cuándo se actualiza el fichero de CPC: el 15.10 a las 13:55 UTC, con datos hasta el 13.10. Es decir, se publica sobre las 14:00 UTC con los datos de dos días antes, y a las 20:30 de la víspera el último valor que existe es el de D - 3, no el de D - 2. La primera medida usaba un día de NAO que a esa hora todavía no se conoce. Lo corregimos (`nao_dia`, `meteo_dia.nao.retraso_dias = 3`, con un día de relleno si CPC no actualiza una tarde) y lo volvimos a medir: `dia_nao3_20261016_1252`.
 
-**Decisión (16.10.2026).** Aun así la pasamos a producción, sola: es la única variable de todo el cuaderno con el intervalo por encima de cero en algún escenario, no empeora ningún año, no depende de la previsión y cuesta una descarga de unos 600 kB cada tarde. La ejecución de la tarde puntúa con `operativa_nao` (`riesgo_manana.variante`); la tarea `nao` de `dag_riesgo_manana` baja el fichero de CPC a `00_landing/vivo/<día>/nao.csv` y `job_ml_riesgo_manana` lo junta con `nao_diario.csv` antes de entrenar. Si NOAA no responde la tarea se salta y el día se puntúa con la NAO que haya (con dos días de retraso basta el fichero del repositorio hasta que caduca; después el modelo toma la mediana). La curva de fragilidad, y la NAO con la curva (+0,013 sobre el reanálisis, mejor en el 95 % de las réplicas), quedan como candidatas para la temporada de 2027.
+| variante | PR-AUC, años comunes (reanálisis) | dif. frente a `operativa` [IC 95 %] | PR-AUC con la previsión real | dif. [IC 95 %] | días con avería en el 10 % / 20 % (previsión real) |
+| --- | --- | --- | --- | --- | --- |
+| `operativa` (producción) | 0,131 | | 0,156 | | 45 % / 64 % |
+| NAO de D - 3 | 0,131 | +0,000 [-0,006, +0,006] | 0,153 | -0,003 [-0,015, +0,008] | 46 % / 64 % |
+
+Con la previsión llevada por cuantiles, +0,001 [-0,013, +0,020], mejor en el 56 % de las réplicas.
+
+**Lectura y decisión.** Con el retraso que de verdad tiene, la NAO no aporta nada: sobre el reanálisis la mejora desaparece y con la previsión real queda un poco por debajo. Casi toda la señal de la primera medida venía del día que todavía no se conoce, que es justo el día anterior a la víspera y se parece mucho al tiempo del día que se predice. No la pasamos a producción; `riesgo_manana.variante` sigue en `operativa`. La tarea `nao` de `dag_riesgo_manana` y `live_nao` de `job_ml_riesgo_manana` se quedan (la descarga son unos 600 kB y nunca bloquea la puntuación) para tener la serie al día y volver a medirla con la temporada de 2027. La lección vale para cualquier fuente nueva: antes de medirla hay que comprobar a qué hora se publica de verdad, no a la que suponemos.
 
 ## 4. Datos públicos de España que revisamos
 
