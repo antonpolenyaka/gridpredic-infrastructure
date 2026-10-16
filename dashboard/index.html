@@ -12,6 +12,11 @@
   .perfil-leyenda { margin-top: var(--s-2); }
   .mapa-panel .panel-b, .perfil-panel .panel-b { padding-top: var(--s-2); }
   .perfil-panel .verificacion { margin-top: var(--s-3); }
+  /* On a phone the tables of the last days keep a narrow date column and readable cells, and scroll sideways. */
+  @media (max-width: 560px) {
+    #diario th:first-child, #diario td:first-child, section.seguimiento th:first-child, section.seguimiento td:first-child { min-width: 96px; }
+    #diario td:not(:first-child) { min-width: 190px; }
+  }
 </style>
 </head>
 <body>
@@ -23,7 +28,7 @@
     <a href="historial.html">Día a día 2022 - 2026</a>
     <a href="negocio.html">Negocio y cifras</a>
   </div>
-  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
+  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a></span>
 </nav>
 <header class="page">
   <div class="aurora" data-parallax-layer aria-hidden="true"></div>
@@ -46,9 +51,33 @@
   "use strict";
   const COLORS = { bajo: "#2f7a4b", medio: "#d9a400", alto: "#d9641a", "muy alto": "#bf2a2a" };
   const cls = (nivel) => (nivel || "bajo").replace(" ", "-");
-  const pct = (x, d = 1) => (x == null || isNaN(x)) ? "" : (100 * x).toFixed(d).replace(".", ",") + " %";
-  const num = (x, d = 0) => (x == null || isNaN(x)) ? "" : Number(x).toFixed(d).replace(".", ",");
+  // Numbers in Spanish: decimal comma and a dot every three digits, also with four digits (8.880, not 8880).
+  const num = (x, d = 0) => {
+    if (x == null || isNaN(x)) return "";
+    const [whole, dec] = Math.abs(Number(x)).toFixed(d).split(".");
+    const sign = Number(x) < 0 && Number(Math.abs(Number(x)).toFixed(d)) !== 0 ? "-" : "";
+    return sign + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (dec ? "," + dec : "");
+  };
+  // The sign of percent never goes to the next line on its own.
+  const pct = (x, d = 1) => (x == null || isNaN(x)) ? "" : num(100 * x, d) + "\u00a0%";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  // "a, b y c".
+  const lista = (items) => items.length > 1 ? items.slice(0, -1).join(", ") + " y " + items[items.length - 1] : items.join("");
+  const mayuscula = (s) => String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
+  // "a la 1:00", "a las 15:00".
+  const aLas = (h) => (Number(h) === 1 ? "a la " : "a las ") + h + ":00";
+  // The live files stamp their time in UTC ("2026-10-16T12:20Z"); the page says it in the time of the peninsula, like
+  // the hours of the profile. Without a date that can be read, the stamp as it comes.
+  function horaLocal(iso) {
+    const t = new Date(iso);
+    if (!iso || isNaN(t)) return String(iso || "").slice(11, 16) + " UTC";
+    try { return t.toLocaleTimeString("es-ES", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit" }); }
+    catch (e) { return String(iso).slice(11, 16) + " UTC"; }
+  }
+  // Three slips of the texts that the live jobs write are put right here: the internal name of the ensemble model,
+  // "1 celdas" or "1 municipios", and the decimal point of the millimetres and the km/h.
+  const limpiar = (s) => String(s || "").replace(/\bicon_eu(_eps)?\b/g, "ICON-EU EPS").replace(/\b1 (celda|municipio)s\b/g, "1 $1")
+    .replace(/(\d)\.(\d+)(?= ?(mm|km\/h|%))/g, "$1,$2");
 
   function nivelPill(nivel) { return `<span class="nivel ${cls(nivel)}">${esc(nivel || "bajo")}</span>`; }
 
@@ -58,11 +87,22 @@
     const o = outlook && (outlook.distribuidoras || []).find((x) => x.id === d.id);
     if (!o) return "";
     const extra = [o.racha_max_kmh != null ? `racha prevista ${num(o.racha_max_kmh)} km/h` : "", o.aviso_max_nivel >= 1 ? "aviso de AEMET ya emitido" : ""].filter(Boolean).join(", ");
-    return `<p class="pasado-bloque"><b>Pasado mañana, ${esc(outlook.fecha_texto || outlook.fecha)}</b> ${nivelPill(o.nivel)} ${pct(o.probabilidad)}${extra ? ` (${extra})` : ""} <span>orientación a dos días</span></p>`;
+    return `<p class="pasado-bloque"><b>${esc(diaRelativo(outlook.fecha))}, ${esc(outlook.fecha_texto || outlook.fecha)}</b> ${nivelPill(o.nivel)} ${pct(o.probabilidad)}${extra ? ` (${extra})` : ""} <span>orientación a dos días</span></p>`;
   }
 
   const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
   function diaSemana(iso) { const d = new Date(iso + "T00:00:00"); return isNaN(d) ? "" : DIAS_SEMANA[d.getDay()]; }
+  function diasDesdeHoy(iso) {
+    const t = new Date(), day = new Date(iso + "T00:00:00");
+    return isNaN(day) ? null : Math.round((day - new Date(t.getFullYear(), t.getMonth(), t.getDate())) / 86400000);
+  }
+  // The day of the outlook named from today: during the day the outlook of the evening before is already tomorrow.
+  // An archived day keeps the words of its evening.
+  function diaRelativo(iso) {
+    if (DIA) return "Pasado mañana";
+    const diff = diasDesdeHoy(iso);
+    return diff === 0 ? "Hoy" : diff === 1 ? "Mañana" : diff === 2 ? "Pasado mañana" : mayuscula(diaSemana(iso)) || "El día";
+  }
 
   function cabecera(data) {
     const f = data.fuentes || {};
@@ -78,10 +118,14 @@
     let aviso = document.getElementById("vejez");
     if (!aviso) { aviso = document.createElement("div"); aviso.id = "vejez"; aviso.className = "rayos vejez"; document.getElementById("main").insertAdjacentElement("beforebegin", aviso); }
     if (DIA) {
-      aviso.innerHTML = `<b>Día repetido</b>: lo que el sistema habría dicho la tarde del día anterior con la previsión de ICON-EU y los avisos de AEMET que había entonces (${esc(DIA.slice(6, 8))}.${esc(DIA.slice(4, 6))}.${esc(DIA.slice(0, 4))}). Lo vivo (rayos, estaciones, próximas horas) no aplica a este día. <a href="index.html">Volver al riesgo de mañana</a> o <a href="dias.html">ver otros días archivados</a>.`;
+      const day = `${esc(DIA.slice(6, 8))}.${esc(DIA.slice(4, 6))}.${esc(DIA.slice(0, 4))}`;
+      aviso.innerHTML = (REPETIDO
+        ? `<b>Día repetido</b>: lo que el sistema habría dicho la tarde anterior al ${day} con la previsión de ICON-EU y los avisos de AEMET que había entonces.`
+        : `<b>Día archivado</b>: lo que dijo el sistema la tarde anterior al ${day}, tal como lo vio la guardia.`)
+        + ` Lo vivo (rayos, estaciones, próximas horas) no aplica a este día. <a href="index.html">Volver al riesgo de mañana</a> o <a href="dias.html">ver otros días archivados</a>.`;
       aviso.style.display = "";
     } else if (diff < 0) {
-      aviso.innerHTML = `<b>Este riesgo es del ${esc(data.fecha_texto || data.fecha)}</b>: la ejecución de anoche no ha dejado un riesgo nuevo. Mira dag_riesgo_manana en <a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a> o lanza la tarea a mano. Los días anteriores están en <a href="dias.html">Días archivados</a>.`;
+      aviso.innerHTML = `<b>Este riesgo es del ${esc(data.fecha_texto || data.fecha)}</b>: la ejecución de anoche no ha dejado un riesgo nuevo. Mira dag_riesgo_manana en <a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a> o lanza la tarea a mano. Los días anteriores están en <a href="dias.html">Días archivados</a>.`;
       aviso.style.display = "";
     } else {
       aviso.style.display = "none";
@@ -91,8 +135,10 @@
     const withGuard = (data.distribuidoras || []).filter((d) => d.guardia);
     if (guard && withGuard.length) {
       const reinforce = withGuard.filter((d) => d.guardia.reforzar), normal = withGuard.filter((d) => !d.guardia.reforzar);
-      guard.innerHTML = (reinforce.length ? `<b>Guardia reforzada</b> en ${reinforce.map((d) => `${esc(d.nombre)} (${esc(d.guardia.motivo)})`).join(", ")}` : "<b>Guardia normal</b> en todas las redes")
-        + (reinforce.length && normal.length ? `; normal en ${normal.map((d) => esc(d.nombre)).join(", ")}` : "") + ".";
+      // One sentence in one box, so a narrow screen wraps it as text: "en Distribuidora 1 por aviso de tormenta de AEMET (amarillo)".
+      const why = (d) => esc(d.nombre) + (d.guardia.motivo ? " por " + esc(String(d.guardia.motivo).replace(/; /g, " y ")) : "");
+      guard.innerHTML = "<span>" + (reinforce.length ? `<b>Guardia reforzada</b> en ${reinforce.map(why).join("; en ")}` : "<b>Guardia normal</b> en todas las redes")
+        + (reinforce.length && normal.length ? `; normal en ${lista(normal.map((d) => esc(d.nombre)))}` : "") + ".</span>";
       guard.classList.toggle("guardia-si", reinforce.length > 0);
       guard.style.display = "";
     } else if (guard) {
@@ -103,7 +149,7 @@
     const outlook = data.pasado_manana;
     if (after && outlook && (outlook.distribuidoras || []).length) {
       const items = outlook.distribuidoras.map((d) => `<span>${esc(d.nombre)} ${nivelPill(d.nivel)} ${pct(d.probabilidad, 0)}${d.aviso_max_nivel >= 1 ? ", con aviso de AEMET" : ""}</span>`);
-      after.innerHTML = `<b>Pasado mañana, ${esc(outlook.fecha_texto || outlook.fecha)}</b> (orientación a dos días, sin parte de guardia) ${items.join("")} <span title="${esc(outlook.nota || "")}">Por qué es orientativo</span>`;
+      after.innerHTML = `<span><b>${esc(diaRelativo(outlook.fecha))}, ${esc(outlook.fecha_texto || outlook.fecha)}</b> (orientación a dos días, sin parte de guardia)</span> ${items.join("")} <span title="${esc(outlook.nota || "")}">Por qué es orientativo</span>`;
       after.style.display = "";
     } else if (after) {
       after.style.display = "none";
@@ -114,20 +160,25 @@
     if (f.avisos_texto) meta.push(["Avisos de AEMET", f.avisos_texto]);
     if (f.calser_hasta) meta.push(["Calser", "hasta el " + f.calser_hasta + (f.historia_al_dia ? "" : " (historia de incidencias no al día)")]);
     if (data.modelo) meta.push(["Modelo", `${data.modelo.descripcion || ""}, entrenado con ${num(data.modelo.dias)} días de distribuidora hasta el ${data.modelo.entrenado_hasta}`]);
-    if (data.generado) meta.push(["Generado", data.generado + (data.run_id ? ", ejecución " + data.run_id : "")]);
+    const run = String(data.run_id || "");
+    const kind = run.startsWith("scheduled") ? "ejecución programada de las 20:30" : run.startsWith("manual") ? "ejecución lanzada a mano" : run ? "ejecución " + run : "";
+    if (data.generado) meta.push(["Generado", data.generado + (kind ? ", " + kind : "")]);
     document.getElementById("fuentes").innerHTML = meta.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("");
     if (window.innerWidth >= 1024) document.getElementById("meta").open = true;
     const acciones = document.getElementById("acciones");
     acciones.innerHTML = "";
     const sheet = DIA ? `data/parte_guardia_${DIA}.xlsx` : "data/parte_guardia.xlsx";
-    fetch(sheet, { method: "HEAD", cache: "no-store" }).then((r) => {
+    // An archived day whose entry in the index has no shift sheet does not ask for it.
+    if (!(FICHEROS && !FICHEROS.parte_guardia)) fetch(sheet, { method: "HEAD", cache: "no-store" }).then((r) => {
       if (r.ok) acciones.insertAdjacentHTML("afterbegin", `<a class="boton primario" href="${sheet}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0 3-3M8 10 5 7M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Parte de guardia (Excel)</a>`);
     }).catch(() => {});
     fetch("data/historico.json", { method: "HEAD", cache: "no-store" }).then((r) => {
       if (r.ok) acciones.insertAdjacentHTML("beforeend", '<a class="boton" href="historial.html">Lo que habría dicho desde 2022</a><a class="boton" href="negocio.html">GridPredic en cifras</a>');
     }).catch(() => {});
-    document.getElementById("pie").textContent = "Generado el " + (data.generado || "") + ". Mapa: OpenStreetMap (ODbL). " + (data.reglas && data.reglas.texto ? data.reglas.texto : "")
-      + " Próximas 3 h por línea: regla sobre la probabilidad del día (el 84 % de las averías de los días de alerta de 2024 - 2026 empiezan en la franja; en el pico de racha, el 62 % de las averías por tiempo a menos de 3 h; rayos a menos de 10 km en la hora previa, 15 veces más averías): ordena las líneas para las próximas horas, no es una probabilidad calibrada.";
+    // The rule of the evening counts the incidents of meteorology (causas-incidencias.md, 62 % of 240), not only the wind.
+    const rule = data.reglas && data.reglas.texto ? data.reglas.texto.replace("averías por viento", "averías por meteorología") : "";
+    document.getElementById("pie").textContent = "Generado el " + (data.generado || "") + ". Mapa: OpenStreetMap (ODbL). " + rule
+      + (DIA ? "" : " Próximas 3 h por línea: una regla sobre la probabilidad del día con la franja (el 84 % de las averías de los días de alerta de 2024 - 2026 empiezan dentro de ella), la racha medida en el pico previsto y los rayos a menos de 10 km en la hora previa (15 veces más averías). Sirve para ordenar las líneas de las próximas horas; no es una probabilidad calibrada.");
   }
 
   function perfilSvg(perfil, franja, observado, banda, aemet) {
@@ -198,7 +249,7 @@
       <td>${esc(z.nombre)}${extra}</td>
       <td>${nivelPill(z.nivel)}</td><td class="num">${pct(z.probabilidad)}</td><td class="num">${pct(z.parte, 0)}</td>
       <td class="num">${num(z.n_ct)}</td><td class="num">${num(z.abonados)}</td><td class="num">${num(z.clientes_esperados, 1)}</td><td class="num">${num(z.racha_max)}</td>
-      <td class="num">${num(z.hist_365d)}</td><td class="ahora" data-dist="${idx}" data-zona="${i}"></td><td class="num prox3" data-dist="${idx}" data-zona="${i}"></td></tr>`;
+      <td class="num">${num(z.hist_365d)}</td>${DIA ? "" : `<td class="ahora" data-dist="${idx}" data-zona="${i}"></td><td class="num prox3" data-dist="${idx}" data-zona="${i}"></td>`}</tr>`;
     }).join("");
     return `<div class="scroll"><table><thead><tr><th>Zona (línea)</th><th>Nivel</th><th class="num">Prob.</th><th class="num">Parte del riesgo</th><th class="num">CT</th><th class="num">Clientes</th><th class="num">Clientes esp.</th><th class="num">Racha (km/h)</th><th class="num">Inc. último año</th>${DIA ? "" : `<th>Ahora</th><th class="num" title="Regla con lo que hay en vivo sobre el riesgo del día: ver el pie de página">Próx. 3 h</th>`}</tr></thead><tbody>${rows}</tbody></table></div>`;
   }
@@ -279,10 +330,14 @@
   function brigadas(b) {
     if (!b || !b.bases || !b.bases.length) return "";
     const bases = b.bases.map((x) => `<li><b>${esc(x.municipio)}</b>: cubre ${num(x.cubre_ct)} CT (${pct(x.parte_riesgo, 0)} del riesgo), llegada media ${num(x.llegada_media_min)} min${x.llegada_max_min != null ? ", máxima " + num(x.llegada_max_min) : ""}` + (x.municipios && x.municipios.length ? `<br><span class="notas">cubre ${esc(x.municipios.slice(0, 8).join(", "))}${x.municipios.length > 8 ? " y " + (x.municipios.length - 8) + " más" : ""}</span>` : "") + "</li>").join("");
-    const curve = (b.curva || []).map((c) => `${c.n}: ${num(c.llegada_media_min)} min`).join(" · ");
-    return `<div class="brigada"><p class="texto">Con ${b.n} brigada${b.n > 1 ? "s" : ""}, las bases que minimizan la llegada al riesgo de mañana (tiempos: ${esc(b.tiempos || ("carretera a " + b.velocidad_kmh + " km/h"))}):</p><ul>${bases}</ul>
+    const curve = (b.curva || []).length > 1 ? lista(b.curva.map((c) => `${num(c.llegada_media_min)} min con ${c.n}`)) : "";
+    // The times come as "carretera (OSRM sobre OpenStreetMap)" or "línea recta por 1.3 a 60 km/h".
+    const times = String(b.tiempos || ("carretera a " + b.velocidad_kmh + " km/h")).replace(/(\d)\.(\d)/g, "$1,$2");
+    // The files written before 16.10.2026 said "guardia normal" here even when a warning reinforced the guard.
+    const where = String(b.posicionamiento || "").replace("sin franja de viento: guardia normal, con las bases propuestas si hay que elegir", "sin franja de viento; si hay que elegir, las bases propuestas");
+    return `<div class="brigada"><p class="texto">Con ${b.n} brigada${b.n > 1 ? "s" : ""}, las bases que minimizan la llegada al riesgo del día, con tiempos de ${esc(times)}:</p><ul>${bases}</ul>
       <p class="texto">Llegada media ponderada por el riesgo: <b>${num(b.llegada_media_min)} min</b>; el ${pct(b.riesgo_30min, 0)} del riesgo a menos de 30 min y el ${pct(b.riesgo_45min, 0)} a menos de 45.${b.fijas ? " Con las bases fijas de la configuración: " + num(b.fijas.llegada_media_min) + " min." : ""}</p>
-      ${b.posicionamiento ? `<p class="texto"><b>Posicionamiento:</b> ${esc(b.posicionamiento)}.</p>` : ""}
+      ${where ? `<p class="texto"><b>Posicionamiento:</b> ${esc(where)}.</p>` : ""}
       ${curve ? `<p class="notas">Llegada media según el número de brigadas: ${esc(curve)}.</p>` : ""}</div>`;
   }
 
@@ -295,7 +350,7 @@
       if (m.lat == null) continue;
       const r = 4 + Math.sqrt(m.n_ct || 1) * 1.6;
       const c = L.circleMarker([m.lat, m.lon], { radius: r, color: "#333", weight: 0.6, fillColor: COLORS[m.nivel] || COLORS.bajo, fillOpacity: 0.75 });
-      c.bindTooltip(`<b>${esc(m.nombre)}</b><br>${num(m.n_ct)} CT, ${num(m.abonados)} clientes<br>Probabilidad de corte: ${pct(m.probabilidad)}<br>Racha prevista ${num(m.racha_max)} km/h` + (m.zonas ? "<br>Zonas: " + esc(m.zonas.join(", ")) : ""));
+      c.bindTooltip(`<b>${esc(m.nombre)}</b><br>${num(m.n_ct)} CT, ${num(m.abonados)} clientes<br>Probabilidad de corte: ${pct(m.probabilidad)}<br>Racha prevista ${num(m.racha_max)} km/h` + (m.zonas && m.zonas.length ? "<br>Zonas: " + esc([...new Set(m.zonas)].join(", ")) : ""));
       c.addTo(map); pts.push([m.lat, m.lon]); m._marker = c;
     }
     for (const b of ((d.brigadas || {}).bases || [])) {
@@ -312,7 +367,7 @@
   function pintarRayos(data, r) {
     VIVO.rayos = r;
     pintarAhora(data);
-    const hora = r.generado ? r.generado.slice(11, 16) + " UTC" : "";
+    const hora = r.generado ? horaLocal(r.generado) : "";
     (data.distribuidoras || []).forEach((d, idx) => {
       const block = (r.distribuidoras || []).find((b) => String(b.id) === String(d.id)) || null;
       const sec = document.getElementById("dist-" + idx);
@@ -323,7 +378,7 @@
       let banner = sec.querySelector(".rayos");
       if (!banner) { banner = document.createElement("div"); banner.className = "rayos"; sec.querySelector("h2").insertAdjacentElement("afterend", banner); }
       banner.className = "rayos " + klass;
-      banner.innerHTML = `<b>Rayos ahora</b> (satélite MTG, actualizado a las ${esc(hora)}): ${esc(text)}.` + (block && block.municipios && block.municipios.length ? ` Municipios bajo la tormenta: ${esc(block.municipios.slice(0, 6).join(", "))}${block.municipios.length > 6 ? ", ..." : ""}.` : "");
+      banner.innerHTML = `<b>Rayos ahora</b> (satélite MTG, actualizado a las ${esc(hora)}): ${esc(text)}.` + (block && block.municipios && block.municipios.length ? ` Municipios bajo la tormenta: ${esc(block.municipios.slice(0, 6).join(", "))}${block.municipios.length > 6 ? " y " + (block.municipios.length - 6) + " más" : ""}.` : "");
       const map = maps[idx];
       if (!map) return;
       if (map._rayos) map._rayos.remove();
@@ -335,8 +390,9 @@
       }
       layer.addTo(map); map._rayos = layer;
     });
+    // The source of the flashes goes once in the footer (the footer already speaks of "rayos", so a flag and not the text).
     const pie = document.getElementById("pie");
-    if (r.regla && !pie.textContent.includes("rayos")) pie.textContent += " Rayos: " + r.fuente + ". " + r.regla;
+    if (r.regla && !pie.dataset.rayos) { pie.textContent += " Rayos: " + r.fuente + ". " + r.regla; pie.dataset.rayos = "1"; }
   }
 
   // Observations of the stations of AEMET (observado.json, dag_observacion_vivo every hour): the gust measured
@@ -353,7 +409,7 @@
         d._observado = block.horas;
         redibujarPerfil(d, idx);
         const title = sec.querySelector(".perfil-titulo");
-        if (title) title.textContent = `Cuándo: racha prevista por horas (km/h) y observada por las estaciones de AEMET hasta las ${esc(o.generado.slice(11, 16))} UTC`;
+        if (title) title.textContent = `Cuándo: racha prevista por horas (km/h) y observada por las estaciones de AEMET hasta las ${horaLocal(o.generado)}`;
       }
       const map = maps[idx];
       if (!map || map._estaciones) return;
@@ -363,6 +419,8 @@
           .bindTooltip(`Estación AEMET ${esc(st.nombre)} (${esc(st.hora)}): racha ${num(st.racha_kmh)} km/h, viento ${num(st.viento_kmh)} km/h${st.lluvia_mm != null ? ", lluvia " + num(st.lluvia_mm, 1) + " mm" : ""}${st.temp_c != null ? ", " + num(st.temp_c, 1) + " °C" : ""}`).addTo(layer);
       }
       layer.addTo(map); map._estaciones = layer;
+      const item = sec.querySelector('[data-serie="estaciones"]');
+      if (item) item.hidden = !(o.estaciones || []).length;
     });
   }
 
@@ -370,6 +428,11 @@
     const sec = document.getElementById("dist-" + idx);
     const holder = sec && sec.querySelector(".perfil-holder");
     if (holder) holder.innerHTML = perfilSvg(d.perfil, d.franja || {}, d._observado, d._banda, d._aemet);
+    // The legend names only the series that are drawn (an archived day has no stations, and the ensemble or AEMET may be missing).
+    for (const [key, series] of [["banda", d._banda], ["aemet", d._aemet], ["observado", d._observado]]) {
+      const item = sec && sec.querySelector(`.perfil-leyenda [data-serie="${key}"]`);
+      if (item) item.hidden = !(series && series.length);
+    }
   }
 
   // The forecast of AEMET by municipality (aemet.json, task aemet_municipios of dag_riesgo_manana): the green line
@@ -389,7 +452,7 @@
         const holder = sec.querySelector(".perfil-holder");
         if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
       }
-      p.textContent = "Línea verde: " + (block.texto || "AEMET por municipios") + ".";
+      p.textContent = "Línea verde: " + limpiar(block.texto || "AEMET por municipios") + ".";
       d._picoAemet = block.pico;
       pintarConfianza(d, idx);
     });
@@ -411,13 +474,13 @@
       of++;
       const agree = Math.abs(peakIcon - aemet) <= 15;
       points += agree ? 1 : 0;
-      parts.push(agree ? `ICON-EU y AEMET coinciden en el pico (${num(peakIcon)} y ${num(aemet)} km/h)` : `ICON-EU y AEMET no coinciden en el pico (${num(peakIcon)} frente a ${num(aemet)} km/h)`);
+      parts.push(agree ? `ICON-EU y AEMET coinciden en el pico, ${num(peakIcon)} y ${num(aemet)} km/h` : `ICON-EU y AEMET no coinciden en el pico, ${num(peakIcon)} frente a ${num(aemet)} km/h`);
     }
     if (band) {
       of++;
       const agree = band.p90 - band.p10 <= 30;
       points += agree ? 1 : 0;
-      parts.push(agree ? `los escenarios están de acuerdo (pico entre ${num(band.p10)} y ${num(band.p90)})` : `los escenarios están repartidos (pico entre ${num(band.p10)} y ${num(band.p90)})`);
+      parts.push(`los escenarios ${agree ? "están de acuerdo" : "están repartidos"}, con el pico entre ${num(band.p10)} y ${num(band.p90)} km/h`);
     }
     const label = points === of ? "alta" : points > 0 ? "media" : "baja";
     let p = sec.querySelector(".confianza");
@@ -427,7 +490,7 @@
       const holder = sec.querySelector(".perfil-holder");
       if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
     }
-    p.innerHTML = `<b>Confianza en la previsión del viento: ${label}</b> (${esc(parts.join("; "))}).`;
+    p.innerHTML = `<b>Confianza en la previsión del viento: ${label}.</b> ${esc(mayuscula(parts.join("; ")))}.`;
   }
 
   // The ensemble of ICON-EU EPS (ensemble.json, task ensemble of dag_riesgo_manana): the band between the p10 and
@@ -447,7 +510,7 @@
         const holder = sec.querySelector(".perfil-holder");
         if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
       }
-      p.textContent = "Banda morada: " + (block.texto || "escenarios de ICON-EU EPS") + ".";
+      p.textContent = "Banda morada: " + limpiar(block.texto || "escenarios de ICON-EU EPS") + ".";
       d._picoBanda = block.pico;
       pintarConfianza(d, idx);
     });
@@ -457,9 +520,10 @@
     const suffix = DIA.length === 8 ? `_${DIA}` : "";
     if (!suffix) fetch("data/observado.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((o) => pintarObservado(data, o)).catch(() => {});
-    fetch(`data/ensemble${suffix}.json`, { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+    // An archived day asks only for the files its entry of the index lists (FICHEROS); without the index, for both.
+    if (!(suffix && FICHEROS && !FICHEROS.ensemble)) fetch(`data/ensemble${suffix}.json`, { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((e) => pintarEnsemble(data, e)).catch(() => {});
-    fetch(`data/aemet${suffix}.json`, { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
+    if (!(suffix && FICHEROS && !FICHEROS.aemet)) fetch(`data/aemet${suffix}.json`, { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((a) => pintarAemet(data, a)).catch(() => {});
     if (!suffix) fetch("data/verificacion.json", { cache: "no-store" }).then((x) => { if (!x.ok) throw new Error(x.status); return x.json(); })
       .then((v) => pintarVerificacion(data, v)).catch(() => {});
@@ -482,14 +546,15 @@
         h2.querySelector(".nivel").insertAdjacentHTML("afterend", ` <span class="nivel guardia-pill" title="${esc(today.guardia.motivo || "")}">guardia reforzada</span>`);
       }
     });
+    // The file is read again every 5 minutes: the note is one and is rewritten, not added again.
     if (guard && changed.length) {
-      guard.insertAdjacentHTML("beforeend", ` <span class="notas">Avisos de AEMET leídos durante el día (${esc((a.generado || "").slice(11, 16))} UTC): ${changed.map((d) => esc(d.texto)).join("; ")}.</span>`);
+      let note = guard.querySelector(".avisos-hoy");
+      if (!note) { note = document.createElement("span"); note.className = "notas avisos-hoy"; guard.appendChild(note); }
+      note.textContent = `Avisos de AEMET leídos durante el día (${horaLocal(a.generado)}): ${changed.map((d) => d.texto).join("; ")}.`;
       guard.style.display = "";
     }
   }
 
-  // What the forecast of the evening before was worth (verificacion.json, written with the observations): yesterday's
-  // forecast peak against the measured one and the summary of the last complete days.
   // The log of the last days (verificacion.json): what the system said every evening and what the stations
   // measured, one row per day, so the page shows its own record while it runs.
   function pintarDiario(data, v) {
@@ -505,7 +570,7 @@
     const dists = data.distribuidoras || [];
     let html = `<h2>Lo que dijimos cada tarde y lo que pasó con el viento (últimos ${days.length} días)</h2>
       <p class="notas">Por distribuidora: el nivel de la víspera (y el aviso de AEMET que había para el día, y lo que decía la orientación a dos días cuando la hay), el pico de racha previsto y el medido por las estaciones de AEMET a menos de ${num(v.radio_km || 25)} km de la red (hora del pico medido). Las averías de cada día llegan con la carga de Calser y se ven en el historial.</p>
-      <table><thead><tr><th>día</th>${dists.map((d) => `<th>${esc(d.nombre)}</th>`).join("")}</tr></thead><tbody>`;
+      <table><thead><tr><th>Día</th>${dists.map((d) => `<th>${esc(d.nombre)}</th>`).join("")}</tr></thead><tbody>`;
     for (const f of days) {
       const recs = v.dias[f] || [];
       html += `<tr><td>${f.slice(8, 10)}.${f.slice(5, 7)}.${f.slice(0, 4)}</td>`;
@@ -516,7 +581,7 @@
         const level = (r.nivel ? `<span class="nivel ${cls(r.nivel)}">${r.nivel}</span>` : "") + (r.aviso_aemet ? ` <span class="notas">(${AVISO[r.aviso_aemet] || "aviso"} de AEMET)</span>` : "")
           + (r.nivel_dos_dias ? ` <span class="notas" title="lo que decía la orientación a dos días, dos tardes antes">(a dos días: ${esc(r.nivel_dos_dias)}${r.probabilidad_dos_dias != null ? ", " + pct(r.probabilidad_dos_dias, 0) : ""})</span>` : "");
         const forecast = r.racha_prevista_max != null ? `${num(r.racha_prevista_max)}` : "-";
-        const observed = r.racha_observada_max != null ? `${num(r.racha_observada_max)} km/h a las ${r.hora_observada}:00` : "sin estaciones";
+        const observed = r.racha_observada_max != null ? `${num(r.racha_observada_max)} km/h ${aLas(r.hora_observada)}` : "sin estaciones";
         const marks = [r.pico_en_franja === true ? "en la franja" : r.pico_en_franja === false ? "fuera de la franja" : "",
                        r.pico_en_banda === true ? "en la banda" : r.pico_en_banda === false ? "fuera de la banda" : ""].filter(Boolean).join(", ");
         html += `<td>${level} previsto ${forecast}, medido ${observed}${marks ? " (" + marks + ")" : ""}</td>`;
@@ -526,6 +591,8 @@
     sec.innerHTML = html.replace("<table>", '<div class="scroll"><table>') + "</tbody></table></div>";
   }
 
+  // What the forecast of the evening before was worth (verificacion.json, written with the observations): yesterday's
+  // forecast peak against the measured one and the summary of the last complete days.
   function pintarVerificacion(data, v) {
     if (!v) return;
     pintarDiario(data, v);
@@ -536,16 +603,17 @@
       const resumen = (v.resumen || []).find((b) => String(b.id) === String(d.id));
       const parts = [];
       if (ayer && ayer.racha_prevista_max != null && ayer.racha_observada_max != null) {
-        parts.push(`Ayer (${fechaCorta(v.ayer.fecha)}): previsto un pico de ${num(ayer.racha_prevista_max)} km/h a las ${ayer.hora_prevista}:00, observado ${num(ayer.racha_observada_max)} km/h a las ${ayer.hora_observada}:00 (${ayer.estaciones} estaciones${ayer.pico_en_franja == null ? "" : ayer.pico_en_franja ? ", dentro de la franja prevista" : ", fuera de la franja prevista"}).`);
+        parts.push(`Ayer (${fechaCorta(v.ayer.fecha)}): previsto un pico de ${num(ayer.racha_prevista_max)} km/h ${aLas(ayer.hora_prevista)}, observado ${num(ayer.racha_observada_max)} km/h ${aLas(ayer.hora_observada)} (${ayer.estaciones} estaciones${ayer.pico_en_franja == null ? "" : ayer.pico_en_franja ? ", dentro de la franja prevista" : ", fuera de la franja prevista"}).`);
       } else if (ayer && ayer.racha_prevista_max != null && ayer.estaciones === 0) {
-        parts.push(`Ayer (${fechaCorta(v.ayer.fecha)}): sin estaciones de AEMET a menos de ${num(data.radio_km || 25)} km de la red para comprobar la previsión.`);
+        parts.push(`Ayer (${fechaCorta(v.ayer.fecha)}): sin estaciones de AEMET a menos de ${num(v.radio_km || 25)} km de la red para comprobar la previsión.`);
       }
       if (resumen && resumen.texto) parts.push(resumen.texto.charAt(0).toUpperCase() + resumen.texto.slice(1) + ".");
       if (!parts.length) return;
-      let p = sec.querySelector(".verificacion");
+      // Its own class: the paragraphs of AEMET, the ensemble and the confidence are also "verificacion" and must not be overwritten.
+      let p = sec.querySelector(".valio");
       if (!p) {
         p = document.createElement("p");
-        p.className = "verificacion";
+        p.className = "verificacion valio";
         const holder = sec.querySelector(".perfil-holder");
         if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
       }
@@ -562,11 +630,18 @@
   }
 
   function seguimiento(s) {
-    if (!s || !s.dias || !s.dias.length) return "";
+    // A replayed day keeps the follow-up of the day it was replayed, with later days in it: it says nothing of that day.
+    if (!s || !s.dias || !s.dias.length || REPETIDO) return "";
     const r = s.resumen || {};
-    let rows = s.dias.slice(-30).reverse().map((x) => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.distribuidora)}</td><td>${nivelPill(x.nivel)}</td><td class="num">${pct(x.probabilidad)}</td><td>${x.averias == null ? "<span class='notas'>sin datos aún</span>" : (x.averias > 0 ? "<span class='fallo'>" + x.averias + " avería" + (x.averias > 1 ? "s" : "") + "</span>" : "<span class='ok'>sin averías</span>")}</td></tr>`).join("");
+    // Newest first and, within a day, the networks in their order (the dates come as dd.mm.yyyy).
+    const key = (x) => String(x.fecha || "").split(".").reverse().join("");
+    let rows = s.dias.slice().sort((a, b) => key(b).localeCompare(key(a)) || String(a.distribuidora || "").localeCompare(String(b.distribuidora || ""), "es", { numeric: true })).slice(0, 30)
+      .map((x) => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.distribuidora)}</td><td>${nivelPill(x.nivel)}</td><td class="num">${pct(x.probabilidad)}</td><td>${x.averias == null ? "<span class='notas'>sin datos aún</span>" : (x.averias > 0 ? "<span class='fallo'>" + x.averias + " avería" + (x.averias > 1 ? "s" : "") + "</span>" : "<span class='ok'>sin averías</span>")}</td></tr>`).join("");
+    // The counts are days of distribuidora: a day of three networks counts three times.
+    const rates = [r.acierto_alto != null ? `en los marcados alto o muy alto hubo avería el ${pct(r.acierto_alto, 0)} de las veces` : "",
+                   r.averia_en_bajo != null ? `en los marcados bajo, el ${pct(r.averia_en_bajo, 0)}` : ""].filter(Boolean).join("; ");
     return `<section class="dist panel seguimiento"><h2>Seguimiento de las predicciones</h2>
-      <p class="texto">${r.dias_con_resultado ? `De los ${r.dias_con_resultado} días ya contrastados con Calser, hubo avería en ${r.dias_con_averia}. En los días marcados alto o muy alto hubo avería el ${pct(r.acierto_alto, 0)} de las veces; en los marcados bajo, el ${pct(r.averia_en_bajo, 0)}.` : "Todavía no hay días contrastados con las incidencias de Calser."}</p>
+      <p class="texto">${r.dias_con_resultado ? `De los ${num(r.dias_con_resultado)} días de distribuidora ya contrastados con Calser, hubo avería en ${num(r.dias_con_averia)}.${rates ? " " + mayuscula(rates) + "." : ""}` : "Todavía no hay días contrastados con las incidencias de Calser."}</p>
       <div class="scroll"><table><thead><tr><th>Día</th><th>Distribuidora</th><th>Nivel previsto</th><th class="num">Prob.</th><th>Qué pasó</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
   }
 
@@ -589,20 +664,20 @@
           <div class="kpi"><div class="v">${pct(d.probabilidad)}</div><div class="l">probabilidad de alguna interrupción</div></div>
           <div class="kpi"><div class="v">${num(d.esperadas, 2)}</div><div class="l">averías esperadas</div></div>
           <div class="kpi"><div class="v">${num(imp.clientes_esperados)}</div><div class="l">clientes esperados sin luz (${num(imp.ct_esperados, 1)} CT, ${num(imp.kva_esperados)} kVA)</div></div>
-          <div class="kpi"><div class="v">${fr.inicio != null ? fr.inicio + " - " + (fr.fin + 1) + " h" : "sin franja"}</div><div class="l">franja de más riesgo (pico de racha ${fr.pico != null ? "a las " + fr.pico + " h, " : ""}${num(fr.racha_pico)} km/h)</div></div>
+          <div class="kpi"><div class="v">${fr.inicio != null ? fr.inicio + " - " + (fr.fin + 1) + " h" : "sin franja"}</div><div class="l">${fr.inicio != null ? "franja de más riesgo" : fr.racha_pico != null ? "día de poco viento" : "sin perfil horario"}${fr.racha_pico != null ? ` (pico de racha ${fr.pico != null ? aLas(fr.pico).replace(":00", " h") + ", " : ""}${num(fr.racha_pico)} km/h)` : ""}</div></div>
         </div>
         ${pasadoBloque(data, d)}
         <div class="dos mapa-perfil">
           <div class="panel sub mapa-panel">
             <div class="panel-h"><h3>Dónde: municipios por riesgo y bases de las brigadas</h3></div>
             <div class="panel-b"><div class="map" id="map-${idx}"></div>
-              <div class="leyenda" style="margin-top:8px"><span><i style="background:${COLORS.bajo}"></i>bajo</span><span><i style="background:${COLORS.medio}"></i>medio</span><span><i style="background:${COLORS.alto}"></i>alto</span><span><i style="background:${COLORS["muy alto"]}"></i>muy alto</span><span>círculo: municipio, tamaño por CT</span><span>marcador: base de brigada</span><span><i style="background:#fff;border:1.5px solid ${COLORS["muy alto"]}"></i>estación de AEMET</span></div>
+              <div class="leyenda" style="margin-top:8px"><span><i style="background:${COLORS.bajo}"></i>bajo</span><span><i style="background:${COLORS.medio}"></i>medio</span><span><i style="background:${COLORS.alto}"></i>alto</span><span><i style="background:${COLORS["muy alto"]}"></i>muy alto</span><span>círculo: municipio, tamaño por CT</span><span>marcador: base de brigada</span><span data-serie="estaciones" hidden><i style="background:#fff;border:1.5px solid ${COLORS["muy alto"]}"></i>estación de AEMET</span></div>
             </div>
           </div>
           <div class="panel sub perfil-panel">
             <div class="panel-h"><h3 class="perfil-titulo">Cuándo: racha máxima prevista por horas (km/h)</h3></div>
             <div class="panel-b"><div class="perfil-holder">${perfilSvg(d.perfil, fr)}</div>
-              <div class="leyenda perfil-leyenda"><span><i class="sq" style="background:var(--serie-prevista)"></i>racha prevista (ICON-EU)</span><span><i class="sq" style="background:var(--serie-lluvia);opacity:.6"></i>lluvia</span><span><i class="sq" style="background:var(--alto);opacity:.35"></i>franja de más riesgo</span><span><i class="sq" style="background:var(--serie-banda);opacity:.5"></i>escenarios (p10 - p90)</span><span><i style="background:var(--serie-aemet)"></i>AEMET por municipios</span><span><i style="background:var(--serie-observada)"></i>observado en las estaciones</span></div>
+              <div class="leyenda perfil-leyenda"><span><i class="sq" style="background:var(--serie-prevista)"></i>racha prevista (ICON-EU)</span><span><i class="sq" style="background:var(--serie-lluvia);opacity:.6"></i>lluvia</span><span data-serie="franja"${fr.inicio != null ? "" : " hidden"}><i class="sq" style="background:var(--alto);opacity:.35"></i>franja de más riesgo</span><span data-serie="banda" hidden><i class="sq" style="background:var(--serie-banda);opacity:.5"></i>escenarios (p10 - p90)</span><span data-serie="aemet" hidden><i style="background:var(--serie-aemet)"></i>AEMET por municipios</span><span data-serie="observado" hidden><i style="background:var(--serie-observada)"></i>observado en las estaciones</span></div>
             </div>
           </div>
         </div>
@@ -630,17 +705,35 @@
     if (data.notas && data.notas.length) main.insertAdjacentHTML("beforeend", `<section class="dist panel notas-seccion"><h2>Notas</h2><ul class="notas">${data.notas.map((n) => "<li>" + esc(n) + "</li>").join("")}</ul></section>`);
     cargarRayos(data);
     cargarObservado(data);
-    setInterval(() => { cargarRayos(data); cargarObservado(data); }, 5 * 60 * 1000);
+    // An archived day has nothing live to read again.
+    if (!DIA) setInterval(() => { cargarRayos(data); cargarObservado(data); }, 5 * 60 * 1000);
   }
 
   // ?dia=YYYYMMDD shows an archived or replayed day (riesgo_<dia>.json, with its ensemble and AEMET files when they exist).
-  const DIA = (new URLSearchParams(location.search).get("dia") || "").replace(/[^0-9]/g, "").slice(0, 8);
-  const RIESGO = DIA.length === 8 ? `data/riesgo_${DIA}.json` : "data/riesgo.json";
+  const RAW_DIA = (new URLSearchParams(location.search).get("dia") || "").replace(/[^0-9]/g, "").slice(0, 8);
+  const DIA = RAW_DIA.length === 8 ? RAW_DIA : "";
+  const RIESGO = DIA ? `data/riesgo_${DIA}.json` : "data/riesgo.json";
+  // A day replayed from the saved forecast (the job marks it in prevision_pedida, as the index does), and the files
+  // that the index lists for an archived day (null when there is no index or the day is not in it).
+  let REPETIDO = false, FICHEROS = null;
+  function archivo() {
+    return fetch("data/indice.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null))
+      .then((idx) => { const day = ((idx && idx.dias) || []).find((x) => String(x.dia) === DIA); return day && day.ficheros ? day.ficheros : null; })
+      .catch(() => null);
+  }
+  function fallo(html) { document.getElementById("fuentes").innerHTML = `<div><dt>Estado</dt><dd>${html}</dd></div>`; document.getElementById("meta").open = true; }
   // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
   function ordenar(lista) { return (lista || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { numeric: true })); }
   fetch(RIESGO, { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then((data) => { data.distribuidoras = ordenar(data.distribuidoras); if (data.pasado_manana) data.pasado_manana.distribuidoras = ordenar(data.pasado_manana.distribuidoras); return render(data); })
-    .catch((e) => { document.getElementById("fuentes").innerHTML = `<div><dt>Estado</dt><dd>No hay datos todavía (${esc(RIESGO)}): ${esc(e)}. La ejecución de las 20:30 deja riesgo.json en data/.</dd></div>`; document.getElementById("meta").open = true; });
+    .then((data) => (DIA ? archivo().then((files) => { FICHEROS = files; return data; }) : data))
+    .then((data) => {
+      data.distribuidoras = ordenar(data.distribuidoras);
+      if (data.pasado_manana) data.pasado_manana.distribuidoras = ordenar(data.pasado_manana.distribuidoras);
+      REPETIDO = /repetido|Gold/.test(String((data.fuentes || {}).prevision_pedida || ""));
+      try { render(data); } catch (e) { fallo(`No se ha podido pintar ${esc(RIESGO)} (${esc(e)}). Vuelve a cargar la página; si sigue igual, el fichero está incompleto.`); }
+    }, () => fallo(DIA
+      ? `No hay riesgo guardado para el ${DIA.slice(6, 8)}.${DIA.slice(4, 6)}.${DIA.slice(0, 4)} (falta ${esc(RIESGO)}). Los días guardados están en <a href="dias.html">Días archivados</a>.`
+      : `Todavía no hay riesgo (falta ${esc(RIESGO)}). Lo deja la ejecución de las 20:30: mira dag_riesgo_manana en <a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a>.`));
 })();
 </script>
 </body>

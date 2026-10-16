@@ -20,6 +20,9 @@
   .cifras { margin-top: var(--s-2); }
   .anio { margin: var(--s-3) 0 2px; font-size: var(--fs-1); font-weight: 600; }
   .cal { display: block; width: 100%; height: auto; }
+  /* On a phone a year of 53 weeks would leave squares of 5 px: the calendar keeps a readable size and scrolls sideways. */
+  .cal-caja { overflow-x: auto; }
+  @media (max-width: 640px) { .cal { min-width: 640px; } }
   .leyenda { margin-top: var(--s-2); }
   .leyenda i { border-radius: 2px; }
   .leyenda b.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); margin-right: 4px; }
@@ -39,7 +42,7 @@
     <a href="historial.html" class="actual">Día a día 2022 - 2026</a>
     <a href="negocio.html">Negocio y cifras</a>
   </div>
-  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
+  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a></span>
 </nav>
 <header class="page">
   <div class="page-top">
@@ -51,9 +54,9 @@
   <section>
     <div class="controles">
       <span>Tiempo del día que ve el modelo:</span>
-      <label><input type="radio" name="modo" value="prevision" checked> previsión real de ICON-EU de la víspera (2024 - 2025)</label>
-      <label><input type="radio" name="modo" value="reanalisis"> reanálisis, como previsión perfecta (2022 - 2025)</label>
-      <label><input type="checkbox" id="winsor"> recortar los cortes de más de 110 minutos (el incendio de Jarilla del 13.08.2025 pesa solo lo que 4 años)</label>
+      <label><input type="radio" name="modo" value="prevision" checked> <span>previsión real de ICON-EU de la víspera (<span id="anios-prevision">2024 - 2026</span>)</span></label>
+      <label><input type="radio" name="modo" value="reanalisis"> <span>reanálisis, como previsión perfecta (<span id="anios-reanalisis">2022 - 2026</span>)</span></label>
+      <label><input type="checkbox" id="winsor"> recortar los cortes de más de 110 minutos (el incendio de Jarilla del 13.08.2025 pesa él solo tanto como un año entero)</label>
     </div>
   </section>
   <div id="bloques"></div>
@@ -77,8 +80,15 @@
   const COLORS = { bajo: "var(--cal-bajo)", medio: "var(--cal-medio)", alto: "var(--cal-alto)", "muy alto": "var(--cal-muy-alto)" };
   const ORDER = ["bajo", "medio", "alto", "muy alto"];
   const cls = (n) => (n || "bajo").replace(" ", "-");
-  const num = (x, d = 0) => (x == null || isNaN(x)) ? "" : Number(x).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
-  const pct = (x, d = 0) => (x == null || isNaN(x)) ? "" : (100 * x).toFixed(d).replace(".", ",") + " %";
+  // Numbers in Spanish: decimal comma and a dot every three digits, also with four digits (6.451, not 6451, which is
+  // what toLocaleString("es-ES") leaves).
+  const num = (x, d = 0) => {
+    if (x == null || isNaN(x)) return "";
+    const [whole, dec] = Math.abs(Number(x)).toFixed(d).split(".");
+    const sign = Number(x) < 0 && Number(Math.abs(Number(x)).toFixed(d)) !== 0 ? "-" : "";
+    return sign + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (dec ? "," + dec : "");
+  };
+  const pct = (x, d = 0) => (x == null || isNaN(x)) ? "" : num(100 * x, d) + "\u00a0%";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fecha = (f) => f.slice(8, 10) + "." + f.slice(5, 7) + "." + f.slice(0, 4);
   const CAP = 110;
@@ -145,14 +155,18 @@
       const lv = ORDER.map((n) => { const b = r.by[n]; return `<tr><td><span class="nivel ${cls(n)}">${n}</span></td><td class="num">${num(b.dias)} (${pct(b.dias / r.dias)})</td><td class="num">${pct(b.dias ? b.con / b.dias : 0, 1)}</td><td class="num">${num(b.inc)}</td><td class="num">${num(b.ch)}</td><td class="num">${pct(r.total ? b.ch / r.total : 0)}</td></tr>`; }).join("");
       const worst = r.worst.map((d) => `<tr><td>${fecha(d.f)}</td><td><span class="nivel ${cls(d.n)}">${d.n}</span></td><td class="num">${pct(d.p, 1)}</td><td class="num">${d.i}</td><td class="num">${num(d.c)}</td><td class="num">${num(d.h)}</td><td class="num">${num(d.m)}</td><td>${esc(d.b || "")}</td></tr>`).join("");
       const ratio = r.by.bajo.dias && r.by["muy alto"].dias ? (r.by["muy alto"].con / r.by["muy alto"].dias) / (r.by.bajo.con / r.by.bajo.dias) : null;
+      // The incidents per year over the days really scored: the first year with forecast starts on 20 January and the
+      // last one ends with the labels of Calser, so they count as the part of a year they are.
+      const incidents = days.reduce((a, d) => a + d.i, 0);
+      const firstDay = days.reduce((m, d) => (d.f < m ? d.f : m), days[0].f), lastDay = days.reduce((m, d) => (d.f > m ? d.f : m), days[0].f);
       sec.innerHTML = `<h2>${esc(dist.nombre)}</h2>
         <div class="cifras">
           <div class="cifra"><div class="v">${pct(r.alertDays / r.dias)}</div><div class="l">de los días en alerta (alto o muy alto)</div></div>
           <div class="cifra"><div class="v">${pct(r.total ? r.alert / r.total : 0)}</div><div class="l">de las horas-cliente perdidas por causas locales cayeron en esos días</div></div>
-          <div class="cifra"><div class="v">${ratio ? num(ratio, 1) + "x" : "-"}</div><div class="l">veces más probable una avería en un día muy alto que en uno bajo</div></div>
-          <div class="cifra"><div class="v">${num(days.reduce((a, d) => a + d.i, 0))}</div><div class="l">incidencias de causa local en ${years.length} años (${num(days.reduce((a, d) => a + d.i, 0) / years.length, 1)} al año)</div></div>
+          <div class="cifra"><div class="v">${ratio && isFinite(ratio) ? num(ratio, 1) : "-"}</div><div class="l">veces más probable una avería en un día muy alto que en uno bajo</div></div>
+          <div class="cifra"><div class="v">${num(incidents)}</div><div class="l">incidencias de causa local del ${fecha(firstDay)} al ${fecha(lastDay)} (${num(incidents / (days.length / 365), 1)} al año)</div></div>
         </div>
-        ${years.map((y) => `<div class="anio">${y}</div>` + calendar(days.filter((d) => d.f.startsWith(y)), Number(y), winsor)).join("")}
+        ${years.map((y) => `<div class="anio">${y}</div><div class="cal-caja">` + calendar(days.filter((d) => d.f.startsWith(y)), Number(y), winsor) + "</div>").join("")}
         <div class="leyenda"><span><i style="background:var(--cal-bajo)"></i>bajo</span><span><i style="background:var(--cal-medio)"></i>medio</span><span><i style="background:var(--cal-alto)"></i>alto</span><span><i style="background:var(--cal-muy-alto)"></i>muy alto</span><span><b class="dot"></b>avería ese día (tamaño: horas-cliente)</span><span><i style="background:transparent;border:1px solid var(--fg)"></i>aviso amarillo de AEMET</span><span><i style="background:transparent;border:2px solid var(--fg)"></i>naranja o rojo</span><span>color: nivel que habría dado el sistema la tarde anterior</span></div>
         <h3>Por nivel previsto</h3>
         <table><thead><tr><th>Nivel</th><th class="num">Días</th><th class="num">Con avería</th><th class="num">Incidencias</th><th class="num">Horas-cliente</th><th class="num">Parte</th></tr></thead><tbody>${lv}</tbody></table>
@@ -168,21 +182,33 @@
           if (!d) return;
           tip.style.display = "block"; tip.style.left = (e.clientX + 12) + "px"; tip.style.top = (e.clientY + 12) + "px";
           const AVISO = ["sin aviso de AEMET", "aviso amarillo de AEMET", "aviso naranja de AEMET", "aviso rojo de AEMET"];
-          tip.innerHTML = `<b>${fecha(d.f)}</b> · nivel ${esc(d.n)} (${pct(d.p, 1)})${d.a != null ? ` · ${AVISO[d.a] || "aviso de AEMET"}` : ""}<br>${d.i ? `${d.i} incidencia${d.i > 1 ? "s" : ""}, ${num(d.c)} clientes, ${num(hours(d, winsor))} horas-cliente, corte más largo ${num(d.m)} min` : "sin averías de causa local"}${d.b ? `<br>bases: ${esc(d.b)}` : ""}`;
+          tip.innerHTML = `<b>${fecha(d.f)}</b>: nivel ${esc(d.n)} (${pct(d.p, 1)})${d.a != null ? `, ${AVISO[d.a] || "aviso de AEMET"}` : ""}<br>${d.i ? `${d.i} incidencia${d.i > 1 ? "s" : ""}, ${num(d.c)} clientes, ${num(hours(d, winsor))} horas-cliente, corte más largo ${num(d.m)} min` : "sin averías de causa local"}${d.b ? `<br>bases: ${esc(d.b)}` : ""}`;
         });
         el.addEventListener("mouseleave", () => { tip.style.display = "none"; });
       });
     }
-    document.getElementById("fuentes").innerHTML = `${esc(DATA.modos[mode])}. Niveles: muy alto desde el percentil 95 de los días de entrenamiento, alto desde el 90, medio desde el 75.`;
-    document.getElementById("pie").textContent = "Cada día se puntúa con un modelo entrenado solo con los años anteriores, como haría el job cada tarde; las averías son las incidencias de causa local de Calser (sin aguas arriba, apagones, programadas ni maniobras) en los CT en estudio, con sus clientes y la duración real de cada corte. Generado el " + (DATA.generado || "") + ".";
+    const modeText = String((DATA.modos || {})[mode] || "");
+    document.getElementById("fuentes").innerHTML = `${esc(modeText.charAt(0).toUpperCase() + modeText.slice(1))}. Niveles: muy alto desde el percentil 95 de los días de entrenamiento, alto desde el 90, medio desde el 75.`;
+    document.getElementById("pie").textContent = "Cada día se puntúa con un modelo entrenado solo con los años anteriores, como hace el sistema cada tarde; las averías son las incidencias de causa local de Calser (sin aguas arriba, apagones, programadas ni maniobras) en los CT en estudio, con sus clientes y la duración real de cada corte. Generado el " + (DATA.generado || "") + ".";
   }
 
   document.querySelectorAll('input[name="modo"]').forEach((el) => el.addEventListener("change", render));
   document.getElementById("winsor").addEventListener("change", render);
   // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
   function ordenar(lista) { return (lista || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { numeric: true })); }
-  fetch("data/historico.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => { d.distribuidoras = ordenar(d.distribuidoras); DATA = d; render(); })
-    .catch((e) => { document.getElementById("fuentes").textContent = "No hay data/historico.json (lo deja job_ml_caso_negocio): " + e; });
+  // The years of each kind of weather, as the file has them, next to its button.
+  function anios() {
+    for (const mode of ["prevision", "reanalisis"]) {
+      const ys = DATA.distribuidoras.flatMap((x) => ((x.dias || {})[mode] || []).map((d) => String(d.f).slice(0, 4)));
+      const el = document.getElementById("anios-" + mode);
+      if (!el || !ys.length) continue;
+      const lo = ys.reduce((a, b) => (a < b ? a : b)), hi = ys.reduce((a, b) => (a > b ? a : b));
+      el.textContent = lo === hi ? lo : `${lo} - ${hi}`;
+    }
+  }
+  fetch("data/historico.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then((d) => { d.distribuidoras = ordenar(d.distribuidoras); DATA = d; anios(); render(); },
+          (e) => { document.getElementById("fuentes").textContent = `Todavía no hay data/historico.json (${e.message}): lo deja job_ml_caso_negocio.py, el trabajo del caso de negocio.`; });
 })();
 </script>
 </body>
