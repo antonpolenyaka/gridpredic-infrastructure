@@ -427,7 +427,7 @@ def cascade_rule(starts: pd.DataFrame, hours: float = 3.0) -> dict:
         return out
     one = starts.sort_values("inicio_ts").drop_duplicates(["distribuidora_id", "periodo_id", "incidencia_id"])
     rows = []
-    for dist, g in one.groupby("distribuidora_id"):
+    for _, g in one.groupby("distribuidora_id"):
         t = g["inicio_ts"].to_numpy()
         for i in range(len(t)):
             later = t[i + 1:]
