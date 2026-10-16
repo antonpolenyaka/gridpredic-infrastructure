@@ -358,6 +358,8 @@ details > *:not(summary) { animation: abrir var(--t-base) var(--ease); }
 /* ---------------------------------------------------------------- print */
 @media print {
   nav.menu, .acciones, .noimprimir { display: none !important; }
+  /* The sections that motion.js has not revealed yet (still below the fold) print as well. */
+  main section, main > div > section, .kpi, .cifra, .dos.mapa-perfil { opacity: 1 !important; visibility: visible !important; transform: none !important; }
   body { background: #fff; color: #000; }
   .panel, .panel.sub, .kpi, .cifra, .scroll { box-shadow: none; border-color: #bbb; }
   main { gap: var(--s-4); }
