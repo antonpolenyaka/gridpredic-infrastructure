@@ -1,6 +1,6 @@
 # Texto para la memoria: lo que probamos para mejorar el modelo del día
 
-Borrador del apartado de resultados sobre las pruebas de mejora del modelo del día siguiente (octubre de 2026). Las cifras salen de los cuadernos 3 a 3k de [investigacion-continua.md](investigacion-continua.md) y de la tabla 5 de [revision-literatura.md](revision-literatura.md); cada una tiene su ejecución (`run_id`) en el cuaderno. Escrito para pegarlo en la memoria y retocarlo allí.
+Borrador del apartado de resultados sobre las pruebas de mejora del modelo del día siguiente (octubre de 2026). Las cifras salen de los cuadernos 3 a 3q de [investigacion-continua.md](investigacion-continua.md) y de la tabla 5 de [revision-literatura.md](revision-literatura.md); cada una tiene su ejecución (`run_id`) en el cuaderno. Escrito para pegarlo en la memoria y retocarlo allí.
 
 ---
 
@@ -16,7 +16,7 @@ Partimos de una revisión de unos 45 trabajos publicados entre 2012 y 2026 sobre
 
 ## Lo que medimos
 
-La variante de producción da 0,188 de PR-AUC con la previsión real, 6,9 veces la tasa base, y recoge el 53 % de los días con avería en el 10 % de días que marca como más arriesgados y el 67 % en el 20 %. Frente a ella:
+Las diez primeras pruebas las medimos con la previsión real de 2024 y 2025. Ahí la variante de producción da 0,188 de PR-AUC, 6,9 veces la tasa base, y recoge el 53 % de los días con avería en el 10 % de días que marca como más arriesgados y el 67 % en el 20 %. Las cinco últimas llegaron cuando ya teníamos 2026 cargado y se midieron con la previsión real de 2024 a 2026, donde la de producción da 0,156; en la tabla van con esa referencia al lado. Frente a ella:
 
 | prueba | qué añade | PR-AUC con la previsión real |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ La que más se acercó fue una curva de fragilidad: con los días de 2017 a 2021
 
 Hay otros dos casos que nos parecen útiles para quien siga el trabajo. El primero es el de los modelos de previsión: ICON-EU, a 7 km, es el mejor de los que el archivo de Open-Meteo guarda con racha prevista, y promediarlo con dos globales más bastos empeora un poco. Con 2025 y 2026, cuando añadimos el UKMO de 10 km, GFS quedó un poco por delante de ICON-EU, al revés que con 2024 y 2025, y el UKMO el último; que el orden cambie de una ventana a otra es la mejor prueba de que entre ellos no hay diferencia que podamos medir. De paso quedó claro que el respaldo de la ejecución de la tarde, que pasa a GFS cuando ICON-EU no responde, no tiene un coste medible. El segundo es el arbolado. Ni en la celda de 10 km ni junto a las líneas públicas de OpenStreetMap encontramos una señal que aguante, y para ir más allá harían falta el trazado real de las líneas y la coordenada de cada CT, que en este trabajo no tenemos.
 
-Cuando cargamos los primeros siete meses de 2026 repetimos todas las pruebas con la previsión real de 2024 a 2026, 84 días con avería en lugar de 58 y el temporal de enero dentro. El orden no se movió: la variante de producción se queda en 0,161 de PR-AUC (5,3 veces la tasa base, el 46 % de los días con avería en el 10 % de días de más riesgo y el 64 % en el 20 %), las demás entre 0,150 y 0,158, y los intervalos de las diferencias se estrecharon alrededor de cero o por debajo. 2026 está siendo un año más difícil para el modelo, y eso baja todas las cifras por igual.
+Cuando cargamos los primeros siete meses de 2026 repetimos todas las pruebas con la previsión real de 2024 a 2026, 84 días con avería en lugar de 58 y el temporal de enero dentro. El orden no se movió: la variante de producción se queda en 0,161 de PR-AUC (5,3 veces la tasa base, el 46 % de los días con avería en el 10 % de días de más riesgo y el 64 % en el 20 %), las demás entre 0,150 y 0,158, y los intervalos de las diferencias se estrecharon alrededor de cero o por debajo. Esa comparación se hizo sobre los días que tienen la previsión de la víspera y también la de dos y tres días antes, porque incluía las variantes a 48 y 72 horas; en las pruebas que vinieron después, sobre todos los días con la previsión de la víspera, la misma variante da 0,156. Cada comparación se hace siempre sobre sus mismos días. 2026 está siendo un año más difícil para el modelo, y eso baja todas las cifras por igual.
 
 En las aves pasó algo distinto. La distribuidora no tiene un inventario de nidos que darnos, pero la Junta de Extremadura publicó en 2021 las líneas que están en zona de protección sin las medidas del Real Decreto 1432/2008, y 262 son de nuestras tres redes. En el modelo anual de las averías por fauna esa lista sube la captura por CT del 10 % de 14,7 % a 18,8 %, la única fuente pública de aves que lo consigue. Aun así, la historia de fauna de cada CT ordena mejor (30,7 %): las cigüeñas vuelven a los mismos apoyos. Para la distribuidora la lista tiene valor directo, porque son líneas que tiene que adaptar de todos modos, y su historia de fauna dice por cuáles empezar.
 
