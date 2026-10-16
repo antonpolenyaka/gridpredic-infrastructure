@@ -83,7 +83,7 @@ Lo que no hace, y lo decimos: no dice qué centro de transformación fallará; n
 
 **Oportunidades.** La Circular 8/2025 (incentivo de calidad y proyectos piloto reconocidos con cargo a los costes de distribución); 328 distribuidoras, de las que 89 están cualificadas y 52 son clientes del partner; los temporales de los últimos años (el TIEPI nacional por fuerza mayor se multiplica por 20 en los años de Klaus y Xynthia, y casi por seis en el de Ana); fuentes públicas nuevas (rayos del satélite, avisos, incendios).
 
-**Amenazas.** Clientes conservadores y ciclo de venta largo; dependencia del partner; que una gran eléctrica o un fabricante de SCADA ofrezca lo mismo; el AI Act (sistema de alto riesgo para infraestructura crítica) y sus obligaciones; cambios en la fórmula del incentivo.
+**Amenazas.** Clientes conservadores y ciclo de venta largo; dependencia del partner; que una gran eléctrica o un fabricante de SCADA ofrezca lo mismo; el AI Act, si un cliente o un regulador leyera el sistema como de alto riesgo, y sus obligaciones; cambios en la fórmula del incentivo.
 
 **Priorización por fases.** Año 1, estrategia defensiva (fortalezas frente a amenazas): entrar solo por el partner, con pilotos y la demo gratuita, sin gasto comercial; conseguir dos referencias y los datos de más distribuidoras. Años 2 y 3, estrategia agresiva (oportunidades): ferias y asociaciones, venta directa, y el horizonte de dos y tres días como producto propio.
 
@@ -95,7 +95,7 @@ Lo que no hace, y lo decimos: no dice qué centro de transformación fallará; n
 | Ciclo de venta largo (6 a 18 meses) y clientes conservadores | Alto | Alta | Alto | Entrar por el partner; demo gratuita de un mes; el ahorro calculado con los datos del cliente; plan de tesorería de los primeros 6 meses |
 | Dependencia del partner comercial | Medio | Media | Alto | Acuerdo escrito (exclusividad limitada, condiciones de salida); venta directa desde el año 2 |
 | Que una previsión meteorológica mala dé un día malo sin avisar | Medio | Media | Medio | Tres fuentes (ICON-EU, 40 escenarios, AEMET) y la confianza en la previsión en el cuadro de mando; los avisos releídos cada hora |
-| Regulación: AI Act (alto riesgo), RGPD, NIS2 | Medio | Media | Alto | Soporte a la decisión, nunca acción automática; ficha del modelo y del dataset; supervisión humana; registro cuando toque |
+| Regulación: AI Act, RGPD y NIS2 | Medio | Media | Alto | Soporte a la decisión, nunca acción automática; ficha del modelo y del dataset; supervisión humana; registro cuando toque |
 | Cambio de la fórmula del incentivo de calidad | Bajo | Baja | Alto | El valor operativo (llegar antes) no depende de la fórmula; seguimiento de la CNMC |
 | Un competidor grande ofrece lo mismo | Medio | Baja | Alto | Velocidad y cercanía: las grandes no atienden a distribuidoras de 700 o 30.000 clientes; datos propios del cliente como foso |
 | Financiación insuficiente antes de los primeros cobros | Alto | Media | Alto | Mix 40/60 en lugar de 20/80; ronda de 250.000 euros; gastos variables ligados a clientes |
