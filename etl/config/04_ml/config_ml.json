@@ -557,7 +557,7 @@
     "minimo_incidencias_nivel": 10
   },
   "riesgo_manana": {
-    "variante": "operativa_nao",
+    "variante": "operativa",
     "variante_pasado_manana": "operativa_48h",
     "tabla_pasado_manana": "l3_gold.riesgo_pasado_manana",
     "modelo": "logistica",

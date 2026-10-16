@@ -432,8 +432,6 @@ def config_path(workdir):
     config["riesgo_manana"]["dashboard_dir"] = os.path.join(workdir, "dashboard")
     # The outlook of pasado manana is off in production until the 72 h backtest is in; the tests keep it on.
     config["riesgo_manana"]["variante_pasado_manana"] = "operativa_48h"
-    # Production scores with operativa_nao; the fixture has no NAO file, so it keeps the plain variant.
-    config["riesgo_manana"]["variante"] = "operativa"
     config["riesgo_manana"]["riesgo_zonas"] = {"brigadas": {"1": 1, "2": 1}, "bases_fijas": {"1": ["Torre de Santa María"]}}
     # The names shown (the fixture has the distribuidoras 1 and 2, with Calser_EOSA and Calser_Pitarch as databases).
     config["riesgo_manana"]["nombres"] = {"1": "Distribuidora 1", "2": "Distribuidora 2"}
