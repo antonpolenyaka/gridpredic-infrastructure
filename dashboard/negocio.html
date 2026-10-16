@@ -48,7 +48,7 @@
     <a href="historial.html">Día a día 2022 - 2026</a>
     <a href="negocio.html" class="actual">Negocio y cifras</a>
   </div>
-  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
+  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a></span>
 </nav>
 <header class="page">
   <div class="page-top">
@@ -87,14 +87,22 @@
   }
   const ORDER = ["bajo", "medio", "alto", "muy alto"];
   const cls = (n) => (n || "bajo").replace(" ", "-");
-  const num = (x, d = 0) => (x == null || isNaN(x)) ? "" : Number(x).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
-  const pct = (x, d = 0) => (x == null || isNaN(x)) ? "" : (100 * x).toFixed(d).replace(".", ",") + " %";
+  // Numbers in Spanish: decimal comma and a dot every three digits, also with four digits (1.844, not 1844, which is
+  // what toLocaleString("es-ES") leaves).
+  const num = (x, d = 0) => {
+    if (x == null || isNaN(x)) return "";
+    const [whole, dec] = Math.abs(Number(x)).toFixed(d).split(".");
+    const sign = Number(x) < 0 && Number(Math.abs(Number(x)).toFixed(d)) !== 0 ? "-" : "";
+    return sign + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (dec ? "," + dec : "");
+  };
+  const pct = (x, d = 0) => (x == null || isNaN(x)) ? "" : num(100 * x, d) + "\u00a0%";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fecha = (f) => f.slice(8, 10) + "." + f.slice(5, 7) + "." + f.slice(0, 4);
+  // The stamps of the jobs in UTC ("2026-10-14 13:28 UTC", "2026-10-16T12:20Z") with the date written with dots.
+  const sello = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}:\d{2})/.exec(String(s || "")); return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]} UTC` : String(s || ""); };
   const CAP = 110, MIN_INCIDENTS = 10, WINTER = new Set([11, 12, 1, 2, 3]);
-  // What the distribuidoras get and what the system costs: the resolution of the CNMC of 06.11.2025 (retribución de 2022)
-  // and the business plan of the TFM. The names are those of the resolution.
-  // La retribución de 2022 de cada red (resolución de la CNMC de 6 de noviembre de 2025); el nombre que se enseña es el del JSON.
+  // What the distribuidoras get and what the system costs: the retribution of 2022 of every network by its id (resolution
+  // of the CNMC of 06.11.2025) and the business plan of the TFM. The name shown is the one of the JSON.
   const RETRIBUCION = { 3: { euros: 11821045 }, 2: { euros: 10541790 }, 1366: { euros: 206434 } };
   const LICENCIA = 18000, IMPLANTACION = 20000;
   let DATA = null;
@@ -239,7 +247,7 @@
       legend.push(`<b>${i + 1}</b> ${esc(label)} (${num(p.dias / years)} días, ${pct(p.h / total)})`);
     });
     out += `<text x="${L}" y="${H - 4}" font-size="10" fill="var(--muted)">días reforzados al año por distribuidora, frente a la parte de las horas-cliente cubiertas</text>`;
-    return `<div style="max-width:640px">${out}</svg><p class="notas">Línea azul: el sistema a cada umbral (los k días de más riesgo de cada año); discontinua: lo que cubrirían k días al azar. Puntos: ${legend.join(" · ")}.</p></div>`;
+    return `<div style="max-width:640px">${out}</svg><p class="notas">Línea azul: el sistema a cada umbral (los k días de más riesgo de cada año); discontinua: lo que cubrirían k días al azar. Puntos: ${legend.join("; ")}.</p></div>`;
   }
 
   function render() {
@@ -266,10 +274,10 @@
     html += `<section><h2>Lo que vería un director de distribución</h2>
       <p>${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}, con ${modeText}: ${num(days.length)} días de distribuidora, ${num(totalInc)} incidencias de causa local y ${num(stats.total)} horas-cliente sin suministro${winsor ? " (cortes recortados a 110 min)" : ""}. Cada día lleva el nivel que el sistema habría dado la tarde anterior, con un modelo entrenado solo con los años previos.</p>
       <div class="cifras">
-        <div class="cifra"><div class="v">${ratio ? num(ratio, 0) + "x" : "-"}</div><div class="l">veces más averías un día "muy alto" que un día "bajo" (${pct(rate("muy alto"), 1)} frente a ${pct(rate("bajo"), 1)})</div></div>
-        <div class="cifra"><div class="v">${pct(stats.total ? alertH / stats.total : 0)}</div><div class="l">de las horas-cliente perdidas caen en los días en alerta (alto o muy alto), que son el ${pct(alertDays / days.length)} de los días</div></div>
+        <div class="cifra"><div class="v">${ratio && isFinite(ratio) ? num(ratio, 0) : "-"}</div><div class="l">veces más averías un día "muy alto" que un día "bajo" (${pct(rate("muy alto"), 1)} frente a ${pct(rate("bajo"), 1)})</div></div>
+        <div class="cifra"><div class="v">${pct(stats.total ? alertH / stats.total : 0)}</div><div class="l">de las horas-cliente perdidas caen en los días en alerta (alto o muy alto), que son el ${pct(alertDays / days.length, 1)} de los días</div></div>
         <div class="cifra"><div class="v">${worstAlert} de ${worst.length}</div><div class="l">de los peores días estaban en alerta desde la tarde anterior</div></div>
-        <div class="cifra"><div class="v">${num(alertDays / yearsOfData)}</div><div class="l">días de alerta al año por distribuidora: los días en que reforzar la guardia</div></div>
+        <div class="cifra"><div class="v">${num(alertDays / yearsOfData)}</div><div class="l">días de alerta al año por distribuidora${pol.conAvisos ? `; con los avisos de viento o tormenta de AEMET, ${num(pol.unionVientoTormenta.dias / yearsOfData)} días de guardia reforzada, la política que recomendamos` : ""}</div></div>
       </div>
       <div class="dos" style="margin-top:14px">
         <div><h3>Días con avería según el nivel de la víspera</h3>${bars(stats)}</div>
@@ -286,10 +294,10 @@
       <table id="tabla-guardia"></table>
       <h3>La misma comparación a cualquier presupuesto</h3>
       ${coverageCurve(days, pol)}
-      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. Los avisos de AEMET son los que ya se habían emitido para el día antes de las 20:00 de la víspera, en las celdas de la red: lo que hoy mira un jefe de brigadas. "Mismo número de días" toma, cada año, tantos días como la política con la que se compara pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. Las averías de estas redes las trae el tiempo, no el calendario: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días. La regla "aviso de viento o tormenta" es la mejor de las reglas sencillas y con pocos días cubre tanto o más que el sistema con los mismos días; sumarla a la alerta es la política que más cubre por día gastado.</p>
+      <p class="notas">Los calendarios fijos son los sábados y domingos de noviembre a marzo, o de todo el año. Los avisos de AEMET son los que ya se habían emitido para el día antes de las 20:00 de la víspera, en las celdas de la red: lo que hoy mira un jefe de brigadas. "Mismo número de días" toma, cada año, tantos días como la política con la que se compara pero elegidos por el sistema de mayor a menor riesgo. "Solo los días en alerta", los días en alto o muy alto. Los costes son días por el coste de un día; la última columna es la diferencia frente a los fines de semana de invierno. En estas redes las horas-cliente se concentran en los días de mal tiempo, que no caen en fechas fijas: por eso un calendario fijo cubre poco y el sistema, que sigue a la previsión, cubre mucho más con los mismos días. La regla "aviso de viento o tormenta" es la mejor de las reglas sencillas y con pocos días cubre tanto o más que el sistema con los mismos días; sumarla a la alerta es la política que recomendamos, porque cubre lo que cubren las dos por separado con pocos días más que la alerta sola.</p>
       </section>`;
 
-    html += `<section><h2>Por distribuidora y año</h2><table><thead><tr><th>distribuidora</th><th>año</th><th class="num">días puntuados</th><th class="num">días en alerta</th><th class="num">incidencias</th><th class="num">en días de alerta</th><th class="num">horas-cliente</th><th class="num">en días de alerta</th></tr></thead><tbody>`;
+    html += `<section><h2>Por distribuidora y año</h2><table><thead><tr><th>Distribuidora</th><th>Año</th><th class="num">Días puntuados</th><th class="num">Días en alerta</th><th class="num">Incidencias</th><th class="num">En días de alerta</th><th class="num">Horas-cliente</th><th class="num">En días de alerta</th></tr></thead><tbody>`;
     for (const name of names) for (const y of ys) {
       const g = days.filter((d) => d.nombre === name && d.anio === y);
       if (!g.length) continue;
@@ -299,13 +307,13 @@
     }
     html += `</tbody></table></section>`;
 
-    html += `<section><h2>Los ${worst.length} peores días y lo que decía el sistema la tarde anterior</h2><table><thead><tr><th>día</th><th>distribuidora</th><th>nivel previsto</th><th class="num">probabilidad</th><th class="num">incidencias</th><th class="num">clientes</th><th class="num">horas-cliente</th><th class="num">corte más largo (min)</th><th>bases propuestas</th></tr></thead><tbody>`;
+    html += `<section><h2>Los ${worst.length} peores días y lo que decía el sistema la tarde anterior</h2><table><thead><tr><th>Día</th><th>Distribuidora</th><th>Nivel previsto</th><th class="num">Probabilidad</th><th class="num">Incidencias</th><th class="num">Clientes</th><th class="num">Horas-cliente</th><th class="num">Corte más largo (min)</th><th>Bases propuestas</th></tr></thead><tbody>`;
     for (const d of worst) html += `<tr><td>${fecha(d.f)}</td><td>${esc(d.nombre)}</td><td><span class="nivel ${cls(d.n)}">${d.n}</span></td><td class="num">${pct(d.p, 1)}</td><td class="num">${d.i}</td><td class="num">${num(d.c)}</td><td class="num">${num(d.h)}</td><td class="num">${num(d.m)}</td><td>${esc(d.b || "")}</td></tr>`;
     html += `</tbody></table></section>`;
 
     html += `<section><h2>Cuánto cuesta y de qué depende la retribución</h2>
       <p>Las distribuidoras no facturan al cliente: cobran la retribución regulada que fija la CNMC. La Circular 8/2025 (metodología 2026 - 2031) liga parte de esa retribución a la calidad del suministro con un incentivo calculado sobre el TIEPI de los años n-4 a n-2 frente a una referencia sectorial (artículos 24 y 25) y permite reconocer, con cargo a los costes de distribución, inversiones en proyectos piloto con beneficio cuantificable, incluidos los de adaptación de la red al cambio climático (artículo 15).</p>
-      <table><thead><tr><th>distribuidora</th><th class="num">retribución 2022 (euros)</th><th class="num">licencia anual del sistema</th><th class="num">parte de la retribución</th><th class="num">implantación (una vez)</th></tr></thead><tbody>`;
+      <table><thead><tr><th>Distribuidora</th><th class="num">Retribución 2022 (euros)</th><th class="num">Licencia anual del sistema</th><th class="num">Parte de la retribución</th><th class="num">Implantación (una vez)</th></tr></thead><tbody>`;
     for (const d of DATA.distribuidoras) {
       const r = RETRIBUCION[d.id];
       if (!r) continue;
@@ -325,7 +333,7 @@
 
     html += `<section><h2>Lo que el sistema no hace, para que nadie compre otra cosa</h2><ul>
       <li>No dice qué centro de transformación se quedará sin luz: da el día, la franja horaria, la zona y las líneas de más riesgo, y un ranking histórico de CT.</li>
-      <li>No ve el estado de los equipos: las averías de equipos y de causa desconocida en días de calma caen en días "bajos" y son una de cada cuatro horas-cliente.</li>
+      <li>No ve el estado de los equipos: las averías de equipos y de causa desconocida en días de calma caen en días "bajos", que se llevan el ${pct(stats.total ? stats.by.bajo.h / stats.total : 0)} de las horas-cliente.</li>
       <li>Con ${num(totalInc / yearsOfData, 0)} incidencias al año por distribuidora, la cobertura de cada año se mueve entre el 30 % y el 70 %; el valor se mide con varios años juntos.</li>
       <li>Mover las brigadas de base según el riesgo del día gana menos de un minuto de TIEPI al año: el valor está en tener gente y material preparados los días y en la franja que toca.</li>
     </ul></section>`;
@@ -395,9 +403,9 @@
         const peaks = spain.filter((r) => r.fuerza_mayor >= 0.3);
         for (const r of peaks) { const i = spain.indexOf(r); svg += `<text x="${x(i).toFixed(1)}" y="${(y(r.fuerza_mayor) - 5).toFixed(1)}" font-size="9" text-anchor="middle" fill="var(--muy-alto)">${r.anio}</text>`; }
         svg += `<text x="${L}" y="${H - 4}" font-size="10" fill="var(--muted)">España, todas las zonas: TIEPI imprevisto (azul) y su parte por fuerza mayor (rojo)</text></svg>`;
-        html += `<h3>El tiempo manda también en la estadística oficial</h3><div class="dos"><div>${svg}</div><div><p>A escala nacional, el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (Klaus en enero de 2009, Xynthia en febrero de 2010, Ana en diciembre de 2017) y vuelve a casi cero al año siguiente. Es la parte del TIEPI que una red no evita, pero sí puede preparar: saber la víspera qué días son es lo que hace el sistema.</p></div></div>`;
+        html += `<h3>El tiempo manda también en la estadística oficial</h3><div class="dos"><div>${svg}</div><div><p>A escala nacional, el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (Klaus en enero de 2009, Xynthia en febrero de 2010, Ana en diciembre de 2017) y vuelve a casi cero al año siguiente. Es la parte del TIEPI que una red no puede evitar, pero sí preparar si sabe la víspera qué días van a ser malos.</p></div></div>`;
       }
-      html += `<p class="notas">Fuente: ${esc(j.fuente || "")} (generado ${esc(j.generado || "")}). Nuestro TIEPI sale de Calser con las reglas del cálculo oficial a nivel de CT y queda entre un 2 % y un 16 % por debajo del declarado; los años no coinciden porque el Ministerio publica con retraso.</p>`;
+      html += `<p class="notas">Fuente: ${esc(j.fuente || "")} (generado el ${esc(sello(j.generado))}). Nuestro TIEPI sale de Calser con las reglas del cálculo oficial a nivel de CT y queda entre un 2 % y un 16 % por debajo del declarado; los años no coinciden porque el Ministerio publica con retraso.</p>`;
       body.innerHTML = html;
       sec.style.display = "";
     };
@@ -412,7 +420,7 @@
       const sec = document.getElementById("produccion");
       if (!sec || !items.length) return;
       document.getElementById("produccion-lista").innerHTML = items.map((r) => `<li><b>${esc(r.nombre)}</b>: ${esc(r.texto)}.</li>`).join("")
-        + `<li class="notas">${Object.keys(v.dias || {}).length} días verificados; generado ${esc(v.generado || "")}.</li>`;
+        + `<li class="notas">${Object.keys(v.dias || {}).length} días verificados; generado el ${esc(sello(v.generado))}.</li>`;
       sec.style.display = "";
     }).catch(() => {});
   }
@@ -428,7 +436,7 @@
     if (pol.conAvisos) rows.push(["GridPredic en alerta o aviso de viento o tormenta de AEMET", pol.unionVientoTormenta], ["GridPredic en alerta o aviso naranja o rojo de AEMET", pol.union]);
     const years = Math.max(0.01, pol.anios || groups);
     const base = pol.invierno.dias / years * cost;
-    let html = `<thead><tr><th>política de guardia</th><th class="num">días reforzados al año</th><th class="num">cobertura de las horas-cliente</th><th class="num">coste al año (euros)</th><th class="num">frente al calendario</th></tr></thead><tbody>`;
+    let html = `<thead><tr><th>Política de guardia</th><th class="num">Días reforzados al año</th><th class="num">Cobertura de las horas-cliente</th><th class="num">Coste al año (euros)</th><th class="num">Frente al calendario</th></tr></thead><tbody>`;
     for (const [label, p] of rows) {
       const d = p.dias / years, c = d * cost;
       html += `<tr><td>${label}</td><td class="num">${num(d)}</td><td class="num">${pct(pol.total ? p.h / pol.total : 0)}</td><td class="num">${num(c)}</td><td class="num">${c === base ? "-" : (c < base ? "-" : "+") + num(Math.abs(c - base))}</td></tr>`;
@@ -443,7 +451,7 @@
     .then((data) => {
       data.distribuidoras = ordenar(data.distribuidoras);
       DATA = data;
-      document.getElementById("fuentes").innerHTML = `Calculado en el navegador a partir de data/historico.json (generado ${esc(data.generado || "")}). El método y los límites están en <a href="https://github.com/antonpolenyaka/gridpredic-infrastructure/blob/main/docs/caso-de-negocio.md">caso-de-negocio.md</a>.`;
+      document.getElementById("fuentes").innerHTML = `Calculado en el navegador a partir de data/historico.json (generado el ${esc(sello(data.generado))}). El método y los límites están en <a href="https://github.com/antonpolenyaka/gridpredic-infrastructure/blob/main/docs/caso-de-negocio.md">caso-de-negocio.md</a>.`;
       document.getElementById("pie").textContent = "Niveles: muy alto desde el percentil 95 de los días de entrenamiento de cada distribuidora, alto desde el 90, medio desde el 75. Averías: incidencias de causa local de Calser (equipos, meteorología, vegetación, fauna, terceros y causa desconocida) en los CT en estudio, con los clientes y la duración real de cada corte de CT. Las distribuidoras con menos de 10 incidencias en el periodo no entran en las cifras.";
       // The distribuidoras with enough incidents in some mode can be looked at alone: the levels are their own percentiles.
       const select = document.getElementById("dist");
@@ -454,8 +462,10 @@
       document.querySelectorAll('input[name="modo"], #winsor, #dist').forEach((el) => el.addEventListener("change", render));
       document.getElementById("imprimir-arriba").addEventListener("click", (e) => { e.preventDefault(); window.print(); });
       render();
-    })
-    .catch((e) => { document.getElementById("bloques").innerHTML = `<div class="vacio">No hay data/historico.json todavía: corre job_ml_caso_negocio.py (${esc(e.message)}).</div>`; });
+    }, (e) => {
+      document.getElementById("fuentes").textContent = "Sin datos del caso de negocio.";
+      document.getElementById("bloques").innerHTML = `<div class="vacio">Todavía no hay data/historico.json (${esc(e.message)}): lo deja job_ml_caso_negocio.py, el trabajo del caso de negocio.</div>`;
+    });
 })();
 </script>
 </body>
