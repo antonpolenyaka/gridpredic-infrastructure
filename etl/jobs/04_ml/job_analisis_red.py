@@ -804,7 +804,7 @@ def sector_payload(data: Data, official: pd.DataFrame, ours_last: pd.DataFrame, 
             {"anio": int(r["anio"]), "tiepi": clean(r["valor"]), "imprevista": clean(r["imp_total"]),
              "fuerza_mayor": clean(r["imp_fuerza_mayor"]), "propias": clean(r["imp_propias"]), "incentivo": clean(r["tiepi_incentivo_h"])}
             for _, r in g.sort_values("anio").iterrows()]
-    return {"generado": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    return {"generado": datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M UTC"),
             "fuente": "GECOS (MITECO), índices zonales oficiales de calidad de suministro",
             "anios_sector": years_sector, "anios_nuestros": [min(years_ours), max(years_ours)],
             "ambitos": [name for _, name in scopes], "distribuidoras": distributors, "serie": yearly}

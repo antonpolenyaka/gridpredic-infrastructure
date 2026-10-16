@@ -16,6 +16,10 @@ Risk of tomorrow, every evening at riesgo_manana.horario (20:30 in Madrid).
 - aemet_municipios: the hourly forecast of AEMET for every municipality of
   the reference (its own model, a second opinion) goes to the Landing and to
   dashboard/data/aemet.json; skipped without key or answer.
+- nao: the daily NAO index of NOAA CPC goes to the Landing (nao.csv). The
+  production variant does not use it (it was measured and left out); it is
+  kept so the series is up to date to measure it again. Skipped without an
+  answer.
 - puntuar: job_ml_riesgo_manana fits the model on every labelled day and
   writes the risk of every distribuidora in l3_gold.riesgo_dia_siguiente.
 - avisar: when some distribuidora reaches riesgo_manana.aviso.nivel_minimo,

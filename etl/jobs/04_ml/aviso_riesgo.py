@@ -251,7 +251,7 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
     lines = []
     if today_iso and (risk or {}).get("fecha") and str(risk["fecha"]) < today_iso:
         lines.append(f"Atención: no hay riesgo calculado para hoy (el último es del {day_text(risk['fecha'])}); "
-                     "mirar dag_riesgo_manana en Airflow (http://localhost:8080).")
+                     "mirar dag_riesgo_manana en Airflow (http://localhost:8084).")
     if yesterday.get("distribuidoras"):
         parts = []
         for d in yesterday["distribuidoras"]:
@@ -352,6 +352,18 @@ def send_morning(folder: str, rcfg: dict, state_path: str, now: datetime = None)
     return "enviado"
 
 
+def run_time_text(when) -> str:
+    """The logical date of a run as people read it: '2026-10-14T18:30:00+00:00' -> '14.10.2026 20:30' (Madrid).
+    A run_id or anything that is not a date comes back as it is."""
+    try:
+        moment = when if isinstance(when, datetime) else datetime.fromisoformat(str(when).replace("Z", "+00:00"))
+    except ValueError:
+        return str(when)[:40]
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(ZoneInfo("Europe/Madrid")).strftime("%d.%m.%Y %H:%M")
+
+
 def failure_message(context: dict) -> str:
     """What a task failure of Airflow looks like in the webhook: DAG, task, attempt, day and the error."""
     ti = context.get("task_instance") or context.get("ti")
@@ -361,7 +373,7 @@ def failure_message(context: dict) -> str:
     when = context.get("logical_date") or context.get("execution_date") or context.get("run_id") or ""
     error = str(context.get("exception") or "")[:300]
     return (f"GridPredic: la tarea {task_id} de {dag_id} ha fallado" + (f" (intento {attempt})" if attempt else "")
-            + (f", ejecución {str(when)[:16]}" if when else "") + (f": {error}" if error else "") + ". Airflow: http://localhost:8080")
+            + (f", ejecución del {run_time_text(when)}" if when else "") + (f": {error}" if error else "") + ". Airflow: http://localhost:8084")
 
 
 def notify_failure(context: dict) -> str:

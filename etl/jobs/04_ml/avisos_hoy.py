@@ -190,12 +190,13 @@ def today_payload(risk: dict, rows: list, now: datetime, zone: str) -> dict:
 
 def guard_text(name: str, guard: dict, evening: dict, new: list, now: datetime, zone: str) -> str:
     stamp = now.astimezone(ZoneInfo(zone)).strftime("%H:%M")
+    warnings = "avisos nuevos" if len(new) > 1 else "aviso nuevo"
     if guard.get("reforzar") and not evening.get("reforzar"):
         reasons = ", ".join(f"{w['nombre']} {w['nivel_texto']} de {w['inicio']} a {w['fin']}" for w in new) or guard.get("motivo", "")
-        return f"{name}: guardia reforzada desde las {stamp} por aviso nuevo de AEMET para hoy ({reasons})"
+        return f"{name}: guardia reforzada desde las {stamp} por {warnings} de AEMET para hoy ({reasons})"
     if new:
         reasons = ", ".join(f"{w['nombre']} {w['nivel_texto']}" for w in new)
-        return f"{name}: aviso nuevo de AEMET para hoy ({reasons}); la guardia ya estaba {'reforzada' if guard.get('reforzar') else 'normal'}"
+        return f"{name}: {warnings} de AEMET para hoy ({reasons}); la guardia ya estaba {'reforzada' if guard.get('reforzar') else 'normal'}"
     return f"{name}: sin avisos nuevos de AEMET desde anoche"
 
 
