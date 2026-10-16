@@ -1,7 +1,7 @@
 """
 Variables de ERA5 que no teníamos (CDS, reanalysis-era5-single-levels) para la
 caja de las redes: el índice K, la precipitación convectiva, la tasa máxima de
-precipitación y la racha instantánea a 10 m. Un fichero NetCDF por año.
+precipitación y la racha instantánea a 10 m. Un fichero NetCDF por mes.
 
 La clave es la del CDS de .env (COPERNICUS_EWDS_KEY, que sirve en los dos
 sitios); no se imprime.
@@ -35,20 +35,18 @@ def main(argv):
     os.makedirs(folder, exist_ok=True)
     client = cdsapi.Client(url="https://cds.climate.copernicus.eu/api", key=key(), quiet=True)
     for year in range(first, last + 1):
-        target = os.path.join(folder, f"era5_convectivo_{year}.nc")
-        if os.path.exists(target) and os.path.getsize(target) > 0:
-            print(year, "ya estaba", flush=True)
-            continue
-        # El año en curso solo hasta el mes pasado: ERA5 va unos días por detrás.
+        # El año en curso solo hasta el mes pasado: ERA5 va unos días por detrás. Un mes por petición, porque el
+        # año entero pasa del límite de tamaño del CDS.
         upto = 12 if year < date.today().year else date.today().month - 1
-        months = [f"{m:02d}" for m in range(1, upto + 1)]
-        print(year, "pidiendo", flush=True)
-        client.retrieve("reanalysis-era5-single-levels", {
-            "product_type": ["reanalysis"], "variable": VARIABLES, "year": [str(year)], "month": months,
-            "day": [f"{d:02d}" for d in range(1, 32)], "time": [f"{h:02d}:00" for h in range(24)],
-            "area": AREA, "data_format": "netcdf", "download_format": "unarchived"}, target)
-        print(year, "bajado", round(os.path.getsize(target) / 1e6, 1), "MB", flush=True)
-
+        for month in range(1, upto + 1):
+            target = os.path.join(folder, f"era5_convectivo_{year}_{month:02d}.nc")
+            if os.path.exists(target) and os.path.getsize(target) > 0:
+                continue
+            client.retrieve("reanalysis-era5-single-levels", {
+                "product_type": ["reanalysis"], "variable": VARIABLES, "year": [str(year)], "month": [f"{month:02d}"],
+                "day": [f"{d:02d}" for d in range(1, 32)], "time": [f"{h:02d}:00" for h in range(24)],
+                "area": AREA, "data_format": "netcdf", "download_format": "unarchived"}, target)
+            print(year, month, "bajado", round(os.path.getsize(target) / 1e6, 1), "MB", flush=True)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
