@@ -108,6 +108,26 @@ job_silver_d_salida.py
 >
 > Es un reemplazo directo: mismo binario `minio`, mismas variables `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD`, y trae el cliente `mc` del que dependen los scripts de `infra/minio/`.
 
+### Lo mismo en la nube
+
+Todo corre en un portátil con Docker, con las copias de las bases de las distribuidoras en local. Cada pieza tiene un servicio gestionado equivalente, y las capas, los formatos (Delta sobre almacenamiento de objetos) y los trabajos no cambiarían:
+
+| Pieza local | En AWS | En Azure |
+| --- | --- | --- |
+| MinIO | Amazon S3 | Azure Data Lake Storage Gen2 |
+| Spark 4 + Delta Lake | Amazon EMR o Databricks | Azure Databricks |
+| Hive Metastore | AWS Glue Data Catalog | Unity Catalog de Databricks |
+| Trino | Amazon Athena | Databricks SQL o Synapse serverless |
+| Airflow | Amazon MWAA | Airflow gestionado de Data Factory o de Fabric |
+| Debezium, Kafka Connect y Kafka | Amazon MSK con MSK Connect | Event Hubs con su interfaz de Kafka y Debezium |
+| nginx con las páginas estáticas | S3 con CloudFront | Azure Static Web Apps |
+
+SQL Server sigue en la distribuidora en cualquier caso: la captura de cambios y las cargas por lotes llegarían por una conexión privada.
+
+### Por qué los modelos van en el driver y no en MLlib
+
+Spark hace el trabajo pesado: leer las series del SCADA, los cortes y la meteorología y dejarlos en features por CT y hora o por distribuidora y día. Los modelos se entrenan después con scikit-learn y XGBoost sobre esa tabla, que cabe en la memoria del driver (el modelo del día tiene una fila por distribuidora y día), pasando de Spark a pandas con Arrow. MLlib no tiene la logística de Firth ni la prior de Cauchy que necesitamos con tan pocos eventos, y el XGBoost distribuido solo añade coste con estos tamaños. Además, scikit-learn permite probar cada modelo sin clúster, en segundos. Si un día el volumen lo pidiera (todas las líneas de una distribuidora grande por hora), el paso sería `xgboost.spark` o un modelo por grupo con `applyInPandas`, sin tocar las capas.
+
 ---
 
 ## 1. Requisitos mínimos del ordenador
