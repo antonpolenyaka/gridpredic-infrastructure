@@ -7,9 +7,18 @@
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="gridpredic.css">
 <style>
-  /* Rules of this page only: the three-source legend of the profile and the live columns of the lines. */
+  /* Rules of this page only: the three-source legend of the profile, the live columns of the lines and the causes. */
   td.ahora .pico { color: var(--muy-alto-ink); font-weight: 600; }
   .perfil-leyenda { margin-top: var(--s-2); }
+  .perfil-leyenda i.linea { width: 16px; height: 0; border-radius: 0; border-top: 2px solid currentColor; vertical-align: 3px; }
+  .perfil-leyenda i.linea.discontinua { border-top-style: dashed; }
+  .perfil-leyenda i.linea.punteada { border-top-style: dotted; opacity: 0.7; }
+  /* The causes of an incident on days like this one: sorted bars with their share, in one neutral colour (they
+     are categories, not levels). */
+  .causas { display: grid; grid-template-columns: max-content minmax(80px, 1fr) max-content; gap: 6px 10px; align-items: center; font-size: var(--fs-1); }
+  .causas .pista { height: 10px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+  .causas .pista span { display: block; height: 100%; border-radius: 3px; background: var(--muted); }
+  .causas .v { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
   .mapa-panel .panel-b, .perfil-panel .panel-b { padding-top: var(--s-2); }
   .perfil-panel .verificacion { margin-top: var(--s-3); }
   /* On a phone the tables of the last days keep a narrow date column and readable cells, and scroll sideways. */
@@ -49,7 +58,19 @@
 <script>
 (function () {
   "use strict";
-  const COLORS = { bajo: "#2f7a4b", medio: "#d9a400", alto: "#d9641a", "muy alto": "#bf2a2a" };
+  // The colours of the levels and of the marks of the map come from the tokens of gridpredic.css, so the light and
+  // the dark theme draw each with its own palette (the fallbacks are the light theme).
+  const token = (name, fallback) => {
+    try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback; } catch (e) { return fallback; }
+  };
+  const COLORS = { bajo: token("--bajo", "#8a96a3"), medio: token("--medio", "#f2c230"), alto: token("--alto", "#d55e00"), "muy alto": token("--muy-alto", "#7f1d2d") };
+  const MARCAS = { borde: token("--mapa-borde", "#1b2430"), medioBorde: token("--medio-borde", "#b38f00"), estacion: token("--estacion", "#1b2430"),
+                   panel: token("--panel", "#ffffff"), rayo: token("--tormenta", "#1b2430"), rayoHalo: token("--tormenta-fondo", "#ffffff"),
+                   seleccion: token("--accent-ink", "#163c8f") };
+  // The circles of the map are drawn from the lowest level to the highest, so a "muy alto" is never under a "bajo".
+  const ORDEN = { bajo: 0, medio: 1, alto: 2, "muy alto": 3 };
+  // The area of a circle is proportional to the CT of the municipality (3 px at least, so it can be seen and pointed at).
+  const radioCT = (n) => Math.max(3, 2.4 * Math.sqrt(Math.max(0, Number(n) || 0)));
   const cls = (nivel) => (nivel || "bajo").replace(" ", "-");
   // Numbers in Spanish: decimal comma and a dot every three digits, also with four digits (8.880, not 8880).
   const num = (x, d = 0) => {
@@ -163,8 +184,8 @@
     const run = String(data.run_id || "");
     const kind = run.startsWith("scheduled") ? "ejecución programada de las 20:30" : run.startsWith("manual") ? "ejecución lanzada a mano" : run ? "ejecución " + run : "";
     if (data.generado) meta.push(["Generado", data.generado + (kind ? ", " + kind : "")]);
+    // Closed by default (details on demand): the risk of the networks comes first; it opens by itself only on an error.
     document.getElementById("fuentes").innerHTML = meta.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("");
-    if (window.innerWidth >= 1024) document.getElementById("meta").open = true;
     const acciones = document.getElementById("acciones");
     acciones.innerHTML = "";
     const sheet = DIA ? `data/parte_guardia_${DIA}.xlsx` : "data/parte_guardia.xlsx";
@@ -181,61 +202,82 @@
       + (DIA ? "" : " Próximas 3 h por línea: una regla sobre la probabilidad del día con la franja (el 84 % de las averías de los días de alerta de 2024 - 2026 empiezan dentro de ella), la racha medida en el pico previsto y los rayos a menos de 10 km en la hora previa (15 veces más averías). Sirve para ordenar las líneas de las próximas horas; no es una probabilidad calibrada.");
   }
 
-  function perfilSvg(perfil, franja, observado, banda, aemet) {
+  // Round steps for an axis: the smallest step of the list that leaves five intervals or fewer.
+  function escala(max, steps) {
+    for (const s of steps) if (Math.ceil(max / s) <= 5) return { top: Math.max(s, Math.ceil(max / s) * s), step: s };
+    const s = steps[steps.length - 1];
+    return { top: Math.ceil(max / s) * s, step: s };
+  }
+
+  function perfilSvg(perfil, franja, observado, banda, aemet, ancho) {
     if (!perfil || !perfil.length) return '<div class="vacio">Sin perfil horario</div>';
-    // The drawing scales to its box; on a narrow screen the box is narrower so the labels keep their size.
-    const W = Math.min(720, Math.max(360, (window.innerWidth || 720) - 80)), H = 170, L = 36, R = 8, T = 12, B = 26;
+    // Drawn at the width of its box (one unit, one pixel), so the text keeps its size and is never stretched. The
+    // gust has its axis in km/h; the rain goes in a strip of its own underneath, with its own axis in mm.
+    const W = Math.max(300, Math.round(ancho || 640)), L = 40, R = 10, T = 12, HG = 150, GAP = 14, HR = 36, B = 24;
+    const H = T + HG + GAP + HR + B;
     const obs = (observado || []).filter((o) => o.racha_kmh != null);
     const ens = (banda || []).filter((e) => e.p10 != null && e.p90 != null);
     const aem = (aemet || []).filter((a) => a.racha_kmh != null);
-    const max = Math.max(10, ...perfil.map((p) => p.racha_max || 0), ...obs.map((o) => o.racha_kmh), ...ens.map((e) => e.p90), ...aem.map((a) => a.racha_kmh));
+    const maxGust = Math.max(0, ...perfil.map((p) => p.racha_max || 0), ...obs.map((o) => o.racha_kmh), ...ens.map((e) => e.p90), ...aem.map((a) => a.racha_kmh));
+    // At least 50 km/h on the axis: a calm day looks calm instead of as tall as a storm.
+    const g = escala(Math.max(50, maxGust), [10, 20, 25, 50, 100]);
+    const maxRain = Math.max(0, ...perfil.map((p) => p.lluvia || 0));
+    const rainTop = [1, 2, 5, 10, 20, 50, 100].find((v) => v >= maxRain) || Math.ceil(maxRain);
     const x = (h) => L + (h / 24) * (W - L - R);
-    const y = (v) => T + (1 - v / max) * (H - T - B);
-    let out = `<svg class="perfil" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Racha prevista por horas">`;
+    const y = (v) => T + (1 - v / g.top) * HG;
+    const r0 = T + HG + GAP, yr = (v) => r0 + HR - (Math.min(v, rainTop) / rainTop) * HR;
+    const bw = (W - L - R) / 24 - 2, cx = (h) => (x(h) + 1 + bw / 2).toFixed(1);
+    const peak = perfil.reduce((a, p) => ((p.racha_max || 0) > (a.racha_max || 0) ? p : a), perfil[0]);
+    const what = `Racha máxima prevista por horas: pico de ${num(peak.racha_max)} km/h ${aLas(peak.hora)}` + (franja && franja.inicio != null ? `, franja de más riesgo de ${franja.inicio} a ${franja.fin + 1} h` : ", sin franja");
+    let out = `<svg class="perfil" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(what)}">`;
     if (franja && franja.inicio != null) {
-      out += `<rect x="${x(franja.inicio)}" y="${T}" width="${x(franja.fin + 1) - x(franja.inicio)}" height="${H - T - B}" fill="${COLORS.alto}" opacity="0.18"/>`;
+      out += `<rect x="${x(franja.inicio).toFixed(1)}" y="${T}" width="${(x(franja.fin + 1) - x(franja.inicio)).toFixed(1)}" height="${HG + GAP + HR}" fill="var(--franja)" opacity="0.24"><title>franja de más riesgo: de ${franja.inicio}:00 a ${franja.fin + 1}:00</title></rect>`;
     }
-    for (const v of [max / 2, max]) {
-      out += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>`;
-      out += `<text x="${L - 4}" y="${y(v) + 4}" font-size="11" text-anchor="end" fill="var(--muted)">${Math.round(v)}</text>`;
+    for (let v = 0; v <= g.top + 1e-9; v += g.step) {
+      out += `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="${v === 0 ? "var(--line-strong)" : "var(--grid)"}" stroke-width="1"/>`;
+      out += `<text x="${L - 6}" y="${(y(v) + 4).toFixed(1)}" font-size="12" text-anchor="end" fill="var(--muted)">${v}</text>`;
     }
-    const bw = (W - L - R) / 24 - 2;
+    const bars = [], rain = [];
     for (const p of perfil) {
-      const h = p.hora;
-      out += `<rect x="${x(h) + 1}" y="${y(p.racha_max || 0)}" width="${bw}" height="${H - B - y(p.racha_max || 0)}" fill="var(--accent)" opacity="0.85"><title>${h}:00 racha máx. ${num(p.racha_max)} km/h, media ${num(p.racha_media)} km/h, lluvia ${num(p.lluvia, 1)} mm</title></rect>`;
-      if (p.lluvia > 0) out += `<rect x="${x(h) + 1}" y="${H - B - Math.min(40, p.lluvia * 6)}" width="${bw}" height="${Math.min(40, p.lluvia * 6)}" fill="var(--serie-lluvia)" opacity="0.55"/>`;
-      if (h % 3 === 0) out += `<text x="${x(h) + bw / 2}" y="${H - 8}" font-size="11" text-anchor="middle" fill="var(--muted)">${h}h</text>`;
+      const h = p.hora, v = p.racha_max || 0;
+      bars.push(`<rect x="${(x(h) + 1).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(T + HG - y(v)).toFixed(1)}" fill="var(--serie-prevista)" opacity="0.85"><title>${h}:00 racha máx. ${num(p.racha_max)} km/h, media ${num(p.racha_media)} km/h, lluvia ${num(p.lluvia, 1)} mm</title></rect>`);
+      if (p.lluvia > 0) rain.push(`<rect x="${(x(h) + 1).toFixed(1)}" y="${yr(p.lluvia).toFixed(1)}" width="${bw.toFixed(1)}" height="${(r0 + HR - yr(p.lluvia)).toFixed(1)}" fill="var(--serie-lluvia)" opacity="0.8"><title>${h}:00 lluvia ${num(p.lluvia, 1)} mm</title></rect>`);
+      if (h % 3 === 0) out += `<text x="${cx(h)}" y="${H - 6}" font-size="12" text-anchor="middle" fill="var(--muted)">${h} h</text>`;
     }
+    out += bars.join("");
+    // The rule of the window of the day (riesgo_zonas.risk_window): no window when the peak stays under 40 km/h.
+    // A dotted line, explained in the legend (the axis always reaches 50 km/h, so the line is always there).
+    out += `<line x1="${L}" x2="${W - R}" y1="${y(40).toFixed(1)}" y2="${y(40).toFixed(1)}" stroke="var(--fg)" stroke-opacity="0.6" stroke-width="1.2" stroke-dasharray="2 3"><title>40 km/h: sin franja si el pico del día no llega</title></line>`;
+    // The rain strip: its own baseline and its top value in mm.
+    out += `<line x1="${L}" x2="${W - R}" y1="${r0}" y2="${r0}" stroke="var(--grid)" stroke-dasharray="2 3"/><line x1="${L}" x2="${W - R}" y1="${r0 + HR}" y2="${r0 + HR}" stroke="var(--line-strong)"/>`;
+    out += `<text x="${L - 6}" y="${r0 + 9}" font-size="12" text-anchor="end" fill="var(--muted)">${num(rainTop)}</text><text x="${L - 6}" y="${r0 + HR}" font-size="12" text-anchor="end" fill="var(--muted)">mm</text>`;
+    out += rain.join("");
     if (ens.length) {
-      // The band of the ensemble: between the p10 and the p90 of the runs, with the median as a line.
-      const up = ens.map((e) => `${(x(e.hora) + bw / 2).toFixed(1)},${y(e.p90).toFixed(1)}`);
-      const down = ens.slice().reverse().map((e) => `${(x(e.hora) + bw / 2).toFixed(1)},${y(e.p10).toFixed(1)}`);
+      // The band of the ensemble: between the p10 and the p90 of the runs, with the median as a dashed line.
+      const up = ens.map((e) => `${cx(e.hora)},${y(e.p90).toFixed(1)}`);
+      const down = ens.slice().reverse().map((e) => `${cx(e.hora)},${y(e.p10).toFixed(1)}`);
       out += `<polygon points="${up.concat(down).join(" ")}" fill="var(--serie-banda)" opacity="0.22"><title>escenarios de ICON-EU EPS: entre el p10 y el p90 de la racha</title></polygon>`;
-      out += `<polyline points="${ens.map((e) => `${(x(e.hora) + bw / 2).toFixed(1)},${y(e.p50).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--serie-banda)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+      out += `<polyline points="${ens.map((e) => `${cx(e.hora)},${y(e.p50).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--serie-banda)" stroke-width="1.5" stroke-dasharray="2 3"/>`;
     }
     if (aem.length) {
-      // The forecast of AEMET by municipality (its own model): a green line, the strongest gust of the municipalities of the network.
-      out += `<polyline points="${aem.map((a) => `${(x(a.hora) + bw / 2).toFixed(1)},${y(a.racha_kmh).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--serie-aemet)" stroke-width="2"><title>AEMET por municipios: racha máxima prevista por horas</title></polyline>`;
+      // The forecast of AEMET by municipality (its own model): a dashed green line, the strongest gust of the municipalities of the network.
+      out += `<polyline points="${aem.map((a) => `${cx(a.hora)},${y(a.racha_kmh).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--serie-aemet)" stroke-width="2.2" stroke-dasharray="7 4"><title>AEMET por municipios: racha máxima prevista por horas</title></polyline>`;
     }
     if (obs.length) {
-      const pts = obs.map((o) => `${(x(o.hora) + bw / 2).toFixed(1)},${y(o.racha_kmh).toFixed(1)}`).join(" ");
+      const pts = obs.map((o) => `${cx(o.hora)},${y(o.racha_kmh).toFixed(1)}`).join(" ");
       out += `<polyline points="${pts}" fill="none" stroke="var(--serie-observada)" stroke-width="2"/>`;
-      for (const o of obs) out += `<circle cx="${(x(o.hora) + bw / 2).toFixed(1)}" cy="${y(o.racha_kmh).toFixed(1)}" r="3" fill="var(--serie-observada)"><title>${o.hora}:00 observado: racha ${num(o.racha_kmh)} km/h${o.lluvia_mm != null ? ", lluvia " + num(o.lluvia_mm, 1) + " mm" : ""} (${o.estaciones} estaciones)</title></circle>`;
+      for (const o of obs) out += `<circle cx="${cx(o.hora)}" cy="${y(o.racha_kmh).toFixed(1)}" r="3.2" fill="var(--serie-observada)" stroke="var(--panel)" stroke-width="1"><title>${o.hora}:00 observado: racha ${num(o.racha_kmh)} km/h${o.lluvia_mm != null ? ", lluvia " + num(o.lluvia_mm, 1) + " mm" : ""} (${o.estaciones} estaciones)</title></circle>`;
     }
     out += "</svg>";
     return out;
   }
 
-  function causasBarra(causas) {
+  function causasBarras(causas) {
     if (!causas || !causas.length) return "";
-    // Causes are categories, not levels of risk: a palette apart from the one of the badges.
-    const palette = ["#2457c5", "#2a9d8f", "#6b4fbb", "#8b95a5", "#b5651d", "#c2457e", "#5c7a99"];
-    let bar = '<div class="barra">', leg = '<div class="leyenda">';
-    causas.forEach((c, i) => {
-      bar += `<span style="width:${(100 * c.parte).toFixed(1)}%;background:${palette[i % palette.length]}" title="${esc(c.familia)} ${pct(c.parte, 0)}"></span>`;
-      leg += `<span><i style="background:${palette[i % palette.length]}"></i>${esc(c.familia)} ${pct(c.parte, 0)}</span>`;
-    });
-    return bar + "</div>" + leg + "</div>";
+    // Causes are categories, not levels: bars sorted from the most to the least frequent, each with its share,
+    // in one neutral colour.
+    const rows = causas.slice().sort((a, b) => (b.parte || 0) - (a.parte || 0));
+    return '<div class="causas">' + rows.map((c) => `<span>${esc(c.familia)}</span><span class="pista" title="${esc(c.familia)} ${pct(c.parte, 0)}"><span style="width:${(100 * Math.min(1, c.parte || 0)).toFixed(1)}%"></span></span><span class="v">${pct(c.parte, 0)}</span>`).join("") + "</div>";
   }
 
   function tablaZonas(d, idx) {
@@ -341,16 +383,41 @@
       ${curve ? `<p class="notas">Llegada media según el número de brigadas: ${esc(curve)}.</p>` : ""}</div>`;
   }
 
+  // Lowest level first and, within a level, the largest circle first: the drawing order of the map.
+  const porNivel = (a, b) => ((ORDEN[a.nivel] || 0) - (ORDEN[b.nivel] || 0)) || ((b.n_ct || 0) - (a.n_ct || 0));
+
+  // The legend of the map says what the colour and the size mean, with three reference circles drawn with the same
+  // radius as on the map.
+  function leyendaMapa() {
+    const swatch = (n) => `<span><i class="${cls(n)}" style="background:var(--${cls(n)})"></i>${n}</span>`;
+    const ring = (n) => { const r = radioCT(n), s = Math.ceil(2 * r + 2); return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" aria-hidden="true"><circle cx="${s / 2}" cy="${s / 2}" r="${r.toFixed(1)}" fill="var(--panel-2)" stroke="var(--muted)" stroke-width="1"/></svg>${n}`; };
+    return `<div class="leyenda" style="margin-top:8px"><b class="que">Color:</b> nivel de su línea frente a su propia historia ${["bajo", "medio", "alto", "muy alto"].map(swatch).join("")}</div>
+      <div class="leyenda" style="margin-top:4px"><span class="tamanos"><b class="que">Tamaño:</b> CT del municipio ${[5, 25, 75].map(ring).join(" ")}</span><span>marcador azul: base de brigada</span>`
+      + `<span data-serie="estaciones" hidden><i class="anillo"></i>estación de AEMET</span><span data-serie="rayos" hidden><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style="vertical-align:-1px;margin-right:5px"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="var(--tormenta)" stroke-width="2" stroke-linecap="round"/></svg>rayo en la última hora</span></div>`;
+  }
+
+  // The profiles are drawn at the width of their box: when the window changes width they are drawn again.
+  let DATOS = null, redibujo = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(redibujo);
+    redibujo = setTimeout(() => { if (DATOS) (DATOS.distribuidoras || []).forEach((d, idx) => redibujarPerfil(d, idx)); }, 200);
+  });
+
   function mapa(d, idx, el) {
     const map = L.map(el, { scrollWheelZoom: false });
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
     const pts = [];
-    const muni = d.municipios || [];
+    // From the lowest level to the highest (and, within a level, the large circles first), so a "muy alto" is
+    // drawn last and never hidden. Alto and muy alto carry a thicker edge as well as their colour; the amber has
+    // its darker edge on the light map.
+    const muni = (d.municipios || []).filter((m) => m.lat != null).sort(porNivel);
     for (const m of muni) {
-      if (m.lat == null) continue;
-      const r = 4 + Math.sqrt(m.n_ct || 1) * 1.6;
-      const c = L.circleMarker([m.lat, m.lon], { radius: r, color: "#333", weight: 0.6, fillColor: COLORS[m.nivel] || COLORS.bajo, fillOpacity: 0.75 });
-      c.bindTooltip(`<b>${esc(m.nombre)}</b><br>${num(m.n_ct)} CT, ${num(m.abonados)} clientes<br>Probabilidad de corte: ${pct(m.probabilidad)}<br>Racha prevista ${num(m.racha_max)} km/h` + (m.zonas && m.zonas.length ? "<br>Zonas: " + esc([...new Set(m.zonas)].join(", ")) : ""));
+      const level = ORDEN[m.nivel] != null ? m.nivel : "bajo";
+      const style = { radius: radioCT(m.n_ct), color: level === "medio" ? MARCAS.medioBorde : MARCAS.borde, opacity: level === "bajo" ? 0.6 : 0.9,
+                      weight: ORDEN[level] >= 2 ? 1.6 : level === "medio" ? 1.2 : 0.8, fillColor: COLORS[level], fillOpacity: 0.85 };
+      const c = L.circleMarker([m.lat, m.lon], style);
+      c._estilo = style;
+      c.bindTooltip(`<b>${esc(m.nombre)}</b><br>Nivel de su línea: ${esc(level)}<br>${num(m.n_ct)} CT, ${num(m.abonados)} clientes<br>Probabilidad de corte: ${pct(m.probabilidad)}<br>Racha prevista ${num(m.racha_max)} km/h` + (m.zonas && m.zonas.length ? "<br>Zonas: " + esc([...new Set(m.zonas)].join(", ")) : ""));
       c.addTo(map); pts.push([m.lat, m.lon]); m._marker = c;
     }
     for (const b of ((d.brigadas || {}).bases || [])) {
@@ -383,12 +450,17 @@
       if (!map) return;
       if (map._rayos) map._rayos.remove();
       const layer = L.layerGroup();
+      // Each flash is a small cross, black with a white halo (no colour of the levels), paler the older it is.
+      const cross = L.divIcon({ className: "rayo-icono", iconSize: [12, 12], iconAnchor: [6, 6],
+        html: `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="${MARCAS.rayoHalo}" stroke-width="4.5" stroke-linecap="round"/><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="${MARCAS.rayo}" stroke-width="2" stroke-linecap="round"/></svg>` });
       for (const f of (r.rayos || [])) {
         const age = Math.min(1, Math.max(0, (f.minutos || 0) / Math.max(1, r.ventana_min || 60)));
-        L.circleMarker([f.lat, f.lon], { radius: 4, color: "#8a6d00", weight: 0.5, fillColor: "#f1c40f", fillOpacity: 0.95 - 0.7 * age })
+        L.marker([f.lat, f.lon], { icon: cross, opacity: 1 - 0.6 * age, keyboard: false })
           .bindTooltip(`Rayo hace ${f.minutos} min (${esc(f.ts)})`).addTo(layer);
       }
       layer.addTo(map); map._rayos = layer;
+      const item = sec.querySelector('[data-serie="rayos"]');
+      if (item) item.hidden = !(r.rayos || []).length;
     });
     // The source of the flashes goes once in the footer (the footer already speaks of "rayos", so a flag and not the text).
     const pie = document.getElementById("pie");
@@ -414,8 +486,9 @@
       const map = maps[idx];
       if (!map || map._estaciones) return;
       const layer = L.layerGroup();
+      // The stations are dark rings (light rings in the dark theme): no colour of the levels.
       for (const st of (o.estaciones || [])) {
-        L.circleMarker([st.lat, st.lon], { radius: 5, color: "#b8302f", weight: 1, fillColor: "#fff", fillOpacity: 0.9 })
+        L.circleMarker([st.lat, st.lon], { radius: 5, color: MARCAS.estacion, weight: 1.6, fillColor: MARCAS.panel, fillOpacity: 0.95 })
           .bindTooltip(`Estación AEMET ${esc(st.nombre)} (${esc(st.hora)}): racha ${num(st.racha_kmh)} km/h, viento ${num(st.viento_kmh)} km/h${st.lluvia_mm != null ? ", lluvia " + num(st.lluvia_mm, 1) + " mm" : ""}${st.temp_c != null ? ", " + num(st.temp_c, 1) + " °C" : ""}`).addTo(layer);
       }
       layer.addTo(map); map._estaciones = layer;
@@ -427,7 +500,7 @@
   function redibujarPerfil(d, idx) {
     const sec = document.getElementById("dist-" + idx);
     const holder = sec && sec.querySelector(".perfil-holder");
-    if (holder) holder.innerHTML = perfilSvg(d.perfil, d.franja || {}, d._observado, d._banda, d._aemet);
+    if (holder) holder.innerHTML = perfilSvg(d.perfil, d.franja || {}, d._observado, d._banda, d._aemet, holder.clientWidth);
     // The legend names only the series that are drawn (an archived day has no stations, and the ensemble or AEMET may be missing).
     for (const [key, series] of [["banda", d._banda], ["aemet", d._aemet], ["observado", d._observado]]) {
       const item = sec && sec.querySelector(`.perfil-leyenda [data-serie="${key}"]`);
@@ -452,7 +525,7 @@
         const holder = sec.querySelector(".perfil-holder");
         if (holder && holder.parentNode) holder.parentNode.insertBefore(p, holder.nextSibling); else sec.appendChild(p);
       }
-      p.textContent = "Línea verde: " + limpiar(block.texto || "AEMET por municipios") + ".";
+      p.textContent = "Línea verde discontinua: " + limpiar(block.texto || "AEMET por municipios") + ".";
       d._picoAemet = block.pico;
       pintarConfianza(d, idx);
     });
@@ -671,13 +744,13 @@
           <div class="panel sub mapa-panel">
             <div class="panel-h"><h3>Dónde: municipios por riesgo y bases de las brigadas</h3></div>
             <div class="panel-b"><div class="map" id="map-${idx}"></div>
-              <div class="leyenda" style="margin-top:8px"><span><i style="background:${COLORS.bajo}"></i>bajo</span><span><i style="background:${COLORS.medio}"></i>medio</span><span><i style="background:${COLORS.alto}"></i>alto</span><span><i style="background:${COLORS["muy alto"]}"></i>muy alto</span><span>círculo: municipio, tamaño por CT</span><span>marcador: base de brigada</span><span data-serie="estaciones" hidden><i style="background:#fff;border:1.5px solid ${COLORS["muy alto"]}"></i>estación de AEMET</span></div>
+              ${leyendaMapa()}
             </div>
           </div>
           <div class="panel sub perfil-panel">
             <div class="panel-h"><h3 class="perfil-titulo">Cuándo: racha máxima prevista por horas (km/h)</h3></div>
-            <div class="panel-b"><div class="perfil-holder">${perfilSvg(d.perfil, fr)}</div>
-              <div class="leyenda perfil-leyenda"><span><i class="sq" style="background:var(--serie-prevista)"></i>racha prevista (ICON-EU)</span><span><i class="sq" style="background:var(--serie-lluvia);opacity:.6"></i>lluvia</span><span data-serie="franja"${fr.inicio != null ? "" : " hidden"}><i class="sq" style="background:var(--alto);opacity:.35"></i>franja de más riesgo</span><span data-serie="banda" hidden><i class="sq" style="background:var(--serie-banda);opacity:.5"></i>escenarios (p10 - p90)</span><span data-serie="aemet" hidden><i style="background:var(--serie-aemet)"></i>AEMET por municipios</span><span data-serie="observado" hidden><i style="background:var(--serie-observada)"></i>observado en las estaciones</span></div>
+            <div class="panel-b"><div class="perfil-holder"></div>
+              <div class="leyenda perfil-leyenda"><span><i class="sq" style="background:var(--serie-prevista)"></i>racha prevista (ICON-EU)</span><span><i class="sq" style="background:var(--serie-lluvia)"></i>lluvia (mm, en la franja de abajo)</span><span data-serie="franja"${fr.inicio != null ? "" : " hidden"}><i class="sq" style="background:var(--franja);opacity:.45"></i>franja de más riesgo</span><span data-serie="banda" hidden><i class="sq" style="background:var(--serie-banda);opacity:.45"></i>escenarios (p10 - p90)</span><span data-serie="aemet" hidden><i class="linea discontinua" style="color:var(--serie-aemet)"></i>AEMET por municipios</span><span data-serie="observado" hidden><i class="linea" style="color:var(--serie-observada)"></i>observado en las estaciones</span><span><i class="linea punteada" style="color:var(--fg)"></i>40 km/h: sin franja si el pico no llega</span></div>
             </div>
           </div>
         </div>
@@ -686,10 +759,12 @@
           <div class="panel-b">${tablaZonas(d, idx)}${tablaCts(d)}</div>
         </div>
         <div class="dos causas-brigadas">
-          <div class="panel sub"><div class="panel-h"><h3>Si hay avería, por qué</h3></div><div class="panel-b">${causasBarra(d.causas) || '<p class="notas">Sin reparto de causas para días como este.</p>'}</div></div>
+          <div class="panel sub"><div class="panel-h"><h3>Si hay avería, por qué</h3></div><div class="panel-b">${causasBarras(d.causas) || '<p class="notas">Sin reparto de causas para días como este.</p>'}</div></div>
           <div class="panel sub"><div class="panel-h"><h3>Brigadas</h3></div><div class="panel-b">${brigadas(d.brigadas) || '<p class="notas">Sin bases de brigadas calculadas.</p>'}</div></div>
         </div>`;
       main.appendChild(sec);
+      // The profile is drawn once its box has a width (and again when the window changes width).
+      redibujarPerfil(d, idx);
       const map = mapa(d, idx, sec.querySelector("#map-" + idx));
       maps[idx] = map;
       sec.querySelectorAll("tr.fila-zona").forEach((tr) => tr.addEventListener("click", () => {
@@ -697,9 +772,17 @@
         tr.classList.add("zona-sel");
         const z = (d.zonas || []).slice().sort((a, b) => (b.probabilidad || 0) - (a.probabilidad || 0))[Number(tr.dataset.zona)];
         const set = new Set(z.municipios || []);
-        for (const m of (d.municipios || [])) if (m._marker) m._marker.setStyle({ weight: set.has(m.nombre) ? 3 : 0.6, color: set.has(m.nombre) ? "#1f5f8b" : "#333" });
+        const drawn = (d.municipios || []).filter((m) => m._marker).sort(porNivel);
+        for (const m of drawn) {
+          const base = m._marker._estilo || {};
+          m._marker.setStyle(set.has(m.nombre) ? { weight: 3, color: MARCAS.seleccion, opacity: 1 } : { weight: base.weight, color: base.color, opacity: base.opacity });
+          m._marker.bringToFront();
+        }
+        // The level order again, and the municipalities of the line on top of it.
+        for (const m of drawn) if (set.has(m.nombre)) m._marker.bringToFront();
       }));
     });
+    DATOS = data;
     const seg = seguimiento(data.seguimiento);
     if (seg) main.insertAdjacentHTML("beforeend", seg);
     if (data.notas && data.notas.length) main.insertAdjacentHTML("beforeend", `<section class="dist panel notas-seccion"><h2>Notas</h2><ul class="notas">${data.notas.map((n) => "<li>" + esc(n) + "</li>").join("")}</ul></section>`);

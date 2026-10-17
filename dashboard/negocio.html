@@ -8,9 +8,11 @@
 <style>
   /* The page for a distribuidora or an investor: what the system would have said in 2022 - 2026 and what it is
      worth, computed in the browser from historico.json (what job_ml_caso_negocio leaves). Printable. */
-  :root { --input: #fff8d6; --bg: var(--paper); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --input: #3a3620; } }
-  :root[data-theme="dark"] { --input: #3a3620; }
+  /* The references of the sector chart: one light grey for the provinces and the region, a mid grey for Spain;
+     the network is the only colour (the accent). */
+  :root { --input: #fff8d6; --bg: var(--paper); --sector-ref: #c3ccd8; --sector-espana: #8c97a4; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --input: #3a3620; --sector-ref: #3f4957; --sector-espana: #8c97a4; } }
+  :root[data-theme="dark"] { --input: #3a3620; --sector-ref: #3f4957; --sector-espana: #8c97a4; }
   main, footer, header.page { max-width: 1280px; }
   main section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-3); box-shadow: var(--shadow); padding: var(--s-4) var(--s-5) var(--s-5); }
   main section h2 { margin: 0 0 var(--s-3); font-size: var(--fs-4); }
@@ -21,9 +23,15 @@
   .controles select { font: inherit; font-size: var(--fs-1); padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--panel); color: var(--fg); }
   .cifras { margin-top: var(--s-2); }
   .cifra .v { font-size: var(--fs-6); }
-  .dos { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; gap: var(--s-4); }
+  /* Two charts side by side only when each gets 460 px or more; below that, one under the other, so the text of
+     the charts never shrinks under the size of the text of the page. */
+  .dos { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); align-items: start; gap: var(--s-4); }
   svg.graf { display: block; width: 100%; height: auto; }
   tr.total td { font-weight: 600; }
+  tr.recomendada td { background: var(--accent-soft); font-weight: 600; }
+  /* The coverage curve takes the width; on a wide screen its legend goes to its right. */
+  .curva { display: grid; gap: var(--s-2) var(--s-5); }
+  @media (min-width: 1100px) { .curva { grid-template-columns: minmax(0, 2.2fr) minmax(240px, 1fr); align-items: center; } }
   .calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s-3) var(--s-4); align-items: end; }
   .calc label { display: grid; gap: 4px; font-size: var(--fs-0); color: var(--muted); }
   .calc input { font: inherit; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--input); color: var(--fg); max-width: 160px; }
@@ -171,44 +179,74 @@
     return out;
   }
 
+  // Round steps for an axis: the smallest step of the list that leaves five intervals or fewer (0, 5, 10, 15, 20 %).
+  function pasos(max, steps) {
+    for (const s of steps) { const n = Math.ceil(max / s - 1e-9); if (n <= 5) return { top: Math.max(1, n) * s, step: s }; }
+    const s = steps[steps.length - 1];
+    return { top: Math.ceil(max / s) * s, step: s };
+  }
+  // The amber of "medio" gets a darker edge where it is drawn on white (in the dark theme the edge is the amber itself).
+  const borde = (n) => (n === "medio" ? ' stroke="var(--medio-borde)" stroke-width="1"' : "");
+  // Text on a part of the colour of a level: dark on the light ones, white on the maroon of "muy alto".
+  const tinta = (n) => (n === "muy alto" ? "#ffffff" : "#141c26");
+
   function bars(stats) {
-    // Rate of days with incident by level, as bars, with the share of days under each.
-    const W = 520, H = 190, L = 44, B = 46, T = 14, R = 10;
-    const max = Math.max(0.05, ...ORDER.map((n) => stats.by[n].dias ? stats.by[n].con / stats.by[n].dias : 0));
+    // Rate of days with incident by level, as bars on round ticks, with its value on top and the share of days under each.
+    const W = 520, H = 210, L = 48, B = 52, T = 20, R = 10;
+    const rateOf = (n) => (stats.by[n].dias ? stats.by[n].con / stats.by[n].dias : 0);
+    const max = Math.max(0.01, ...ORDER.map(rateOf));
+    const ax = pasos(max, [0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25]);
+    const dec = Math.abs(ax.step * 100 - Math.round(ax.step * 100)) > 1e-9 ? 1 : 0;
     const bw = (W - L - R) / ORDER.length;
-    let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tasa de días con avería por nivel previsto">`;
-    for (let k = 0; k <= 4; k++) {
-      const v = max * k / 4, y = T + (H - T - B) * (1 - k / 4);
-      out += `<line x1="${L}" x2="${W - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--grid)"/><text x="${L - 4}" y="${(y + 4).toFixed(1)}" font-size="10" text-anchor="end" fill="var(--muted)">${pct(v)}</text>`;
+    const totalDays = Math.max(1, ORDER.reduce((s, m) => s + stats.by[m].dias, 0));
+    let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Días con avería según el nivel de la víspera: ${ORDER.map((n) => `${n}, ${pct(rateOf(n), 1)}`).join("; ")}">`;
+    for (let k = 0; k * ax.step <= ax.top + 1e-9; k++) {
+      const v = k * ax.step, y = T + (H - T - B) * (1 - v / ax.top);
+      out += `<line x1="${L}" x2="${W - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${k === 0 ? "var(--line-strong)" : "var(--grid)"}"/><text x="${L - 6}" y="${(y + 4).toFixed(1)}" font-size="11" text-anchor="end" fill="var(--muted)">${pct(v, dec)}</text>`;
     }
     ORDER.forEach((n, j) => {
-      const b = stats.by[n], rate = b.dias ? b.con / b.dias : 0, h = (H - T - B) * rate / max;
-      const x = L + j * bw + bw * 0.18, y = T + (H - T - B) - h;
-      out += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw * 0.64).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="var(--${cls(n)})"><title>${n}: ${b.con} de ${b.dias} días con avería</title></rect>`;
-      out += `<text x="${(x + bw * 0.32).toFixed(1)}" y="${(y - 4).toFixed(1)}" font-size="12" font-weight="600" text-anchor="middle" fill="var(--fg)">${pct(rate, 1)}</text>`;
-      out += `<text x="${(x + bw * 0.32).toFixed(1)}" y="${H - B + 14}" font-size="11" text-anchor="middle" fill="var(--fg)">${n}</text>`;
-      out += `<text x="${(x + bw * 0.32).toFixed(1)}" y="${H - B + 28}" font-size="10" text-anchor="middle" fill="var(--muted)">${pct(b.dias / Math.max(1, ORDER.reduce((s, m) => s + stats.by[m].dias, 0)))} de los días</text>`;
+      const b = stats.by[n], rate = rateOf(n), h = (H - T - B) * rate / ax.top;
+      const x = L + j * bw + bw * 0.18, y = T + (H - T - B) - h, mid = (x + bw * 0.32).toFixed(1);
+      out += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw * 0.64).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="var(--${cls(n)})"${borde(n)}><title>${n}: ${b.con} de ${b.dias} días con avería</title></rect>`;
+      out += `<text x="${mid}" y="${(y - 5).toFixed(1)}" font-size="13" font-weight="600" text-anchor="middle" fill="var(--fg)">${pct(rate, 1)}</text>`;
+      out += `<text x="${mid}" y="${H - B + 17}" font-size="12" text-anchor="middle" fill="var(--fg)">${n}</text>`;
+      out += `<text x="${mid}" y="${H - B + 33}" font-size="11" text-anchor="middle" fill="var(--muted)">${pct(b.dias / totalDays)} de los días</text>`;
     });
     return out + "</svg>";
   }
 
   function stacked(stats) {
-    // Where the customer-hours fell: one bar of days and one of customer-hours, split by level.
-    const W = 520, H = 120, L = 150, R = 10, bh = 26;
+    // Where the customer-hours fell: one bar of days and one of customer-hours, split by level. Every part carries
+    // the word of its level, inside when it fits and outside with a short line when it does not (above the first
+    // bar, below the second), so the colour never has to be decoded alone.
+    const W = 520, L = 150, R = 10, bh = 28, y1 = 36, y2 = y1 + bh + 26, H = y2 + bh + 36, FS = 12;
     const totalDays = ORDER.reduce((s, n) => s + stats.by[n].dias, 0);
-    let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Días y horas-cliente por nivel previsto">`;
-    [["días", (n) => stats.by[n].dias / Math.max(1, totalDays)], ["horas-cliente perdidas", (n) => stats.total ? stats.by[n].h / stats.total : 0]].forEach(([label, share], row) => {
-      const y = 18 + row * (bh + 24);
-      out += `<text x="${L - 8}" y="${y + bh / 2 + 4}" font-size="12" text-anchor="end" fill="var(--fg)">${label}</text>`;
+    const width = (t) => t.length * FS * 0.56;
+    let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Parte de los días y de las horas-cliente perdidas por nivel previsto">`;
+    [["días", (n) => stats.by[n].dias / Math.max(1, totalDays), y1], ["horas-cliente perdidas", (n) => (stats.total ? stats.by[n].h / stats.total : 0), y2]].forEach(([label, share, y], row) => {
+      out += `<text x="${L - 10}" y="${y + bh / 2 + 5}" font-size="13" text-anchor="end" fill="var(--fg)">${label}</text>`;
       let x = L;
+      const outside = [];
       for (const n of ORDER) {
-        const w = (W - L - R) * share(n);
-        out += `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${bh}" fill="var(--${cls(n)})"><title>${n}: ${pct(share(n))}</title></rect>`;
-        if (w > 34) out += `<text x="${(x + w / 2).toFixed(1)}" y="${y + bh / 2 + 4}" font-size="11" text-anchor="middle" fill="#fff">${pct(share(n))}</text>`;
+        const s = share(n), w = (W - L - R) * s, text = `${n} ${pct(s)}`;
+        out += `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${bh}" fill="var(--${cls(n)})"${borde(n)}><title>${label}, ${n}: ${pct(s)}</title></rect>`;
+        if (w >= width(text) + 10) out += `<text x="${(x + w / 2).toFixed(1)}" y="${y + bh / 2 + 4.5}" font-size="${FS}" font-weight="600" text-anchor="middle" fill="${tinta(n)}">${text}</text>`;
+        else if (w > 0.5) outside.push({ cx: x + w / 2, text, w: width(text) });
         x += w;
       }
+      // The outside labels from right to left, each at most at its part and never on top of the next one.
+      let limit = W - R;
+      for (let i = outside.length - 1; i >= 0; i--) {
+        const o = outside[i], right = Math.min(limit, o.cx + o.w / 2);
+        o.x0 = right - o.w; limit = o.x0 - 10;
+      }
+      const ly = row === 0 ? y - 12 : y + bh + 22;
+      for (const o of outside) {
+        const tx = o.x0 + o.w / 2;
+        out += `<line x1="${o.cx.toFixed(1)}" y1="${row === 0 ? y : y + bh}" x2="${tx.toFixed(1)}" y2="${row === 0 ? ly + 3 : ly - 12}" stroke="var(--muted)" stroke-width="1"/>`;
+        out += `<text x="${tx.toFixed(1)}" y="${ly}" font-size="${FS}" text-anchor="middle" fill="var(--fg)">${o.text}</text>`;
+      }
     });
-    out += `<text x="${L}" y="${H - 4}" font-size="10" fill="var(--muted)">colores: bajo, medio, alto, muy alto (de izquierda a derecha)</text>`;
     return out + "</svg>";
   }
 
@@ -225,29 +263,100 @@
       for (const g of sorted) { const top = g.slice(0, Math.round(k * g.length / 365)); n += top.length; for (const d of top) h += d.h; }
       curve.push([n / years, h / total]);
     }
-    const points = [["fines de semana de invierno", pol.invierno], ["todos los fines de semana", pol.findes]];
-    if (pol.conAvisos) points.push(["aviso amarillo o más", pol.aviso], ["aviso de viento", pol.avisoViento], ["aviso de viento o tormenta", pol.avisoVientoTormenta],
-                                   ["aviso naranja o rojo", pol.avisoNaranja]);
-    points.push(["GridPredic en alerta", pol.sistema]);
-    if (pol.conAvisos) points.push(["GridPredic en alerta o aviso de viento o tormenta", pol.unionVientoTormenta]);
-    const W = 520, H = 260, L = 46, R = 14, T = 12, B = 40, maxX = 150;
+    // Every policy as a point with a short name next to it: the fixed calendars and the warnings of AEMET as grey
+    // diamonds, GridPredic as blue circles (the colours of the levels are not used here).
+    const points = [{ label: "fines de semana de invierno", p: pol.invierno }, { label: "todos los fines de semana", p: pol.findes }];
+    if (pol.conAvisos) points.push({ label: "aviso amarillo o más", p: pol.aviso }, { label: "aviso de viento", p: pol.avisoViento },
+                                   { label: "aviso de viento o tormenta", p: pol.avisoVientoTormenta }, { label: "aviso naranja o rojo", p: pol.avisoNaranja });
+    points.push({ label: "GridPredic en alerta", p: pol.sistema, sistema: true });
+    if (pol.conAvisos) points.push({ label: "GridPredic + aviso de viento o tormenta", p: pol.unionVientoTormenta, sistema: true });
+    const W = 680, H = 380, L = 62, R = 14, T = 14, B = 54, maxX = 150, FS = 12;
     const x = (v) => L + (W - L - R) * Math.min(v, maxX) / maxX, y = (v) => T + (H - T - B) * (1 - v);
-    let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cobertura de las horas-cliente según los días reforzados al año">`;
+    let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Horas-cliente cubiertas según los días de guardia reforzada al año: ${points.map((q) => `${q.label}, ${num(q.p.dias / years)} días y ${pct(q.p.h / total)}`).join("; ")}">`;
     for (let k = 0; k <= 4; k++) {
-      out += `<line x1="${L}" x2="${W - R}" y1="${y(k / 4).toFixed(1)}" y2="${y(k / 4).toFixed(1)}" stroke="var(--grid)"/><text x="${L - 4}" y="${(y(k / 4) + 4).toFixed(1)}" font-size="10" text-anchor="end" fill="var(--muted)">${pct(k / 4)}</text>`;
+      out += `<line x1="${L}" x2="${W - R}" y1="${y(k / 4).toFixed(1)}" y2="${y(k / 4).toFixed(1)}" stroke="${k === 0 ? "var(--line-strong)" : "var(--grid)"}"/><text x="${L - 6}" y="${(y(k / 4) + 4).toFixed(1)}" font-size="${FS}" text-anchor="end" fill="var(--muted)">${pct(k / 4)}</text>`;
     }
-    for (const v of [0, 30, 60, 90, 120, 150]) out += `<text x="${x(v).toFixed(1)}" y="${H - B + 14}" font-size="10" text-anchor="middle" fill="var(--muted)">${v}</text>`;
-    out += `<polyline fill="none" stroke="var(--accent)" stroke-width="2.5" points="${curve.map(([a, b]) => `${x(a).toFixed(1)},${y(b).toFixed(1)}`).join(" ")}"/>`;
-    out += `<line x1="${x(0).toFixed(1)}" y1="${y(0).toFixed(1)}" x2="${x(maxX).toFixed(1)}" y2="${y(maxX / 365).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="4 3"/>`;
-    const legend = [];
-    points.forEach(([label, p], i) => {
-      const px = x(p.dias / years), py = y(p.h / total), system = label.startsWith("GridPredic");
-      out += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="7" fill="${system ? "var(--accent)" : "var(--muy-alto)"}" stroke="#fff" stroke-width="1"><title>${esc(label)}: ${num(p.dias / years)} días al año, ${pct(p.h / total)}</title></circle>`;
-      out += `<text x="${px.toFixed(1)}" y="${(py + 3.5).toFixed(1)}" font-size="9" font-weight="600" text-anchor="middle" fill="#fff">${i + 1}</text>`;
-      legend.push(`<b>${i + 1}</b> ${esc(label)} (${num(p.dias / years)} días, ${pct(p.h / total)})`);
-    });
-    out += `<text x="${L}" y="${H - 4}" font-size="10" fill="var(--muted)">días reforzados al año por distribuidora, frente a la parte de las horas-cliente cubiertas</text>`;
-    return `<div style="max-width:640px">${out}</svg><p class="notas">Línea azul: el sistema a cada umbral (los k días de más riesgo de cada año); discontinua: lo que cubrirían k días al azar. Puntos: ${legend.join("; ")}.</p></div>`;
+    for (const v of [0, 30, 60, 90, 120, 150]) out += `<text x="${x(v).toFixed(1)}" y="${H - B + 18}" font-size="${FS}" text-anchor="middle" fill="var(--muted)">${v}</text>`;
+    out += `<text x="${((L + W - R) / 2).toFixed(1)}" y="${H - 8}" font-size="${FS}" text-anchor="middle" fill="var(--fg)">Días de guardia reforzada al año por distribuidora</text>`;
+    out += `<text transform="translate(16 ${((T + H - B) / 2).toFixed(1)}) rotate(-90)" font-size="${FS}" text-anchor="middle" fill="var(--fg)">Horas-cliente cubiertas</text>`;
+    const line = curve.map(([a, b]) => [x(a), y(b)]);
+    const diagonal = [[x(0), y(0)], [x(maxX), y(maxX / 365)]];
+    out += `<polyline fill="none" stroke="var(--accent)" stroke-width="2.5" points="${line.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(" ")}"/>`;
+    out += `<line x1="${diagonal[0][0].toFixed(1)}" y1="${diagonal[0][1].toFixed(1)}" x2="${diagonal[1][0].toFixed(1)}" y2="${diagonal[1][1].toFixed(1)}" stroke="var(--muted)" stroke-dasharray="4 3"/>`;
+    // The names of the two lines, at their right end.
+    const endCurve = line[line.length - 1], endDiag = diagonal[1];
+    const fixed = [
+      { text: "GridPredic a cada umbral", x: W - R, y: endCurve[1] - 9, anchor: "end", fill: "var(--accent-ink)", weight: 600 },
+      { text: "días al azar", x: W - R, y: endDiag[1] - 8, anchor: "end", fill: "var(--muted)", weight: 400 },
+    ];
+    const marks = points.map((q) => ({ ...q, px: x(q.p.dias / years), py: y(q.p.h / total), r: q.sistema ? 6.5 : 7 }));
+    const labels = rotular(marks, fixed, [line, diagonal], { x0: L + 2, x1: W - R, y0: T, y1: H - B - 2 }, FS);
+    for (const f of fixed) out += `<text x="${f.x.toFixed(1)}" y="${f.y.toFixed(1)}" font-size="${FS}" font-weight="${f.weight}" text-anchor="${f.anchor}" fill="${f.fill}">${esc(f.text)}</text>`;
+    for (const m of labels) {
+      if (m.lead) out += `<line x1="${m.px.toFixed(1)}" y1="${m.py.toFixed(1)}" x2="${m.ax.toFixed(1)}" y2="${m.ay.toFixed(1)}" stroke="var(--muted)" stroke-width="0.9"/>`;
+    }
+    for (const m of labels) {
+      const tip = `<title>${esc(m.label)}: ${num(m.p.dias / years)} días al año, ${pct(m.p.h / total)} de las horas-cliente</title>`;
+      out += m.sistema
+        ? `<circle cx="${m.px.toFixed(1)}" cy="${m.py.toFixed(1)}" r="${m.r}" fill="var(--accent)" stroke="var(--panel)" stroke-width="1.5">${tip}</circle>`
+        : `<rect x="${(m.px - 5.2).toFixed(1)}" y="${(m.py - 5.2).toFixed(1)}" width="10.4" height="10.4" transform="rotate(45 ${m.px.toFixed(1)} ${m.py.toFixed(1)})" fill="var(--serie-alternativa)" stroke="var(--panel)" stroke-width="1.5">${tip}</rect>`;
+      out += `<text x="${m.lx.toFixed(1)}" y="${m.ly.toFixed(1)}" font-size="${FS}" text-anchor="${m.anchor}" font-weight="${m.sistema ? 600 : 400}" fill="${m.sistema ? "var(--accent-ink)" : "var(--muted)"}">${esc(m.label)}</text>`;
+    }
+    return `<div class="curva"><div>${out}</svg></div><p class="notas">Línea azul: GridPredic a cada umbral (los k días de más riesgo de cada red y año); discontinua: k días elegidos al azar. Rombos grises: los calendarios fijos y los avisos de AEMET; círculos azules: GridPredic en alerta, solo o sumado a los avisos de viento o tormenta. Los días y la cobertura de cada punto están en la tabla de las políticas y al pasar el ratón.</p></div>`;
+  }
+
+  // Labels next to their points without covering each other, the points, the fixed labels or the lines: for each
+  // point, the first free place among eight around it, and the same eight farther out with a short line to it.
+  function rotular(marks, fixed, lines, box, fs) {
+    const cw = 0.56 * fs, placed = [], out = [];
+    const rectOf = (x0, base, w) => ({ x0: x0 - 2, x1: x0 + w + 2, y0: base - 0.78 * fs - 1, y1: base + 0.24 * fs + 1 });
+    for (const f of fixed) { const w = f.text.length * cw; placed.push(rectOf(f.anchor === "end" ? f.x - w : f.x, f.y, w)); }
+    const dots = marks.map((m) => ({ x0: m.px - m.r - 1, x1: m.px + m.r + 1, y0: m.py - m.r - 1, y1: m.py + m.r + 1 }));
+    const overlap = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+    // Does the segment p-q cross the rectangle r (Liang and Barsky)?
+    const cross = (p, q, r) => {
+      let t0 = 0, t1 = 1;
+      const dx = q[0] - p[0], dy = q[1] - p[1];
+      for (const [pp, qq] of [[-dx, p[0] - r.x0], [dx, r.x1 - p[0]], [-dy, p[1] - r.y0], [dy, r.y1 - p[1]]]) {
+        if (pp === 0) { if (qq < 0) return false; continue; }
+        const t = qq / pp;
+        if (pp < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
+      }
+      return true;
+    };
+    const onLines = (r) => lines.some((pts) => pts.some((p, i) => i > 0 && cross(pts[i - 1], p, r)));
+    // Do the segments a-b and c-d cross?
+    const side = (a, b, c) => Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+    const segCross = (a, b, c, d) => side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0;
+    // The points of GridPredic first, then the others from left to right.
+    const order = marks.map((m, i) => i).sort((a, b) => (marks[b].sistema ? 1 : 0) - (marks[a].sistema ? 1 : 0) || marks[a].px - marks[b].px);
+    for (const i of order) {
+      const m = marks[i], w = m.label.length * cw;
+      let best = null;
+      for (const d of [m.r + 5, m.r + 20, m.r + 36]) {
+        const c = d * 0.72;
+        for (const [dx, dy, anchor] of [[d, 0, "start"], [-d, 0, "end"], [c, -c, "start"], [-c, -c, "end"], [c, c, "start"], [-c, c, "end"], [0, -d, "middle"], [0, d + 0.6 * fs, "middle"]]) {
+          const lx = m.px + dx, ly = m.py + dy + 0.35 * fs;
+          const x0 = anchor === "start" ? lx : anchor === "end" ? lx - w : lx - w / 2;
+          const r = rectOf(x0, ly, w);
+          if (r.x0 < box.x0 || r.x1 > box.x1 || r.y0 < box.y0 || r.y1 > box.y1) continue;
+          if (placed.some((p) => overlap(p, r)) || dots.some((p, j) => j !== i && overlap(p, r)) || overlap(dots[i], r)) continue;
+          const ax = anchor === "start" ? x0 - 1 : anchor === "end" ? x0 + w + 1 : lx, ay = dy < 0 ? r.y1 - 1 : dy > 0 ? r.y0 + 1 : ly - 0.3 * fs;
+          // A label on a line weighs more than a leader line that crosses one; a label right by its point has no leader.
+          const lead = d > m.r + 6 && lines.some((pts) => pts.some((p, i) => i > 0 && segCross(pts[i - 1], p, [m.px, m.py], [ax, ay])));
+          const pen = (onLines(r) ? 1 : 0) + (lead ? 0.5 : 0);
+          if (!best || pen < best.pen) best = { lx, ly, anchor, rect: r, pen, d, ax, ay };
+          if (pen === 0) break;
+        }
+        if (best && best.pen === 0) break;
+      }
+      // Nowhere free: to the right of the point, as before.
+      if (!best) { const lx = m.px + m.r + 5, ly = m.py + 0.35 * fs; best = { lx, ly, anchor: "start", rect: rectOf(lx, ly, w), d: 0, ax: lx, ay: ly }; }
+      best.lead = best.d > m.r + 6;
+      placed.push(best.rect);
+      out.push({ ...m, ...best });
+    }
+    return out;
   }
 
   function render() {
@@ -324,7 +433,7 @@
       </section>`;
 
     html += `<section id="sector" style="display:none"><h2>Dónde está cada red frente al sector</h2>
-      <p>El Ministerio publica el TIEPI oficial de todo el sector por tipo de zona (GECOS, que hoy llega a 2021). Con él vemos dónde está cada red frente a las demás; la referencia del incentivo la fija la Circular 8/2025 por tipo de zona (1,0648 h en rural concentrada para 2026 - 2028).</p>
+      <p>El Ministerio publica el TIEPI oficial de todo el sector por tipo de zona (GECOS, que hoy llega a 2021). Con él vemos dónde está cada red frente a las demás; la referencia del incentivo la fija la Circular 8/2025 por tipo de zona (1,0648 h en rural concentrada para 2026 - 2028). Todas las redes van en la misma escala.</p>
       <div id="sector-cuerpo"></div></section>`;
 
     html += `<section id="produccion" style="display:none"><h2>Lo que vale la previsión, medido en producción</h2>
@@ -359,29 +468,33 @@
       const names = Object.fromEntries((DATA.distribuidoras || []).map((d) => [String(d.id), d.nombre]));
       const [s0, s1] = j.anios_sector, [n0, n1] = j.anios_nuestros;
       const scopes = j.ambitos || [];
-      const palette = ["var(--accent)", "#8a9bb0", "#b7c2cf", "#d6dde6", "#e9edf2"];
+      // The network in the accent; the provinces and the region in one grey, Spain in a darker one (every bar has its name).
+      const colorOf = (scope) => (scope === "España" ? "var(--sector-espana)" : "var(--sector-ref)");
+      // One scale for all the networks shown, so the same hours are the same length in every block.
+      const useful = (d) => d.zonas.filter((z) => z.abonados > 0);
+      const top = Math.max(0.5, ...shown.flatMap((d) => useful(d).flatMap((z) => [z.imprevista || 0, ...scopes.map((sc) => (z.sector[sc] || {}).imprevista || 0)])));
       let html = "";
       for (const d of shown) {
         const name = names[String(d.id)] || d.nombre;
-        const zones = d.zonas.filter((z) => z.abonados > 0);
+        const zones = useful(d);
         // Grouped bars: ours and every scope, by zone, unplanned TIEPI.
-        const W = 560, H = 44 + zones.length * 58, L = 150, R = 110, bh = 9, gap = 2;
-        const top = Math.max(0.5, ...zones.flatMap((z) => [z.imprevista || 0, ...scopes.map((sc) => (z.sector[sc] || {}).imprevista || 0)]));
+        const bh = 10, gap = 2, block = (1 + scopes.length) * (bh + gap) + 4;
+        const W = 560, H = 34 + zones.length * block, L = 150, R = 118;
         const x = (v) => L + (W - L - R) * (v / top);
-        let svg = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="TIEPI imprevisto por zona frente al sector">`;
+        let svg = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="TIEPI imprevisto por zona de ${esc(name)} frente al sector">`;
         zones.forEach((z, i) => {
-          const y0 = 24 + i * 58;
-          svg += `<text x="${L - 8}" y="${y0 + 10}" font-size="12" text-anchor="end" fill="var(--fg)">${esc(z.zona.replace("_", " "))}</text>`;
-          svg += `<text x="${L - 8}" y="${y0 + 24}" font-size="10" text-anchor="end" fill="var(--muted)">${num(z.abonados)} clientes</text>`;
-          const bars = [[name, z.imprevista, palette[0]], ...scopes.map((sc, k) => [sc, (z.sector[sc] || {}).imprevista, palette[Math.min(k + 1, palette.length - 1)]])];
+          const y0 = 10 + i * block;
+          svg += `<text x="${L - 8}" y="${y0 + 11}" font-size="12" text-anchor="end" fill="var(--fg)">${esc(z.zona.replace("_", " "))}</text>`;
+          svg += `<text x="${L - 8}" y="${y0 + 26}" font-size="11" text-anchor="end" fill="var(--muted)">${num(z.abonados)} clientes</text>`;
+          const bars = [[name, z.imprevista, "var(--accent)"], ...scopes.map((sc) => [sc, (z.sector[sc] || {}).imprevista, colorOf(sc)])];
           bars.forEach(([label, v, color], k) => {
             if (v == null) return;
             const y = y0 + k * (bh + gap);
             svg += `<rect x="${L}" y="${y}" width="${(x(v) - L).toFixed(1)}" height="${bh}" fill="${color}"><title>${esc(label)}: ${num(v, 2)} h</title></rect>`;
-            svg += `<text x="${(x(v) + 4).toFixed(1)}" y="${y + bh - 1}" font-size="9" fill="var(--muted)">${num(v, 2)}${k === 0 ? " h " + esc(label) : " " + esc(label)}</text>`;
+            svg += `<text x="${(x(v) + 4).toFixed(1)}" y="${y + bh - 1}" font-size="10" fill="${k === 0 ? "var(--fg)" : "var(--muted)"}"${k === 0 ? ' font-weight="600"' : ""}>${num(v, 2)}${k === 0 ? " h " + esc(label) : " " + esc(label)}</text>`;
           });
         });
-        svg += `<text x="${L}" y="${H - 6}" font-size="10" fill="var(--muted)">TIEPI imprevisto en horas al año: ${esc(name)} ${n0} - ${n1}; sector ${s0} - ${s1}</text></svg>`;
+        svg += `<text x="4" y="${H - 6}" font-size="11" fill="var(--muted)">TIEPI imprevisto en horas al año: ${esc(name)} ${n0} - ${n1}; sector ${s0} - ${s1}</text></svg>`;
         const mix = d.mezcla || {};
         const parts = scopes.filter((sc) => mix[sc] != null).map((sc) => `${esc(sc)} ${num(mix[sc], 2)} h`);
         html += `<h3>${esc(name)}</h3><div class="dos"><div>${svg}</div><div>
@@ -392,17 +505,28 @@
       // The national series: the storm years show up in the official statistics.
       const spain = ((j.serie || {})["España"] || {}).TOTAL || [];
       if (spain.length > 3) {
-        const W = 560, H = 160, L = 40, R = 10, T = 14, B = 36;
+        const W = 560, H = 190, L = 40, R = 92, T = 16, B = 40;
         const top = Math.max(...spain.map((r) => r.imprevista || 0)) * 1.08;
         const x = (i) => L + (W - L - R) * (i / Math.max(1, spain.length - 1)), y = (v) => T + (H - T - B) * (1 - v / top);
-        let svg = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="TIEPI imprevisto de España por año">`;
-        for (const t of [0, 1, 2]) if (t <= top) svg += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="var(--grid)"/><text x="${L - 4}" y="${(y(t) + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="var(--muted)">${t} h</text>`;
+        let svg = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="TIEPI imprevisto de España por año y su parte por fuerza mayor">`;
+        for (const t of [0, 1, 2]) if (t <= top) svg += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="${t === 0 ? "var(--line-strong)" : "var(--grid)"}"/><text x="${L - 5}" y="${(y(t) + 4).toFixed(1)}" font-size="11" text-anchor="end" fill="var(--muted)">${t} h</text>`;
         const line = (key, color, w) => `<polyline fill="none" stroke="${color}" stroke-width="${w}" points="${spain.map((r, i) => `${x(i).toFixed(1)},${y(r[key] || 0).toFixed(1)}`).join(" ")}"/>`;
-        svg += line("imprevista", "var(--accent)", 2) + line("fuerza_mayor", "var(--muy-alto)", 2);
-        spain.forEach((r, i) => { if (i % 3 === 0 || i === spain.length - 1) svg += `<text x="${x(i).toFixed(1)}" y="${H - 22}" font-size="9" text-anchor="middle" fill="var(--muted)">${r.anio}</text>`; });
-        const peaks = spain.filter((r) => r.fuerza_mayor >= 0.3);
-        for (const r of peaks) { const i = spain.indexOf(r); svg += `<text x="${x(i).toFixed(1)}" y="${(y(r.fuerza_mayor) - 5).toFixed(1)}" font-size="9" text-anchor="middle" fill="var(--muy-alto)">${r.anio}</text>`; }
-        svg += `<text x="${L}" y="${H - 4}" font-size="10" fill="var(--muted)">España, todas las zonas: TIEPI imprevisto (azul) y su parte por fuerza mayor (rojo)</text></svg>`;
+        // Force majeure in dark grey (not the red of "muy alto"), and both lines named at their right end.
+        svg += line("imprevista", "var(--accent)", 2) + line("fuerza_mayor", "var(--serie-fuerza-mayor)", 2);
+        const last = spain[spain.length - 1], xl = x(spain.length - 1) + 6;
+        let yi = y(last.imprevista || 0) + 4, yf = y(last.fuerza_mayor || 0) + 4;
+        if (Math.abs(yi - yf) < 14) { if (yi <= yf) yi = yf - 14; else yf = yi - 14; }
+        svg += `<text x="${xl.toFixed(1)}" y="${yi.toFixed(1)}" font-size="11" font-weight="600" fill="var(--accent-ink)">imprevisto</text><text x="${xl.toFixed(1)}" y="${yf.toFixed(1)}" font-size="11" font-weight="600" fill="var(--serie-fuerza-mayor)">fuerza mayor</text>`;
+        spain.forEach((r, i) => { if (i % 3 === 0 || i === spain.length - 1) svg += `<text x="${x(i).toFixed(1)}" y="${H - B + 16}" font-size="11" text-anchor="middle" fill="var(--muted)">${r.anio}</text>`; });
+        // The storm years over their peak; two years in a row lean apart so their labels do not touch.
+        const peaks = spain.map((r, i) => ({ r, i })).filter((p) => p.r.fuerza_mayor >= 0.3);
+        peaks.forEach((p, k) => {
+          const prev = peaks[k - 1], next = peaks[k + 1];
+          const anchor = next && next.i === p.i + 1 ? "end" : prev && prev.i === p.i - 1 ? "start" : "middle";
+          const dx = anchor === "end" ? 2 : anchor === "start" ? -2 : 0;
+          svg += `<text x="${(x(p.i) + dx).toFixed(1)}" y="${(y(p.r.fuerza_mayor) - 6).toFixed(1)}" font-size="11" text-anchor="${anchor}" fill="var(--serie-fuerza-mayor)" stroke="var(--panel)" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${p.r.anio}</text>`;
+        });
+        svg += `<text x="4" y="${H - 5}" font-size="11" fill="var(--muted)">España, todas las zonas: TIEPI imprevisto (azul) y su parte por fuerza mayor (gris oscuro)</text></svg>`;
         html += `<h3>El tiempo manda también en la estadística oficial</h3><div class="dos"><div>${svg}</div><div><p>A escala nacional, el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (Klaus en enero de 2009, Xynthia en febrero de 2010, Ana en diciembre de 2017) y en los años sin temporal se queda casi en cero. Una red no puede evitar esa parte del TIEPI, aunque sí puede prepararse si sabe la víspera qué días van a ser malos.</p></div></div>`;
       }
       html += `<p class="notas">Fuente: ${esc(j.fuente || "")} (generado el ${esc(sello(j.generado))}). Nuestro TIEPI sale de Calser con las reglas del cálculo oficial a nivel de CT y queda entre un 2 % y un 16 % por debajo del declarado; los años no coinciden porque el Ministerio publica con retraso.</p>`;
@@ -437,9 +561,10 @@
     const years = Math.max(0.01, pol.anios || groups);
     const base = pol.invierno.dias / years * cost;
     let html = `<thead><tr><th>Política de guardia</th><th class="num">Días reforzados al año</th><th class="num">Cobertura de las horas-cliente</th><th class="num">Coste al año (euros)</th><th class="num">Frente al calendario</th></tr></thead><tbody>`;
+    // The policy we recommend goes highlighted; the same cost as the calendar is "0" (a "-" is only for cheaper).
     for (const [label, p] of rows) {
-      const d = p.dias / years, c = d * cost;
-      html += `<tr><td>${label}</td><td class="num">${num(d)}</td><td class="num">${pct(pol.total ? p.h / pol.total : 0)}</td><td class="num">${num(c)}</td><td class="num">${c === base ? "-" : (c < base ? "-" : "+") + num(Math.abs(c - base))}</td></tr>`;
+      const d = p.dias / years, c = d * cost, diff = Math.round(c - base);
+      html += `<tr${p === pol.unionVientoTormenta ? ' class="recomendada" title="la política que recomendamos"' : ""}><td>${label}</td><td class="num">${num(d)}</td><td class="num">${pct(pol.total ? p.h / pol.total : 0)}</td><td class="num">${num(c)}</td><td class="num">${diff === 0 ? "0" : (diff < 0 ? "-" : "+") + num(Math.abs(c - base))}</td></tr>`;
     }
     document.getElementById("tabla-guardia").innerHTML = html + "</tbody></table>";
     envolverTablas(document.getElementById("tabla-guardia"));
