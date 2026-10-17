@@ -15,14 +15,15 @@ config_ml.json.
   Open-Meteo served started and when it became available (the meta.json of
   the domain of the model): the scoring warns when that run is old, as when
   the DWD ensemble froze from 06.10.2026 (Open-Meteo issue #2194).
-- prevision_sombra (with prevision, or alone with --fuente prevision_sombra):
-  the same forecast of the days ahead from the other models of
+- prevision_sombra (its own task of dag_riesgo_manana, never upstream of
+  the score): the same forecast of the days ahead from the other models of
   riesgo_manana.prevision_sombra, in prevision_sombra/<clave>/<cell>.json,
   never used to score. ICON-EU on its native grid (dwd_icon_eu_native),
   which is what models=icon_eu will serve after 30.11.2026 (Open-Meteo PR
   #2160), so the evenings before that date measure the jump of the gusts;
   and IFS HRES 9 km (ecmwf_ifs), the model of the reanalysis the day model
-  is trained on. A failed shadow cell never fails the evening.
+  is trained on. A model that fails max_fallos_seguidos cells in a row is
+  left for the evening.
 - avisos: the warnings of adverse weather of AEMET OpenData that are in
   force, the last ones issued for the areas of the configuration
   (avisos_cap/ultimoelaborado), as AEMET gives them (a tar of CAP messages).
@@ -227,8 +228,13 @@ def land_shadow(fs, cfg: dict, folder: str, cells: dict) -> dict:
         params = {**prevision, "modelo": shadow["modelo"], "dias_pasados": int(shadow.get("dias_pasados", 0)),
                   "dias_futuros": int(shadow.get("dias_futuros", prevision.get("dias_futuros", 3)))}
         key = shadow["clave"]
-        done = failed = 0
+        done = failed = in_a_row = 0
         for cell, (lat, lon) in sorted(cells.items()):
+            if in_a_row >= int(shadow.get("max_fallos_seguidos", 3)):
+                logger.warning("Shadow forecast %s: %s cells in a row failed, the model is left for tonight", key,
+                               in_a_row)
+                failed += len(cells) - done - failed
+                break
             try:
                 raw = fetch(forecast_url(lat, lon, params), retries=int(shadow.get("reintentos", 2)),
                             wait_s=float(shadow.get("espera_reintento_s", 20)),
@@ -238,8 +244,10 @@ def land_shadow(fs, cfg: dict, folder: str, cells: dict) -> dict:
                     raise RuntimeError(f"empty answer {str(payload)[:200]}")
             except Exception as error:  # noqa: BLE001
                 failed += 1
+                in_a_row += 1
                 logger.warning("Shadow forecast %s of cell %s not downloaded: %s", key, cell, str(error)[:160])
                 continue
+            in_a_row = 0
             payload["_peticion"] = {"celda_id": cell, "modelo": shadow["modelo"], "clave": key,
                                     "pedido_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                                     "dias_pasados": params["dias_pasados"], "dias_futuros": params["dias_futuros"]}
@@ -700,11 +708,6 @@ def main(argv=None, fs=None) -> int:
         done, failed = land_forecast(fs, cfg, folder, cells)
         if done:
             land_model_run(fs, cfg["prevision"], f"{folder}/prevision_modelo.json")
-        # The shadow models never change the answer of the evening.
-        try:
-            land_shadow(fs, cfg, folder, cells)
-        except Exception as error:  # noqa: BLE001
-            logger.warning("Shadow forecasts not downloaded: %s", str(error)[:200])
         # A few cells may fail and be scored with the others; without most of them there is no forecast.
         if done < (1.0 - float(cfg["prevision"].get("max_fallos", 0.1))) * len(cells):
             logger.error("Only %s of %s cells have a forecast", done, len(cells))
