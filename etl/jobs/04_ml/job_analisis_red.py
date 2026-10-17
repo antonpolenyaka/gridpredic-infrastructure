@@ -132,7 +132,6 @@ DEFAULTS = {
     "anios_persistencia": [2023, 2024, 2025],
     "anios_incentivo": [2023, 2024, 2025],
     "fracciones_top": [0.05, 0.1, 0.2],
-    "duracion_min_s": 180,
     "duracion_max_h": 168,
     "margen_maniobra_min": 5,
     # RD 1955/2000 art. 106 (unplanned only): TIEPI, percentile 80 of TIEPI

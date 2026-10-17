@@ -9,7 +9,7 @@ help:
 	@echo "make ps        estado de los servicios"
 	@echo "make logs      logs de todos los servicios (S=nombre para uno solo)"
 	@echo "make config    valida compose.yaml con el .env actual"
-	@echo "make test      tests de Silver, Gold y modelo en un Spark local, sin Docker"
+	@echo "make test      todos los tests (de Bronze a los modelos) en un Spark local, sin Docker"
 	@echo "make test-silver / make test-gold / make test-ml   solo una parte"
 	@echo "make lint      ruff check"
 	@echo "make bronze    lanza el DAG batch de Bronze en Airflow"
