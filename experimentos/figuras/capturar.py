@@ -8,6 +8,9 @@ regeneran con una orden cuando cambian.
     pip install playwright && python -m playwright install chromium
     python experimentos/figuras/capturar.py dashboard _runlogs/figuras [--ancho 1400] [--tema light|dark] [--dias 20260128,20251105]
 
+Para la memoria, --ancho 860: los bloques salen de unos 820 px CSS y su texto más pequeño (12 px) se imprime a
+unos 6,6 pt con la figura a 16 cm de ancho; con 1400 px el texto impreso baja de 5 pt.
+
 Qué deja (cuando la página tiene los datos):
 - index_<n>_<distribuidora>.png: la sección de cada distribuidora del riesgo de mañana (cifras, mapa, perfil, líneas);
   con --dias, index_<día>_<n>_<distribuidora>.png para cada día archivado o repetido (riesgo_<día>.json).
@@ -48,8 +51,10 @@ async def capture(base: str, out: str, width: int, theme: str, days: list = None
     done = []
     async with async_playwright() as p:
         browser = await p.chromium.launch()
+        # Reduced motion: the sections appear without the animation of motion.js, so no block is captured half faded.
         context = await browser.new_context(viewport={"width": width, "height": 900}, device_scale_factor=2,
-                                            color_scheme=theme, locale="es-ES")
+                                            color_scheme=theme, locale="es-ES", timezone_id="Europe/Madrid",
+                                            reduced_motion="reduce")
         page = await context.new_page()
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
@@ -64,8 +69,9 @@ async def capture(base: str, out: str, width: int, theme: str, days: list = None
             done.append(path)
 
         # The risk of tomorrow: one figure per distributor and the follow-up table (wider, so the table of the
-        # lines fits), and the same for every archived or replayed day asked with --dias.
-        await page.set_viewport_size({"width": max(width, 1700), "height": 900})
+        # lines fits), and the same for every archived or replayed day asked with --dias. Under 1024 px (the
+        # figures of the thesis) the page keeps that width: one column, and the table of the lines scrolls.
+        await page.set_viewport_size({"width": width if width < 1024 else max(width, 1700), "height": 900})
         for day in [""] + list(days or []):
             query = f"?dia={day}" if day else ""
             await page.goto(f"{base}/index.html{query}", wait_until="networkidle")
