@@ -145,3 +145,32 @@ def test_old_default_codes_are_not_a_cause():
 def test_normalize():
     assert ci.normalize("  Bloqueo   del IAAT «Zarza 1»  ") == "bloqueo del iaat zarza 1"
     assert ci.normalize(None) == "" and ci.normalize(float("nan")) == ""
+
+
+def test_the_same_second_in_two_networks_is_the_common_supply_upstream():
+    """job_silver_f_incidencia_causa.common_supply: needs every distribuidora at once, so it runs after classify."""
+    import pandas as pd
+
+    import job_silver_f_incidencia_causa as job
+
+    pdf = pd.DataFrame({
+        "distribuidora_id": [3, 2, 3, 2, 3, 2, 1366],
+        "inicio_ts": pd.to_datetime(["2026-01-28 08:35:11", "2026-01-28 08:35:11", "2026-03-15 08:00:00",
+                                     "2026-03-15 08:00:00", "2025-04-28 12:33:14", "2025-04-28 12:33:14",
+                                     "2026-01-28 08:35:11"]),
+        "clasificacion_id": ["CL_IMPRE", "CL_IMPRE", "CL_PROGR", "CL_PROGR", "CL_IMPRE", "CL_IMPRE", "CL_PROGR"],
+    })
+    out = pd.DataFrame({
+        "causa": ["meteorologia", "sin_causa", "programada", "programada", "apagon", "apagon", "programada"],
+        "subcausa": ["viento", None, "obras", "obras", None, None, "obras"],
+        "origen": ["linea_mt", "linea_mt", "programada", "programada", "sistema", "sistema", "programada"],
+        "regla": ["texto", "sin_texto", "clasificacion", "clasificacion", "texto", "texto", "clasificacion"],
+        "fuente_causa": ["texto", "ninguna", "clasificacion", "clasificacion", "texto", "texto", "clasificacion"],
+    })
+    result = job.common_supply(pdf, out)
+    # The storm of 28.01.2026 started in the same second in the Distribuidora 1 and the 2: the provider upstream.
+    assert result.loc[:1, "causa"].tolist() == ["aguas_arriba", "aguas_arriba"]
+    assert set(result.loc[:1, "subcausa"]) == {"proveedor_comun"} and set(result.loc[:1, "fuente_causa"]) == {"otra_red"}
+    # Planned works at the same hour and the blackout keep their cause; a planned one of a third network does not count.
+    assert result.loc[2:, "causa"].tolist() == ["programada", "programada", "apagon", "apagon", "programada"]
+    assert out.loc[0, "causa"] == "meteorologia"
