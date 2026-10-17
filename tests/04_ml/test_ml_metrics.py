@@ -156,6 +156,8 @@ def synthetic():
     ("logistica", {"C": 0.1}),
     ("random_forest", {"n_estimators": 20, "max_depth": 6, "min_samples_leaf": 5}),
     ("xgboost", {"n_estimators": 50, "max_depth": 3, "early_stopping_rounds": 10, "verbose": 0}),
+    ("logistica_firth", {}),
+    ("logistica_bayes", {}),
 ])
 def test_trained_models_rank_better_than_the_base_rate(synthetic, name, params):
     scorer = ml_models.fit_model(name, params, synthetic, rate=0.5, seed=0, n_jobs=1)
@@ -260,3 +262,45 @@ def test_bootstrap_by_days_and_paired_differences():
     assert diff.loc["bueno", "dif_p2_5"] > 0
     assert diff.loc["bueno", "prob_a_mejor"] == pytest.approx(1.0)
     assert diff.loc["ruido", "dif_p50"] == pytest.approx(0.0)
+
+
+def test_calibration_of_probabilities():
+    rng = np.random.default_rng(5)
+    p = rng.uniform(0.01, 0.5, 100000)
+    y = (rng.random(100000) < p).astype(int)
+    good = ml_metrics.calibration(y, p)
+    # Well calibrated: slope 1, intercept 0, the mean probability is the rate and it beats the rate alone.
+    assert good["pendiente"] == pytest.approx(1.0, abs=0.1)
+    assert good["intercepto"] == pytest.approx(0.0, abs=0.05)
+    assert good["prob_media"] == pytest.approx(good["prevalencia"], abs=0.005)
+    assert good["bss"] > 0 and good["brier"] < good["brier_referencia"]
+    # Too extreme (the logit doubled, the overfitting of a model with few events): slope about 0.5.
+    logit = np.log(p / (1 - p))
+    extreme = 1 / (1 + np.exp(-(2 * logit - np.log(p / (1 - p)).mean())))
+    assert ml_metrics.calibration(y, extreme)["pendiente"] == pytest.approx(0.5, abs=0.06)
+    # Twice the risk everywhere: the intercept with the slope at 1 is negative.
+    assert ml_metrics.calibration(y, np.clip(2 * p, 0, 1))["intercepto"] < -0.4
+    # A constant probability has no slope, and without positives nothing but the Brier is defined.
+    constant = ml_metrics.calibration(y, np.full(len(y), y.mean()))
+    assert np.isnan(constant["pendiente"]) and constant["bss"] == pytest.approx(0.0, abs=1e-9)
+    empty = ml_metrics.calibration(np.zeros(10), np.full(10, 0.1))
+    assert np.isnan(empty["bss"]) and empty["brier"] == pytest.approx(0.01)
+    # Weights: a row twice is a row of weight 2.
+    w = rng.integers(0, 3, 100000)
+    repeated = ml_metrics.calibration(np.repeat(y, w), np.repeat(p, w))
+    weighted = ml_metrics.calibration(y, p, w)
+    for key in ("brier", "bss", "log_loss", "pendiente", "intercepto"):
+        assert weighted[key] == pytest.approx(repeated[key], rel=1e-6, abs=1e-9)
+
+
+def test_bootstrap_blocks_of_days():
+    days = pd.date_range("2024-01-01", periods=21, freq="D").repeat(2)
+    blocks = ml_metrics.day_blocks(days, 7)
+    assert sorted(set(blocks)) == [0, 1, 2] and (pd.Series(blocks).value_counts() == 14).all()
+    assert (ml_metrics.day_blocks(days, 1) == np.asarray(days)).all()
+    rng = np.random.default_rng(1)
+    y = (rng.random(len(days)) < 0.3).astype(int)
+    score = y + rng.normal(0, 0.5, len(days))
+    table, replicas = ml_metrics.bootstrap_pr_auc(y, np.ones(len(y)), days, {"a": score}, 50, 0, 7)
+    assert table["p2_5"].iloc[0] <= table["pr_auc"].iloc[0] <= table["p97_5"].iloc[0]
+    assert len(replicas["a"]) == 50
