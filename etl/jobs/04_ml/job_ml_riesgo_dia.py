@@ -1227,6 +1227,38 @@ def variant_features(variant: dict, blocks: dict) -> list:
     return chosen
 
 
+def blank_features(variant: dict, features: list) -> list:
+    """
+    The features that a variant fits as they are but scores empty, so the model fills them with the median of
+    its training days. With historia_al_puntuar "mediana" they are the history of incidents (hist_*): that is
+    how the evening scored while the copy of Calser was not up to date, before it learned to fit without them
+    (the variant without the block historia measures that).
+    """
+    if variant.get("historia_al_puntuar") == "mediana":
+        return [f for f in features if f.startswith("hist_")]
+    return []
+
+
+def coefficient_stability(terms: pd.DataFrame) -> pd.DataFrame:
+    """
+    By variant, model and variable, the coefficients of the linear models of every year of the rolling evaluation
+    (ml_models.linear_terms): their mean, spread and range, the odds ratio of the mean for one standard deviation
+    and whether the sign is the same every year (signo_estable). Sorted by the size of the mean.
+    """
+    if terms.empty:
+        return pd.DataFrame()
+    keys = ["variante", "modelo", "variable"]
+    out = terms.groupby(keys)["coeficiente"].agg(anios="count", media="mean", desviacion="std", minimo="min",
+                                                 maximo="max").reset_index()
+    out["razon_por_desviacion"] = np.exp(out["media"])
+    stable = (terms.assign(signo=np.sign(terms["coeficiente"])).groupby(keys)["signo"].nunique().eq(1)
+              .rename("signo_estable").reset_index())
+    out = out.merge(stable, on=keys)
+    out["peso"] = out["media"].abs()
+    return (out.sort_values(["variante", "modelo", "peso"], ascending=[True, True, False]).drop(columns="peso")
+            .reset_index(drop=True))
+
+
 def top_share(y: np.ndarray, score: np.ndarray, year: np.ndarray, share: float, seed: int = 0) -> float:
     """Part of the positive days that falls in the share of the days with the highest score of each year."""
     rng = np.random.default_rng(seed)
@@ -1358,6 +1390,28 @@ def by_year(metrics: pd.DataFrame) -> pd.DataFrame:
     return once(table)
 
 
+def calibration_by_year(metrics: pd.DataFrame, model: str = "operativa__logistica") -> pd.DataFrame:
+    """
+    The calibration of one model year by year (cv_<year>): the observed rate, the mean probability, the BSS and
+    the slope and intercept of the recalibration. It says whether the probability keeps the observed rate when
+    the way the labels are recorded changes, as from November 2025, when Calser imports the interruptions from
+    TedisNet. Without that model, the L2 logistic regression of the first variant that has one.
+    """
+    wanted = ["prevalencia", "prob_media", "bss", "pendiente_calibracion", "intercepto_calibracion"]
+    rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)
+                   & metrics["split"].str.startswith("cv_") & (metrics["split"] != "cv_comun")
+                   & metrics["metrica"].isin(wanted)]
+    models = sorted(m for m in rows["modelo"].unique() if str(m).endswith("__logistica"))
+    if model not in models:
+        model = models[0] if models else None
+    if model is None:
+        return pd.DataFrame()
+    table = rows[rows["modelo"] == model].pivot_table(index="split", columns="metrica", values="valor").reset_index()
+    table.insert(0, "anio", table.pop("split").str[len("cv_"):])
+    table.insert(0, "modelo", model)
+    return table[["modelo", "anio"] + [c for c in wanted if c in table.columns]]
+
+
 def once(table: pd.DataFrame) -> pd.DataFrame:
     """The rows of the references only once (the first variant that has them)."""
     model = table["modelo"].str.split("__", n=1).str[-1]
@@ -1444,6 +1498,7 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     not give stays from the reanalysis and is logged as a perfect forecast.
     """
     features = variant_features(variant, blocks)
+    blank = blank_features(variant, features)
     horizon = horizon_of(variant)
     prefix = HORIZONS[horizon]["prev"]
     common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
@@ -1483,7 +1538,7 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
 
     for year in years:
         scored, _, scorers, _ = rolling_evaluation(rows, features, MAIN_LABEL, config, cfg, [year], only_first,
-                                                   names=cfg["modelos"])
+                                                   names=cfg["modelos"], blank=blank)
         target = rows[rows["anio"] == year].copy()
         other_years = rows[rows["anio"].isin([y for y in years if y != year])]
         fitting = (other_years if len(other_years) else target).copy()
@@ -1522,6 +1577,9 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
 
         out = target[["distribuidora_id", "fecha", "anio"] + LABELS].copy()
         for source, frame in frames.items():
+            if blank:
+                frame = frame.copy()
+                frame[blank] = np.nan
             X = frame[features].to_numpy(dtype=np.float32, na_value=np.nan)
             for model, scorer in scorers.items():
                 out[f"p_{model}__{source}"] = scorer.score(X)
@@ -1537,6 +1595,27 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
         sources += [f"prevision_{key}", f"prevision_{key}_cuantiles"]
     return add_rank_mean(found, {f"p_rango__{source}": (f"p_logistica__{source}", f"p_xgboost__{source}")
                                  for source in sources})
+
+
+def coefficients_text(stability: pd.DataFrame, variant: str = "operativa", model: str = "logistica",
+                      rows: int = 12) -> str:
+    """The section of the report with the largest coefficients of a variant and model and how stable they are."""
+    if stability.empty:
+        return "## Coeficientes de los modelos lineales\n\nNinguna variante tiene un modelo lineal."
+    chosen = stability[(stability["modelo"] == model) & (stability["variable"] != "(intercepto)")]
+    if variant in set(chosen["variante"]):
+        chosen = chosen[chosen["variante"] == variant]
+    elif not chosen.empty:
+        variant = chosen["variante"].iloc[0]
+    else:
+        return "## Coeficientes de los modelos lineales\n\nNo hay coeficientes de la logística en esta ejecución."
+    table = chosen.head(rows)[["variable", "media", "desviacion", "razon_por_desviacion", "signo_estable", "anios"]]
+    stable = int(chosen["signo_estable"].sum())
+    return (f"## Coeficientes de la logística de {variant}\n\nUn ajuste por año de la evaluación, sobre la escala "
+            "que ve el modelo (mediana para los huecos, logaritmo con signo y estandarización): exp(coeficiente) es "
+            "la razón de odds de una desviación típica de esa escala. signo_estable dice si el signo es el mismo "
+            f"todos los años ({stable} de {len(chosen)} variables). Todos en coeficientes_estabilidad.csv, y año a "
+            "año en coeficientes.csv.\n\n" + ml_metrics.markdown_table(table, digits=3))
 
 
 def models_text(cfg: dict) -> str:
@@ -1604,18 +1683,22 @@ def main(argv=None):
     # The models of the hours get the settings of the days: no purge between
     # days, the grids of meteo_dia.busqueda.
     run_cfg = {**cfg, "purga_horas": float(cfg.get("purga_horas", 0))}
-    outs, search, last = [], [], {}
+    outs, search, last, all_terms = [], [], {}, []
     for variant in variants:
         years = variant_years(variant, cfg)
         if not years:
             logger.warning("Variant %s skipped: no year of evaluation has enough days before it", variant["nombre"])
             continue
         features = variant_features(variant, blocks)
+        blank = blank_features(variant, features)
         rows = pdf[pdf["fecha"] >= pd.Timestamp(variant["desde"])]
-        logger.info("Variant %s: %s features, training from %s, years %s", variant["nombre"], len(features),
-                    variant["desde"], years)
+        logger.info("Variant %s: %s features, training from %s, years %s%s", variant["nombre"], len(features),
+                    variant["desde"], years, f"; scored without {blank}" if blank else "")
+        terms = []
         scored, found, scorers, _ = rolling_evaluation(rows, features, MAIN_LABEL, config, run_cfg, years,
-                                                       args.sin_busqueda, names=cfg["modelos"])
+                                                       args.sin_busqueda, names=cfg["modelos"], blank=blank,
+                                                       terms=terms)
+        all_terms += [{"variante": variant["nombre"], **row} for row in terms]
         out = scored[["distribuidora_id", "fecha", "anio"] + LABELS].copy()
         for column in [c for c in scored.columns if c.startswith("p_")]:
             out[f"p_{variant['nombre']}__{column[2:]}"] = scored[column].to_numpy()
@@ -1625,6 +1708,8 @@ def main(argv=None):
 
     if not outs:
         raise ValueError("No variant could be scored")
+    coefficients = pd.DataFrame(all_terms)
+    stability = coefficient_stability(coefficients)
 
     scored = outs[0]
     for out in outs[1:]:
@@ -1725,6 +1810,7 @@ def main(argv=None):
         "variante": v["nombre"], "desde": v["desde"], "bloques": "+".join(v["bloques"]),
         "horizonte_dias": horizon_of(v),
         "anios": ",".join(str(y) for y in variant_years(v, cfg)), "n_features": len(variant_features(v, blocks)),
+        "historia_al_puntuar": v.get("historia_al_puntuar", ""),
     } for v in variants])
     per_dist = by_distribuidora(metrics)
     totals = sizes.groupby("anio")[[f"dias_{label}" for label in LABELS]].sum().reset_index()
@@ -1756,11 +1842,16 @@ def main(argv=None):
         "y_dia_varias, los días que empiezan varias incidencias en la distribuidora y piden más de una brigada.\n\n"
         + ml_metrics.markdown_table(busy_days_table(metrics[metrics["split"] == "cv_comun"], shares), digits=4),
         "## PR-AUC por año\n\n" + ml_metrics.markdown_table(by_year(metrics), digits=4),
+        "## Calibración por año\n\nLa logística de la variante de producción (o de la primera variante que la tiene) "
+        "año a año: tasa observada, probabilidad media, BSS y pendiente e intercepto de la recalibración. Desde "
+        "noviembre de 2025 Calser importa las interrupciones de TedisNet, y un cambio en cómo se registran se vería "
+        "aquí antes que en la PR-AUC.\n\n" + ml_metrics.markdown_table(calibration_by_year(metrics), digits=4),
         "## PR-AUC por distribuidora en los años comunes\n\n" + ml_metrics.markdown_table(per_dist, digits=4),
         f"## PR-AUC con intervalo del 95 % ({bootstrap_text}, {reps} réplicas)\n\n"
         + ml_metrics.markdown_table(intervals, digits=4),
         "## Diferencias emparejadas (a - b)\n\nSi el intervalo cruza el cero, los datos no distinguen a de b.\n\n"
         + ml_metrics.markdown_table(differences, digits=4),
+        coefficients_text(stability),
     ] + ([
         f"## Con la previsión real del día anterior ({', '.join(str(y) for y in years_forecast)})\n\n"
         f"Los modelos de {', '.join(r['nombre'] for r in references)} se entrenan con el reanálisis y puntúan los "
@@ -1774,7 +1865,9 @@ def main(argv=None):
     export(config, args.run_id, report, {"metricas": metrics, "comparacion": comparison, "anios": by_year(metrics),
                                          "distribuidoras": per_dist, "intervalos": intervals,
                                          "diferencias": differences, "filas": sizes, "prevision": forecast_table,
-                                         "prevision_diferencias": forecast_differences, "variantes": variant_rows})
+                                         "prevision_diferencias": forecast_differences, "variantes": variant_rows,
+                                         "coeficientes": coefficients, "coeficientes_estabilidad": stability,
+                                         "calibracion_anios": calibration_by_year(metrics)})
 
     summary = metrics[(metrics["split"] == "cv_comun") & (metrics["segmento"] == "total")
                       & (metrics["etiqueta"] == MAIN_LABEL) & (metrics["metrica"] == "pr_auc")]

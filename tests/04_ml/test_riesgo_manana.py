@@ -11,6 +11,7 @@ orange warning forecast for one of the two distribuidoras.
 import io
 import json
 import os
+import pickle
 import shutil
 import sys
 import tarfile
@@ -571,7 +572,14 @@ def test_the_summary_and_the_run(first, spark, workdir):
     assert "pedida el 14.01.2026 19:31 UTC" in text
     assert "1 aviso de AEMET para el día en las celdas de la red, el mayor naranja" in text
     assert "## Lo que se prevé" in text and "## Notas" not in text
-    assert len(pd.read_csv(os.path.join(folder, "prediccion.csv"))) == 2
+    prediction = pd.read_csv(os.path.join(folder, "prediccion.csv"))
+    assert len(prediction) == 2
+    # The coefficients of the logistic regression of the evening and the model itself, which scores the same.
+    terms = pd.read_csv(os.path.join(folder, "coeficientes.csv")).set_index("variable")
+    assert "(intercepto)" in terms.index and terms["razon_por_desviacion"].gt(0).all()
+    with open(os.path.join(folder, "modelo.pkl"), "rb") as file:
+        model = pickle.load(file)
+    assert model.name == "logistica" and len(model.feature_names) == len(terms) - 1 - terms.index.str.endswith("__falta").sum()
     runs = spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}'").toPandas()
     assert len(runs) == 1 and runs.loc[0, "etiqueta"] == "riesgo_manana:y_dia"
     assert "operativa" in runs.loc[0, "modelos_json"]
@@ -610,7 +618,7 @@ def test_a_new_run_of_the_same_day_replaces_it_and_says_when_aemet_is_missing(fi
     assert "AEMET no ha dado los avisos" in text
 
 
-def test_an_old_copy_of_calser_leaves_the_history_empty(first, spark, config_path, workdir):
+def test_an_old_copy_of_calser_leaves_the_history_out_of_the_model(first, spark, config_path, workdir):
     later = DAY + pd.Timedelta(days=40)
     landing = land(workdir, later, storm=False, warned=False)
     assert rm.main(["--run-id", RUN_ID + "_3", "--config", config_path, "--fecha", f"{later:%Y-%m-%d}",
@@ -619,8 +627,13 @@ def test_an_old_copy_of_calser_leaves_the_history_empty(first, spark, config_pat
     assert len(rows) == 4
     new = rows[rows["fecha"].astype(str) == f"{later:%Y-%m-%d}"]
     assert not new["historia_al_dia"].any()
+    # The model of that evening is fitted without the history, so no reason can come from it.
+    assert not new["motivos"].fillna("").str.contains("incidencias en los últimos").any()
     text = open(os.path.join(workdir, "resultados", RUN_ID + "_3", "resumen.md"), encoding="utf-8").read()
     assert "La copia de Calser llega hasta el 13.01.2026" in text
+    assert "el modelo de esta tarde se entrena sin ella" in text
+    payload = json.load(open(os.path.join(workdir, "dashboard", "riesgo.json"), encoding="utf-8"))
+    assert payload["fuentes"]["historia_al_dia"] is False and payload["fuentes"]["historia_en_modelo"] is False
 
 
 def test_a_past_day_is_played_again_from_gold_without_touching_the_live_day(first, spark, config_path, workdir):

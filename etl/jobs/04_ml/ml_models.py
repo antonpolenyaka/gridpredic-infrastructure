@@ -601,6 +601,31 @@ def build_reference(name: str, feature_names: list, base_rate: float, naive_feat
 # Examination
 # ---------------------------------------------------------------------------
 
+def linear_terms(scorer) -> list:
+    """
+    The coefficients of a fitted linear model (LINEAR) on the scale it sees:
+    every feature after the median imputation, the signed log and the
+    standardisation, so exp(coeficiente) is the odds ratio (for poisson, the
+    ratio of the rate) of one standard deviation of that scale. One row per
+    feature, one per missing indicator added by the imputer (<feature>__falta)
+    and the intercept. Empty for any other model.
+    """
+    model = getattr(scorer, "estimator", None)
+    if getattr(scorer, "name", None) not in LINEAR or not hasattr(model, "named_steps"):
+        return []
+    final = model.named_steps["modelo"]
+    coef = np.asarray(final.coef_, dtype=np.float64)
+    coef = coef[0] if coef.ndim == 2 else coef
+    names = list(scorer.feature_names)
+    indicator = getattr(model.named_steps["imputar"], "indicator_", None)
+    labels = names + ([f"{names[j]}__falta" for j in indicator.features_] if indicator is not None else [])
+    rows = [{"variable": "(intercepto)", "coeficiente": float(np.ravel(final.intercept_)[0])}]
+    rows += [{"variable": name, "coeficiente": float(value)} for name, value in zip(labels, coef)]
+    for row in rows:
+        row["razon_por_desviacion"] = float(np.exp(row["coeficiente"]))
+    return rows
+
+
 def importances(scorer: Scorer, X_sample=None) -> dict:
     """
     {metric: array per feature}. For XGBoost the mean absolute SHAP value
