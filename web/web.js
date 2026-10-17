@@ -12,7 +12,8 @@
   "use strict";
   const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const ok = window.gsap && window.ScrollTrigger;
-  const RISK = { bajo: "#2f7a4b", medio: "#d9a400", alto: "#d9641a", "muy-alto": "#bf2a2a" };
+  // The colours of the levels on the dark hero: the dark theme of the dashboard (gridpredic-web.css, .escena).
+  const RISK = { bajo: "#7d8896", medio: "#ffdb42", alto: "#e37115", "muy-alto": "#b73d43" };
   const LABELS = ["20:30, la víspera: previsión y avisos", "Mañana: el riesgo por municipio y línea",
                   "Mañana: la guardia y la base de la brigada"];
 
