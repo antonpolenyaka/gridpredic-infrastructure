@@ -23,7 +23,7 @@ job_landing_vivo left in <riesgo_manana.landing>/<D as YYYYMMDD>:
   AEMET the day is scored without warnings and the row says so
   (avisos_disponibles false).
 - The calendar of D and the incidents known in Calser before D. When the
-  copy of Calser in the lakehouse ends more than margen_etiquetas_dias
+  copy of Calser in the lakehouse ends more than historia_margen_dias (7)
   before D (historia_al_dia false), zero incidents in the last days would
   read as a calm network, so the model of the evening is fitted without
   the history of incidents (riesgo_manana.historia_desfasada
@@ -34,7 +34,10 @@ job_landing_vivo left in <riesgo_manana.landing>/<D as YYYYMMDD>:
   operativa_sin_historia and operativa_historia_mediana.
 
 Training days: from the first day of the variant to the last day with
-labels (the last incident of Calser minus margen_etiquetas_dias), weather of
+labels (the last incident of Calser minus margen_etiquetas_dias, 45 since
+17.10.2026: an interruption gets its incident weeks later, when it is
+processed, and the control of Gold measures 41 - 43 days of labels still
+missing at the end of each copy in the Distribuidora 1 and 2), weather of
 the reanalysis in Gold and warnings in the archive. The configuration of the
 model is chosen on the last fraccion_validacion_interna of those days and
 fitted again on all of them, as every year of the rolling evaluation of
@@ -137,7 +140,8 @@ DEFAULTS = {
     "landing": "s3://datalake/00_landing/vivo",
     "tabla": "l3_gold.riesgo_dia_siguiente",
     "tabla_zonas": ZONES_TABLE,
-    "margen_etiquetas_dias": 7,
+    "margen_etiquetas_dias": 45,
+    "historia_margen_dias": 7,
     "niveles": {"muy alto": 0.95, "alto": 0.9, "medio": 0.75},
     "motivos": 3,
     "zonas": 3,
@@ -1591,7 +1595,7 @@ def main(argv=None):
                 end.date(), len(rows), int(rows[MAIN_LABEL].sum()), calser)
     # Tomorrow's history is only known when the copy of Calser reaches D minus the margin. Without it the model
     # is fitted without the history, so tomorrow is never scored with the median of the training days.
-    up_to_date = bool(pd.notna(calser) and calser >= day - margin)
+    up_to_date = bool(pd.notna(calser) and calser >= day - pd.Timedelta(days=int(rcfg.get("historia_margen_dias", 7))))
     history_in_model = up_to_date or rcfg.get("historia_desfasada", "sin_historia") == "mediana"
     if not history_in_model:
         dropped = [f for f in features if f.startswith("hist_")]
