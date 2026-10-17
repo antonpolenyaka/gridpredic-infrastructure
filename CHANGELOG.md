@@ -2,7 +2,7 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
-## [0.15.0] - sin publicar
+## [0.15.0] - 17.10.2026
 
 El sector como referencia, la recomendación de guardia, los avisos de AEMET durante el día, la orientación de pasado mañana, el cuadro de mando rediseñado con la página pública y el cuaderno de las pruebas (de 3 a 3r), ninguna de las cuales mejora el modelo del día.
 
