@@ -77,7 +77,7 @@ job_silver_d_salida.py
 | --- | --- | --- |
 | Fuentes | **SQL Server 2022** | Bases de datos operacionales y fuentes batch |
 | Fuentes externas | **APIs públicas** | Meteorología de Open-Meteo, avisos, predicción y estaciones de AEMET, rayos de EUMETSAT y datos públicos |
-| CDC y mensajería | **Debezium, Kafka, Kafka Connect** | Captura y transporte de cambios en tiempo real |
+| CDC y mensajería | **Debezium, Kafka, Kafka Connect** | Captura y transporte de los cambios de SQL Server en flujo, con segundos de retraso |
 | Orquestación | **Apache Airflow** | Cargas batch, operación de cada tarde y mantenimiento semanal de las tablas Delta |
 | Procesamiento | **Apache Spark 4 + Delta Lake** | Ingesta streaming/batch, transformaciones Bronze -> Silver -> Gold y entrenamiento de los modelos (scikit-learn y XGBoost en el driver) |
 | Almacenamiento | **MinIO** | Object Storage compatible con S3 para Landing y Delta Lake |
