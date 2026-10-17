@@ -1,9 +1,10 @@
 """Deja los JSON del cuadro de mando con los nombres anonimos de las distribuidoras.
 
 Los jobs escriben desde la 0.15.0 los nombres de riesgo_manana.nombres de config_ml.json
-(Distribuidora 1, 2 y 3); este script pasa los ficheros ya escritos con los nombres reales
-a los mismos nombres, sin tocar los municipios ni las lineas (Valle de Santa Ana es tambien
-un municipio y se queda tal cual donde es un lugar).
+(Distribuidora 1, 2 y 3); este script pasa los ficheros ya escritos con los nombres de las
+bases a los mismos nombres, sin tocar los municipios ni las lineas. La correspondencia no se
+versiona: la lee de _runlogs/anonimizar_nombres.json, un diccionario {"nombre": "Distribuidora N"}
+que solo existe en el portatil.
 
 Uso:
     python _runlogs/anonimizar_dashboard.py D:\\GitHub\\gridpredic-infrastructure\\dashboard\\data
@@ -13,11 +14,8 @@ import json
 import os
 import sys
 
-NOMBRES = {
-    "EOSA": "Distribuidora 1", "Calser_EOSA": "Distribuidora 1",
-    "Pitarch": "Distribuidora 2", "Calser_Pitarch": "Distribuidora 2",
-    "Valle de Santa Ana": "Distribuidora 3", "Calser_ValleSantaAna": "Distribuidora 3", "ValleSantaAna": "Distribuidora 3",
-}
+NOMBRES_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "anonimizar_nombres.json")
+NOMBRES = {}
 
 
 def rename(value, counter):
@@ -47,6 +45,10 @@ def walk(obj, counter, in_distribuidoras=False):
 
 
 def main(folder):
+    if not os.path.exists(NOMBRES_JSON):
+        sys.exit(f"Falta {NOMBRES_JSON} con la correspondencia de nombres (no se versiona).")
+    with open(NOMBRES_JSON, encoding="utf-8") as handle:
+        NOMBRES.update(json.load(handle))
     files = sorted(glob.glob(os.path.join(folder, "*.json")))
     for path in files:
         with open(path, encoding="utf-8") as handle:

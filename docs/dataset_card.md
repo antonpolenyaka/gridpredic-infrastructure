@@ -40,10 +40,10 @@ Las fuentes son cuatro bases de datos de SQL Server, restauradas a partir de bac
 
 | Base de datos | Qué contiene | Tamaño del backup |
 | --- | --- | --- |
-| `Calser_EOSA` (Distribuidora 1) | Interrupciones, incidencias, CT, salidas, municipios y períodos. 805 CT | 1,3 GB |
-| `Calser_Pitarch` (Distribuidora 2) | Lo mismo para 598 CT | 1,0 GB |
-| `Calser_ValleSantaAna` (Distribuidora 3) | Lo mismo para 11 CT | 23 MB |
-| `TedisNet_EOSA` | SCADA de las tres distribuidoras: 78.301 tags, 12.307 nodos y 11.449 ramas de topología, 1.386 transformadores con el cálculo de cortes activo (`IsPowerCut = 1`), series de medidas y eventos desde 2021 | 63,5 GB |
+| Calser de la Distribuidora 1 | Interrupciones, incidencias, CT, salidas, municipios y períodos. 805 CT | 1,3 GB |
+| Calser de la Distribuidora 2 | Lo mismo para 598 CT | 1,0 GB |
+| Calser de la Distribuidora 3 | Lo mismo para 11 CT | 23 MB |
+| TedisNet (las tres redes) | SCADA de las tres distribuidoras: 78.301 tags, 12.307 nodos y 11.449 ramas de topología, 1.386 transformadores con el cálculo de cortes activo (`IsPowerCut = 1`), series de medidas y eventos desde 2021 | 63,5 GB |
 
 Los CT de esta tabla son los distintos de todos los períodos de cada base, de 2010 a 2026, contando los que se dieron de baja; los de la red actual (unos 760, 570 y 10) están en [cifras.md](cifras.md).
 

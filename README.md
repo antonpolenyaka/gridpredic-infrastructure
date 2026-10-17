@@ -210,23 +210,7 @@ Crear, si no existe, la carpeta:
 infra/sqlserver/backups/
 ```
 
-Copiar dentro los cuatro backups con estos nombres exactos:
-
-```text
-Calser_DIST_1_14082026.bak
-Calser_DIST_2_14082026.bak
-Calser_DIST_3_14082026.bak
-TedisNet_EOSA_backup_2026_08_14_020001_2902307.bak
-```
-
-Durante el arranque se restauran como:
-
-| Backup | Base de datos |
-| --- | --- |
-| `Calser_DIST_1_14082026.bak` | `Calser_EOSA` |
-| `Calser_DIST_2_14082026.bak` | `Calser_Pitarch` |
-| `Calser_DIST_3_14082026.bak` | `Calser_ValleSantaAna` |
-| `TedisNet_EOSA_backup_2026_08_14_020001_2902307.bak` | `TedisNet_EOSA` |
+Copiar dentro los cuatro backups (las tres copias de Calser y la de TedisNet) con los nombres de fichero que espera `infra/sqlserver/scripts/restore_databases.sql`, que es también el que fija el nombre de cada base al restaurarla. Los nombres reales de las distribuidoras no aparecen en la documentación: en todo lo visible son la Distribuidora 1, la 2 y la 3.
 
 ---
 
