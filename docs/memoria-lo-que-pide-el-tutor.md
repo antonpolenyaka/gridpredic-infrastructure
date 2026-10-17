@@ -143,3 +143,36 @@ Al guion de 14 diapositivas ([guion-presentacion.md](guion-presentacion.md)) le 
 - Incendios: el tutor anotó integrar el feed oficial de incendios (publicación diaria a las 08:00). Hoy tenemos los focos del satélite (FIRMS) y el índice de peligro de incendio (FWI de Copernicus). Los boletines diarios del Plan INFOEX están en la web de la Junta sin API, y las épocas de peligro que fija el DOE son casi las mismas cada año, así que el calendario del modelo ya las recoge (tabla 5 de [revision-literatura.md](revision-literatura.md)). El parte diario queda para cuando se publique como datos abiertos; entonces se mide con el mismo método de [investigacion-continua.md](investigacion-continua.md).
 - Más distribuidoras: cada distribuidora nueva son unos 15 días con avería al año más para aprender; el objetivo de 11 más viene de ahí.
 - Horizonte de tres días: medido el 15.10.2026 con la previsión de tres días antes (apartado 3e del cuaderno: 5,2 veces la tasa base, casi lo mismo que a dos días). La orientación de pasado mañana ya sale cada tarde.
+
+## 6. Lo que pidieron los asesores técnico y de prototipo
+
+El asesor técnico (Josep Anton Sànchez) nos vio el 13.07 y el 08.10.2026, y el de prototipo (Marc Maynou), el 17.07.2026. Esta tabla está también en el anexo B de la memoria v10, con el apartado donde se trata cada punto. Las decisiones que van contra lo que nos aconsejaron (el piloto acotado, XGBoost en producción, el reentreno cada uno a tres meses, el disco interno y el semáforo con umbrales fijos) están justificadas en el apartado que se cita.
+
+| Petición | Tutoría | Dónde está en la memoria |
+| --- | --- | --- |
+| Clasificación supervisada de la interrupción, sin series temporales | 13.07 y 08.10 (técnico) | 5.2 |
+| Probar XGBoost y Random Forest, en Python | 13.07 (técnico) | 5.5 y 5.6, junto a la logística y a referencias sin modelo |
+| Un modelo por estación, o por zonas homogéneas | 13.07 (técnico) | 5.2 y 5.6: modelo global; por distribuidora queda igual y por zona, peor |
+| Piloto acotado con una o dos estaciones; después, dos o tres CT y una ventana corta | 13.07 y 08.10 (técnico) | 4.9: cargamos las tres redes y aceleramos cada prueba con la muestra de negativos y la agregación por distribuidora |
+| Para predecir a H horas, solo lo conocido hasta t - H | 13.07 (técnico) | 5.2 y 5.4, con prueba automática de fuga |
+| Instantáneas de 5 minutos | 13.07 (técnico) | 5.3.3: resumen por hora |
+| Sin imputar huecos: solo ventanas completas | 13.07 (técnico) | 5.3.2 |
+| Meteorología por una API abierta y, para predecir, el tiempo previsto | 13.07 (técnico) | 4.2, 5.1.1 y 5.7.1: entrenamos con el reanálisis y medimos con la previsión real de la víspera |
+| Un modelo por horizonte o uno multisalida | 13.07 (técnico) | 5.7.5: una variante por horizonte, a 24, 48 y 72 h |
+| Origen del fallo ("culpable de cabecera") y efecto en cascada | 13.07 (técnico) | 5.3.3 y 5.3.4: etiqueta de un solo CT, cabecera y posiciones aguas arriba |
+| Contagio entre estaciones y estaciones sin historial, en una segunda fase | 13.07 (técnico) | 2.2, 5.7.4 (regla de la cascada) y 5.8.4 (transferencia entre distribuidoras) |
+| Plan B en dos etapas: carga y después interrupción | 13.07 (técnico) | 5.6 y 5.8.1: solo un CT tiene curva de potencia |
+| Test reservado, matriz de confusión, AUC, sensibilidad y falsas alarmas | 13.07 (técnico) | 5.4 y 5.7.2: partición por fechas, validación por años y matriz de confusión por días |
+| Semáforo con umbrales del 60, 70 y 80 % | 13.07 (técnico) | 5.5: cuatro niveles por percentiles de cada red, porque ningún día pasa del 50 % |
+| Probabilidad en línea cada 12 segundos | 13.07 (técnico) | 4.5.5: sustituida por la tarde de las 20:30 y las rutas en vivo |
+| Mantener XGBoost | 08.10 (técnico) | 5.5: XGBoost por CT y por horas; en el día ordena mejor la logística con la previsión real |
+| Grupos de CT con k-means y un submodelo por grupo | 08.10 (técnico) | 5.6: los submodelos no superan al modelo global |
+| Estación del año y entrenamiento que cubra todas las estaciones | 08.10 (técnico) | 5.3.3, 5.3.4 y 5.4 |
+| Reentreno en batch cada uno a tres meses, aparte de la predicción | 08.10 (técnico) | 5.7.1 |
+| Datos en el disco interno | 08.10 (técnico) | 4.7.2: no cabían; seguimos en el externo |
+| Captura en flujo desde las tablas de SQL Server con CDC y Kafka | 17.07 (prototipo) | 4.3.2, 4.5.2 y 4.6: Debezium y Kafka con 31 tablas System* |
+| Datos sintéticos para el flujo, si hacía falta | 17.07 (prototipo) | No hizo falta: el CDC corre sobre las copias restauradas |
+| Zonas como en clase, algún dato no tabular y una arquitectura más amplia que lo construido | 17.07 (prototipo) | 4.1, 4.3, 4.3.3 y 4.4 |
+| Zonas también para el análisis, sin notebooks en el proceso, y orquestación con Airflow | 17.07 (prototipo) | 4.3 y 4.3.2 |
+| Elegir entre local y nube y justificar cada herramienta | 17.07 (prototipo) | 4.6 |
+| Un diagrama de alto nivel con iconos para la entrega y la defensa | 17.07 (prototipo) | Figura 1 (4.3) |

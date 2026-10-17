@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Arquitectura GridPredic</title>
+<style>
+  :root {
+    --ink: #1f2933;
+    --muted: #46515e;
+    --soft: #66717e;
+    --data: #56626f;
+    --op: #1d6a8e;
+    --op-bg: #e9f2f7;
+    --ctrl: #7a4ea6;
+    --ctrl-bg: #f6f2fa;
+    --land-b: #76828f;
+    --bronze: #9a5a22;
+    --bronze-b: #c08048;
+    --bronze-bg: #fbf0e5;
+    --silver: #4f5c6b;
+    --silver-b: #8e9bab;
+    --silver-bg: #eef1f5;
+    --gold: #85650c;
+    --gold-b: #c7a03a;
+    --gold-bg: #fbf5dc;
+    --cat: #57534e;
+    --cat-b: #a8a29e;
+    --cat-bg: #f5f4f1;
+    --fs: 19px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  body {
+    width: 1200px; height: 900px; position: relative; overflow: hidden;
+    font-family: "Liberation Sans", Arial, Helvetica, sans-serif;
+    font-size: var(--fs); line-height: 1.15; color: var(--ink);
+  }
+  .blk { position: absolute; }
+  b { font-weight: bold; }
+  svg.ic { width: 26px; height: 26px; flex: none; fill: none; stroke: currentColor;
+           stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
+  svg.ic.big { width: 32px; height: 32px; }
+
+  /* Airflow */
+  .band { border: 2px solid var(--ctrl); border-radius: 8px; background: var(--ctrl-bg); }
+  .band .bl { position: absolute; left: 10px; top: 6px; right: 10px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .band .bl svg { color: var(--ctrl); }
+  .band b { color: var(--ctrl); }
+  .droplab { position: absolute; top: 35px; white-space: nowrap; color: var(--ctrl); }
+
+  .colhead { position: absolute; font-weight: bold; color: var(--muted); font-size: 21px; white-space: nowrap; }
+
+  /* fuentes */
+  .src { border: 2px solid #8a96a3; border-radius: 8px; background: #ffffff; }
+  .src .sh { padding: 7px 10px 6px; }
+  .src .sh .t { display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 20px; }
+  .src .sh .t svg { color: #4e5b69; }
+  .src .sh .d { color: var(--muted); margin-top: 3px; }
+  .port { border-top: 1.5px solid #c9d0d7; padding: 6px 10px 7px; }
+  .port .lst { color: var(--muted); }
+  .port.op { color: var(--op); }
+  .num { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; border-radius: 50%;
+         background: #56626f; color: #fff; font-weight: bold; font-size: 19px; line-height: 1; margin-right: 6px; vertical-align: 1px; }
+  .port.op .num { background: var(--op); }
+  .port svg.ic { width: 24px; height: 24px; margin-right: 4px; vertical-align: -6px; }
+
+  /* zonas */
+  .zone { border-radius: 9px; padding: 7px 9px 7px; display: flex; flex-direction: column; }
+  .zone .zt { font-weight: bold; font-size: 24px; line-height: 1.1; }
+  .zone .zc { font-style: italic; }
+  .zone .zp { margin-top: 1px; }
+  .zone .zm { color: var(--soft); margin-top: 5px; padding-top: 4px; border-top: 1px solid rgba(0,0,0,0.15); }
+  .zone .zl { margin-top: 5px; display: flex; flex-direction: column; gap: 2px; }
+  .zone .zl .note { color: var(--muted); margin-top: 5px; }
+  .zone .zf { margin-top: auto; padding-top: 4px; border-top: 1px solid rgba(0,0,0,0.15); }
+  .landing { border: 2.2px dashed var(--land-b); background: #ffffff; }
+  .landing .zt, .landing .zc { color: #3e4a57; }
+  .bronze { border: 2.2px solid var(--bronze-b); background: var(--bronze-bg); }
+  .bronze .zt, .bronze .zc { color: var(--bronze); }
+  .silver { border: 2.2px solid var(--silver-b); background: var(--silver-bg); }
+  .silver .zt, .silver .zc { color: var(--silver); }
+  .gold { border: 2.2px solid var(--gold-b); background: var(--gold-bg); }
+  .gold .zt, .gold .zc { color: var(--gold); }
+  .sub { border: 1.5px solid #b9c1ca; border-radius: 6px; padding: 4px 7px 5px; margin-top: 7px; background: #ffffff; }
+  .sub.op { border-color: var(--op); background: var(--op-bg); }
+  .sub.op b { color: var(--op); }
+  .opt { color: var(--op); }
+
+  /* operación */
+  .job { border: 2px solid var(--op); border-radius: 8px; background: #ffffff; padding: 6px 10px; }
+  .job .jh { display: flex; align-items: center; gap: 7px; font-weight: bold; color: var(--op); }
+  .job .dag { color: var(--ctrl); }
+  .lab { position: absolute; color: var(--op); white-space: nowrap; }
+  .lab.data { color: var(--muted); white-space: normal; }
+
+  .serve { border: 2px solid var(--op); border-radius: 8px; background: var(--op-bg); padding: 7px 14px; display: flex; gap: 30px; align-items: center; white-space: nowrap; }
+  .serve .st { font-weight: bold; color: var(--op); }
+  .sitem { display: flex; gap: 9px; align-items: center; }
+  .sitem svg { color: var(--op); }
+
+  .cat { border: 2px solid var(--cat-b); border-radius: 8px; background: var(--cat-bg); padding: 6px 12px; }
+  .cat .row { display: flex; gap: 9px; align-items: center; white-space: nowrap; }
+  .cat .row + .row { margin-top: 3px; }
+  .cat svg { color: var(--cat); }
+  .store { display: flex; gap: 9px; align-items: center; white-space: nowrap; padding-left: 12px; }
+  .store svg { color: var(--cat); }
+  .legend { display: flex; flex-direction: row; gap: 34px; align-items: center; padding-left: 10px; }
+  .legend .lg { display: flex; align-items: center; gap: 9px; }
+  .legend svg.sw { width: 46px; height: 14px; flex: none; }
+
+  #ov { position: absolute; left: 0; top: 0; width: 1200px; height: 900px; pointer-events: none; overflow: visible; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-db" viewBox="0 0 32 32"><ellipse cx="16" cy="7" rx="10.5" ry="3.8"/><path d="M5.5 7v18c0 2.1 4.7 3.8 10.5 3.8s10.5-1.7 10.5-3.8V7"/><path d="M5.5 13c0 2.1 4.7 3.8 10.5 3.8s10.5-1.7 10.5-3.8M5.5 19c0 2.1 4.7 3.8 10.5 3.8s10.5-1.7 10.5-3.8"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 32 32"><path d="M9.5 25.5h14a5.8 5.8 0 0 0 .9-11.5 8 8 0 0 0-15.3-1.6A6.6 6.6 0 0 0 9.5 25.5z"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 32 32"><rect x="2.5" y="9" width="22" height="14" rx="3"/><path d="M8.5 9v14M13.5 9v14M18.5 9v14"/><path d="M26 16h4M27.8 13.6 30 16l-2.2 2.4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12"/><path d="M16 9v7.5l5 3"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 32 32"><path class="gearpath" d=""/><circle cx="16" cy="16" r="4.2"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 32 32"><rect x="4" y="6" width="24" height="20" rx="2"/><path d="M4 12h24M4 19h24M12 6v20M20 6v20"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 32 32"><rect x="3.5" y="5" width="25" height="17" rx="2"/><path d="M12 27h8M16 22v5"/><path d="M8 17l4-4 3 2.5 5-5.5 4 3"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 32 32"><path d="M8 3.5h11l6 6v19H8z"/><path d="M19 3.5v6h6"/><path d="M11.5 15h10M11.5 19h10M11.5 23h10M16.5 13v12"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 32 32"><path d="M9 21.5V15a7 7 0 0 1 14 0v6.5l2.2 2.8H6.8z"/><path d="M13.5 27a2.7 2.7 0 0 0 5 0"/></symbol>
+    <symbol id="i-bucket" viewBox="0 0 32 32"><ellipse cx="16" cy="8" rx="11" ry="3.6"/><path d="M5 8l2.6 17.5c.4 2 4 3.4 8.4 3.4s8-1.4 8.4-3.4L27 8"/></symbol>
+    <symbol id="i-book" viewBox="0 0 32 32"><path d="M6 5.5h15a3 3 0 0 1 3 3v19H9a3 3 0 0 1-3-3z"/><path d="M6 24.5a3 3 0 0 1 3-3h15"/><path d="M11 10.5h8M11 14.5h8"/></symbol>
+  </defs>
+</svg>
+
+<!-- Orquestación -->
+<div class="blk band" id="airflow" style="left:12px;top:10px;width:1176px;height:62px">
+  <div class="bl"><svg class="ic"><use href="#i-clock"/></svg><span><b>Airflow 3.3.2</b> (hora de Madrid): las cargas se lanzan a mano; la operación del día y el mantenimiento semanal van programados</span></div>
+  <div class="droplab" id="dl-batch">ingest_sqlserver_batch_bronze</div>
+  <div class="droplab" id="dl-silver">dag_silver</div>
+  <div class="droplab" id="dl-gold">dag_gold</div>
+</div>
+
+<!-- Fuentes -->
+<div class="colhead" style="left:14px;top:84px">Fuentes</div>
+<div class="blk src chk" id="src-sql" style="left:12px;top:114px;width:218px">
+  <div class="sh">
+    <div class="t"><svg class="ic big"><use href="#i-db"/></svg>SQL Server</div>
+    <div class="d">tres copias de Calser y una de TedisNet</div>
+  </div>
+  <div class="port" id="p1"><span class="num" id="n1">1</span>Lotes por JDBC con Spark (90 cargas): Calser, Historic* y Lib*</div>
+  <div class="port" id="p2"><span class="num" id="n2">2</span><svg class="ic"><use href="#i-queue"/></svg>CDC: Debezium y Kafka</div>
+</div>
+<div class="blk src chk" id="src-api" style="left:12px;top:380px;width:218px">
+  <div class="sh">
+    <div class="t"><svg class="ic big"><use href="#i-cloud"/></svg>APIs públicas</div>
+  </div>
+  <div class="port" id="p3"><span class="num" id="n3">3</span>Contexto: <span class="lst">AEMET, Open-Meteo, FIRMS, EUMETSAT, CEMS, INE, OpenStreetMap, PLACSP...</span></div>
+  <div class="port op" id="p4"><span class="num" id="n4">4</span><svg class="ic"><use href="#i-clock"/></svg>Operación del día: 20:30, cada 15 min y cada hora</div>
+</div>
+
+<!-- paso directo de los lotes -->
+<div class="lab data" id="lab-batch" style="left:272px;top:78px;width:190px">directo a Bronze, sin pasar por Landing</div>
+
+<!-- Zonas -->
+<div class="blk zone landing chk" id="z-landing" style="left:264px;top:142px;width:194px">
+  <div class="zt">Landing</div>
+  <div class="zc">landing zone</div>
+  <div class="zp">00_landing</div>
+  <div class="zm">"lo que llega, tal como llega"</div>
+  <div class="sub" id="l-cdc">Eventos del CDC en Parquet, un topic por tabla</div>
+  <div class="sub" id="l-api">Respuestas de las APIs en JSON, CSV, NetCDF, CAP y ATOM</div>
+  <div class="sub op" id="l-vivo"><b>vivo/&lt;día&gt;</b>: previsión, avisos, rayos y observaciones</div>
+</div>
+
+<div class="blk zone bronze chk" id="z-bronze" style="left:492px;top:84px;width:192px;height:400px">
+  <div class="zt">Bronze</div>
+  <div class="zc">formatted zone</div>
+  <div class="zp">01_bronze, Delta</div>
+  <div class="zm">tipado, sin limpiar</div>
+  <div class="zl">
+    <div>calser_&lt;base&gt;_*</div>
+    <div>tedis_net_&lt;base&gt;_*</div>
+    <div class="note">JDBC: la tabla grande, por trozos de Id</div>
+    <div class="note">CDC: 31 tablas System*, MERGE por clave</div>
+    <div class="note">una tabla por fuente pública</div>
+  </div>
+  <div class="zf">Trino: l1_bronze</div>
+</div>
+
+<div class="blk zone silver chk" id="z-silver" style="left:718px;top:84px;width:204px;height:400px">
+  <div class="zt">Silver</div>
+  <div class="zc">trusted zone</div>
+  <div class="zp">02_silver, Delta</div>
+  <div class="zm">válido y trazable</div>
+  <div class="zl">
+    <div>f_interrupcion</div>
+    <div>f_tag_interval_value</div>
+    <div>f_corte_evento</div>
+    <div>d_ct_scada</div>
+    <div>f_meteo_hora</div>
+    <div class="note">una tabla por entidad, con distribuidora_id</div>
+    <div class="note">rechazos en _rejected; lo dudoso se marca</div>
+  </div>
+  <div class="zf">Trino: l2_silver</div>
+</div>
+
+<div class="blk zone gold chk" id="z-gold" style="left:956px;top:84px;width:208px;height:400px">
+  <div class="zt">Gold</div>
+  <div class="zc">exploitation zone</div>
+  <div class="zp">03_gold, Delta</div>
+  <div class="zm">negocio y modelos</div>
+  <div class="zl">
+    <div>labels_ct_hora</div>
+    <div>features_ct_hora</div>
+    <div>dataset_train</div>
+    <div>meteo_celda_hora</div>
+    <div class="opt" id="g-riesgo">riesgo_dia_siguiente</div>
+    <div class="opt">escrita cada tarde por la puntuación</div>
+    <div class="note">grano CT-hora y distribuidora-día</div>
+  </div>
+  <div class="zf">Trino: l3_gold</div>
+</div>
+
+<!-- Operación del día -->
+<div class="lab" id="lab-upper" style="left:500px;top:500px">previsión y avisos de las 20:30</div>
+<div class="blk job chk" id="job-score" style="left:880px;top:526px;width:284px">
+  <div class="jh"><svg class="ic"><use href="#i-gear"/></svg>Puntuación con Spark</div>
+  <div class="dag">dag_riesgo_manana, 20:30</div>
+  <div>reentrena y puntúa mañana</div>
+</div>
+<div class="lab" id="lab-live" style="left:380px;top:660px">rutas en vivo (Python en Airflow), sin pasar por Delta</div>
+
+<div class="blk serve chk" id="serve" style="left:264px;top:700px;width:924px">
+  <div class="st">Servicio</div>
+  <div class="sitem"><svg class="ic big"><use href="#i-monitor"/></svg><div>Cuadro de mando: 4 páginas estáticas<br>que leen JSON (nginx, puerto 8086)</div></div>
+  <div class="sitem"><svg class="ic big"><use href="#i-doc"/></svg><div>Parte de guardia<br>en Excel</div></div>
+  <div class="sitem"><svg class="ic big"><use href="#i-bell"/></svg><div>Mensajes al<br>webhook</div></div>
+</div>
+
+<div class="blk legend chk" id="legend" style="left:14px;top:860px;width:1174px">
+  <div class="lg"><svg class="sw"><line x1="2" y1="7" x2="34" y2="7" stroke="#56626f" stroke-width="2.4"/><path d="M33 2 44 7 33 12z" fill="#56626f"/></svg>datos</div>
+  <div class="lg"><svg class="sw"><line x1="2" y1="7" x2="34" y2="7" stroke="#1d6a8e" stroke-width="2.8"/><path d="M33 2 44 7 33 12z" fill="#1d6a8e"/></svg>operación del día</div>
+  <div class="lg"><svg class="sw"><line x1="2" y1="7" x2="34" y2="7" stroke="#7a4ea6" stroke-width="2.2" stroke-dasharray="7 5"/><path d="M33 2 44 7 33 12z" fill="#7a4ea6"/></svg>control: Airflow lanza o programa</div>
+  <div class="lg"><svg class="ic" style="color:#56626f;margin:0 10px"><use href="#i-gear"/></svg>trabajo de Spark</div>
+</div>
+
+<!-- Catálogo y almacenamiento -->
+<div class="blk cat chk" id="cat" style="left:12px;top:780px;width:1176px;height:64px">
+  <div class="row"><svg class="ic"><use href="#i-book"/></svg><div><b>Catálogo y gobierno</b>: Hive Metastore (esquemas y particiones), dq_metrics, dataset_versions, ml_runs</div></div>
+  <div class="row"><svg class="ic"><use href="#i-grid"/></svg><div><b>Consulta</b>: Trino 483 lee las tres zonas Delta a través de Hive Metastore; DBeaver y BI se conectan a Trino</div></div>
+</div>
+<div class="blk store chk" id="store" style="left:12px;top:852px;width:1176px;height:30px">
+  <svg class="ic"><use href="#i-bucket"/></svg><div><b>Entorno</b>: las cuatro zonas en MinIO (API S3); Spark 4.2.0 y Delta Lake 4.4.0; un portátil con Docker Compose (13 servicios)</div>
+</div>
+
+<svg id="ov" xmlns="http://www.w3.org/2000/svg"></svg>
+
+<script>
+(function () {
+  function gear(cx, cy, ro, ri, n) {
+    const pts = [];
+    for (let k = 0; k < n; k++) {
+      const a0 = (k / n) * 2 * Math.PI, st = 2 * Math.PI / n;
+      [[ri, a0], [ro, a0 + st * 0.12], [ro, a0 + st * 0.42], [ri, a0 + st * 0.54]]
+        .forEach(([r, a]) => pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]));
+    }
+    return "M" + pts.map(p => p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" L") + " Z";
+  }
+  document.querySelectorAll(".gearpath").forEach(p => p.setAttribute("d", gear(16, 16, 13, 9.6, 8)));
+
+  const $ = id => document.getElementById(id);
+  function R(id) {
+    const r = $(id).getBoundingClientRect();
+    return { l: r.left, r: r.right, t: r.top, b: r.bottom, cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2, h: r.height };
+  }
+  const px = v => Math.round(v * 10) / 10 + "px";
+
+  // ---------- layout: align ports with their Landing boxes, then stack the rest ----------
+  const GAP_SRC = 10;
+  // port 2 at the height of the CDC box (extra space goes under port 1)
+  let d = R("l-cdc").cy - R("n2").cy;
+  if (d >= 0) $("p1").style.paddingBottom = px(7 + d);
+  else $("l-cdc").style.marginTop = px(7 - d);
+  $("src-api").style.top = px(R("src-sql").b + GAP_SRC);
+  // API box in Landing at the height of port 3
+  d = R("n3").cy - R("l-api").cy;
+  if (d >= 0) $("l-api").style.marginTop = px(7 + d);
+  else $("src-api").style.top = px(R("src-api").t - d);
+  // vivo at the height of port 4
+  d = R("n4").cy - R("l-vivo").cy;
+  if (d >= 0) $("l-vivo").style.marginTop = px(7 + d);
+  else $("p4").style.paddingTop = px(6 - d);
+
+  // Delta zones: tall enough for their content and for the API arrow to land above the footer
+  const zoneTop = 84;
+  let zoneH = R("l-api").cy + 48 - zoneTop;
+  ["z-bronze", "z-silver", "z-gold"].forEach(id => {
+    const e = $(id); e.style.height = "auto";
+    zoneH = Math.max(zoneH, e.getBoundingClientRect().height + 14);
+  });
+  ["z-bronze", "z-silver", "z-gold"].forEach(id => { $(id).style.height = px(zoneH); });
+  const Zb = R("z-gold").b;
+  // scoring job under Gold; upper lane enters it from vivo
+  const vivo = R("l-vivo"), land = R("z-landing");
+  const jTop = Math.max(Zb + 42, vivo.t - 6);
+  $("job-score").style.top = px(jTop);
+  const J0 = R("job-score");
+  $("lab-upper").style.top = px(J0.t + 28 - 4 - 24);
+  // servicio below Landing; live label between
+  const sTop = Math.max(land.b + 34, J0.b + 32);
+  $("serve").style.top = px(sTop);
+  $("lab-live").style.top = px(land.b + (sTop - land.b) / 2 - 12);
+  const SV0 = R("serve");
+  $("cat").style.top = px(SV0.b + 16);
+  $("store").style.top = px(R("cat").b + 9);
+  $("legend").style.top = px(R("store").b + 11);
+
+  // ---------- arrows ----------
+  const NS = "http://www.w3.org/2000/svg";
+  const ov = $("ov");
+  const COL = { data: "#56626f", op: "#1d6a8e", ctrl: "#7a4ea6" };
+  const defs = document.createElementNS(NS, "defs");
+  ov.appendChild(defs);
+  Object.entries(COL).forEach(([k, c]) => {
+    const m = document.createElementNS(NS, "marker");
+    m.setAttribute("id", "ah-" + k); m.setAttribute("markerUnits", "userSpaceOnUse");
+    m.setAttribute("markerWidth", "13"); m.setAttribute("markerHeight", "12");
+    m.setAttribute("refX", "12"); m.setAttribute("refY", "6"); m.setAttribute("orient", "auto");
+    const p = document.createElementNS(NS, "path");
+    p.setAttribute("d", "M0,0 L13,6 L0,12 z"); p.setAttribute("fill", c);
+    m.appendChild(p); defs.appendChild(m);
+  });
+  function rounded(pts, rad) {
+    let s = "M" + pts[0][0] + "," + pts[0][1];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], [x2, y2] = pts[i + 1];
+      const d1 = Math.hypot(x1 - x0, y1 - y0), d2 = Math.hypot(x2 - x1, y2 - y1);
+      const rr = Math.min(rad, d1 / 2, d2 / 2);
+      s += " L" + (x1 + (x0 - x1) * rr / d1) + "," + (y1 + (y0 - y1) * rr / d1) +
+           " Q" + x1 + "," + y1 + " " + (x1 + (x2 - x1) * rr / d2) + "," + (y1 + (y2 - y1) * rr / d2);
+    }
+    const L = pts[pts.length - 1];
+    return s + " L" + L[0] + "," + L[1];
+  }
+  const segs = [];
+  function arrow(kind, pts) {
+    pts = pts.filter((p, i) => i === 0 || Math.abs(p[0] - pts[i - 1][0]) > 0.5 || Math.abs(p[1] - pts[i - 1][1]) > 0.5);
+    const p = document.createElementNS(NS, "path");
+    p.setAttribute("d", rounded(pts, 9));
+    p.setAttribute("fill", "none");
+    p.setAttribute("stroke", COL[kind]);
+    p.setAttribute("stroke-width", kind === "op" ? 2.8 : (kind === "ctrl" ? 2.2 : 2.4));
+    if (kind === "ctrl") p.setAttribute("stroke-dasharray", "7 5");
+    p.setAttribute("marker-end", "url(#ah-" + kind + ")");
+    ov.appendChild(p);
+    for (let i = 0; i < pts.length - 1; i++) segs.push({ kind, a: pts[i], b: pts[i + 1] });
+  }
+  function gearAt(x, y) {
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", 13.5); c.setAttribute("fill", "#ffffff");
+    ov.appendChild(c);
+    const u = document.createElementNS(NS, "use");
+    u.setAttribute("href", "#i-gear");
+    u.setAttribute("x", x - 14); u.setAttribute("y", y - 14); u.setAttribute("width", 28); u.setAttribute("height", 28);
+    u.setAttribute("fill", "none"); u.setAttribute("stroke", COL.data);
+    u.setAttribute("stroke-width", "1.9"); u.setAttribute("stroke-linejoin", "round");
+    ov.appendChild(u);
+  }
+
+  const band = R("airflow");
+  const n1 = R("n1"), n2 = R("n2"), n3 = R("n3"), n4 = R("n4");
+  const SQ = R("src-sql"), AP = R("src-api");
+  const L = R("z-landing"), B = R("z-bronze"), S = R("z-silver"), G = R("z-gold");
+  const lc = R("l-cdc"), la = R("l-api"), lv = R("l-vivo");
+  const J = R("job-score"), SV = R("serve");
+  const xFL = (SQ.r + L.l) / 2, xLB = (L.r + B.l) / 2;
+  const xBS = (B.r + S.l) / 2, xSG = (S.r + G.l) / 2, xR = (G.r + band.r) / 2;
+
+  // gears sit just above the data arrow they run, so arrowheads stay visible
+  const GUP = 21;
+  // 1: lotes por JDBC, directo a Bronze por encima de Landing
+  const yLane = 133;
+  arrow("data", [[SQ.r, n1.cy], [xFL, n1.cy], [xFL, yLane], [B.l, yLane]]);
+  gearAt(xLB, yLane - GUP);
+  // 2, 3: CDC y APIs a Landing; 4: operación a vivo
+  arrow("data", [[SQ.r, n2.cy], [L.l, lc.cy]]);
+  arrow("data", [[AP.r, n3.cy], [L.l, la.cy]]);
+  arrow("op", [[AP.r, n4.cy], [L.l, lv.cy]]);
+  // Landing -> Bronze
+  arrow("data", [[L.r, lc.cy], [B.l, lc.cy]]); gearAt(xLB, lc.cy - GUP);
+  arrow("data", [[L.r, la.cy], [B.l, la.cy]]); gearAt(xLB, la.cy - GUP);
+  // Bronze -> Silver -> Gold
+  const yMid = (B.t + B.b) / 2;
+  arrow("data", [[B.r, yMid], [S.l, yMid]]); gearAt(xBS, yMid - GUP);
+  arrow("data", [[S.r, yMid], [G.l, yMid]]); gearAt(xSG, yMid - GUP);
+  // control: Airflow -> trabajo (termina en el engranaje)
+  arrow("ctrl", [[xLB, band.b], [xLB, yLane - GUP - 14]]);
+  arrow("ctrl", [[xBS, band.b], [xBS, yMid - GUP - 14]]);
+  arrow("ctrl", [[xSG, band.b], [xSG, yMid - GUP - 14]]);
+  arrow("ctrl", [[xR, band.b], [xR, J.cy], [J.r, J.cy]]);
+  // operación del día
+  const yUp = J.t + 28;
+  arrow("op", [[L.r, yUp], [J.l, yUp]]);
+  arrow("op", [[G.l + 40, G.b], [G.l + 40, J.t]]);
+  arrow("op", [[G.l + 150, J.t], [G.l + 150, G.b]]);
+  arrow("op", [[G.l + 95, J.b], [G.l + 95, SV.t]]);
+  const xLive = L.l + 60;
+  arrow("op", [[xLive, L.b], [xLive, SV.t]]);
+  $("lab-live").style.left = px(xLive + 14);
+
+  function placeLab(id, x) {
+    const e = $(id), w = e.getBoundingClientRect().width;
+    const left = Math.max(band.l + 8, Math.min(x - w / 2, band.r - w - 8));
+    e.style.left = (left - band.l) + "px";
+  }
+  placeLab("dl-batch", xLB); placeLab("dl-silver", xBS); placeLab("dl-gold", xSG);
+
+  window.__diag = function () {
+    const out = { overflow: [], overlaps: [], outside: [], labelHits: [], minFont: 1e9, minFontEl: "", contentBottom: 0, anchors: {} };
+    const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (tw.nextNode()) {
+      const n = tw.currentNode; if (!n.textContent.trim()) continue;
+      const el = n.parentElement; if (el.closest("svg")) continue;
+      const fs = parseFloat(getComputedStyle(el).fontSize);
+      if (fs < out.minFont) { out.minFont = fs; out.minFontEl = n.textContent.trim().slice(0, 40); }
+    }
+    document.querySelectorAll(".chk, .chk *").forEach(el => {
+      if (el.closest("svg")) return;
+      if (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)
+        out.overflow.push({ id: el.id || el.className, sw: el.scrollWidth, cw: el.clientWidth, sh: el.scrollHeight, ch: el.clientHeight, txt: el.textContent.trim().slice(0, 40) });
+    });
+    const blocks = Array.from(document.querySelectorAll(".blk, .lab, .colhead")).map(e => ({ e, r: e.getBoundingClientRect() }));
+    blocks.forEach(b => {
+      out.contentBottom = Math.max(out.contentBottom, b.r.bottom);
+      if (b.r.left < 0 || b.r.top < 0 || b.r.right > 1200 || b.r.bottom > 900) out.outside.push(b.e.id || b.e.className);
+    });
+    for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) {
+      const a = blocks[i].r, b = blocks[j].r;
+      if (a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5)
+        out.overlaps.push([blocks[i].e.id || blocks[i].e.className, blocks[j].e.id || blocks[j].e.className]);
+    }
+    Array.from(document.querySelectorAll(".lab, .droplab, .colhead")).forEach(e => {
+      const rg = document.createRange(); rg.selectNodeContents(e);
+      Array.from(rg.getClientRects()).forEach(r => segs.forEach(s => {
+        const x0 = Math.min(s.a[0], s.b[0]) - 3, x1 = Math.max(s.a[0], s.b[0]) + 3;
+        const y0 = Math.min(s.a[1], s.b[1]) - 3, y1 = Math.max(s.a[1], s.b[1]) + 3;
+        if (x0 < r.right && r.left < x1 && y0 < r.bottom && r.top < y1)
+          out.labelHits.push({ lab: e.id, kind: s.kind, seg: [s.a, s.b].map(p => p.map(v => Math.round(v))) });
+      }));
+    });
+    ["n1", "n2", "n3", "n4", "l-cdc", "l-api", "l-vivo", "src-sql", "src-api", "z-landing", "z-gold", "job-score", "serve", "legend", "cat", "store"].forEach(id => {
+      const r = R(id); out.anchors[id] = [Math.round(r.t), Math.round(r.cy), Math.round(r.b)];
+    });
+    return out;
+  };
+  window.__ready = true;
+})();
+</script>
+</body>
+</html>

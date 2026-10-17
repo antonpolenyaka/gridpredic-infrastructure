@@ -67,7 +67,7 @@ job_silver_d_salida.py
 
 ## Flujo de datos
 
-![Flujo de datos de GridPredic](docs/data-flow.jpeg)
+![Arquitectura de GridPredic: fuentes, ingesta por lotes y por CDC, zonas en MinIO con Delta Lake, operación diaria con Airflow y capa de servicio](docs/arquitectura.png)
 
 > El diagrama representa la arquitectura objetivo. Hoy el repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, la de la meteorología y las fuentes públicas, la capa Silver completa (apartado 11), la capa Gold hasta el dataset de entrenamiento versionado (apartado 12), el entrenamiento de los modelos y la operación de cada tarde con su cuadro de mando (apartado 13).
 
