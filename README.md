@@ -362,7 +362,7 @@ Database/Schema: lakehouse
 Username: <cualquier valor>
 ```
 
-No hay autenticación por contraseña configurada para Trino en este entorno local.
+No hay autenticación por contraseña configurada para Trino en este entorno local, y `compose.yaml` publica su puerto en todas las interfaces del portátil: el cortafuegos de Windows tiene que cerrarlo a la red (o publicarlo como `127.0.0.1:8085:8080`). Antes de abrirlo a nadie más habría que activar TLS, la autenticación por contraseña (o la del directorio de la distribuidora) y el control de acceso por reglas de Trino, con un rol de solo lectura sobre `l3_gold` para el cuadro de mando y los analistas y Bronze y Silver reservados a los trabajos, que ya acceden por Spark y no por Trino.
 
 Tiempos de consulta medidos el 16.10.2026 en el portátil, con el tiempo del propio servidor (`system.runtime.queries`), la primera vez y la segunda:
 
