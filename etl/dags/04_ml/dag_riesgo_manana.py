@@ -16,6 +16,10 @@ Risk of tomorrow, every evening at riesgo_manana.horario (20:30 in Madrid).
 - aemet_municipios: the hourly forecast of AEMET for every municipality of
   the reference (its own model, a second opinion) goes to the Landing and to
   dashboard/data/aemet.json; skipped without key or answer.
+- prevision_sombra: the same forecast from ICON-EU on its native grid and
+  from IFS HRES 9 km goes to the Landing (prevision_sombra/), to measure the
+  change of grid of 30.11.2026 and a second model. It never scores and is not
+  upstream of puntuar, so it cannot delay the evening; skipped on failure.
 - nao: the daily NAO index of NOAA CPC goes to the Landing (nao.csv). The
   production variant does not use it (it was measured and left out); it is
   kept so the series is up to date to measure it again. Skipped without an
@@ -136,6 +140,17 @@ def nao(day: str) -> None:
 
 
 @task(retries=0)
+def prevision_sombra(day: str) -> None:
+    # Never a failure and never upstream of puntuar: the shadow forecasts do not score.
+    try:
+        code = land("prevision_sombra", day)
+    except Exception as error:  # noqa: BLE001
+        raise AirflowSkipException(f"The shadow forecasts did not land: {str(error)[:200]}") from error
+    if code != 0:
+        raise AirflowSkipException("Some shadow model did not answer: kept what landed")
+
+
+@task(retries=0)
 def ensemble(day: str) -> None:
     # Never a failure: the score does not need it, and a failed upstream would stop puntuar.
     try:
@@ -191,3 +206,5 @@ with DAG(
     )
 
     [prevision(day), avisos(day), ensemble(day), aemet_municipios(day), nao(day)] >> puntuar >> avisar()
+    # Beside the evening, never before the score.
+    prevision_sombra(day)
