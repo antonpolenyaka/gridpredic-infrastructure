@@ -446,6 +446,8 @@ Por redes la calibración es buena: en la Distribuidora 1 la probabilidad media 
 | pérdida por horas-cliente: reforzar si la probabilidad pasa del cociente | 0,51 [-0,24, 0,74] | 0,36 [-0,18, 0,71] | 0,20 [-0,21, 0,42] |
 | pérdida por horas-cliente: en alerta | 0,48 [-0,32, 0,73] | 0,25 [-1,28, 0,62] | -0,28 |
 
+**Días seguidos.** El contraste de Ljung y Box (1978) sobre el residuo de cada día (si hubo avería menos la probabilidad, sumado entre redes) dice que con la previsión real los días seguidos se parecen más de lo que toca: la correlación de un día con el siguiente es 0,10 y el valor p con siete días de retardo, 0,008 (0,037 sin el 28.01.2026; 0,004 en la Distribuidora 1 y 0,013 en la 2). Con el reanálisis no pasa en las tres redes juntas (p = 0,43). Por eso las cifras de este apartado son las de los bloques de siete días, algo más anchas que las de fechas sueltas (el BSS va de 0,003 a 0,096 por semanas y de 0,009 a 0,088 por fechas), y desde el 17.10.2026 `job_ml_riesgo_dia` también usa bloques de siete días (`meteo_dia.bootstrap_bloque_dias`); los intervalos de las pruebas 3 a 3r son por fechas.
+
 Sin el 28.01.2026, con la pérdida por horas-cliente, la alerta baja de 0,48 a 0,31 en el cociente 0,05 y la regla probabilística de 0,51 a 0,36. El beneficio neto cuenta lo mismo en días con avería bien atendidos: con un umbral del 5 %, 0,0076 por día con la regla probabilística [0,0031, 0,0127] y 0,0049 con la alerta [0,0008, 0,0102]; con un umbral del 10 %, la alerta ya queda por debajo de cero (-0,0017) y la regla probabilística sigue por encima (0,0033 [0,0002, 0,0071]).
 
 **Lectura.** La probabilidad está bien calibrada en las dos redes que averían y es algo pesimista en la tercera. Decidir con ella compensa cuando reforzar la guardia cuesta poco frente a lo que se pierde: contando días con avería, la regla probabilística tiene valor hasta un cociente de 0,44 y la alerta fija solo hasta 0,08. Contando horas-cliente la alerta aguanta hasta 0,14, porque los días de alerta son los de más clientes afectados, con intervalos que dependen de un solo temporal. La alerta por percentiles equivale a reforzar cuando la probabilidad pasa del 7 % en la Distribuidora 1, del 5 % en la 2 y del 2,5 % en la 3, y en la 3 son casi todo falsas alarmas. La lección práctica es que el umbral de reforzar debería salir del coste de cada distribuidora: con los niveles de hoy, la alerta compensa si un día de guardia reforzada cuesta menos de una décima parte de lo que se pierde en un día con avería sin ella. No tenemos el coste de un retén para fijar ese cociente (los pluses de los convenios no los hemos podido verificar) y queda como pregunta para las distribuidoras. Decisión: los niveles siguen como están; la memoria da la curva de valor para que cada distribuidora elija su umbral, y la Distribuidora 3 debería leer la probabilidad y no su nivel.
@@ -474,6 +476,14 @@ Sin el 28.01.2026, con la pérdida por horas-cliente, la alerta baja de 0,48 a 0
 
 **Resultados.** Pendientes de la descarga.
 
+## 3v. La tarde con la copia de Calser desfasada (17.10.2026)
+
+**De dónde sale.** De contrastar la operación de cada tarde con lo que miden las evaluaciones. Desde que la copia de Calser del lakehouse se quedó en el backup del 14.08.2026, la historia de incidencias de las últimas semanas no se conoce (`historia_al_dia` en falso), y la tarde puntuaba con un modelo entrenado con la historia al que le daba, para el día siguiente, la mediana de los días de entrenamiento. Ninguna evaluación medía esa mezcla: todas las cifras del modelo del día son con la historia real.
+
+**Diseño.** Desde el 17.10.2026, con la copia desfasada la tarde entrena el modelo del día y el de pasado mañana sin el bloque de historia (`riesgo_manana.historia_desfasada` = `"sin_historia"`; `"mediana"` vuelve a lo de antes), así que puntúa con un modelo que no espera esas variables. `job_ml_riesgo_dia` mide las dos situaciones con la variante de producción: `operativa_sin_historia` (sin el bloque) y `operativa_historia_mediana`, que se ajusta igual que `operativa` pero puntúa cada año con la historia vacía (`"historia_al_puntuar": "mediana"`, que `rolling_evaluation` aplica con `blank`). Las dos se comparan con `operativa` y entre sí con la diferencia emparejada, con el reanálisis y con la previsión real. Ejecución en el portátil: `dia_historia_<fecha>` (`--variantes operativa,operativa_sin_historia,operativa_historia_mediana --modelos tasa_base,logistica`), con la ventana hasta el 03.08.2026 y la previsión real de 2024 - 2026. La misma ejecución da la calibración año a año de la logística de producción (`calibracion_anios.csv`), y 2026 es el primer año entero desde que Calser importa las interrupciones de TedisNet (noviembre de 2025): si cambió cómo se registran, se verá en la tasa observada frente a la probabilidad media de ese año.
+
+**Resultados.** Pendientes de la ejecución en el portátil. Lo que esperamos leer: cuánto pierde la tarde sin la historia frente a las cifras publicadas, y si entrenar sin ella pierde menos que puntuar con la mediana.
+
 ## 4. Datos públicos de España que revisamos
 
 | Fuente | Qué es | Qué hicimos | Decisión |
@@ -500,7 +510,7 @@ Preguntamos qué datos de los equipos instalados en los clientes podrían cruzar
 ## 6. Lo que queda en la lista
 
 - Volver a probar el suelo y la duración del viento cuando haya dos temporadas más etiquetadas (2027), con el mismo banco de pruebas.
-- Las ejecuciones del 17.10.2026: Firth y Cauchy frente a la L2 (3t), en cuanto acabe `dia_firth`, y la previsión de IFS de la víspera (3u), cuando acabe su descarga.
+- Las ejecuciones del 17.10.2026: Firth y Cauchy frente a la L2 (3t), en cuanto acabe `dia_firth`; la tarde con la copia de Calser desfasada (3v), con `dia_historia`; y la previsión de IFS de la víspera (3u), cuando acabe su descarga.
 - El salto de racha entre la rejilla regular y la nativa de ICON-EU con las tardes guardadas antes del 30.11.2026 (3u).
 - El coste de un día de guardia reforzada en cada distribuidora, para fijar el umbral con la curva de valor de 3s.
 - El alta en SiAR (REGEUS) para la racha observada de ayer y para verificar la previsión.
