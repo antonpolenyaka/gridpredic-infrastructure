@@ -156,7 +156,7 @@ Todo el proceso es reproducible con `docker compose up -d --build --wait` y los 
 
 #### Annotation process
 
-La etiqueta no la pone una persona pensando en el modelo. Sale del registro administrativo de interrupciones de Calser, que tiene tres eras: hasta el 06.02.2018 importaciones de ficheros (con microcortes), de ahí a octubre de 2025 registro manual (sin microcortes, porque el parámetro `MinimalDurationImportInterruptions` está a 180 s en las tres bases) y desde noviembre de 2025 importación desde el SCADA. Entre un 26 y un 28 % de las interrupciones de la Distribuidora 1 y la Distribuidora 2 no tienen incidencia asociada, y la fecha de alta puede ser semanas posterior al evento.
+La etiqueta no la pone una persona pensando en el modelo. Sale del registro administrativo de interrupciones de Calser, que tiene tres eras: hasta el 06.02.2018 importaciones de ficheros (con microcortes), de ahí a octubre de 2025 registro manual (sin microcortes, porque el parámetro `MinimalDurationImportInterruptions` está a 180 s en las tres bases) y desde noviembre de 2025 importación desde el SCADA. Entre un 26 y un 28 % de las interrupciones de la Distribuidora 1 y la Distribuidora 2 no tienen incidencia asociada, y la fecha de alta puede ser semanas posterior al evento. Esas interrupciones no cuentan como positivos: una interrupción sin incidencia está pendiente de procesar o la distribuidora no quiere contarla, y solo entra en la etiqueta cuando una copia posterior de Calser le asigna una incidencia (decisión del 17.10.2026).
 
 #### Who are the annotators?
 
