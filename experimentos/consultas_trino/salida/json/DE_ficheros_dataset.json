@@ -1,0 +1,882 @@
+{
+ "consulta": "ficheros_dataset",
+ "sesion": [],
+ "sql": "SELECT /* gp_fd */ split, fecha_mes, count(*) AS ficheros, sum(tam) AS bytes FROM (SELECT DISTINCT split, fecha_mes, \"$path\" AS p, \"$file_size\" AS tam FROM lakehouse.l3_gold.dataset_train) GROUP BY split, fecha_mes ORDER BY fecha_mes, split",
+ "inicio": "2026-10-17 03:38:19",
+ "pasadas": [
+  {
+   "sql": "SELECT /* gp_fd */ split, fecha_mes, count(*) AS ficheros, sum(tam) AS bytes FROM (SELECT DISTINCT split, fecha_mes, \"$path\" AS p, \"$file_size\" AS tam FROM lakehouse.l3_gold.dataset_train) GROUP BY split, fecha_mes ORDER BY fecha_mes, split",
+   "id": "20261017_033820_00011_spfkv",
+   "estado": "FINISHED",
+   "reloj_s": 20.902,
+   "stats": {
+    "state": "FINISHED",
+    "queued": false,
+    "scheduled": true,
+    "progressPercentage": 100.0,
+    "runningPercentage": 0.0,
+    "nodes": 1,
+    "totalSplits": 148,
+    "queuedSplits": 0,
+    "runningSplits": 0,
+    "completedSplits": 148,
+    "planningTimeMillis": 7559,
+    "analysisTimeMillis": 4078,
+    "cpuTimeMillis": 1017,
+    "wallTimeMillis": 47492,
+    "queuedTimeMillis": 148,
+    "elapsedTimeMillis": 19203,
+    "finishingTimeMillis": 84,
+    "physicalInputTimeMillis": 0,
+    "processedRows": 61801970,
+    "processedBytes": 30746,
+    "physicalInputBytes": 0,
+    "physicalWrittenBytes": 0,
+    "internalNetworkInputBytes": 30746,
+    "peakMemoryBytes": 3413872,
+    "spilledBytes": 0,
+    "rootStage": {
+     "stageId": "0",
+     "state": "FINISHED",
+     "done": true,
+     "nodes": 1,
+     "totalSplits": 1,
+     "queuedSplits": 0,
+     "runningSplits": 0,
+     "completedSplits": 1,
+     "cpuTimeMillis": 3,
+     "wallTimeMillis": 3,
+     "processedRows": 70,
+     "processedBytes": 2121,
+     "physicalInputBytes": 0,
+     "failedTasks": 0,
+     "coordinatorOnly": false,
+     "subStages": [
+      {
+       "stageId": "1",
+       "state": "FINISHED",
+       "done": true,
+       "nodes": 1,
+       "totalSplits": 9,
+       "queuedSplits": 0,
+       "runningSplits": 0,
+       "completedSplits": 9,
+       "cpuTimeMillis": 48,
+       "wallTimeMillis": 1290,
+       "processedRows": 70,
+       "processedBytes": 2814,
+       "physicalInputBytes": 0,
+       "failedTasks": 0,
+       "coordinatorOnly": false,
+       "subStages": [
+        {
+         "stageId": "2",
+         "state": "FINISHED",
+         "done": true,
+         "nodes": 1,
+         "totalSplits": 16,
+         "queuedSplits": 0,
+         "runningSplits": 0,
+         "completedSplits": 16,
+         "cpuTimeMillis": 41,
+         "wallTimeMillis": 529,
+         "processedRows": 98,
+         "processedBytes": 3626,
+         "physicalInputBytes": 0,
+         "failedTasks": 0,
+         "coordinatorOnly": false,
+         "subStages": [
+          {
+           "stageId": "3",
+           "state": "FINISHED",
+           "done": true,
+           "nodes": 1,
+           "totalSplits": 16,
+           "queuedSplits": 0,
+           "runningSplits": 0,
+           "completedSplits": 16,
+           "cpuTimeMillis": 140,
+           "wallTimeMillis": 2680,
+           "processedRows": 106,
+           "processedBytes": 22185,
+           "physicalInputBytes": 0,
+           "failedTasks": 0,
+           "coordinatorOnly": false,
+           "subStages": [
+            {
+             "stageId": "4",
+             "state": "FINISHED",
+             "done": true,
+             "nodes": 1,
+             "totalSplits": 106,
+             "queuedSplits": 0,
+             "runningSplits": 0,
+             "completedSplits": 106,
+             "cpuTimeMillis": 785,
+             "wallTimeMillis": 42990,
+             "processedRows": 61801970,
+             "processedBytes": 0,
+             "physicalInputBytes": 0,
+             "failedTasks": 0,
+             "coordinatorOnly": false,
+             "subStages": []
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "columnas": [
+    "split",
+    "fecha_mes",
+    "ficheros",
+    "bytes"
+   ],
+   "n_filas": 70,
+   "filas": [
+    [
+     "train",
+     "2021-01-01",
+     1,
+     9984398
+    ],
+    [
+     "train",
+     "2021-02-01",
+     1,
+     17487409
+    ],
+    [
+     "train",
+     "2021-03-01",
+     1,
+     23391502
+    ],
+    [
+     "train",
+     "2021-04-01",
+     1,
+     25339636
+    ],
+    [
+     "train",
+     "2021-05-01",
+     1,
+     26998591
+    ],
+    [
+     "train",
+     "2021-06-01",
+     1,
+     28528554
+    ],
+    [
+     "train",
+     "2021-07-01",
+     1,
+     33412034
+    ],
+    [
+     "train",
+     "2021-08-01",
+     1,
+     40429833
+    ],
+    [
+     "train",
+     "2021-09-01",
+     1,
+     47874676
+    ],
+    [
+     "train",
+     "2021-10-01",
+     1,
+     36706057
+    ],
+    [
+     "train",
+     "2021-11-01",
+     1,
+     43272222
+    ],
+    [
+     "train",
+     "2021-12-01",
+     1,
+     43976573
+    ],
+    [
+     "train",
+     "2022-01-01",
+     1,
+     45430780
+    ],
+    [
+     "train",
+     "2022-02-01",
+     1,
+     41490200
+    ],
+    [
+     "train",
+     "2022-03-01",
+     1,
+     47470138
+    ],
+    [
+     "train",
+     "2022-04-01",
+     1,
+     42378459
+    ],
+    [
+     "train",
+     "2022-05-01",
+     1,
+     47747422
+    ],
+    [
+     "train",
+     "2022-06-01",
+     1,
+     48298371
+    ],
+    [
+     "train",
+     "2022-07-01",
+     1,
+     47218335
+    ],
+    [
+     "train",
+     "2022-08-01",
+     1,
+     45637285
+    ],
+    [
+     "train",
+     "2022-09-01",
+     1,
+     46205963
+    ],
+    [
+     "train",
+     "2022-10-01",
+     1,
+     49515847
+    ],
+    [
+     "train",
+     "2022-11-01",
+     1,
+     47886809
+    ],
+    [
+     "train",
+     "2022-12-01",
+     1,
+     22220694
+    ],
+    [
+     "train",
+     "2023-01-01",
+     1,
+     33853072
+    ],
+    [
+     "train",
+     "2023-02-01",
+     1,
+     43371467
+    ],
+    [
+     "train",
+     "2023-03-01",
+     1,
+     50870893
+    ],
+    [
+     "train",
+     "2023-04-01",
+     1,
+     48429396
+    ],
+    [
+     "train",
+     "2023-05-01",
+     1,
+     52022966
+    ],
+    [
+     "train",
+     "2023-06-01",
+     1,
+     50979112
+    ],
+    [
+     "train",
+     "2023-07-01",
+     1,
+     51281125
+    ],
+    [
+     "train",
+     "2023-08-01",
+     1,
+     52378434
+    ],
+    [
+     "train",
+     "2023-09-01",
+     1,
+     52681111
+    ],
+    [
+     "train",
+     "2023-10-01",
+     1,
+     55877525
+    ],
+    [
+     "train",
+     "2023-11-01",
+     1,
+     52834815
+    ],
+    [
+     "train",
+     "2023-12-01",
+     1,
+     54558656
+    ],
+    [
+     "train",
+     "2024-01-01",
+     1,
+     53523588
+    ],
+    [
+     "train",
+     "2024-02-01",
+     1,
+     49827561
+    ],
+    [
+     "train",
+     "2024-03-01",
+     1,
+     53604655
+    ],
+    [
+     "train",
+     "2024-04-01",
+     1,
+     50601133
+    ],
+    [
+     "train",
+     "2024-05-01",
+     1,
+     55105183
+    ],
+    [
+     "train",
+     "2024-06-01",
+     1,
+     55956784
+    ],
+    [
+     "train",
+     "2024-07-01",
+     1,
+     58021482
+    ],
+    [
+     "train",
+     "2024-08-01",
+     1,
+     78006720
+    ],
+    [
+     "train",
+     "2024-09-01",
+     1,
+     77340633
+    ],
+    [
+     "train",
+     "2024-10-01",
+     1,
+     83597264
+    ],
+    [
+     "train",
+     "2024-11-01",
+     1,
+     79347178
+    ],
+    [
+     "purga",
+     "2024-12-01",
+     1,
+     435900
+    ],
+    [
+     "train",
+     "2024-12-01",
+     1,
+     80140521
+    ],
+    [
+     "valid",
+     "2025-01-01",
+     4,
+     59698117
+    ],
+    [
+     "valid",
+     "2025-02-01",
+     4,
+     53931389
+    ],
+    [
+     "valid",
+     "2025-03-01",
+     4,
+     60963896
+    ],
+    [
+     "valid",
+     "2025-04-01",
+     4,
+     58153735
+    ],
+    [
+     "valid",
+     "2025-05-01",
+     4,
+     59274931
+    ],
+    [
+     "valid",
+     "2025-06-01",
+     4,
+     57468878
+    ],
+    [
+     "valid",
+     "2025-07-01",
+     4,
+     60586113
+    ],
+    [
+     "valid",
+     "2025-08-01",
+     4,
+     59572285
+    ],
+    [
+     "valid",
+     "2025-09-01",
+     4,
+     57078304
+    ],
+    [
+     "valid",
+     "2025-10-01",
+     4,
+     61050449
+    ],
+    [
+     "valid",
+     "2025-11-01",
+     4,
+     61098610
+    ]
+   ],
+   "servidor": {
+    "elapsedTime": "19.20s",
+    "queuedTime": "148.07ms",
+    "analysisTime": "4.08s",
+    "planningTime": "7.56s",
+    "planningCpuTime": "775.77ms",
+    "executionTime": "14.90s",
+    "totalCpuTime": "1.02s",
+    "totalScheduledTime": "47.49s",
+    "totalBlockedTime": "55.97s",
+    "physicalInputDataSize": "0B",
+    "physicalInputPositions": 61801970,
+    "physicalInputReadTime": "0.00ns",
+    "processedInputDataSize": "10245334112B",
+    "processedInputPositions": 61801970,
+    "internalNetworkInputDataSize": "30746B",
+    "outputDataSize": "2302B",
+    "outputPositions": 70,
+    "peakUserMemoryReservation": "3413872B",
+    "peakTotalMemoryReservation": "3413872B",
+    "totalDrivers": 148,
+    "completedDrivers": 148,
+    "spilledDataSize": "0B",
+    "operadores": [
+     {
+      "stageId": 0,
+      "pipelineId": 0,
+      "operatorId": 0,
+      "planNodeId": "238",
+      "operatorType": "MergeOperator",
+      "totalDrivers": 1,
+      "inputPositions": 70,
+      "inputDataSize": "2302B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 70,
+      "outputDataSize": "2302B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "3184B"
+     },
+     {
+      "stageId": 0,
+      "pipelineId": 0,
+      "operatorId": 1,
+      "planNodeId": "17",
+      "operatorType": "TaskOutputOperator",
+      "totalDrivers": 1,
+      "inputPositions": 70,
+      "inputDataSize": "2302B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 70,
+      "outputDataSize": "2302B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "64B"
+     },
+     {
+      "stageId": 1,
+      "pipelineId": 0,
+      "operatorId": 0,
+      "planNodeId": "237",
+      "operatorType": "ExchangeOperator",
+      "totalDrivers": 8,
+      "inputPositions": 70,
+      "inputDataSize": "2302B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 70,
+      "outputDataSize": "2302B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "3224B"
+     },
+     {
+      "stageId": 1,
+      "pipelineId": 1,
+      "operatorId": 0,
+      "planNodeId": "305",
+      "operatorType": "LocalMergeSourceOperator",
+      "totalDrivers": 1,
+      "inputPositions": 70,
+      "inputDataSize": "2302B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 70,
+      "outputDataSize": "2302B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "14720B"
+     },
+     {
+      "stageId": 1,
+      "pipelineId": 0,
+      "operatorId": 2,
+      "planNodeId": "305",
+      "operatorType": "LocalExchangeSinkOperator",
+      "totalDrivers": 8,
+      "inputPositions": 70,
+      "inputDataSize": "2302B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 70,
+      "outputDataSize": "2302B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "0B"
+     },
+     {
+      "stageId": 1,
+      "pipelineId": 0,
+      "operatorId": 1,
+      "planNodeId": "239",
+      "operatorType": "OrderByOperator",
+      "totalDrivers": 8,
+      "inputPositions": 70,
+      "inputDataSize": "2302B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 70,
+      "outputDataSize": "2302B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "101288B"
+     },
+     {
+      "stageId": 1,
+      "pipelineId": 1,
+      "operatorId": 1,
+      "planNodeId": "305",
+      "operatorType": "TaskOutputOperator",
+      "totalDrivers": 1,
+      "inputPositions": 70,
+      "inputDataSize": "2302B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 70,
+      "outputDataSize": "2302B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "64B"
+     },
+     {
+      "stageId": 2,
+      "pipelineId": 0,
+      "operatorId": 0,
+      "planNodeId": "341",
+      "operatorType": "ExchangeOperator",
+      "totalDrivers": 8,
+      "inputPositions": 98,
+      "inputDataSize": "3226B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 98,
+      "outputDataSize": "3226B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "3056B"
+     },
+     {
+      "stageId": 2,
+      "pipelineId": 1,
+      "operatorId": 0,
+      "planNodeId": "335",
+      "operatorType": "LocalExchangeSourceOperator",
+      "totalDrivers": 8,
+      "inputPositions": 98,
+      "inputDataSize": "3226B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 98,
+      "outputDataSize": "3226B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "0B"
+     },
+     {
+      "stageId": 2,
+      "pipelineId": 1,
+      "operatorId": 2,
+      "planNodeId": "9",
+      "operatorType": "TaskOutputOperator",
+      "totalDrivers": 8,
+      "inputPositions": 70,
+      "inputDataSize": "2302B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 70,
+      "outputDataSize": "2302B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "64B"
+     },
+     {
+      "stageId": 2,
+      "pipelineId": 0,
+      "operatorId": 1,
+      "planNodeId": "335",
+      "operatorType": "LocalExchangeSinkOperator",
+      "totalDrivers": 8,
+      "inputPositions": 98,
+      "inputDataSize": "3226B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 98,
+      "outputDataSize": "3226B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "0B"
+     },
+     {
+      "stageId": 2,
+      "pipelineId": 1,
+      "operatorId": 1,
+      "planNodeId": "9",
+      "operatorType": "HashAggregationOperator",
+      "totalDrivers": 8,
+      "inputPositions": 98,
+      "inputDataSize": "3226B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 70,
+      "outputDataSize": "2302B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "140184B"
+     },
+     {
+      "stageId": 3,
+      "pipelineId": 0,
+      "operatorId": 0,
+      "planNodeId": "356",
+      "operatorType": "ExchangeOperator",
+      "totalDrivers": 8,
+      "inputPositions": 106,
+      "inputDataSize": "17580B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 106,
+      "outputDataSize": "17580B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "22976B"
+     },
+     {
+      "stageId": 3,
+      "pipelineId": 1,
+      "operatorId": 0,
+      "planNodeId": "350",
+      "operatorType": "LocalExchangeSourceOperator",
+      "totalDrivers": 8,
+      "inputPositions": 106,
+      "inputDataSize": "17580B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 106,
+      "outputDataSize": "17580B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "0B"
+     },
+     {
+      "stageId": 3,
+      "pipelineId": 1,
+      "operatorId": 4,
+      "planNodeId": "339",
+      "operatorType": "PartitionedOutputOperator",
+      "totalDrivers": 8,
+      "inputPositions": 98,
+      "inputDataSize": "3226B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 98,
+      "outputDataSize": "3226B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "0B"
+     },
+     {
+      "stageId": 3,
+      "pipelineId": 1,
+      "operatorId": 3,
+      "planNodeId": "339",
+      "operatorType": "HashAggregationOperator",
+      "totalDrivers": 8,
+      "inputPositions": 106,
+      "inputDataSize": "2536B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 98,
+      "outputDataSize": "3226B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "140696B"
+     },
+     {
+      "stageId": 3,
+      "pipelineId": 1,
+      "operatorId": 2,
+      "planNodeId": "7",
+      "operatorType": "FilterAndProjectOperator",
+      "totalDrivers": 8,
+      "inputPositions": 106,
+      "inputDataSize": "17580B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 106,
+      "outputDataSize": "2536B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "1048B"
+     },
+     {
+      "stageId": 3,
+      "pipelineId": 0,
+      "operatorId": 1,
+      "planNodeId": "350",
+      "operatorType": "LocalExchangeSinkOperator",
+      "totalDrivers": 8,
+      "inputPositions": 106,
+      "inputDataSize": "17580B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 106,
+      "outputDataSize": "17580B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "0B"
+     },
+     {
+      "stageId": 3,
+      "pipelineId": 1,
+      "operatorId": 1,
+      "planNodeId": "2",
+      "operatorType": "HashAggregationOperator",
+      "totalDrivers": 8,
+      "inputPositions": 106,
+      "inputDataSize": "17580B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 106,
+      "outputDataSize": "17580B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "136896B"
+     },
+     {
+      "stageId": 4,
+      "pipelineId": 0,
+      "operatorId": 0,
+      "planNodeId": "0",
+      "operatorType": "TableScanOperator",
+      "totalDrivers": 106,
+      "inputPositions": 61801970,
+      "inputDataSize": "10245334112B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 61801970,
+      "outputPositions": 61801970,
+      "outputDataSize": "10245334112B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "0B"
+     },
+     {
+      "stageId": 4,
+      "pipelineId": 0,
+      "operatorId": 2,
+      "planNodeId": "354",
+      "operatorType": "PartitionedOutputOperator",
+      "totalDrivers": 106,
+      "inputPositions": 106,
+      "inputDataSize": "17580B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 106,
+      "outputDataSize": "17580B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "0B"
+     },
+     {
+      "stageId": 4,
+      "pipelineId": 0,
+      "operatorId": 1,
+      "planNodeId": "354",
+      "operatorType": "HashAggregationOperator",
+      "totalDrivers": 106,
+      "inputPositions": 61801970,
+      "inputDataSize": "10245334112B",
+      "physicalInputDataSize": "0B",
+      "physicalInputPositions": 0,
+      "outputPositions": 106,
+      "outputDataSize": "17580B",
+      "dynamicFilterSplitsProcessed": 0,
+      "peakUserMemoryReservation": "129064B"
+     }
+    ]
+   }
+  }
+ ]
+}
