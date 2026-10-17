@@ -44,7 +44,7 @@ Otras reglas de la capa:
 | `f_command_execution` | `*CommandExecutions` | ejecución de mando (estado final) |
 | `f_corte_evento` | `*ElectricPowerCutEvents` | evento de corte canónico |
 | `f_corte_elemento` | `*ElectricPowerCutElementEvents` | evento, elemento afectado |
-| `d_meteo_celda`, `f_meteo_hora` | Open-Meteo (`l1_bronze.meteo_openmeteo_*`, con el CAPE de `meteo_openmeteo_convectivo_hora` y las variables extra de `meteo_openmeteo_extra_hora`, las dos en celdas de 0,25 grados que se asignan a la celda más cercana, y las previsiones de ICON-EU del día anterior de `meteo_openmeteo_previo_hora`, en la misma rejilla de 0,1 grados) | municipio y su celda; celda y hora |
+| `d_meteo_celda`, `f_meteo_hora` | Open-Meteo (`l1_bronze.meteo_openmeteo_*`, con el CAPE de `meteo_openmeteo_convectivo_hora` y las variables extra de `meteo_openmeteo_extra_hora`, las dos en celdas de 0,25 grados que se asignan a la celda más cercana, y las previsiones de ICON-EU de uno, dos y tres días antes de `meteo_openmeteo_previo_hora`, en la misma rejilla de 0,1 grados) | municipio y su celda; celda y hora |
 | `f_poblacion_municipio` | INE, Padrón continuo (`l1_bronze.ine_padron_municipio`) | municipio, año |
 | `d_municipio_publico` | Wikidata y Open-Meteo Elevation | municipio |
 | `d_celda_entorno` | Open-Meteo Elevation y OpenStreetMap | celda meteorológica |
@@ -71,7 +71,7 @@ Es lo primero que hay que resolver, porque los códigos de CT se repiten entre d
 
 ## 4. Calser (etiquetas)
 
-Todas las tablas de Calser están versionadas por período: la clave es siempre `(distribuidora, período, id)`. Un mismo CT en dos períodos son dos versiones legítimas, nunca se colapsan. Para contar CTs reales hay que usar `COUNT(DISTINCT id)`: las tablas tienen unas 200 filas por CT.
+Todas las tablas de Calser están versionadas por período: la clave es siempre `(distribuidora, período, id)`. Un mismo CT en dos períodos son dos versiones legítimas, nunca se colapsan. Para contar los CT reales hay que usar `COUNT(DISTINCT id)`: las tablas tienen unas 200 filas por CT.
 
 Las columnas de fecha y hora que Calser guarda por separado se juntan en un único timestamp (`inicio_ts`, `fin_ts`). El `time` de SQL Server puede llegar a Spark como timestamp de 1970, como tipo TIME o como texto, y la función lo resuelve en los tres casos.
 
@@ -101,7 +101,7 @@ La clave natural incluye salida, acometida y abonado. Dos salidas del mismo CT c
 
 Los solapes no se fusionan aquí. Se agrupan con el algoritmo clásico de intervalos (ordenar por inicio y abrir grupo nuevo cuando el inicio supera el mayor fin visto hasta ese momento; dos intervalos que se tocan no solapan). La regla de fusión, sea el intervalo envolvente o quedarse con el más largo, se aplica en Gold al etiquetar, porque queremos poder cambiarla sin regenerar Silver.
 
-Se eliminan `INT_FECHA_FIN_OPTIMIZADA`, `INT_HORA_FIN_OPTIMIZADA` e `INT_DURACION_OPTIMIZADA`: son una hipótesis manual ("si la reparación hubiera sido más rápida"), no un dato. `fecha_alta` y `ts` se conservan para auditoría, pero son **leakage**: la fecha de alta puede ser semanas posterior al evento y no puede ser una feature.
+Se eliminan `INT_FECHA_FIN_OPTIMIZADA`, `INT_HORA_FIN_OPTIMIZADA` e `INT_DURACION_OPTIMIZADA`: guardan una hipótesis que alguien escribe a mano ("si la reparación hubiera sido más rápida"). `fecha_alta` y `ts` se conservan para auditoría, pero son **leakage**: la fecha de alta puede ser semanas posterior al evento y no puede ser una feature.
 
 Se añade `nivel_afectacion` (ABONADO > ACOMETIDA > SALIDA > CT), la misma prioridad que calcula Calser en la aplicación, y `tipo_evento_familia`, porque `INT_TIPO_EVENTO_ID` mezcla valores `CL_*` y `TI_*`.
 
@@ -154,14 +154,15 @@ Es la tabla grande: más de 2.150 millones de filas y 220 GB en `HistoricTagInte
 Primero, qué columna es el instante de una muestra. El procedimiento que llena la tabla, `CopyTagValue2TagIntervalValue`, inserta el valor actual de cada tag con `UpdateTimestamp` igual al instante de la rejilla y copia en `SourceTimestamp` la hora de campo original de ese valor. Si el valor no cambia, todas sus muestras llevan el mismo `SourceTimestamp`. La primera versión de este job usaba `SourceTimestamp` como instante y deduplicaba por él, de modo que las muestras de un valor estable se quedaban en una sola fila, caían en el mes del valor original y el valor congelado desaparecía. Desde octubre de 2026:
 
 - `ts` es `UpdateTimestamp` (el instante de rejilla) y `ts_origen` es `SourceTimestamp`.
-- `antiguedad_s = ts - ts_origen` es la edad del valor retenido. `valor_rancio` marca las muestras con más de una hora y `ts_origen_futuro` las que tienen una hora de campo posterior a la rejilla (reloj de la RTU). Las dos son flags: el valor congelado es una feature, no un motivo para rechazar.
+- `antiguedad_s = ts - ts_origen` es la edad del valor retenido. `valor_rancio` marca las muestras con más de una hora y `ts_origen_futuro` las que tienen una hora de campo posterior a la rejilla (reloj de la RTU). Las dos son flags, porque un valor congelado también sirve como feature.
 
 Y el volumen. El job no trata nunca la tabla entera:
 
 - Procesa un mes cada vez (`--desde 2021-01 --hasta 2026-08`), filtrando por el instante de rejilla. Bronze no está particionada, pero Delta guarda mínimos y máximos por fichero y las filas se escribieron en orden de `Id`, que es orden temporal. Para que eso sirva de algo, Bronze carga esta tabla por trozos de `Id` y con un tamaño máximo de fichero (`chunk_size` y `max_records_per_file` en `config_bronze_sqlserver.json`); con una sola lectura JDBC quedaba en un único fichero enorme y el filtro del mes no se saltaba nada.
 - La salida está particionada por `fecha_mes` y cada ejecución sobrescribe solo los meses procesados (`replaceWhere`). Se puede reprocesar un mes sin tocar el resto.
+- Un mes cuenta como hecho cuando su última métrica (`tags_con_datos`) está en `dq_metrics`. Una ejecución nueva se salta los meses hechos, así que si el job muere a medias (en el portátil se puede perder un executor después de una hora de I/O) el reintento sigue desde el primer mes sin terminar. `--rehacer` fuerza todos los meses del rango.
 - La clave de deduplicación es `(tag, instante de rejilla)`: solo puede haber una muestra por tag e instante. `Id` no sirve como clave porque la tabla Big y la pequeña tienen espacios de `Id` distintos. Gana Historic, después el valor más reciente.
-- Los rechazos no se copian fila a fila (serían unos 470 millones): `f_tag_interval_value_rechazo_diario` guarda el recuento por tag, día y motivo. En la BD real alrededor del 22 % de las filas no tiene calidad Buena, y el umbral de revisión está en el 30 %.
+- Los rechazos no se copian fila a fila (serían cientos de millones): `f_tag_interval_value_rechazo_diario` guarda el recuento por tag, día y motivo, y la métrica pasa a `REVISAR` si el rechazo supera el 30 %. La proporción de la ventana completa no la hemos sacado; el 22 % que citábamos salió de una consulta de la exploración que no guardamos y ya no lo usamos.
 
 ### `d_tag`
 
@@ -226,7 +227,8 @@ f_incidencia, d_periodo -> f_interrupcion
 f_incidencia -> f_incidencia_ex
 f_incidencia_ex, f_interrupcion -> f_incidencia_causa
 d_elemento, f_command_execution -> f_corte
-todos -> dq_checks
+d_meteo_celda, f_meteo_hora, contexto_publico (sin dependencias)
+d_salida, d_tipo_generico, f_interrupcion, f_evento, f_corte, f_tag_interval_value -> dq_checks
 ```
 
 Requisito: las tablas `System*` (`SystemElements`, `SystemTags`, `SystemNodes`, `SystemDevices`) llegan por el streaming CDC, así que los jobs de Landing y Bronze streaming tienen que haber corrido al menos una vez.
@@ -234,7 +236,7 @@ Requisito: las tablas `System*` (`SystemElements`, `SystemTags`, `SystemNodes`, 
 La prueba local está en `tests/02_silver/test_silver_smoke.py`. Monta tablas Bronze pequeñas con los problemas reales sembrados a propósito (duplicados, solapes, calidad mala, huérfanos, eventos de corte repetidos...), ejecuta todos los jobs en un Spark local y comprueba el resultado. No necesita Docker:
 
 ```bash
-pip install pyspark==4.2.0 delta-spark==4.4.0 pytest
+pip install -r requirements.txt
 python -m pytest tests/02_silver -q
 ```
 
@@ -245,5 +247,5 @@ Todo esto lo hace Gold y está explicado en [gold-layer.md](gold-layer.md):
 - Fusión de solapes, imputación de potencia, winsorización de duraciones y filtro del target (CL_IMPRE, sin FA_CLIEN, más de 180 s, nivel CT).
 - Valores congelados de las series: Silver deja la antigüedad de cada muestra (`antiguedad_s`, `valor_rancio`) y Gold la convierte en feature sobre los agregados horarios.
 - Rangos físicos de las medidas: dependen de la clase y de la escala de cada tag. Por ahora nos apoyamos en los detalles de calidad 11 y 12 y en las operaciones de anomalía que ya calcula el SCADA (máximo, mínimo, valor congelado).
-- Meteorología: se tratará cuando esté la ingesta.
-- `SystemTagValues`, `SystemElectricPowerCutElementStates` y `SystemDeviceStates` son snapshots del estado actual. Sirven para el tiempo real, no para entrenar, y se tratarán con el serving.
+- Meteorología: Silver la limpia (`f_meteo_hora`: valores fuera de rango físico a nulo con el flag `fuera_rango`, una fila por celda y hora) y Gold calcula las ventanas, la racha frente al clima de cada celda y la celda de cada CT (`meteo_celda_hora`, `map_ct_celda`).
+- `SystemTagValues`, `SystemElectricPowerCutElementStates` y `SystemDeviceStates` son snapshots del estado actual. Sirven para el tiempo real y no para entrenar; no los usamos porque el serving por CT y hora no se ha construido ([gold-layer.md](gold-layer.md), apartado 9).

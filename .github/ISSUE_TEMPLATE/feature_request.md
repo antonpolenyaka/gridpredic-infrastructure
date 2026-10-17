@@ -8,7 +8,7 @@ assignees: ""
 
 ## Qué hay que hacer
 
-<!-- Descripción de la tarea y de la capa a la que pertenece (landing, bronze, silver, gold, modelo, infra, docs) -->
+<!-- Descripción de la tarea y de la capa a la que pertenece (landing, bronze, silver, gold, modelo, operación, cuadro de mando, infra, docs) -->
 
 ## Por qué
 

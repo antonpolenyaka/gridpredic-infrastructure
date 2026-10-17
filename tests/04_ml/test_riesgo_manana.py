@@ -708,3 +708,59 @@ def test_the_index_of_the_dashboard_survives_a_broken_file(tmp_path):
     entry = index["dias"][0]
     assert entry["fecha_texto"] == "03.02.2026" and not entry["repetido"] and entry["ficheros"] == {}
     assert entry["distribuidoras"][0]["guardia_motivo"] == "nivel alto"
+
+
+def test_the_nao_of_the_evening_extends_the_file_of_the_repository(tmp_path):
+    base = tmp_path / "nao_diario.csv"
+    base.write_text("fecha,nao\n2026-10-12,0.5\n2026-10-13,0.8\n", encoding="utf-8")
+    folder = tmp_path / "vivo"
+    folder.mkdir()
+    fs = rm.LocalFiles()
+
+    # Without the file of the evening the configuration stays as it was.
+    assert rm.live_nao(fs, str(folder), {"csv": str(base)}) == {"csv": str(base)}
+
+    (folder / "nao.csv").write_text("year,month,day,nao_index_cdas\n2026,10,13,0.81\n2026,10,14,-0.2\n", encoding="utf-8")
+    cfg = {"nao": rm.live_nao(fs, str(folder), {"csv": str(base)})}
+    merged = pd.read_csv(cfg["nao"]["csv"])
+    assert list(merged["nao"]) == [0.5, 0.81, -0.2]
+
+    live = rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-17")]))
+    assert live["nao_dia"].iloc[0] == -0.2
+    # If CPC did not update that afternoon, the day before stands in.
+    assert rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-18")]))["nao_dia"].iloc[0] == -0.2
+    assert pd.isna(rm.nao_features(cfg, pd.Series([pd.Timestamp("2026-10-19")]))["nao_dia"].iloc[0])
+
+
+def test_the_follow_up_names_the_old_rows_as_today():
+    """The rows saved before the networks were renamed come out with the names of riesgo_manana.nombres."""
+    past = pd.DataFrame({"fecha": ["2026-01-28", "2026-01-28", "2026-10-16"], "distribuidora_id": [3, 2, 3],
+                         "distribuidora": ["Nombre viejo A", "Nombre viejo B", "Distribuidora 1"],
+                         "probabilidad": [0.18, 0.21, 0.05], "nivel": ["muy alto", "muy alto", "medio"], "run_id": ["a", "a", "b"]})
+
+    class Table:
+        def select(self, *columns):
+            return self
+
+        def toPandas(self):
+            return past.copy()
+
+    class Catalog:
+        def tableExists(self, name):
+            return True
+
+    class Spark:
+        catalog = Catalog()
+
+        def table(self, name):
+            return Table()
+
+    events = pd.DataFrame({"distribuidora_id": [3, 3], "periodo_id": ["202601", "202601"], "incidencia_id": ["A", "B"],
+                           "inicio_ts": ["2026-01-28 10:00", "2026-01-28 12:00"]})
+    levels = {"muy alto": 0.95, "alto": 0.9, "medio": 0.75}
+    out = rm.follow_up(Spark(), "t", events, pd.Timestamp("2026-08-02"), levels, {3: "Distribuidora 1", 2: "Distribuidora 2"})
+    assert [d["distribuidora"] for d in out["dias"]] == ["Distribuidora 2", "Distribuidora 1", "Distribuidora 1"]
+    assert [d["averias"] for d in out["dias"]] == [0, 2, None]
+    assert out["resumen"]["dias_con_resultado"] == 2 and out["resumen"]["acierto_alto"] == 0.5
+    # Without names, the ones saved with the rows.
+    assert rm.follow_up(Spark(), "t", events, pd.Timestamp("2026-08-02"), levels)["dias"][0]["distribuidora"] == "Nombre viejo B"

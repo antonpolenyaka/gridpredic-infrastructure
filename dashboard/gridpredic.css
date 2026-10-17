@@ -20,21 +20,30 @@
   --line-strong: #c3ccd8;
   --fg: #1b2430;
   --muted: #5d6878;
-  --faint: #8b95a5;
+  --faint: #6b7686;        /* 4.6:1 on white: labels of the figures and metadata */
   /* The one accent: voltage blue, for navigation, links and the forecast bars */
   --accent: #2457c5;
   --accent-ink: #163c8f;
   --accent-soft: #e6edfb;
   --accent-on-ink: #8fb1ff;
-  /* Risk, semantic and fixed: text on the badge is chosen for contrast */
-  --bajo: #2f7a4b; --bajo-soft: #dff1e5; --bajo-ink: #1e5a35;
-  --medio: #d9a400; --medio-soft: #fff1c2; --medio-ink: #6b5200;
-  --alto: #d9641a; --alto-soft: #fde3d2; --alto-ink: #8a3e0b;
-  --muy-alto: #bf2a2a; --muy-alto-soft: #f9dcdc; --muy-alto-ink: #861b1b;
+  /* Risk, semantic and fixed: an ordered scale from grey to maroon (grey for the normal days, then amber, the
+     vermilion of Okabe and Ito and maroon), readable with protanopia and deuteranopia (CIEDE2000 between levels
+     18.9 or more, Machado 2009). These four colours mean a level and nothing else. Text on the badge is chosen
+     for contrast; the amber needs a darker edge where it is drawn on white (--medio-borde). */
+  --bajo: #8a96a3; --bajo-soft: #eceff3; --bajo-ink: #3d4752;
+  --medio: #f2c230; --medio-soft: #fff1c2; --medio-ink: #6b5200; --medio-borde: #b38f00;
+  --alto: #d55e00; --alto-soft: #fde3d2; --alto-ink: #8a3e0b;
+  --muy-alto: #7f1d2d; --muy-alto-soft: #f6dde1; --muy-alto-ink: #6e1422;
   --guardia: #2457c5;
-  --tormenta: #e0b000;
-  /* Series of the charts (kept from the pages: the bars, the rain, the ensemble, AEMET, the stations) */
-  --serie-prevista: #2457c5; --serie-lluvia: #4a90d9; --serie-banda: #6b4fbb; --serie-aemet: #2e8b57; --serie-observada: #bf2a2a;
+  /* Lightning and storms: black and white, never a colour of the levels */
+  --tormenta: #1b2430; --tormenta-fondo: #ffffff;
+  /* Series of the charts: the forecast in the accent, the rain in light blue, the ensemble in purple, AEMET in the
+     bluish green of Okabe and Ito (dashed), what was observed in black, the alternative policies in a neutral
+     grey, force majeure in dark grey and the window of the day as a blue-grey band. */
+  --serie-prevista: #2457c5; --serie-lluvia: #4a90d9; --serie-banda: #6b4fbb; --serie-aemet: #009e73; --serie-observada: #141c26;
+  --serie-alternativa: #9aa5b1; --serie-fuerza-mayor: #4a5462; --franja: #8a9bb0;
+  /* The edge of the circles of the map and the ring of the stations of AEMET */
+  --mapa-borde: #1b2430; --estacion: #1b2430;
   --grid: #e3e7ed;
   /* Type */
   --font: "IBM Plex Sans", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
@@ -51,15 +60,20 @@
   --focus: 0 0 0 3px rgba(36, 87, 197, 0.35);
 }
 
+/* The dark theme keeps the same order of hues; on a dark panel the grey and the orange are lighter and the
+   red is a crimson (CIEDE2000 between levels 18.7 or more with protanopia and deuteranopia). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --ink: #0b1017; --paper: #10151c; --panel: #171e27; --panel-2: #1d2531; --line: #2a3340; --line-strong: #3a4556;
-    --fg: #e7ecf3; --muted: #a0abbb; --faint: #717d8e;
+    --fg: #e7ecf3; --muted: #a0abbb; --faint: #8d98a8;
     --accent: #7fa7ff; --accent-ink: #b7ccff; --accent-soft: #1b2a47; --accent-on-ink: #9dbbff; --on-accent: #0b1017;
-    --bajo: #3f9d61; --bajo-soft: #173424; --bajo-ink: #a9e0bb;
-    --medio: #e0ad14; --medio-soft: #3a2f08; --medio-ink: #f3d87a;
-    --alto: #ea7a2d; --alto-soft: #3f2211; --alto-ink: #f6b687;
-    --muy-alto: #d94444; --muy-alto-soft: #40191a; --muy-alto-ink: #f3a3a3;
+    --bajo: #7d8896; --bajo-soft: #252d38; --bajo-ink: #c9d1dc;
+    --medio: #ffdb42; --medio-soft: #3a3008; --medio-ink: #f6dc7a; --medio-borde: #ffdb42;
+    --alto: #e37115; --alto-soft: #3f2211; --alto-ink: #f6b687;
+    --muy-alto: #b73d43; --muy-alto-soft: #3d1a1f; --muy-alto-ink: #f4aab0;
+    --tormenta: #e7ecf3; --tormenta-fondo: #0b1017;
+    --serie-aemet: #2fbf8f; --serie-observada: #f2f5f9; --serie-alternativa: #9aa5b1; --serie-fuerza-mayor: #b4bdc8; --franja: #8a9bb0;
+    --mapa-borde: #e7ecf3; --estacion: #e7ecf3;
     --grid: #2a3340;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -10px rgba(0, 0, 0, 0.6);
     color-scheme: dark;
@@ -67,12 +81,15 @@
 }
 :root[data-theme="dark"] {
   --ink: #0b1017; --paper: #10151c; --panel: #171e27; --panel-2: #1d2531; --line: #2a3340; --line-strong: #3a4556;
-  --fg: #e7ecf3; --muted: #a0abbb; --faint: #717d8e;
+  --fg: #e7ecf3; --muted: #a0abbb; --faint: #8d98a8;
   --accent: #7fa7ff; --accent-ink: #b7ccff; --accent-soft: #1b2a47; --accent-on-ink: #9dbbff; --on-accent: #0b1017;
-  --bajo: #3f9d61; --bajo-soft: #173424; --bajo-ink: #a9e0bb;
-  --medio: #e0ad14; --medio-soft: #3a2f08; --medio-ink: #f3d87a;
-  --alto: #ea7a2d; --alto-soft: #3f2211; --alto-ink: #f6b687;
-  --muy-alto: #d94444; --muy-alto-soft: #40191a; --muy-alto-ink: #f3a3a3;
+  --bajo: #7d8896; --bajo-soft: #252d38; --bajo-ink: #c9d1dc;
+  --medio: #ffdb42; --medio-soft: #3a3008; --medio-ink: #f6dc7a; --medio-borde: #ffdb42;
+  --alto: #e37115; --alto-soft: #3f2211; --alto-ink: #f6b687;
+  --muy-alto: #b73d43; --muy-alto-soft: #3d1a1f; --muy-alto-ink: #f4aab0;
+  --tormenta: #e7ecf3; --tormenta-fondo: #0b1017;
+  --serie-aemet: #2fbf8f; --serie-observada: #f2f5f9; --serie-alternativa: #9aa5b1; --serie-fuerza-mayor: #b4bdc8; --franja: #8a9bb0;
+  --mapa-borde: #e7ecf3; --estacion: #e7ecf3;
   --grid: #2a3340;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -10px rgba(0, 0, 0, 0.6);
   color-scheme: dark;
@@ -179,17 +196,20 @@ details.meta-detalles[open] > summary { margin-bottom: var(--s-3); }
   padding: 10px 14px; border-radius: var(--r-2); border: 1px solid var(--line); background: var(--panel); font-size: var(--fs-2);
 }
 .strip b { font-weight: 600; }
-.strip.aviso { border-color: var(--alto); background: var(--alto-soft); color: var(--alto-ink); }
+/* Notices of the system (a stale file, an archived day) go in the accent with a thick left edge: the colours of
+   the levels are only for levels. */
+.strip.aviso { border-color: var(--accent); border-left-width: 4px; background: var(--accent-soft); color: var(--accent-ink); }
 .strip.aviso a { color: inherit; text-decoration: underline; }
 .strip.guardia-si { border-color: var(--guardia); background: var(--accent-soft); color: var(--accent-ink); }
 .strip.suave { color: var(--muted); }
-.strip .nivel { font-size: 11px; }
+.strip .nivel { font-size: 12px; }
 .rayos { display: block; margin: 0 0 var(--s-3); padding: 8px 12px; border-radius: var(--r-1); border: 1px solid var(--line); background: var(--panel-2); font-size: var(--fs-1); color: var(--muted); line-height: 1.5; }
 .rayos b { color: var(--fg); font-weight: 600; }
-.rayos.tormenta { border-color: var(--tormenta); background: var(--medio-soft); color: var(--medio-ink); }
+/* A storm over the network or near it: black and white with a thick edge, like the flashes on the map. */
+.rayos.tormenta { border-color: var(--tormenta); border-left-width: 4px; background: var(--panel); color: var(--fg); }
 .rayos.tormenta b { color: inherit; }
-.rayos.cerca { border-color: var(--tormenta); }
-.rayos.vejez { width: calc(100% - 2 * var(--gutter)); max-width: calc(var(--page-max) - 2 * var(--gutter)); margin: 0 auto var(--s-4); border-color: var(--alto); background: var(--alto-soft); color: var(--alto-ink); font-size: var(--fs-2); }
+.rayos.cerca { border-color: var(--tormenta); border-left-width: 4px; }
+.rayos.vejez { width: calc(100% - 2 * var(--gutter)); max-width: calc(var(--page-max) - 2 * var(--gutter)); margin: 0 auto var(--s-4); border-color: var(--accent); border-left-width: 4px; background: var(--accent-soft); color: var(--accent-ink); font-size: var(--fs-2); }
 .rayos.vejez b { color: inherit; }
 .rayos.vejez a { color: inherit; text-decoration: underline; }
 
@@ -238,7 +258,7 @@ section.dist .fila-paneles { display: grid; gap: var(--s-4); }
 .nivel.alto { background: var(--alto-soft); color: var(--alto-ink); }
 .nivel.muy-alto { background: var(--muy-alto-soft); color: var(--muy-alto-ink); }
 .nivel.guardia-pill { background: var(--accent-soft); color: var(--accent-ink); }
-.nivel.tormenta-pill { background: var(--medio-soft); color: var(--medio-ink); }
+.nivel.tormenta-pill { background: var(--tormenta); color: var(--tormenta-fondo); }
 .nivel.lg { font-size: var(--fs-2); padding: 4px 14px; }
 .nivel.lg::before { width: 9px; height: 9px; }
 .guardia-pill::before, .tormenta-pill::before { display: none; }
@@ -273,20 +293,31 @@ details.cts p.notas { max-width: 70ch; margin-top: var(--s-2); }
 .leaflet-container { font-family: var(--font); font-size: var(--fs-0); }
 .leaflet-bar a { background: var(--panel); color: var(--fg); border-bottom-color: var(--line); }
 .leaflet-bar a:hover { background: var(--panel-2); }
-.leaflet-control-attribution { background: rgba(255, 255, 255, 0.8); font-size: 10px; }
+.leaflet-control-attribution { background: rgba(255, 255, 255, 0.8); font-size: 11px; }
 .leaflet-tooltip { font-family: var(--font); font-size: var(--fs-0); border: 1px solid var(--line); border-radius: var(--r-1); box-shadow: var(--shadow); }
+/* The base map in grey, so its red roads and green parks do not compete with the colours of the levels. The
+   dark theme overrides it below with the same grey, inverted. */
+.leaflet-tile-pane { filter: grayscale(1) brightness(1.04) contrast(0.92); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.7); }
+  :root:not([data-theme="light"]) .leaflet-tile-pane { filter: grayscale(1) invert(1) brightness(0.92) contrast(0.88); }
   :root:not([data-theme="light"]) .leaflet-control-attribution { background: rgba(23, 30, 39, 0.85); color: var(--muted); }
   :root:not([data-theme="light"]) .leaflet-tooltip { background: var(--panel); color: var(--fg); }
 }
-:root[data-theme="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.7); }
+:root[data-theme="dark"] .leaflet-tile-pane { filter: grayscale(1) invert(1) brightness(0.92) contrast(0.88); }
 :root[data-theme="dark"] .leaflet-control-attribution { background: rgba(23, 30, 39, 0.85); color: var(--muted); }
 :root[data-theme="dark"] .leaflet-tooltip { background: var(--panel); color: var(--fg); }
+/* A flash of the last hour on the map: a small cross, black with a white halo (white with a dark halo in the dark theme). */
+.rayo-icono { background: none; border: 0; }
+.rayo-icono svg { display: block; overflow: visible; }
 .leyenda { display: flex; gap: 6px 14px; flex-wrap: wrap; color: var(--muted); font-size: var(--fs-0); align-items: center; }
 .leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .leyenda i.sq { border-radius: 2px; }
-.perfil { width: 100%; height: 170px; display: block; }
+.leyenda i.anillo { background: var(--panel); border: 1.5px solid var(--estacion); }
+.leyenda i.medio, .leyenda i.sq.medio { box-shadow: inset 0 0 0 1px var(--medio-borde); }
+.leyenda .tamanos { display: inline-flex; align-items: center; gap: 6px; }
+.leyenda .tamanos svg { display: block; overflow: visible; }
+.leyenda b.que { color: var(--fg); font-weight: 600; }
+.perfil { width: 100%; height: auto; display: block; }
 .perfil-holder { margin-top: var(--s-2); }
 .verificacion { color: var(--muted); font-size: var(--fs-1); margin: var(--s-2) 0 0; max-width: 90ch; }
 .verificacion b { color: var(--fg); }
@@ -352,12 +383,13 @@ details > *:not(summary) { animation: abrir var(--t-base) var(--ease); }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .meta { grid-template-columns: 1fr; }
   .map { height: 260px; }
-  .perfil { height: 150px; }
 }
 
 /* ---------------------------------------------------------------- print */
 @media print {
   nav.menu, .acciones, .noimprimir { display: none !important; }
+  /* The sections that motion.js has not revealed yet (still below the fold) print as well. */
+  main section, main > div > section, .kpi, .cifra, .dos.mapa-perfil { opacity: 1 !important; visibility: visible !important; transform: none !important; }
   body { background: #fff; color: #000; }
   .panel, .panel.sub, .kpi, .cifra, .scroll { box-shadow: none; border-color: #bbb; }
   main { gap: var(--s-4); }

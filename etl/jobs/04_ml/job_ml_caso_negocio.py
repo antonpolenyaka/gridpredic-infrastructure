@@ -529,7 +529,7 @@ def level_table(d: pd.DataFrame) -> pd.DataFrame:
 
 
 def skill_text(d: pd.DataFrame) -> str:
-    """AUC and Brier of the probability of the evening before against the days with incident, all together and per distribuidora."""
+    """AUC and Brier of the evening probability against the days with an incident, overall and per distribuidora."""
     y = (d["incidencias"] > 0).astype(int).to_numpy()
     p = d["probabilidad"].to_numpy(dtype=float)
     if len(d) == 0 or y.sum() == 0 or y.sum() == len(y):

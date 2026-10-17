@@ -191,7 +191,7 @@ def test_the_ensemble_of_every_network(fs, cfg, monkeypatch, tmp_path):
     assert noon["p50"] == 60 and noon["p10"] == 52 and noon["p90"] == 92
     assert eosa["pico"] == {"p10": 52, "p50": 60, "p90": 92}
     assert eosa["supera"] == {"50": 1.0, "70": 0.4, "90": 0.2}
-    assert eosa["texto"] == "5 escenarios de icon_eu en 2 puntos de la red: el 80 % central da el pico de racha entre 52 y 92 km/h (mediana 60); el 100 % supera 50 km/h, el 40 % supera 70 km/h, el 20 % supera 90 km/h; escenarios muy repartidos; más de la mitad supera 50 km/h"
+    assert eosa["texto"] == "5 escenarios de ICON-EU EPS en 2 puntos de la red: el 80 % central da el pico de racha entre 52 y 92 km/h (mediana 60); el 100 % supera 50 km/h, el 40 % supera 70 km/h, el 20 % supera 90 km/h; escenarios muy repartidos; más de la mitad supera 50 km/h"
     assert pitarch["modelo"] == "icon_seamless" and pitarch["pico"] == {"p10": 50, "p50": 50, "p90": 50} and "muy de acuerdo" in pitarch["texto"]
     # Without any answer the source fails with 2 and writes nothing.
     monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: (_ for _ in ()).throw(RuntimeError("HTTP 500")))
@@ -273,7 +273,7 @@ def test_the_hourly_forecast_of_aemet_by_municipality(fs, cfg, monkeypatch, tmp_
     noon = next(h for h in eosa["horas"] if h["hora"] == 12)
     assert noon["racha_kmh"] == 46 and noon["lluvia_mm"] == 0.1 and noon["tormenta_pct"] == 40
     assert next(h for h in eosa["horas"] if h["hora"] == 3)["tormenta_pct"] == 0
-    assert eosa["texto"] == "AEMET por municipios (2 municipios, elaborada 18:55): pico de racha 58 km/h a las 13:00 en Hervás; hasta 0.2 mm de lluvia; probabilidad de tormenta hasta el 40 %"
+    assert eosa["texto"] == "AEMET por municipios (2 municipios, elaborada 18:55): pico de racha 58 km/h a las 13:00 en Hervás; hasta 0,2 mm de lluvia; probabilidad de tormenta hasta el 40 %"
     assert (tmp_path / "aemet_20261015.json").exists()
     assert vivo.aemet_value("Ip") == 0.1 and vivo.aemet_value("") != vivo.aemet_value("") and vivo.aemet_value("12,5") == 12.5
 
@@ -307,3 +307,21 @@ def test_the_evening_does_not_wait_for_aemet_beyond_its_budget(fs, monkeypatch, 
     with open(tmp_path / "aemet.json", encoding="utf-8") as file:
         out = json.load(file)
     assert out["distribuidoras"][0]["municipios"] == len(landed) and out["distribuidoras"][0]["pico"]["racha_kmh"] == 40
+
+
+def test_the_nao_index_of_noaa(fs, monkeypatch):
+    text = "year,month,day,nao_index_cdas\n2026,10,13,0.806\n2026,10,14,-0.21\n"
+    monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: text.encode())
+    assert vivo.land_nao(fs, {}, "/vivo/20261016")
+    with fs.open("/vivo/20261016/nao.csv", "r") as file:
+        assert file.read().splitlines()[-1] == "2026,10,14,-0.21"
+
+    # Something that is not the CSV of CPC (a page of error) is not landed.
+    monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: b"<html>maintenance</html>")
+    assert not vivo.land_nao(fs, {}, "/vivo/20261017")
+    assert not fs.exists("/vivo/20261017/nao.csv")
+
+
+def test_the_thresholds_of_the_ensemble_stop_at_the_first_one_nobody_reaches():
+    assert vivo.threshold_text({"50": 0.3, "70": 0.0, "90": 0.0}, [50, 70, 90]) == "el 30 % supera 50 km/h, ninguno supera 70 km/h"
+    assert vivo.threshold_text({"50": 0.0, "70": 0.0, "90": 0.0}, [50, 70, 90]) == "ninguno supera 50 km/h"
