@@ -786,3 +786,11 @@ def test_an_old_run_of_the_forecast_is_told_in_the_notes(tmp_path):
     assert rm.report_notes(out, info) == []
     (folder / "prevision_modelo.json").write_text("{broken", encoding="utf-8")
     assert rm.forecast_run(fs, str(folder)) == {}
+    # Cells that came from the reserve model are told too.
+    (folder / "prevision").mkdir()
+    for k, model in enumerate(["icon_eu", "icon_eu", "gfs_seamless"]):
+        (folder / "prevision" / f"c{k}.json").write_text(json.dumps({"_peticion": {"modelo": model}}), encoding="utf-8")
+    assert rm.forecast_models(fs, str(folder)) == {"icon_eu": 2, "gfs_seamless": 1}
+    info["prevision_modelos"] = rm.forecast_models(fs, str(folder))
+    notes = rm.report_notes(out, info)
+    assert notes == ["ICON-EU no respondió para 1 de 3 celdas: su previsión es la de gfs_seamless, el modelo de reserva."]

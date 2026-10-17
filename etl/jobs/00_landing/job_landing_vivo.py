@@ -11,7 +11,11 @@ config_ml.json.
   included). The days ahead are the forecast of the day to predict; today
   is the weather of the day before it; the days before give the run of hot
   days. One request per cell, saved as it comes with _peticion (cell, model,
-  when it was asked). Besides, prevision_modelo.json keeps when the run that
+  when it was asked). A cell that ICON-EU does not answer is asked to the
+  models of modelos_reserva (GFS, whose forecast scored almost the same in
+  notebook 3j), and after fallos_seguidos_reserva cells in a row without
+  ICON-EU the rest go straight to the reserve; _peticion says which model
+  gave every cell. Besides, prevision_modelo.json keeps when the run that
   Open-Meteo served started and when it became available (the meta.json of
   the domain of the model): the scoring warns when that run is old, as when
   the DWD ensemble froze from 06.10.2026 (Open-Meteo issue #2194).
@@ -271,24 +275,40 @@ def study_cells(fs, meteo: dict) -> dict:
     return cells
 
 
+def ask_forecast(lat: float, lon: float, prevision: dict, model: str, cell: str) -> dict:
+    """The answer of one model for one cell; an error when it does not come or has no hours."""
+    raw = fetch(forecast_url(lat, lon, {**prevision, "modelo": model}), retries=int(prevision.get("reintentos", 4)),
+                wait_s=float(prevision.get("espera_reintento_s", 30)), timeout=float(prevision.get("timeout_s", 120)),
+                label=f"Open-Meteo {model} {cell}")
+    payload = json.loads(raw.decode("utf-8"))
+    if not payload.get("hourly", {}).get("time"):
+        raise RuntimeError(f"empty answer {str(payload)[:200]}")
+    return payload
+
+
 def land_forecast(fs, cfg: dict, folder: str, cells: dict) -> tuple:
     """(cells saved, cells failed): the forecast of every cell in <folder>/prevision/<cell>.json."""
     prevision = cfg["prevision"]
-    done = failed = 0
+    primary = prevision.get("modelo", "icon_eu")
+    reserve = [m for m in prevision.get("modelos_reserva") or [] if m != primary]
+    done = failed = in_a_row = 0
     for cell, (lat, lon) in sorted(cells.items()):
-        try:
-            raw = fetch(forecast_url(lat, lon, prevision), retries=int(prevision.get("reintentos", 4)),
-                        wait_s=float(prevision.get("espera_reintento_s", 30)),
-                        timeout=float(prevision.get("timeout_s", 120)), label=f"Open-Meteo {cell}")
-            payload = json.loads(raw.decode("utf-8"))
-            hours = len(payload.get("hourly", {}).get("time", []))
-            if not hours:
-                raise RuntimeError(f"empty answer {str(payload)[:200]}")
-        except Exception as error:  # noqa: BLE001
+        down = bool(reserve) and in_a_row >= int(prevision.get("fallos_seguidos_reserva", 3))
+        payload, model = None, None
+        for candidate in ([] if down else [primary]) + reserve:
+            try:
+                payload, model = ask_forecast(lat, lon, prevision, candidate, cell), candidate
+                break
+            except Exception as error:  # noqa: BLE001
+                logger.warning("Forecast of %s for cell %s not downloaded: %s", candidate, cell, str(error)[:200])
+        in_a_row = 0 if model == primary else in_a_row + 1
+        if payload is None:
             failed += 1
-            logger.error("Forecast of cell %s not downloaded: %s", cell, str(error)[:200])
+            logger.error("Forecast of cell %s not downloaded from any model", cell)
             continue
-        payload["_peticion"] = {"celda_id": cell, "modelo": prevision.get("modelo", "icon_eu"),
+        if model != primary:
+            logger.warning("Cell %s scored with the forecast of %s: %s did not answer", cell, model, primary)
+        payload["_peticion"] = {"celda_id": cell, "modelo": model, "reserva": model != primary,
                                 "pedido_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                                 "dias_pasados": int(prevision.get("dias_pasados", 31)),
                                 "dias_futuros": int(prevision.get("dias_futuros", 3))}

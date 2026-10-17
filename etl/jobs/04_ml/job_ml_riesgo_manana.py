@@ -293,6 +293,18 @@ def read_json(fs, path: str) -> dict:
 STALE_RUN_H = 9.0
 
 
+def forecast_models(fs, folder: str) -> dict:
+    """{model: cells} of the forecast of the evening (_peticion.modelo of every cell): the reserve when ICON-EU failed."""
+    counts = {}
+    for path in sorted(fs.glob(f"{folder}/prevision/*.json")):
+        try:
+            model = (read_json(fs, path).get("_peticion") or {}).get("modelo") or "?"
+        except (OSError, ValueError):
+            continue
+        counts[model] = counts.get(model, 0) + 1
+    return counts
+
+
 def forecast_run(fs, folder: str) -> dict:
     """The run of the forecast of the evening (prevision_modelo.json of the Landing), {} when the Landing has none."""
     path = f"{folder}/prevision_modelo.json"
@@ -1122,6 +1134,12 @@ def report_notes(out: pd.DataFrame, info: dict) -> list:
     for row in out[out["cobertura_prevision"] < 0.999].itertuples():
         notes.append(f"{row.distribuidora}: solo el {number(100 * row.cobertura_prevision, 0)} % de sus CT está en "
                      "celdas con previsión.")
+    models = info.get("prevision_modelos") or {}
+    reserve = {m: n for m, n in models.items() if m != info.get("prevision_modelo_principal", "icon_eu")}
+    if reserve:
+        total = sum(models.values())
+        notes.append("ICON-EU no respondió para " + ", ".join(f"{n} de {total} celdas" for n in reserve.values())
+                     + ": su previsión es la de " + ", ".join(reserve) + ", el modelo de reserva.")
     run = info.get("pasada_prevision") or {}
     hours = run.get("horas_desde_pasada")
     if hours is not None and float(hours) > float(info.get("pasada_max_horas", STALE_RUN_H)):
@@ -1685,6 +1703,8 @@ def main(argv=None):
         "niveles": rcfg["niveles"], "avisos_disponibles": answered, "historia_al_dia": up_to_date,
         "calser_hasta": calser, "prevision_pedida_utc": forecast_asked, "avisos_texto": warning_text,
         "pasada_prevision": {} if args.desde_gold else forecast_run(fs, folder),
+        "prevision_modelos": {} if args.desde_gold else forecast_models(fs, folder),
+        "prevision_modelo_principal": rcfg.get("prevision", {}).get("modelo", "icon_eu"),
         "pasada_max_horas": float(rcfg.get("pasada_max_horas", STALE_RUN_H)),
     }
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
