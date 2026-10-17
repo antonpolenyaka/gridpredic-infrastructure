@@ -174,3 +174,19 @@ El valor relativo es la parte del ahorro de una previsión perfecta que consigue
 
 Con la pérdida por dias, la regla probabilística tiene valor positivo para cocientes entre 0,01 y 0,44; su máximo es 0,37 en 0,04.
 Con la pérdida por horas-cliente, la regla probabilística tiene valor positivo para cocientes entre 0,01 y 0,35; su máximo es 0,53 en 0,06.
+
+## Autocorrelación de los residuos
+
+Residuo de cada día: si hubo avería (1 o 0) menos la probabilidad de la víspera, sumado entre redes para las tres juntas. r1 es la correlación de un día con el siguiente; q7 y q14, el contraste de Ljung y Box con 7 y 14 días de retardo, y p7 y p14 sus valores p. Con valores p altos, días seguidos no se parecen más de lo que toca y los intervalos por fechas y por bloques de siete días deben coincidir.
+
+| muestra | redes | dias | r1 | q7 | p7 | q14 | p14 |
+|---|---|---|---|---|---|---|---|
+| prevision | Las tres redes | 922 | 0,104 | 19,0 | 0,008 | 28,5 | 0,012 |
+| prevision | Distribuidora 1 | 922 | 0,079 | 21,1 | 0,004 | 24,6 | 0,039 |
+| prevision | Distribuidora 2 | 922 | 0,118 | 17,8 | 0,013 | 26,9 | 0,020 |
+| reanalisis | Las tres redes | 1674 | 0,051 | 7,0 | 0,427 | 11,0 | 0,683 |
+| reanalisis | Distribuidora 1 | 1674 | 0,073 | 16,5 | 0,021 | 20,1 | 0,127 |
+| reanalisis | Distribuidora 2 | 1674 | 0,058 | 11,5 | 0,118 | 13,6 | 0,482 |
+| prevision_sin_28_01 | Las tres redes | 921 | 0,086 | 14,9 | 0,037 | 26,3 | 0,024 |
+| prevision_sin_28_01 | Distribuidora 1 | 921 | 0,067 | 20,9 | 0,004 | 25,4 | 0,031 |
+| prevision_sin_28_01 | Distribuidora 2 | 921 | 0,094 | 13,7 | 0,056 | 26,0 | 0,026 |

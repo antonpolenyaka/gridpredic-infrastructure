@@ -25,7 +25,9 @@ Responde a tres preguntas que la PR-AUC no contesta:
 Todo con y sin el temporal del 28.01.2026, que pesa mucho en las
 horas-cliente, y con intervalos bootstrap por fechas y por semanas (las
 réplicas toman días enteros, o bloques de siete días seguidos, de las tres
-redes a la vez). Los nombres de las distribuidoras no salen nunca: la tabla
+redes a la vez). El contraste de Ljung y Box (1978) sobre los residuos de
+cada día dice si días seguidos se parecen tanto como para fiarse solo de
+los bloques. Los nombres de las distribuidoras no salen nunca: la tabla
 trae sus ids y aquí pasan a Distribuidora 1, 2 y 3.
 """
 
@@ -158,6 +160,35 @@ def calibration_rows(df: pd.DataFrame, label: str, reps: int, seed: int) -> list
                 low, high = interval(values)
                 row[f"{key}_ic{block}d"] = f"{es(low, 3)} a {es(high, 3)}"
         rows.append(row)
+    return rows
+
+
+def ljung_box(x, lags: tuple = (7, 14)) -> dict:
+    """
+    Ljung y Box (1978) sobre la serie x en orden de fechas: la autocorrelación de un día con el siguiente (r1) y,
+    para cada h de lags, Q = n (n + 2) suma de r_k^2 / (n - k) hasta h y su valor p con una chi cuadrado de h grados.
+    """
+    from scipy.stats import chi2
+
+    x = np.asarray(x, dtype=np.float64)
+    x = x - x.mean()
+    n, total = len(x), float((x ** 2).sum())
+    r = [float((x[k:] * x[:-k]).sum() / total) if total > 0 else 0.0 for k in range(1, max(lags) + 1)]
+    out = {"r1": r[0]}
+    for h in lags:
+        q = n * (n + 2) * sum(r[k - 1] ** 2 / (n - k) for k in range(1, h + 1))
+        out[f"q{h}"], out[f"p{h}"] = float(q), float(chi2.sf(q, h))
+    return out
+
+
+def autocorrelation_rows(df: pd.DataFrame, label: str) -> list:
+    """Los residuos de cada día (avería sí o no menos la probabilidad), sumados entre redes para las tres juntas."""
+    rows = []
+    for scope, part in scopes(df):
+        if part.empty:
+            continue
+        daily = (part["y"] - part["probabilidad"]).groupby(part["fecha"]).sum().sort_index()
+        rows.append({"muestra": label, "redes": scope, "dias": len(daily), **ljung_box(daily.to_numpy())})
     return rows
 
 
@@ -415,7 +446,7 @@ def table(df: pd.DataFrame, columns: list, digits: dict = None) -> str:
 
 
 def report(calibration: pd.DataFrame, reliability: pd.DataFrame, value: pd.DataFrame, benefit: pd.DataFrame,
-           intervals: pd.DataFrame, reps: int) -> str:
+           intervals: pd.DataFrame, reps: int, autocorrelation: pd.DataFrame = None) -> str:
     out = ["# Calibración y valor de la probabilidad de la víspera", "",
            f"Tabla de días del caso de negocio (dias.csv). Intervalos del 95 % con {reps} réplicas bootstrap por fechas "
            "(1d) y por bloques de siete días (7d). La muestra prevision es la previsión real de ICON-EU; reanalisis, el "
@@ -448,6 +479,14 @@ def report(calibration: pd.DataFrame, reliability: pd.DataFrame, value: pd.DataF
             out.append(f"Con la pérdida por {weighting.replace('_', '-')}, la regla probabilística tiene valor positivo "
                        f"para cocientes entre {es(positive.min())} y {es(positive.max())}; su máximo es "
                        f"{es(part['probabilidad'].max())} en {es(float(part.loc[part['probabilidad'].idxmax(), 'alfa']))}.")
+    if autocorrelation is not None and not autocorrelation.empty:
+        out += ["", "## Autocorrelación de los residuos", "",
+                "Residuo de cada día: si hubo avería (1 o 0) menos la probabilidad de la víspera, sumado entre redes para las "
+                "tres juntas. r1 es la correlación de un día con el siguiente; q7 y q14, el contraste de Ljung y Box con 7 y 14 "
+                "días de retardo, y p7 y p14 sus valores p. Con valores p altos, días seguidos no se parecen más de lo que toca "
+                "y los intervalos por fechas y por bloques de siete días deben coincidir.", "",
+                table(autocorrelation, ["muestra", "redes", "dias", "r1", "q7", "p7", "q14", "p14"],
+                      {"r1": 3, "q7": 1, "p7": 3, "q14": 1, "p14": 3})]
     return "\n".join(out) + "\n"
 
 
@@ -472,12 +511,13 @@ def main(argv=None) -> int:
     benefit = pd.DataFrame([r for label, part in samples.items() for r in benefit_rows(part, label)])
     intervals = pd.DataFrame([r for label in ("prevision", "prevision_sin_28_01") if label in samples
                               for r in value_intervals(samples[label], label, args.reps, args.semilla)])
+    autocorrelation = pd.DataFrame([r for label, part in samples.items() for r in autocorrelation_rows(part, label)])
 
     for name, frame in (("calibracion", calibration), ("fiabilidad", reliability), ("valor_relativo", value),
-                        ("beneficio_neto", benefit), ("intervalos", intervals)):
+                        ("beneficio_neto", benefit), ("intervalos", intervals), ("autocorrelacion", autocorrelation)):
         frame.to_csv(os.path.join(args.salida, f"{name}.csv"), index=False)
     with open(os.path.join(args.salida, "resumen.md"), "w", encoding="utf-8") as file:
-        file.write(report(calibration, reliability, value, benefit, intervals, args.reps))
+        file.write(report(calibration, reliability, value, benefit, intervals, args.reps, autocorrelation))
     figures(reliability, value, benefit, args.salida)
     print(open(os.path.join(args.salida, "resumen.md"), encoding="utf-8").read())
     return 0
