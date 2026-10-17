@@ -160,3 +160,20 @@ def test_the_penalised_logistic_regressions_run_in_the_pipeline(name, params):
     assert weights.shape == (2,) and weights[0] > 5 * weights[1]
     again = pickle.loads(pickle.dumps(scorer.single_thread()))
     assert np.allclose(again.score(data["Xv"]), score)
+
+
+@pytest.mark.parametrize("name", ["logistica", "logistica_firth", "poisson"])
+def test_the_coefficients_of_the_linear_models_with_their_odds_ratios(name):
+    X, y, counts = synthetic()
+    scorer = ml_models.fit_model(name, {"C": 1.0} if name == "logistica" else {}, data_of(X, y, counts), 1.0, 0, 1)
+    rows = ml_models.linear_terms(scorer)
+    # The intercept, the two features and the indicator of the gap of the gust that the imputer adds.
+    assert [r["variable"] for r in rows] == ["(intercepto)", "racha", "ruido", "racha__falta"]
+    for row in rows:
+        assert row["razon_por_desviacion"] == pytest.approx(np.exp(row["coeficiente"]))
+    terms = {r["variable"]: r["coeficiente"] for r in rows}
+    # More gust, more risk; the noise weighs little; and the same coefficients the importances report.
+    assert terms["racha"] > 0.3 and abs(terms["ruido"]) < 0.2 * terms["racha"]
+    assert ml_models.importances(scorer)["coef_abs"] == pytest.approx(np.abs([terms["racha"], terms["ruido"]]), rel=1e-6)
+    # The models without coefficients give nothing.
+    assert ml_models.linear_terms(ml_models.build_reference("tasa_base", ["racha", "ruido"], 0.1)) == []
