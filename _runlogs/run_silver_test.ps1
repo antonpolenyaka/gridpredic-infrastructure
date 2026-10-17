@@ -57,9 +57,14 @@ docker compose exec -T spark-master sh -c 'for p in /proc/[0-9]*; do [ "${p#/pro
 docker compose exec -T spark-master sh -c "tail -n 60 /tmp/landing.log; tail -n 60 /tmp/bronze_stream.log" *> "$L\streaming_tail.log"
 
 # ---------------------------------------------------------------- 3. Silver
+# Los jobs de config_silver.json en orden de dependencias, menos los tres que
+# leen lo que esta prueba no carga (d_meteo_celda y f_meteo_hora, de
+# Open-Meteo; contexto_publico, de AEMET y las otras fuentes publicas):
+# dq_checks los marca como no evaluados.
 $silver = @("d_elemento", "d_periodo", "d_municipio", "d_tipo_generico", "d_ct",
-            "d_salida", "f_incidencia", "f_interrupcion", "d_tag",
-            "f_tag_value_change", "f_evento", "f_command_execution", "f_corte",
+            "d_salida", "f_incidencia", "f_interrupcion", "f_incidencia_ex",
+            "f_incidencia_causa", "d_tag", "f_tag_value_change", "f_evento",
+            "f_command_execution", "f_corte", "f_tag_interval_value",
             "dq_checks")
 foreach ($job in $silver) {
     Log "silver $job ..."

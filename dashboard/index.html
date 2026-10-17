@@ -96,8 +96,10 @@
     try { return t.toLocaleTimeString("es-ES", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit" }); }
     catch (e) { return String(iso).slice(11, 16) + " UTC"; }
   }
-  // Three slips of the texts that the live jobs write are put right here: the internal name of the ensemble model,
-  // "1 celdas" or "1 municipios", and the decimal point of the millimetres and the km/h.
+  // The ensemble_<day>.json and aemet_<day>.json archived before 16.10.2026 carry three slips that the live
+  // jobs no longer write (job_landing_vivo writes the names, the singulars and the decimal comma since then):
+  // the internal name of the ensemble model, "1 celdas" or "1 municipios", and the decimal point of the
+  // millimetres and the km/h. They are put right here so the old days read like the new ones.
   const limpiar = (s) => String(s || "").replace(/\bicon_eu(_eps)?\b/g, "ICON-EU EPS").replace(/\b1 (celda|municipio)s\b/g, "1 $1")
     .replace(/(\d)\.(\d+)(?= ?(mm|km\/h|%))/g, "$1,$2");
 
@@ -288,7 +290,7 @@
       const inName = new Set(String(z.nombre || "").split(" / "));
       const more = (z.municipios || []).filter((m) => !inName.has(m));
       const extra = more.length ? `<br><span class="notas">y ${esc(more.slice(0, 3).join(", "))}${more.length > 3 ? " y " + (more.length - 3) + " más" : ""}</span>` : "";
-      return `<tr class="fila-zona" data-dist="${idx}" data-zona="${i}" title="Línea ${esc(z.zona)}: ${num(z.hist_365d)} incidencias en el último año, la última hace ${num(z.hist_dias_desde)} días">
+      return `<tr class="fila-zona" data-dist="${idx}" data-zona="${i}" title="Línea ${esc(z.zona)}: ${num(z.hist_365d)} incidencias en el último año, ${z.hist_dias_desde >= 3650 ? "sin incidencias conocidas" : "la última hace " + num(z.hist_dias_desde) + " días"}">
       <td>${esc(z.nombre)}${extra}</td>
       <td>${nivelPill(z.nivel)}</td><td class="num">${pct(z.probabilidad)}</td><td class="num">${pct(z.parte, 0)}</td>
       <td class="num">${num(z.n_ct)}</td><td class="num">${num(z.abonados)}</td><td class="num">${num(z.clientes_esperados, 1)}</td><td class="num">${num(z.racha_max)}</td>
@@ -299,7 +301,8 @@
 
   // The risk of the next three hours of a line: a rule over the probability of the day. Inside the window of the
   // day the incidents concentrate (84 % of the incidents of the alert days of 2024 - 2026 start inside it); at the peak of the
-  // gust, 62 % of the weather incidents start within 3 hours of it; flashes within 10 km in the previous hour
+  // gust, 62 % of the weather incidents start within 3 hours of it (0.31 is half of that 62 %: the three hours
+  // after the peak, out of the six around it); flashes within 10 km in the previous hour
   // precede 17 % of the incidents against 1.1 % of the control windows (15 times). The constants are the ones
   // measured in causas-incidencias.md; the result ranks the lines for the next hours, it is not a calibrated
   // probability.
@@ -446,7 +449,9 @@
       let banner = sec.querySelector(".rayos");
       if (!banner) { banner = document.createElement("div"); banner.className = "rayos"; sec.querySelector("h2").insertAdjacentElement("afterend", banner); }
       banner.className = "rayos " + klass;
-      banner.innerHTML = `<b>Rayos ahora</b> (satélite MTG, actualizado a las ${esc(hora)}): ${esc(text)}.` + (block && block.municipios && block.municipios.length ? ` Municipios bajo la tormenta: ${esc(block.municipios.slice(0, 6).join(", "))}${block.municipios.length > 6 ? " y " + (block.municipios.length - 6) + " más" : ""}.` : "");
+      // When the Data Store of EUMETSAT did not answer, the flashes are the ones already landed, not of this hour.
+      const stale = r.ultimo_producto && r.ultimo_producto.error ? " El Data Store de EUMETSAT no respondió en la última lectura: rayos de la lectura anterior." : "";
+      banner.innerHTML = `<b>Rayos ahora</b> (satélite MTG, actualizado a las ${esc(hora)}): ${esc(text)}.` + (block && block.municipios && block.municipios.length ? ` Municipios bajo la tormenta: ${esc(block.municipios.slice(0, 6).join(", "))}${block.municipios.length > 6 ? " y " + (block.municipios.length - 6) + " más" : ""}.` : "") + esc(stale);
       const map = maps[idx];
       if (!map) return;
       if (map._rayos) map._rayos.remove();
@@ -737,7 +742,7 @@
           <div class="kpi nivel-card ${cls(d.nivel)}"><div class="t">Riesgo del día</div><div class="v">${esc(nivelTexto(d.nivel))}</div><div class="l">percentil ${num(100 * d.percentil)} de los días de entrenamiento, ${num(d.veces_tasa_base, 1)} veces su tasa base</div></div>
           <div class="kpi"><div class="v">${pct(d.probabilidad)}</div><div class="l">probabilidad de alguna interrupción</div></div>
           <div class="kpi"><div class="v">${num(d.esperadas, 2)}</div><div class="l">averías esperadas</div></div>
-          <div class="kpi"><div class="v">${num(imp.clientes_esperados)}</div><div class="l">clientes esperados sin luz (${num(imp.ct_esperados, 1)} CT, ${num(imp.kva_esperados)} kVA)</div></div>
+          <div class="kpi"><div class="v">${num(imp.clientes_esperados)}</div><div class="l">clientes esperados sin luz (${num(imp.ct_esperados, 1)} CT, ${num(imp.kva_esperados)} kVA${imp.minutos_tiepi_esperados != null ? ", " + num(imp.minutos_tiepi_esperados, 2) + " min de TIEPI" : ""})</div></div>
           <div class="kpi"><div class="v">${fr.inicio != null ? fr.inicio + " - " + (fr.fin + 1) + " h" : "sin franja"}</div><div class="l">${fr.inicio != null ? "franja de más riesgo" : fr.racha_pico != null ? "día de poco viento" : "sin perfil horario"}${fr.racha_pico != null ? ` (pico de racha ${fr.pico != null ? aLas(fr.pico).replace(":00", " h") + ", " : ""}${num(fr.racha_pico)} km/h)` : ""}</div></div>
         </div>
         ${pasadoBloque(data, d)}
@@ -760,7 +765,7 @@
           <div class="panel-b">${tablaZonas(d, idx)}${tablaCts(d)}</div>
         </div>
         <div class="dos causas-brigadas">
-          <div class="panel sub"><div class="panel-h"><h3>Si hay avería, por qué</h3></div><div class="panel-b">${causasBarras(d.causas) || '<p class="notas">Sin reparto de causas para días como este.</p>'}</div></div>
+          <div class="panel sub"><div class="panel-h"><h3>Si hay avería, por qué${d.causas_bucket ? " (días con racha " + esc(d.causas_bucket) + ")" : ""}</h3></div><div class="panel-b">${causasBarras(d.causas) || '<p class="notas">Sin reparto de causas para días como este.</p>'}</div></div>
           <div class="panel sub"><div class="panel-h"><h3>Brigadas</h3></div><div class="panel-b">${brigadas(d.brigadas) || '<p class="notas">Sin bases de brigadas calculadas.</p>'}</div></div>
         </div>`;
       main.appendChild(sec);
