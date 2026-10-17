@@ -8,9 +8,13 @@
 <style>
   /* Four years in one screen: a calendar per distribuidora and year with the level the system would have given
      the evening before (colour) and the incidents that happened (dots), from historico.json. */
-  :root { --cal-bajo: #a9dcb9; --cal-medio: #f2d98a; --cal-alto: #f2b283; --cal-muy-alto: #e27f78; --dot: #1b2430; --bg: var(--paper); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cal-bajo: #2f6b45; --cal-medio: #8a7420; --cal-alto: #9a5424; --cal-muy-alto: #a63a37; --dot: #ffffff; } }
-  :root[data-theme="dark"] { --cal-bajo: #2f6b45; --cal-medio: #8a7420; --cal-alto: #9a5424; --cal-muy-alto: #a63a37; --dot: #ffffff; }
+  /* Tints of the calendar: grey, amber, vermilion and maroon, darker as the level goes up (CIEDE2000 between them
+     16 or more with deuteranopia). In the dark theme the order goes the other way, lighter as the level goes up, so
+     the alert days are the ones that stand out. The incidents are white rings with a dark edge (--dot), visible on
+     any tint. */
+  :root { --cal-bajo: #dde3ea; --cal-medio: #f4cf4f; --cal-alto: #e0741f; --cal-muy-alto: #86202f; --dot: #141c26; --bg: var(--paper); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cal-bajo: #323f49; --cal-medio: #6e561f; --cal-alto: #fb7309; --cal-muy-alto: #fca3ac; --dot: #0b1017; } }
+  :root[data-theme="dark"] { --cal-bajo: #323f49; --cal-medio: #6e561f; --cal-alto: #fb7309; --cal-muy-alto: #fca3ac; --dot: #0b1017; }
   main, footer, header.page { max-width: 1280px; }
   main section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-3); box-shadow: var(--shadow); padding: var(--s-4) var(--s-5) var(--s-5); }
   main section h2 { margin: 0 0 var(--s-3); font-size: var(--fs-4); }
@@ -20,9 +24,16 @@
   .cifras { margin-top: var(--s-2); }
   .anio { margin: var(--s-3) 0 2px; font-size: var(--fs-1); font-weight: 600; }
   .cal { display: block; width: 100%; height: auto; }
+  /* The months and the days of the week keep about 12 px whatever the width of the calendar (--k is its scale,
+     measured after drawing it). */
+  .cal text { font-size: calc(12px / var(--k, 1.25)); }
+  /* On a phone a year of 53 weeks would leave squares of 5 px: the calendar keeps a readable size and scrolls sideways. */
+  .cal-caja { overflow-x: auto; }
+  @media (max-width: 640px) { .cal { min-width: 640px; } }
   .leyenda { margin-top: var(--s-2); }
   .leyenda i { border-radius: 2px; }
-  .leyenda b.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); margin-right: 4px; }
+  .leyenda i.sindatos { background: var(--panel); border: 1px dashed var(--line-strong); }
+  .leyenda b.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ffffff; border: 1.5px solid var(--dot); margin-right: 4px; vertical-align: -1px; box-sizing: border-box; }
   .tip { position: fixed; pointer-events: none; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: var(--r-1);
     padding: 6px 8px; font-size: var(--fs-0); box-shadow: var(--shadow); display: none; max-width: 320px; z-index: 30; }
   p.texto { margin: var(--s-2) 0; max-width: 80ch; }
@@ -39,7 +50,7 @@
     <a href="historial.html" class="actual">Día a día 2022 - 2026</a>
     <a href="negocio.html">Negocio y cifras</a>
   </div>
-  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
+  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a></span>
 </nav>
 <header class="page">
   <div class="page-top">
@@ -51,9 +62,9 @@
   <section>
     <div class="controles">
       <span>Tiempo del día que ve el modelo:</span>
-      <label><input type="radio" name="modo" value="prevision" checked> previsión real de ICON-EU de la víspera (2024 - 2025)</label>
-      <label><input type="radio" name="modo" value="reanalisis"> reanálisis, como previsión perfecta (2022 - 2025)</label>
-      <label><input type="checkbox" id="winsor"> recortar los cortes de más de 110 minutos (el incendio de Jarilla del 13.08.2025 pesa solo lo que 4 años)</label>
+      <label><input type="radio" name="modo" value="prevision" checked> <span>previsión real de ICON-EU de la víspera (<span id="anios-prevision">2024 - 2026</span>)</span></label>
+      <label><input type="radio" name="modo" value="reanalisis"> <span>reanálisis, como previsión perfecta (<span id="anios-reanalisis">2022 - 2026</span>)</span></label>
+      <label><input type="checkbox" id="winsor"> recortar los cortes de más de 110 minutos (el incendio del 13.08.2025 pesa él solo tanto como un año entero)</label>
     </div>
   </section>
   <div id="bloques"></div>
@@ -77,8 +88,15 @@
   const COLORS = { bajo: "var(--cal-bajo)", medio: "var(--cal-medio)", alto: "var(--cal-alto)", "muy alto": "var(--cal-muy-alto)" };
   const ORDER = ["bajo", "medio", "alto", "muy alto"];
   const cls = (n) => (n || "bajo").replace(" ", "-");
-  const num = (x, d = 0) => (x == null || isNaN(x)) ? "" : Number(x).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
-  const pct = (x, d = 0) => (x == null || isNaN(x)) ? "" : (100 * x).toFixed(d).replace(".", ",") + " %";
+  // Numbers in Spanish: decimal comma and a dot every three digits, also with four digits (6.451, not 6451, which is
+  // what toLocaleString("es-ES") leaves).
+  const num = (x, d = 0) => {
+    if (x == null || isNaN(x)) return "";
+    const [whole, dec] = Math.abs(Number(x)).toFixed(d).split(".");
+    const sign = Number(x) < 0 && Number(Math.abs(Number(x)).toFixed(d)) !== 0 ? "-" : "";
+    return sign + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (dec ? "," + dec : "");
+  };
+  const pct = (x, d = 0) => (x == null || isNaN(x)) ? "" : num(100 * x, d) + "\u00a0%";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fecha = (f) => f.slice(8, 10) + "." + f.slice(5, 7) + "." + f.slice(0, 4);
   const CAP = 110;
@@ -98,7 +116,7 @@
   }
 
   function calendar(days, year, winsor) {
-    const W = 14, G = 2, L = 28, T = 16;
+    const W = 14, G = 2, L = 30, T = 22;
     const first = new Date(year + "-01-01T00:00:00Z"), last = new Date(year + "-12-31T00:00:00Z");
     const offset = (first.getUTCDay() + 6) % 7;
     const weeks = Math.ceil((offset + 366) / 7);
@@ -107,7 +125,7 @@
     let out = `<svg class="cal" viewBox="0 0 ${width} ${height}" role="img" aria-label="Calendario de ${year}">`;
     const meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
     const dias = ["L", "", "X", "", "V", "", "D"];
-    dias.forEach((t, i) => { if (t) out += `<text x="${L - 6}" y="${T + i * (W + G) + W - 3}" font-size="9" text-anchor="end" fill="var(--muted)">${t}</text>`; });
+    dias.forEach((t, i) => { if (t) out += `<text x="${L - 6}" y="${T + i * (W + G) + W - 3}" text-anchor="end" fill="var(--muted)">${t}</text>`; });
     let maxH = 1;
     for (const d of days) maxH = Math.max(maxH, hours(d, winsor));
     for (let t = new Date(first); t <= last; t.setUTCDate(t.getUTCDate() + 1)) {
@@ -115,20 +133,34 @@
       const idx = Math.floor((t - first) / 86400000) + offset;
       const col = Math.floor(idx / 7), row = idx % 7;
       const x = L + col * (W + G), y = T + row * (W + G);
-      if (t.getUTCDate() === 1) out += `<text x="${x}" y="${T - 5}" font-size="9" fill="var(--muted)">${meses[t.getUTCMonth()]}</text>`;
+      if (t.getUTCDate() === 1) out += `<text x="${x}" y="${T - 6}" fill="var(--muted)">${meses[t.getUTCMonth()]}</text>`;
       const d = byDate.get(f);
-      const fill = d ? COLORS[d.n] || COLORS.bajo : "var(--grid)";
+      if (!d) {
+        // A day without a score: white with a dashed edge (it is in the legend as "sin datos").
+        out += `<rect x="${x + 0.5}" y="${y + 0.5}" width="${W - 1}" height="${W - 1}" rx="2" fill="var(--panel)" stroke="var(--line-strong)" stroke-width="1.1" stroke-dasharray="2 2" data-f="${f}" class="dia sin-datos"></rect>`;
+        continue;
+      }
       // A day with a warning of AEMET (sent before the evening) gets an outline: thin for yellow, thick for orange or red.
-      const warn = d && d.a ? ` stroke="var(--fg)" stroke-width="${d.a >= 2 ? 2 : 1}" stroke-opacity="0.8"` : "";
-      out += `<rect x="${x}" y="${y}" width="${W}" height="${W}" rx="2" fill="${fill}"${warn} data-f="${f}" class="dia"></rect>`;
-      if (d && d.i > 0) {
-        const h = hours(d, winsor);
-        const r = 1.6 + 4.4 * Math.sqrt(h / maxH);
-        out += `<circle cx="${x + W / 2}" cy="${y + W / 2}" r="${r.toFixed(1)}" fill="var(--dot)" opacity="0.85" pointer-events="none"></circle>`;
+      const warn = d.a ? ` stroke="var(--fg)" stroke-width="${d.a >= 2 ? 2 : 1}" stroke-opacity="0.85"` : "";
+      out += `<rect x="${x}" y="${y}" width="${W}" height="${W}" rx="2" fill="${COLORS[d.n] || COLORS.bajo}"${warn} data-f="${f}" class="dia"></rect>`;
+      if (d.i > 0) {
+        // The incidents: a white ring with a dark edge, its size by the customer-hours, readable on any tint.
+        const r = 2.4 + 3.6 * Math.sqrt(hours(d, winsor) / maxH);
+        out += `<circle cx="${x + W / 2}" cy="${y + W / 2}" r="${r.toFixed(1)}" fill="#ffffff" stroke="var(--dot)" stroke-width="1.3" pointer-events="none"></circle>`;
       }
     }
     return out + "</svg>";
   }
+
+  // The scale of every calendar (drawn width over viewBox width), so its text keeps about 12 px (see .cal text).
+  function escalaCalendarios(root) {
+    root.querySelectorAll("svg.cal").forEach((svg) => {
+      const w = svg.getBoundingClientRect().width, vb = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal.width : 0;
+      if (w > 0 && vb > 0) svg.style.setProperty("--k", (w / vb).toFixed(3));
+    });
+  }
+  let reescala = null;
+  window.addEventListener("resize", () => { clearTimeout(reescala); reescala = setTimeout(() => escalaCalendarios(document), 150); });
 
   function render() {
     if (!DATA) return;
@@ -145,20 +177,26 @@
       const lv = ORDER.map((n) => { const b = r.by[n]; return `<tr><td><span class="nivel ${cls(n)}">${n}</span></td><td class="num">${num(b.dias)} (${pct(b.dias / r.dias)})</td><td class="num">${pct(b.dias ? b.con / b.dias : 0, 1)}</td><td class="num">${num(b.inc)}</td><td class="num">${num(b.ch)}</td><td class="num">${pct(r.total ? b.ch / r.total : 0)}</td></tr>`; }).join("");
       const worst = r.worst.map((d) => `<tr><td>${fecha(d.f)}</td><td><span class="nivel ${cls(d.n)}">${d.n}</span></td><td class="num">${pct(d.p, 1)}</td><td class="num">${d.i}</td><td class="num">${num(d.c)}</td><td class="num">${num(d.h)}</td><td class="num">${num(d.m)}</td><td>${esc(d.b || "")}</td></tr>`).join("");
       const ratio = r.by.bajo.dias && r.by["muy alto"].dias ? (r.by["muy alto"].con / r.by["muy alto"].dias) / (r.by.bajo.con / r.by.bajo.dias) : null;
+      // The incidents per year over the days really scored: the first year with forecast starts on 20 January and the
+      // last one ends with the labels of Calser, so they count as the part of a year they are.
+      const incidents = days.reduce((a, d) => a + d.i, 0);
+      const firstDay = days.reduce((m, d) => (d.f < m ? d.f : m), days[0].f), lastDay = days.reduce((m, d) => (d.f > m ? d.f : m), days[0].f);
       sec.innerHTML = `<h2>${esc(dist.nombre)}</h2>
         <div class="cifras">
           <div class="cifra"><div class="v">${pct(r.alertDays / r.dias)}</div><div class="l">de los días en alerta (alto o muy alto)</div></div>
           <div class="cifra"><div class="v">${pct(r.total ? r.alert / r.total : 0)}</div><div class="l">de las horas-cliente perdidas por causas locales cayeron en esos días</div></div>
-          <div class="cifra"><div class="v">${ratio ? num(ratio, 1) + "x" : "-"}</div><div class="l">veces más probable una avería en un día muy alto que en uno bajo</div></div>
-          <div class="cifra"><div class="v">${num(days.reduce((a, d) => a + d.i, 0))}</div><div class="l">incidencias de causa local en ${years.length} años (${num(days.reduce((a, d) => a + d.i, 0) / years.length, 1)} al año)</div></div>
+          <div class="cifra"><div class="v">${ratio && isFinite(ratio) ? num(ratio, 1) : "-"}</div><div class="l">veces más probable una avería en un día muy alto que en uno bajo</div></div>
+          <div class="cifra"><div class="v">${num(incidents)}</div><div class="l">incidencias de causa local del ${fecha(firstDay)} al ${fecha(lastDay)} (${num(incidents / (days.length / 365), 1)} al año)</div></div>
         </div>
-        ${years.map((y) => `<div class="anio">${y}</div>` + calendar(days.filter((d) => d.f.startsWith(y)), Number(y), winsor)).join("")}
-        <div class="leyenda"><span><i style="background:var(--cal-bajo)"></i>bajo</span><span><i style="background:var(--cal-medio)"></i>medio</span><span><i style="background:var(--cal-alto)"></i>alto</span><span><i style="background:var(--cal-muy-alto)"></i>muy alto</span><span><b class="dot"></b>avería ese día (tamaño: horas-cliente)</span><span><i style="background:transparent;border:1px solid var(--fg)"></i>aviso amarillo de AEMET</span><span><i style="background:transparent;border:2px solid var(--fg)"></i>naranja o rojo</span><span>color: nivel que habría dado el sistema la tarde anterior</span></div>
+        ${years.map((y) => `<div class="anio">${y}</div><div class="cal-caja">` + calendar(days.filter((d) => d.f.startsWith(y)), Number(y), winsor) + "</div>").join("")}
+        <div class="leyenda"><span><b class="que">Color:</b> nivel que habría dado el sistema la tarde anterior</span><span><i style="background:var(--cal-bajo)"></i>bajo</span><span><i style="background:var(--cal-medio)"></i>medio</span><span><i style="background:var(--cal-alto)"></i>alto</span><span><i style="background:var(--cal-muy-alto)"></i>muy alto</span><span><i class="sindatos"></i>sin datos</span></div>
+        <div class="leyenda" style="margin-top:4px"><span><b class="dot"></b>avería ese día (tamaño: horas-cliente)</span><span><i style="background:transparent;border:1px solid var(--fg)"></i>aviso amarillo de AEMET</span><span><i style="background:transparent;border:2px solid var(--fg)"></i>aviso naranja o rojo</span></div>
         <h3>Por nivel previsto</h3>
-        <table><thead><tr><th>Nivel</th><th class="num">Días</th><th class="num">Con avería</th><th class="num">Incidencias</th><th class="num">Horas-cliente</th><th class="num">Parte</th></tr></thead><tbody>${lv}</tbody></table>
+        <table><thead><tr><th>Nivel</th><th class="num">Días</th><th class="num">Con avería</th><th class="num">Incidencias</th><th class="num">Horas-cliente</th><th class="num">Parte de las horas-cliente</th></tr></thead><tbody>${lv}</tbody></table>
         <h3>Los 10 peores días</h3>
         <table><thead><tr><th>Día</th><th>Nivel previsto</th><th class="num">Prob.</th><th class="num">Incid.</th><th class="num">Clientes</th><th class="num">Horas-cliente</th><th class="num">Corte más largo (min)</th><th>Bases propuestas</th></tr></thead><tbody>${worst}</tbody></table>`;
       root.appendChild(sec);
+      escalaCalendarios(sec);
       envolverTablas(sec);
       const tip = document.getElementById("tip");
       const byDate = new Map(days.map((d) => [d.f, d]));
@@ -168,21 +206,33 @@
           if (!d) return;
           tip.style.display = "block"; tip.style.left = (e.clientX + 12) + "px"; tip.style.top = (e.clientY + 12) + "px";
           const AVISO = ["sin aviso de AEMET", "aviso amarillo de AEMET", "aviso naranja de AEMET", "aviso rojo de AEMET"];
-          tip.innerHTML = `<b>${fecha(d.f)}</b> · nivel ${esc(d.n)} (${pct(d.p, 1)})${d.a != null ? ` · ${AVISO[d.a] || "aviso de AEMET"}` : ""}<br>${d.i ? `${d.i} incidencia${d.i > 1 ? "s" : ""}, ${num(d.c)} clientes, ${num(hours(d, winsor))} horas-cliente, corte más largo ${num(d.m)} min` : "sin averías de causa local"}${d.b ? `<br>bases: ${esc(d.b)}` : ""}`;
+          tip.innerHTML = `<b>${fecha(d.f)}</b>: nivel ${esc(d.n)} (${pct(d.p, 1)})${d.a != null ? `, ${AVISO[d.a] || "aviso de AEMET"}` : ""}<br>${d.i ? `${d.i} incidencia${d.i > 1 ? "s" : ""}, ${num(d.c)} clientes, ${num(hours(d, winsor))} horas-cliente, corte más largo ${num(d.m)} min` : "sin averías de causa local"}${d.b ? `<br>bases: ${esc(d.b)}` : ""}`;
         });
         el.addEventListener("mouseleave", () => { tip.style.display = "none"; });
       });
     }
-    document.getElementById("fuentes").innerHTML = `${esc(DATA.modos[mode])}. Niveles: muy alto desde el percentil 95 de los días de entrenamiento, alto desde el 90, medio desde el 75.`;
-    document.getElementById("pie").textContent = "Cada día se puntúa con un modelo entrenado solo con los años anteriores, como haría el job cada tarde; las averías son las incidencias de causa local de Calser (sin aguas arriba, apagones, programadas ni maniobras) en los CT en estudio, con sus clientes y la duración real de cada corte. Generado el " + (DATA.generado || "") + ".";
+    const modeText = String((DATA.modos || {})[mode] || "");
+    document.getElementById("fuentes").innerHTML = `${esc(modeText.charAt(0).toUpperCase() + modeText.slice(1))}. Niveles: muy alto desde el percentil 95 de los días de entrenamiento, alto desde el 90, medio desde el 75.`;
+    document.getElementById("pie").textContent = "Cada día se puntúa con un modelo entrenado solo con los años anteriores, como hace el sistema cada tarde; las averías son las incidencias de causa local de Calser (sin aguas arriba, apagones, programadas ni maniobras) en los CT en estudio, con sus clientes y la duración real de cada corte. Generado el " + (DATA.generado || "") + ".";
   }
 
   document.querySelectorAll('input[name="modo"]').forEach((el) => el.addEventListener("change", render));
   document.getElementById("winsor").addEventListener("change", render);
   // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
   function ordenar(lista) { return (lista || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { numeric: true })); }
-  fetch("data/historico.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => { d.distribuidoras = ordenar(d.distribuidoras); DATA = d; render(); })
-    .catch((e) => { document.getElementById("fuentes").textContent = "No hay data/historico.json (lo deja job_ml_caso_negocio): " + e; });
+  // The years of each kind of weather, as the file has them, next to its button.
+  function anios() {
+    for (const mode of ["prevision", "reanalisis"]) {
+      const ys = DATA.distribuidoras.flatMap((x) => ((x.dias || {})[mode] || []).map((d) => String(d.f).slice(0, 4)));
+      const el = document.getElementById("anios-" + mode);
+      if (!el || !ys.length) continue;
+      const lo = ys.reduce((a, b) => (a < b ? a : b)), hi = ys.reduce((a, b) => (a > b ? a : b));
+      el.textContent = lo === hi ? lo : `${lo} - ${hi}`;
+    }
+  }
+  fetch("data/historico.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then((d) => { d.distribuidoras = ordenar(d.distribuidoras); DATA = d; anios(); render(); },
+          (e) => { document.getElementById("fuentes").textContent = `Todavía no hay data/historico.json (${e.message}): lo deja job_ml_caso_negocio.py, el trabajo del caso de negocio.`; });
 })();
 </script>
 </body>

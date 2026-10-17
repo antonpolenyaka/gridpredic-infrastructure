@@ -103,13 +103,23 @@ DEFAULTS = {
     "bloques": ["historia", "historia+estructura", "historia+estructura+scada", "historia+estructura+publicos",
                 "historia+estructura+obras", "historia+estructura+clima", "historia+estructura+naturaleza",
                 "historia+estructura+arbolado", "historia+estructura+hoja", "historia+estructura+arbolado+hoja",
-                "historia+estructura+corredor", "historia+estructura+arbolado+corredor", "todo"],
+                "historia+estructura+corredor", "historia+estructura+arbolado+corredor", "historia+estructura+mfe",
+                "historia+estructura+arbolado+mfe", "historia+estructura+avifauna", "historia+estructura+especies",
+                "todo"],
     # The trees of every cell, from the public maps (None or a missing file: the block stays empty).
     "arbolado_csv": "/app/config/01_bronze/arbolado_celdas.csv",
     # The canopy density and the leaf type of every cell, from the HRL of Copernicus (block hoja).
     "hrl_csv": "/app/config/01_bronze/hrl_celdas.csv",
     # The trees in a corridor of 15 m at each side of the power lines of OpenStreetMap in the cell (block corredor).
     "corredor_csv": "/app/config/01_bronze/corredor_celdas.csv",
+    # The canopy of every group of species in the cell from the Mapa Forestal de España (block mfe).
+    "mfe_csv": "/app/config/01_bronze/mfe_celdas.csv",
+    # The lines of each distribuidora that the Junta declared dangerous for the birds in each municipality (block
+    # avifauna, experimentos/aves/lineas_rd1432.py).
+    "avifauna_csv": "/app/config/01_bronze/avifauna_municipios.csv",
+    # The white stork and the big birds of the 10 x 10 km square of each municipality (block especies,
+    # experimentos/aves/ieet_municipios.py).
+    "especies_csv": "/app/config/01_bronze/especies_municipios.csv",
     # One model per family of causes (label and history of that family only), added up: the fauna of a line
     # repeats in the same supports, the failures of equipment follow the age and the load, the weather follows
     # the exposure. resto takes every other incident, the ones without a cause included, so the sum stands
@@ -155,6 +165,18 @@ CORRIDOR = ["celda_corr_km_linea", "celda_corr_pct_dosel_5m", "celda_corr_pct_do
             "celda_corr_dosel_media_m"]
 LEAF = ["celda_hrl_copa_media_pct", "celda_hrl_copa_30_pct", "celda_hrl_pct_frondosa", "celda_hrl_pct_conifera",
         "celda_hrl_caducifolio_de_arbol"]
+# The species of the trees: the share of the cell under the canopy of deciduous broadleaves (melojo, castaño,
+# quejigo, poplars), evergreen broadleaves (holm and cork oak), eucalyptus and conifers, from the Mapa Forestal de
+# España 1:50.000 of MITECO (experimentos/arbolado/celdas_mfe.py, mfe_celdas.csv); what the HRL cannot tell apart.
+MFE = ["celda_mfe_copa_caducifolia_pct", "celda_mfe_copa_perennifolia_pct", "celda_mfe_copa_eucalipto_pct",
+       "celda_mfe_copa_conifera_pct", "celda_mfe_copa_total_pct", "celda_mfe_caducifolia_de_copa"]
+# The lines of the network that the Junta de Extremadura declared dangerous for the birds (in a protection zone and
+# without the measures of the RD 1432/2008; Resolución de 15.11.2021): how many in the municipality of the CT, and
+# per CT of the network there.
+BIRDS = ["muni_lineas_rd1432", "muni_lineas_rd1432_por_ct"]
+# From the Inventario Español de Especies Terrestres (MITECO): white stork in the square of the municipality, and how
+# many species of big birds (storks, raptors, big corvids) and of raptors live there.
+SPECIES = ["ieet_ciguena", "ieet_aves_grandes", "ieet_rapaces"]
 CAUSES_TABLE = "l2_silver.f_incidencia_causa"
 
 
@@ -213,7 +235,7 @@ def history(per_ct: pd.DataFrame, grid: pd.DataFrame, dim: pd.DataFrame, level: 
     return out.fillna(0.0)
 
 
-def scada_counts(spark, dim: pd.DataFrame) -> pd.DataFrame:
+def scada_counts(spark) -> pd.DataFrame:
     df = read_table(spark, SCADA_TABLE, ["distribuidora_id", "ct_id", "inicio_ts", "es_microcorte", "es_maniobra",
                                          "es_corte_etiqueta"])
     if df is None:
@@ -307,7 +329,7 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
     grid = pd.concat(rows, ignore_index=True)
     grid = add_label_history(grid, yearly_events(data, keep), dim, last_year)
 
-    scada = scada_counts(spark, dim)
+    scada = scada_counts(spark)
     if not scada.empty:
         first_scada = int(scada["anio"].min())
         s = scada.assign(anio=scada["anio"] + 1)
@@ -340,6 +362,7 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
         grid = add_trees(grid, cfg.get("arbolado_csv"))
         grid = add_trees(grid, cfg.get("hrl_csv"), LEAF, "hoja")
         grid = add_trees(grid, cfg.get("corredor_csv"), CORRIDOR, "corredor")
+        grid = add_trees(grid, cfg.get("mfe_csv"), MFE, "mfe")
     if not clim.empty and cells is not None:
         rows = []
         for year in sorted(grid["anio"].unique()):
@@ -352,7 +375,9 @@ def build_table(data: Data, cfg: dict, last_year: int, keep: set = None) -> pd.D
             means = pd.concat(rows).rename(columns={"horas_racha": "clima_horas_racha", "dias_lluvia": "clima_dias_lluvia"})
             grid = grid.merge(means, on=["celda_id", "anio"], how="left")
 
-    for column in STRUCTURE + PUBLIC + WORKS + CLIMATE + NATURE + TREES + LEAF + CORRIDOR:
+    grid = add_birds(grid, cfg.get("avifauna_csv"))
+    grid = add_species(grid, cfg.get("especies_csv"))
+    for column in STRUCTURE + PUBLIC + WORKS + CLIMATE + NATURE + TREES + LEAF + CORRIDOR + MFE + BIRDS + SPECIES:
         if column not in grid.columns:
             grid[column] = np.nan
     grid["tiene_telemetria"] = grid["tiene_telemetria"].astype(float)
@@ -408,13 +433,63 @@ def add_trees(grid: pd.DataFrame, path: str, columns: list = None, block: str = 
     return grid.merge(trees, on="celda_id", how="left")
 
 
+def plain(name) -> str:
+    """A municipality name without accents, case or spaces at the ends, to join the names of two sources."""
+    import unicodedata
+
+    text = unicodedata.normalize("NFKD", str(name or "")).encode("ascii", "ignore").decode()
+    return " ".join(text.lower().split())
+
+
+def add_birds(grid: pd.DataFrame, path: str) -> pd.DataFrame:
+    """
+    The block avifauna: the dangerous lines of the distribuidora in the municipality of each CT, by distribuidora
+    and municipio_nombre (0 where the municipality has none; NaN without the file or the names).
+    """
+    if not path or not os.path.exists(path) or "municipio_nombre" not in grid.columns:
+        if path:
+            logger.info("No file %s or no municipalities: the block avifauna stays empty", path)
+        return grid
+    lines = pd.read_csv(path)
+    lines["_muni"] = lines["municipio"].map(plain)
+    grid = grid.copy()
+    grid["_muni"] = grid["municipio_nombre"].map(plain)
+    grid = grid.merge(lines[["distribuidora_id", "_muni", "lineas_rd1432"]].rename(
+        columns={"lineas_rd1432": "muni_lineas_rd1432"}), on=["distribuidora_id", "_muni"], how="left")
+    grid["muni_lineas_rd1432"] = grid["muni_lineas_rd1432"].fillna(0.0)
+    per_ct = grid.groupby(["distribuidora_id", "_muni", "anio"])["ct_id"].transform("nunique")
+    grid["muni_lineas_rd1432_por_ct"] = grid["muni_lineas_rd1432"] / per_ct
+    found = int((lines.merge(grid[["distribuidora_id", "_muni"]].drop_duplicates(), on=["distribuidora_id", "_muni"])
+                 ["lineas_rd1432"]).sum())
+    logger.info("Block avifauna: %s of the %s dangerous lines in the municipalities of the CT", found,
+                int(lines["lineas_rd1432"].sum()))
+    return grid.drop(columns="_muni")
+
+
+def add_species(grid: pd.DataFrame, path: str) -> pd.DataFrame:
+    """The block especies by the municipality of each CT (NaN without the file or the names)."""
+    if not path or not os.path.exists(path) or "municipio_nombre" not in grid.columns:
+        if path:
+            logger.info("No file %s or no municipalities: the block especies stays empty", path)
+        return grid
+    species = pd.read_csv(path)
+    species["_muni"] = species["municipio"].map(plain)
+    grid = grid.copy()
+    grid["_muni"] = grid["municipio_nombre"].map(plain)
+    columns = [c for c in SPECIES if c in species.columns]
+    grid = grid.merge(species.drop_duplicates("_muni")[["_muni"] + columns], on="_muni", how="left")
+    logger.info("Block especies: %s of %s CT-years with their square", int(grid[columns[0]].notna().sum()), len(grid))
+    return grid.drop(columns="_muni")
+
+
 def block_columns(grid: pd.DataFrame) -> dict:
     hist = [c for c in grid.columns if c.startswith(("kva_h_", "interrupciones_", "horas_", "tiepi_"))
             and not c.startswith(("horas_racha",))] + ["anios_desde_ultima"]
     scada = [c for c in grid.columns if c.startswith(("microcortes_", "cortes_scada_", "episodios_scada_"))]
     return {"historia": hist, "estructura": STRUCTURE, "scada": scada, "publicos": PUBLIC, "obras": WORKS,
             "clima": CLIMATE, "naturaleza": NATURE, "arbolado": TREES,
-            "hoja": LEAF, "corredor": CORRIDOR}
+            "hoja": LEAF, "corredor": CORRIDOR, "mfe": MFE, "avifauna": BIRDS,
+            "especies": SPECIES}
 
 
 def features_of(name: str, blocks: dict) -> list:

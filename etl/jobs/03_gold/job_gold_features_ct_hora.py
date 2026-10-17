@@ -173,10 +173,10 @@ def measure_stats(agg: DataFrame, keys: list, families: list, stats: list,
 
 def register_measures(registry: FeatureRegistry, prefix: str, scope: str, families, stats, imbalance):
     descriptions = {
-        "media": "mean of the samples of the last hour",
+        "media": "mean of the last hour's samples",
         "max": "maximum sample of the last hour",
         "min": "minimum sample of the last hour",
-        "std": "standard deviation of the samples of the last hour",
+        "std": "standard deviation of the last hour's samples",
         "n_muestras": "number of valid samples in the last hour",
         "frac_rancio": "share of samples whose held value is more than an hour old",
     }
@@ -846,7 +846,9 @@ def main():
             replace_where=month_range_condition("fecha_mes", lo, hi),
         )
 
-        written = spark.table(TARGET_TABLE).where(in_range("hora", lo, hi))
+        # The partition filter first, so the check reads only the months just written.
+        written = (spark.table(TARGET_TABLE).where(month_range_condition("fecha_mes", lo, hi))
+                   .where(in_range("hora", lo, hi)))
         stats = written.agg(
             F.count(F.lit(1)).alias("filas"),
             F.sum("scada_activo").alias("activas"),

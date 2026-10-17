@@ -1,9 +1,10 @@
 /* GridPredic.com: the motion of the public page (GSAP and ScrollTrigger, served from vendor/gsap).
 
    - The scene of the hero is a short story told with the scroll: the lines of the network are drawn and the wind
-     sweeps (the evening forecast), the towns take the colour of their risk (the morning's levels), and the crew
-     van moves from its base to the middle of the towns at risk. On screens of 1024 px or more the hero is pinned
-     and the story is scrubbed by the scroll (going back up undoes it); on smaller screens it plays once on load.
+     sweeps (the evening forecast), the towns take the colour of their risk (tomorrow's levels), and the crew
+     van moves from its base to the base proposed for tomorrow. On screens wider than 1024 px (the same cut as the
+     CSS, where the hero stops being two columns) the hero is pinned just below the menu and the story is scrubbed
+     by the scroll (going back up undoes it); on smaller screens it plays once on load.
    - The cards, figures and steps appear once when they enter the view; the big figures count up.
    - With "reduce motion" everything is shown in its final state, without animation. Without the library, the
      page is simply static: nothing is hidden behind a script. */
@@ -11,14 +12,28 @@
   "use strict";
   const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const ok = window.gsap && window.ScrollTrigger;
-  const RISK = { bajo: "#2f7a4b", medio: "#d9a400", alto: "#d9641a", "muy-alto": "#bf2a2a" };
+  // The colours of the levels on the dark hero: the dark theme of the dashboard (gridpredic-web.css, .escena).
+  const RISK = { bajo: "#7d8896", medio: "#ffdb42", alto: "#e37115", "muy-alto": "#b73d43" };
   const LABELS = ["20:30, la víspera: previsión y avisos", "Mañana: el riesgo por municipio y línea",
-                  "La brigada, en el punto medio: 35 minutos, no 90"];
+                  "Mañana: la guardia y la base de la brigada"];
+
+  // The label of the scene: its box follows the length of the text (and again once the web font is in).
+  function setLabel(text) {
+    const label = document.querySelector(".escena .etiqueta");
+    if (!label) return;
+    const t = label.querySelector("text"), box = label.querySelector("rect");
+    if (text !== undefined) t.textContent = text;
+    try {
+      const w = t.getComputedTextLength();
+      if (w > 0) box.setAttribute("width", String(Math.ceil(w + 2 * (Number(t.getAttribute("x")) - Number(box.getAttribute("x"))))));
+    } catch (e) { /* not rendered yet: the box keeps its width */ }
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => setLabel());
 
   function finalState() {
     document.querySelectorAll(".escena .nodo[data-riesgo]").forEach((n) => n.classList.add(n.dataset.riesgo));
     const label = document.querySelector(".escena .etiqueta");
-    if (label) { label.setAttribute("opacity", "1"); label.querySelector("text").textContent = LABELS[2]; }
+    if (label) { label.setAttribute("opacity", "1"); setLabel(LABELS[2]); }
     const crew = document.querySelector(".escena .brigada");
     if (crew) {
       crew.setAttribute("opacity", "1");
@@ -44,7 +59,6 @@
     const route = svg.getElementById("ruta");
     const van = svg.querySelector(".furgon");
     const label = svg.querySelector(".etiqueta");
-    const labelText = label.querySelector("text");
     const steps = Array.from(document.querySelectorAll(".pasos li"));
     const routeLength = route.getTotalLength();
     route.style.strokeDasharray = routeLength; route.style.strokeDashoffset = routeLength;
@@ -52,14 +66,23 @@
     const setStep = (k) => steps.forEach((li, i) => li.classList.toggle("activo", i <= k));
 
     const tl = gsap.timeline({ defaults: { ease: "none" } });
-    tl.set(label, { opacity: 1 }).call(() => { labelText.textContent = LABELS[0]; setStep(0); }, null, 0)
-      .to(lines, { strokeDashoffset: 0, duration: 1.2, stagger: 0.08 }, 0)
+    // The label and the steps follow the playhead, so scrolling back up undoes them too (a .call() fires again
+    // when the playhead passes it backwards, which left them one step late on the way up).
+    const STEP_STARTS = [0, 1.9, 2.9];
+    let shown = -1;
+    const follow = () => {
+      const t = tl.time();
+      const k = t >= STEP_STARTS[2] ? 2 : t >= STEP_STARTS[1] ? 1 : 0;
+      if (k !== shown) { shown = k; setLabel(LABELS[k]); setStep(k); }
+    };
+    tl.eventCallback("onUpdate", follow);
+    gsap.set(label, { opacity: 1 });
+    follow();
+    tl.to(lines, { strokeDashoffset: 0, duration: 1.2, stagger: 0.08 }, 0)
       .fromTo(gusts, { x: -260, opacity: 0 }, { x: 320, opacity: 1, duration: 1.4 }, 0.3)
       .to(gusts, { opacity: 0, duration: 0.4 }, 1.7)
-      .call(() => { labelText.textContent = LABELS[1]; setStep(1); }, null, 1.9)
-      .to(nodes, { fill: (i, el) => RISK[el.dataset.riesgo], duration: 0.5, stagger: 0.07 }, 1.9)
-      .call(() => { labelText.textContent = LABELS[2]; setStep(2); }, null, 2.9)
-      .to(crew, { opacity: 1, duration: 0.3 }, 2.9)
+      .to(nodes, { fill: (i, el) => RISK[el.dataset.riesgo], duration: 0.5, stagger: 0.07 }, STEP_STARTS[1])
+      .to(crew, { opacity: 1, duration: 0.3 }, STEP_STARTS[2])
       .to(route, { strokeDashoffset: 0, duration: 0.9 }, 3.0)
       .to(along, { t: 1, duration: 1.0, onUpdate: () => {
         const p = route.getPointAtLength(along.t * routeLength);
@@ -74,12 +97,16 @@
   const tl = scene();
   if (tl) {
     const mm = gsap.matchMedia();
-    mm.add("(min-width: 1024px)", () => {
+    // The two queries are exact complements of the CSS one (max-width: 1024px), so no width is left without a branch.
+    const menu = document.querySelector("nav.menu");
+    mm.add("not all and (max-width: 1024px)", () => {
       tl.pause();
-      const st = ScrollTrigger.create({ trigger: ".hero", start: "top top", end: "+=160%", pin: true, scrub: 0.6, animation: tl, anticipatePin: 1 });
+      // Pinned below the sticky menu, so the hero is never under it and nothing shows beneath it while pinned.
+      const st = ScrollTrigger.create({ trigger: ".hero", start: () => `top ${menu ? menu.offsetHeight : 0}px`, end: "+=160%",
+                                        pin: true, scrub: 0.6, animation: tl, anticipatePin: 1, invalidateOnRefresh: true });
       return () => st.kill();
     });
-    mm.add("(max-width: 1023px)", () => {
+    mm.add("(max-width: 1024px)", () => {
       tl.timeScale(1.4).play(0);
       return () => tl.pause();
     });

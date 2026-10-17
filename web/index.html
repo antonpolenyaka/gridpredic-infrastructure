@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GridPredic</title>
-<meta name="description" content="GridPredic dice la tarde antes dónde y cuándo es más probable una interrupción en la red de media tensión de una distribuidora eléctrica, y dónde dejar las brigadas.">
+<meta name="description" content="GridPredic calcula cada tarde el riesgo de avería del día siguiente en la red de media tensión de una distribuidora eléctrica: el nivel de riesgo, la franja horaria, las líneas y los municipios más expuestos y si conviene reforzar la guardia.">
 <link rel="stylesheet" href="gridpredic-web.css">
 </head>
 <body>
@@ -17,22 +17,23 @@
     <a href="#distribuidoras">Para la distribuidora</a>
     <a href="#limites">Lo que no hace</a>
   </div>
-  <a class="boton" href="#contacto">Pedir una demo de un mes</a>
+  <a class="boton" href="#contacto">Pedir la demo de un mes</a>
 </nav>
 
+<main>
 <!-- The hero: the scene is drawn as the page scrolls (pinned), the words stay. -->
 <section class="hero" id="inicio">
   <div class="hero-texto">
-    <h1>La tarde antes, dónde va a fallar la red mañana.</h1>
-    <p class="lead">GridPredic aprende de las interrupciones de tu propia red y de la previsión meteorológica y te dice cada tarde, para el día siguiente, en qué municipios y líneas es más probable una avería, en qué franja horaria y dónde dejar las brigadas para llegar antes.</p>
+    <h1>El riesgo de avería de mañana en tu red, la tarde antes.</h1>
+    <p class="lead">GridPredic cruza el histórico de interrupciones de tu red de media tensión con la previsión meteorológica de la víspera. Cada tarde a las 20:30 da el nivel de riesgo del día siguiente, la franja horaria en la que es más probable una avería, las líneas y los municipios más expuestos y si conviene reforzar la guardia.</p>
     <div class="acciones">
-      <a class="boton primario" href="#contacto">Pedir una demo de un mes</a>
+      <a class="boton primario" href="#contacto">Pedir la demo de un mes</a>
       <a class="boton" href="#cifras">Ver las cifras</a>
     </div>
     <p class="nota">Para distribuidoras eléctricas pequeñas y medianas. Se instala junto al SCADA que ya tienes, sin sensores nuevos.</p>
   </div>
-  <div class="escena" aria-hidden="true">
-    <svg id="red" viewBox="0 0 640 480" preserveAspectRatio="xMidYMid meet">
+  <div class="escena">
+    <svg id="red" viewBox="0 0 640 480" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id="viento" x1="0" x2="1"><stop offset="0" stop-color="#8fb1ff" stop-opacity="0"/><stop offset="0.5" stop-color="#8fb1ff" stop-opacity="0.9"/><stop offset="1" stop-color="#8fb1ff" stop-opacity="0"/></linearGradient>
       </defs>
@@ -80,85 +81,88 @@
     <ol class="pasos" aria-label="Lo que pasa cada tarde">
       <li data-paso="0">La previsión de la víspera y los avisos de AEMET</li>
       <li data-paso="1">El riesgo por municipio y línea para mañana</li>
-      <li data-paso="2">La brigada, en el punto medio de las zonas de riesgo</li>
+      <li data-paso="2">La guardia y la base de la brigada para mañana</li>
     </ol>
   </div>
 </section>
 
 <section class="bloque" id="producto">
-  <div class="bloque-cab"><h2>Cada tarde a las 20:30, y durante el día</h2><p>Cuatro entregas que la guardia usa tal cual. Sin cambiar cómo trabaja.</p></div>
+  <div class="bloque-cab"><h2>Cada tarde a las 20:30, y durante el día</h2><p>Lo que recibe la guardia en el cuadro de mando y en el canal del equipo.</p></div>
   <div class="tarjetas">
-    <article class="tarjeta" data-reveal><h3>El riesgo de mañana</h3><p>Nivel (bajo, medio, alto, muy alto) y probabilidad por distribuidora; la franja horaria; las líneas, los municipios y los CT ordenados por riesgo; las bases que minimizan la llegada de las brigadas; y la recomendación de guardia.</p></article>
-    <article class="tarjeta" data-reveal><h3>El parte de guardia</h3><p>Las mismas tablas en Excel para imprimir o mandar, y un mensaje a la tarde en el canal del equipo cuando hay alerta o la guardia se refuerza.</p></article>
-    <article class="tarjeta" data-reveal><h3>El seguimiento del día</h3><p>Los rayos del satélite cada 15 minutos, las estaciones de AEMET cada hora, los avisos releídos cada hora: si aparece uno de viento o tormenta que no estaba anoche, la guardia sube y se avisa.</p></article>
-    <article class="tarjeta" data-reveal><h3>El parte de la mañana</h3><p>Lo que dijimos ayer y lo que pasó con el viento, medido por las estaciones; y la orientación de pasado mañana para planificar.</p></article>
+    <article class="tarjeta" data-reveal><h3>El riesgo de mañana</h3><p>El nivel (bajo, medio, alto o muy alto) y la probabilidad por distribuidora; la franja horaria de más riesgo; las líneas, los municipios y los CT ordenados por riesgo; las bases propuestas para las brigadas; la recomendación de guardia; y una orientación del nivel de pasado mañana.</p></article>
+    <article class="tarjeta" data-reveal><h3>El parte de guardia</h3><p>Las mismas tablas en un Excel para imprimir o reenviar, y un mensaje por la tarde al canal del equipo (Slack, Teams o un webhook propio) cuando hay alerta o se refuerza la guardia.</p></article>
+    <article class="tarjeta" data-reveal><h3>El seguimiento del día</h3><p>Cada 15 minutos, los rayos del satélite, con aviso al canal si caen a menos de 10&nbsp;km de la red; cada hora, las estaciones de AEMET y los avisos, que se vuelven a leer. Si sale un aviso de viento o tormenta que no estaba la tarde anterior, la guardia pasa a reforzada y también se avisa.</p></article>
+    <article class="tarjeta" data-reveal><h3>El parte de la mañana</h3><p>A las 07:20, lo que dijimos para ayer frente a lo que midieron las estaciones (el pico de racha y la franja) y lo que dice el sistema para hoy.</p></article>
   </div>
   <figure class="captura" data-reveal>
-    <img src="img/riesgo_tormenta.png" alt="El cuadro de mando de GridPredic la tarde del 27.01.2026: riesgo muy alto, 21,4 %, franja de 6 a 14 h, mapa de municipios y perfil de racha" loading="lazy">
-    <figcaption>La tarde del 27.01.2026, vista por el sistema con la previsión y los avisos que había entonces: muy alto en las tres redes, con la franja y el mapa.</figcaption>
+    <img src="img/riesgo_tormenta.png" width="1632" height="778" alt="Cuadro de mando de GridPredic la tarde del 27.01.2026, Distribuidora 2: riesgo muy alto, 21,4&nbsp;% de probabilidad, franja de 6 a 14&nbsp;h, mapa de municipios por riesgo con las bases de las brigadas y racha prevista por horas" loading="lazy">
+    <figcaption>La tarde del 27.01.2026 vista por el sistema con la previsión y los avisos que había entonces: muy alto en las tres redes para el día del temporal. En la imagen, la Distribuidora&nbsp;2, con la franja de 6 a 14&nbsp;h y los municipios por riesgo.</figcaption>
   </figure>
 </section>
 
 <section class="bloque oscuro" id="cifras">
-  <div class="bloque-cab"><h2>Lo que habría pasado con el sistema en marcha</h2><p>Medido sobre 2022 - 2026 en tres distribuidoras de Extremadura, día a día, con la previsión que había cada víspera y un modelo que solo conocía los años anteriores.</p></div>
+  <div class="bloque-cab"><h2>Lo que habría pasado con el sistema en marcha</h2><p>Medido día a día del 20.01.2024 al 02.08.2026 en la Distribuidora&nbsp;1 y la Distribuidora&nbsp;2, con la previsión de ICON-EU que había cada víspera y un modelo entrenado solo con los años anteriores. La Distribuidora&nbsp;3, con 10&nbsp;CT, ha tenido una sola avería de causa local desde 2022 y no entra en las cifras.</p></div>
   <div class="cifras">
-    <div class="cifra" data-reveal><div class="v" data-cuenta="9" data-sufijo="x">9x</div><div class="l">veces más averías un día "muy alto" que un día "bajo" (17,9 % frente a 1,9 %)</div></div>
-    <div class="cifra" data-reveal><div class="v" data-cuenta="72" data-sufijo=" %">72 %</div><div class="l">de las horas-cliente perdidas caen en los días en alerta, que son el 13 % de los días</div></div>
-    <div class="cifra" data-reveal><div class="v">7 de 10</div><div class="l">de los peores días estaban en alerta desde la tarde anterior</div></div>
-    <div class="cifra" data-reveal><div class="v" data-cuenta="84" data-sufijo=" %">84 %</div><div class="l">de las averías de los días de alerta empiezan dentro de la franja horaria prevista</div></div>
+    <div class="cifra" data-reveal><div class="v" data-cuenta="9" data-sufijo="&nbsp;veces">9&nbsp;veces</div><div class="l">más a menudo hay avería en un día "muy alto" que en uno "bajo" (17,9&nbsp;% de los días frente a 1,9&nbsp;%)</div></div>
+    <div class="cifra" data-reveal><div class="v" data-cuenta="72" data-sufijo="&nbsp;%">72&nbsp;%</div><div class="l">de las horas-cliente perdidas por averías de la propia red caen en los días en alerta, que son el 12,5&nbsp;% de los días</div></div>
+    <div class="cifra" data-reveal><div class="v">7 de 10</div><div class="l">de los peores días de 2024 - 2026 estaban en alerta desde la tarde anterior</div></div>
+    <div class="cifra" data-reveal><div class="v" data-cuenta="84" data-sufijo="&nbsp;%">84&nbsp;%</div><div class="l">de las averías de los días en alerta empiezan dentro de la franja horaria prevista</div></div>
   </div>
-  <p class="nota-cifras" data-reveal>Con la política que el sistema recomienda (alerta, o aviso de viento o tormenta de AEMET), 50 días reforzados al año cubren el 74 % de las horas-cliente. Las cifras, su origen y lo que no funciona están publicados en la documentación del proyecto.</p>
+  <p class="nota-cifras" data-reveal>Un solo día pesa mucho en estas cifras: el temporal del 28.01.2026, que el sistema tenía en muy alto desde la tarde anterior, se llevó casi la mitad de las horas-cliente de esos dos años y medio. Sin él, los días en alerta concentran el 46&nbsp;%. El origen de cada cifra y lo que probamos sin resultado están en la documentación del proyecto.</p>
 </section>
 
 <section class="bloque" id="como">
   <div class="bloque-cab"><h2>Cómo funciona</h2><p>Del dato que ya tienes a la decisión de la tarde, en cuatro pasos.</p></div>
   <ol class="pasos-como">
-    <li data-reveal><span class="n">1</span><h3>Tus datos</h3><p>Las interrupciones y el cálculo oficial de calidad (TIEPI y NIEPI) que ya registras, y las señales del SCADA. Diez años de historia en el caso de nuestras tres redes.</p></li>
-    <li data-reveal><span class="n">2</span><h3>El tiempo y el territorio</h3><p>La previsión de ICON-EU y sus 40 escenarios, la predicción y los avisos de AEMET, los rayos del satélite, el peligro de incendio, el relieve y la vegetación de cada celda de 10 km.</p></li>
-    <li data-reveal><span class="n">3</span><h3>El modelo</h3><p>Una regresión logística por distribuidora y día, con la racha prevista frente al clima de cada celda y los avisos, reentrenada cada tarde con todos los días etiquetados; niveles por percentiles y probabilidad calibrada.</p></li>
-    <li data-reveal><span class="n">4</span><h3>La decisión</h3><p>El riesgo se reparte entre líneas, municipios y CT por su exposición y su historia; las bases de las brigadas se eligen para llegar antes al riesgo; y a la mañana siguiente se comprueba.</p></li>
+    <li data-reveal><span class="n">1</span><h3>Tus datos</h3><p>Las interrupciones y el cálculo oficial de calidad (TIEPI y NIEPI) que ya registras, y la topología del SCADA: de qué línea cuelga cada CT. En las tres redes con las que lo hemos construido hay diez años de historia.</p></li>
+    <li data-reveal><span class="n">2</span><h3>El tiempo</h3><p>La previsión de ICON-EU de la víspera para cada celda de 10&nbsp;km de la red, con sus 40 escenarios para saber cuánto fiarse de ella, y la predicción por municipios y los avisos de AEMET. Durante el día, los rayos del satélite y las estaciones de AEMET.</p></li>
+    <li data-reveal><span class="n">3</span><h3>El modelo</h3><p>Una regresión logística que da, para cada distribuidora y día, la probabilidad de que empiece alguna interrupción imprevista de más de tres minutos en alguno de sus CT. Mira la racha prevista frente a lo normal en cada celda, los avisos de AEMET, el calendario y las averías recientes. Se reentrena cada tarde con todos los días etiquetados; los niveles salen de percentiles y la probabilidad está calibrada.</p></li>
+    <li data-reveal><span class="n">4</span><h3>La decisión</h3><p>El riesgo del día se reparte entre líneas, municipios y CT según su tamaño, su historia y el tiempo previsto en sus celdas. Se marcan la franja de más riesgo y la guardia, y se proponen las bases de las brigadas. A la mañana siguiente se compara la racha prevista con la que midieron las estaciones.</p></li>
   </ol>
 </section>
 
 <section class="bloque" id="distribuidoras">
   <div class="dos">
     <div>
-      <h2>Para la distribuidora: cobrar más de la retribución por hacer lo mismo mejor</h2>
-      <p>La retribución de la distribución depende de la calidad de suministro a través del incentivo de la Circular 8/2025 de la CNMC. Cada minuto que una brigada llega antes es un minuto menos de interrupción para los clientes afectados. GridPredic no te pide vender más: te pide dejar la furgoneta donde más falta va a hacer.</p>
+      <h2>Para la distribuidora: el incentivo de calidad y lo que cuesta</h2>
+      <p>Una parte de la retribución de la distribución depende de la calidad de suministro. Con la Circular 8/2025 de la CNMC, el incentivo va del&nbsp;-4&nbsp;% al +4&nbsp;% según el TIEPI de los años n-4 a n-2 frente a la referencia del sector, y en una red como la Distribuidora&nbsp;1 cada minuto de TIEPI son unos 12.600 euros. Para una red que ya está por debajo de la referencia, lo que hay en juego es no perder la bonificación el año de un temporal.</p>
+      <p>Hoy la guardia se refuerza por calendario o mirando los avisos de AEMET. Con los datos de 2024 - 2026, reforzarla los fines de semana de invierno (44 días al año) habría cubierto el 4&nbsp;% de las horas-cliente perdidas; los días que GridPredic marca para reforzar, en alerta o con aviso de viento o tormenta de AEMET (50 al año), el 74&nbsp;%. El aviso de AEMET de viento o tormenta, solo, cubre el 69&nbsp;% con 23 días al año, y el sistema con esos mismos días se queda en el 66&nbsp;%; por eso la guardia que recomendamos junta las dos cosas.</p>
       <ul class="lista">
-        <li><b>18.000 euros al año</b>, el 0,15 % de la retribución de una distribuidora mediana y menos de dos décimas de hora de TIEPI.</li>
-        <li><b>La implantación, recuperable</b> con cargo a la retribución como proyecto piloto de calidad e innovación (artículo 22 de la Circular 8/2025).</li>
-        <li><b>Un mes de demo gratuita</b> con tus datos: calculamos con tu histórico cuántas horas-cliente habrían caído en días marcados la víspera y cuánto antes habrían llegado tus brigadas.</li>
-        <li><b>Sin sensores ni cambios en el SCADA</b>: se instala en contenedores junto al software que ya tienes, solo lee.</li>
+        <li><b>18.000 euros al año</b> de licencia: el 0,15&nbsp;% de la retribución de la Distribuidora&nbsp;1, algo menos de lo que vale minuto y medio de TIEPI en su incentivo.</li>
+        <li><b>20.000 euros de implantación</b>, una vez. Puede presentarse como proyecto piloto: el artículo 15 de la Circular 8/2025 permite reconocer esas inversiones con cargo a los costes de distribución si tienen un beneficio cuantificable para el sistema y la CNMC las aprueba antes. El informe de la demo sirve de base para pedirlo, aunque no damos por hecho que se apruebe.</li>
+        <li><b>Un mes de demo gratuita</b> con tus datos: calculamos con tu histórico cuántas horas-cliente habrían caído en días marcados la víspera y cuántos días al año habría que reforzar la guardia.</li>
+        <li><b>Sin sensores ni cambios en el SCADA</b>: se instala en contenedores junto al software que ya tienes y solo lee sus datos.</li>
       </ul>
     </div>
     <figure class="captura" data-reveal>
-      <img src="img/guardia.png" alt="La guardia a igual presupuesto: cobertura de las horas-cliente frente a los días reforzados al año, el sistema frente a los calendarios y a los avisos de AEMET" loading="lazy">
-      <figcaption>La misma comparación a cualquier presupuesto de días: el sistema frente a los calendarios fijos y a los avisos de AEMET.</figcaption>
+      <img src="img/guardia.png" width="1232" height="1332" alt="Tabla y curva de la guardia a igual presupuesto en la Distribuidora 1 y la Distribuidora 2, 2024 - 2026: los fines de semana de invierno, 44 días al año, cubren el 4 % de las horas-cliente; los avisos amarillos de AEMET, 85 días, el 80 %; el sistema en alerta o con aviso de viento o tormenta, 50 días, el 74 %" loading="lazy">
+      <figcaption>La guardia a igual presupuesto en el cuadro de mando: cuántas horas-cliente cubre cada forma de elegir los días de refuerzo, y la curva del sistema a cualquier número de días al año.</figcaption>
     </figure>
   </div>
 </section>
 
 <section class="bloque claro" id="limites">
-  <div class="bloque-cab"><h2>Lo que no hace, para que nadie lo espere</h2></div>
-  <div class="tarjetas tres">
-    <article class="tarjeta" data-reveal><h3>No dice qué CT fallará</h3><p>Acierta el día y la franja mucho mejor que la línea; la línea que falla está entre las tres primeras del ranking una de cada cuatro veces (al azar, una de cada once). Por eso hablamos de zonas y de dónde dejar la brigada, no de un CT.</p></article>
-    <article class="tarjeta" data-reveal><h3>No ve el estado de los equipos</h3><p>Una de cada cuatro horas-cliente cae en días tranquilos, por averías de equipos o causas desconocidas. Eso no lo anticipa ninguna previsión meteorológica.</p></article>
-    <article class="tarjeta" data-reveal><h3>Con pocas averías, la cobertura de un año baila</h3><p>Con unas 25 incidencias al año por distribuidora, la cobertura de un año concreto se mueve entre el 30 % y el 70 %. Lo decimos nosotros antes de que lo descubra el cliente.</p></article>
+  <div class="bloque-cab"><h2>Lo que no hace</h2></div>
+  <div class="tarjetas">
+    <article class="tarjeta" data-reveal><h3>No dice qué CT fallará</h3><p>Acierta el día y la franja mucho mejor que la línea: la que falla está entre las tres primeras del ranking una de cada cuatro veces, cuando al azar sería una de cada once. El riesgo se reparte por zonas y por líneas, y cada CT hereda el de su línea.</p></article>
+    <article class="tarjeta" data-reveal><h3>No ve el estado de los equipos</h3><p>Más de una de cada cuatro horas-cliente cae en días sin alerta. En los días de calma son sobre todo averías de equipos o de causa desconocida, que ninguna previsión del tiempo anuncia.</p></article>
+    <article class="tarjeta" data-reveal><h3>Con pocas averías, un año suelto dice poco</h3><p>Con unas 17 averías al año por distribuidora, la parte de las horas-cliente que cae en días de alerta cambia mucho de un año a otro: suele quedar entre el 30&nbsp;% y el 70&nbsp;%, y en nuestras redes ha ido del 3&nbsp;% al 88&nbsp;%. Por eso lo medimos con varios años juntos.</p></article>
+    <article class="tarjeta" data-reveal><h3>Mover las brigadas gana poco</h3><p>Cambiar cada día las bases según el riesgo gana menos de un minuto de TIEPI al año: con dos brigadas, dos bases fijas bien elegidas ya cubren la red. Lo que cuenta es tener gente y material preparados el día y en la franja que toca.</p></article>
   </div>
 </section>
 
 <section class="bloque oscuro" id="contacto">
   <div class="bloque-cab"><h2>Empezar por un mes</h2><p>Instalamos GridPredic con tus datos, sin compromiso. Al final del mes, el propio sistema te enseña lo que dijo cada tarde y lo que pasó.</p></div>
   <div class="contacto">
-    <a class="boton primario grande" href="mailto:hola@gridpredic.com?subject=Demo%20de%20un%20mes">Escríbenos: hola@gridpredic.com</a>
-    <p class="nota">GridPredic nace de un trabajo final del máster en Data Science and Engineering de la UPC School, con datos reales de tres distribuidoras y el apoyo de un socio con más de treinta años en el sector.</p>
+    <a class="boton primario grande" href="mailto:hola@gridpredic.com?subject=Demo%20de%20un%20mes">Escribir a hola@gridpredic.com</a>
+    <p class="nota">GridPredic empezó como el trabajo final de máster de Anton Shebarshinov Polenyaka y Josep Morancho i Poyatos (<span lang="en">Data Science and Engineering</span>, UPC School), con datos reales de tres distribuidoras y el apoyo de un socio con más de treinta años en el sector.</p>
   </div>
 </section>
+</main>
 
 <footer>
   <span>GridPredic</span>
-  <span>Mapas: OpenStreetMap. Meteorología: ICON-EU (Open-Meteo), AEMET OpenData, EUMETSAT, Copernicus.</span>
+  <span>Mapas: © colaboradores de OpenStreetMap. Meteorología: ICON-EU del DWD a través de Open-Meteo, AEMET OpenData, EUMETSAT y Copernicus.</span>
 </footer>
 
 <script src="vendor/gsap/gsap.min.js"></script>

@@ -193,6 +193,28 @@ def test_the_trees_of_the_cell_are_a_block(result, workdir):
     metrics = pd.read_csv(os.path.join(folder, "captura.csv"))
     assert "historia+estructura+arbolado" in set(metrics["modelo"])
     assert set(rc.TREES) <= set(rc.block_columns(pd.DataFrame(columns=["anios_desde_ultima"]))["arbolado"])
+    assert rc.block_columns(pd.DataFrame(columns=["anios_desde_ultima"]))["mfe"] == rc.MFE
+    # The species of the forest map come in the same way, with their own columns.
+    species = os.path.join(workdir, "mfe_celdas.csv")
+    pd.DataFrame({"celda_id": ["39.10_-6.10"], "mfe_copa_caducifolia_pct": [12.5]}).to_csv(species, index=False)
+    mapped = rc.add_trees(pd.DataFrame({"celda_id": ["39.10_-6.10", "39.90_-6.10"]}), species, rc.MFE, "mfe")
+    assert mapped["celda_mfe_copa_caducifolia_pct"].tolist()[0] == pytest.approx(12.5)
+    # The dangerous lines for the birds of each distribuidora come by its municipality, whatever the accents.
+    birds = os.path.join(workdir, "avifauna_municipios.csv")
+    pd.DataFrame({"distribuidora_id": [1, 2], "municipio": ["Cáceres", "Cáceres"], "lineas_rd1432": [6, 9]}).to_csv(
+        birds, index=False)
+    cts = pd.DataFrame({"distribuidora_id": [1, 1, 1], "ct_id": ["A", "B", "C"], "anio": [2024] * 3,
+                        "municipio_nombre": ["CACERES", "cáceres ", "Plasencia"]})
+    out = rc.add_birds(cts, birds)
+    assert out["muni_lineas_rd1432"].tolist() == [6.0, 6.0, 0.0]
+    assert out["muni_lineas_rd1432_por_ct"].tolist() == [3.0, 3.0, 0.0]
+    assert "avifauna" in rc.block_columns(pd.DataFrame(columns=["anios_desde_ultima"]))
+    # The big birds of the square of each municipality come by its name too.
+    squares = os.path.join(workdir, "especies_municipios.csv")
+    pd.DataFrame({"municipio": ["Cáceres"], "ieet_ciguena": [1], "ieet_aves_grandes": [14], "ieet_rapaces": [9]}).to_csv(
+        squares, index=False)
+    with_species = rc.add_species(cts, squares)
+    assert with_species["ieet_aves_grandes"].tolist()[:2] == [14, 14] and pd.isna(with_species["ieet_aves_grandes"].iloc[2])
     # The merge by the cell of the CT, and nothing without the file.
     grid = pd.DataFrame({"distribuidora_id": [1, 1, 1], "ct_id": ["C000", "C001", "C002"],
                          "celda_id": ["39.10_-6.10", "39.30_-6.10", "39.90_-6.10"]})

@@ -11,7 +11,7 @@ features.
 
 A tag whose element or device does not exist is a broken key and is
 rejected. A tag without element is not: ElementId is nullable in TedisNet and
-about 14.700 of the 78.000 tags of EOSA have none, among them 1.134 SYS tags
+about 14.700 of the 78.000 tags of our TedisNet copy have none, among them 1.134 SYS tags
 with the connection state of the devices, which is the base of the
 communication failure features. Those tags are kept with the flag
 sin_elemento, and their distribuidora is taken from the device (the

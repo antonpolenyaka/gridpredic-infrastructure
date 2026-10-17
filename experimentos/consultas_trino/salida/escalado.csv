@@ -1,0 +1,5 @@
+nucleos,recorrido_s,calculo_s,speedup_recorrido,speedup_calculo
+1,5.6,301.34,1.0,1.0
+2,3.87,181.15,1.45,1.66
+4,3.36,114.62,1.67,2.63
+8,2.51,87.41,2.23,3.45

@@ -1,164 +1,18 @@
 """
-Risk of the next day of every distribuidora: the crews of tomorrow.
+Risk of the next day for every distribuidora, with what is known the evening before.
 
-The hourly models (job_ml_horas_riesgo, job_ml_meteo_historia) look 1 - 3
-hours ahead with the weather already observed. The operator plans the crews
-the day before, with what is known that evening. This job asks how well the
-days with interruptions can be told apart with that, and how much a perfect
-forecast of the weather of the day would add (the reanalysis of the day
-itself, an upper bound of any real forecast).
+The hourly models (job_ml_horas_riesgo, job_ml_meteo_historia) look 1 - 3 hours ahead with the weather already
+observed; the operator plans tomorrow's crews the day before. This job measures how well the days with an
+interruption can be told apart with what is known that evening, and how much a perfect forecast would add (the
+reanalysis of D itself, an upper bound of any real forecast).
 
-Unit: distribuidora and day D (local time), from meteo_dia.desde to
-meteo_dia.hasta, without the days of analisis_red.dias_excluidos.
+One row per distribuidora and day. The labels, the feature blocks (cal_, hist_, ayer_, aviso_, dia_, ext_, prev_
+and the experimental ones), the horizons of two and three days, the variants and the outputs are described in
+docs/ml-riesgo-dia.md. The variant operativa is the one job_ml_riesgo_manana fits and scores every evening.
 
-Labels (fact_interrupciones_mt, variante principal, with the cause of
-l2_silver.f_incidencia_causa): y_dia = 1 when an interruption starts in some
-CT of the distribuidora on D; y_dia_meteo, the same without the causes of
-causas_no_meteo (upstream, blackout, third parties...); y_dia_varias, when
-incidencias_dia_varias or more incidents start on D (the busy days that need
-more than one crew). The models learn y_dia; the other two only measure them;
-n_dia, the number of incidents that start on D, is what the model poisson
-learns from (a count instead of a probability, scored on the same metrics).
-
-Features, every one known before D starts except the block dia:
-
-- cal_*: day of the week (sine and cosine), weekend, holiday (national or
-  Extremadura), day of the year (sine and cosine) and estacion.
-- hist_*: incidents of the distribuidora known in Calser (conocido_ts)
-  before D in the last 7, 30 and 365 days, and days since the last one.
-- ayer_*: the weather of D - 1 from the reanalysis, by day: strongest gust
-  and wind of the worst cell and of the mean of the cells weighted by their
-  CT, rain of the day (worst cell and mean), hottest hour, coldest mean
-  hour, mean humidity, lowest pressure and its biggest drop in 24 h, snow,
-  the strongest gust of the whole area (the size of the storm), the
-  active fires of FIRMS near the cells and the highest Fire Weather Index of
-  CEMS of the cells (when Gold has them; Gold gives every hour the index of
-  the day before, so dia_fwi_max is the one of D - 1, known that evening).
-- aviso_*: the warnings of AEMET for D (l2_silver.f_aviso_meteo) sent
-  before aviso_corte_h of D - 1: highest level (1 yellow, 2 orange, 3 red)
-  in the cells of the distribuidora, in total and for wind, rain,
-  thunderstorms and snow. 0 without warning, null before the archive starts
-  (18.06.2018). It is the only real forecast with a long archive.
-- aviso_det_* (block avisos_detalle): what those warnings announce and how
-  much they cover: the strongest gust (km/h) and the most rain (mm in 12 h
-  and in one hour) of their parametro, the most hours of D under a wind
-  warning and the share of the CT of the distribuidora in cells under a
-  wind warning, under any warning of wind, rain, thunderstorms or snow and
-  under a thunderstorm warning.
-- dia_*: the same daily weather as ayer_* for D itself, the perfect
-  forecast.
-- ext_*: how far the gusts of D go above the climate of each cell (the 98th
-  percentile of its hourly gusts before meteo.climatologia_hasta of Gold,
-  met_racha_clima_1h): the highest ratio of the worst cell and of the mean
-  of the cells weighted by their CT, and the sum over the hours of the CT
-  weighted max(0, ratio - 1)^3, the storm loss index of Klawa and Ulbrich;
-  and the days in a row up to D with the hottest hour of the worst cell at
-  calor_umbral_c or more. Like dia_*, they come from the reanalysis of D.
-- prev_*: the same daily weather for D from what ICON-EU forecast the day
-  before (metp1_* of Gold, Previous Runs API, from January 2024). It has no
-  history to train with, so it is never a block: the models of the variants
-  of variante_prevision (calendar, history, yesterday and the dia_* the
-  forecast also gives, with or without warnings and extremes) are fitted on
-  the reanalysis and then score the days of anios_prevision twice more, with
-  dia_* replaced by prev_*, raw and mapped to the distribution of the
-  reanalysis by quantiles (fitted on the other years of the forecast,
-  without the labels). The difference is what is lost going from a perfect
-  forecast to a real one. prev_ext_* are the extremes of the forecast (the
-  forecast gusts over the same climate of each cell, metp1_racha_clima_1h,
-  and the run of heat with the forecast hottest hour of D) and take the
-  place of ext_* the same way. meteo_dia.comparaciones_prevision compares
-  variants on the same weather of the day.
-- ext_fraccion_* (block extension, from the literature review of 14.10.2026:
-  the area under strong gusts matters more than the strongest point): the
-  share of the CT of the distribuidora whose cell has a gust at or above
-  its p98 (met_racha_fuerte_1h) and at or above 72 km/h (20 m/s,
-  met_racha_72_1h) in the worst hour of D, and the sum of that share over
-  the hours of D (CT-hours of strong gust). They come from the reanalysis
-  of D, and prev_ext_fraccion_* from the forecasts, like ext_*.
-- ext_int_* (block interacciones): the excess of the gust over 0.9 times the
-  p98 of its cell (the worst cell, max(0, ratio - 0.9)) times the rain of
-  the day before (what is known that evening), the rain of D, the leaf
-  season (April to October) and the summer (June to September). The
-  literature finds rain and season as multipliers of the gust, not as
-  effects of their own. ext_pend_* (block pendiente_red): the gust ratio
-  times each distribuidora, a slope of its own per network. Both have their
-  forecast twins (prev_ext_int_*, prev_ext_pend_*) built from the forecast
-  gust and rain, with the rain of the last day known at that horizon.
-- ext_dir_* (block direccion, only with --direccion): how far the wind of
-  the hours with gusts at or above the p98 of the cell blows from the
-  direction its strong gusts usually come from (the circular mean of the
-  reanalysis of the cell), in degrees: the CT weighted mean of the cells,
-  averaged over those hours of D (0 on a day without such an hour), and
-  that anomaly times the excess of the gust. There is no forecast of the
-  direction, so these stay from the reanalysis in the forecast comparison
-  (an upper bound).
-- seq_* (block sequia): the water balance of the 90 and 180 days before D
-  (rain minus the reference evapotranspiration of the reanalysis, per
-  distribuidora, ending on D - 1, known that evening) as a z-score of its
-  calendar month over the years before sequia_clima_hasta: a long dry spell
-  (dead trees, dry fuel) or a long wet one (soaked ground), the SPEI of the
-  drought literature computed from what Gold already has.
-- hie_horas (block hielo): the CT-hours of D with precipitation at a
-  temperature of 0,5 degrees or less (freezing rain or wet snow on the
-  conductors), from the reanalysis, with its forecast twin prev_hie_horas.
-- fen_* (block fenologia, with meteo_dia.fenologia.csv, the NDVI of MODIS
-  per cell of experimentos/fenologia/bajar_ndvi.py): the greenness of the
-  network as the latest 16 day composite published latencia_dias before D
-  (fen_ndvi), its anomaly against the same period of the years before
-  clima_hasta (fen_ndvi_anom) and its change over a month
-  (fen_ndvi_cambio_1m); and the gust excess times the greenness
-  (fen_int_racha_ndvi, the leaf measured instead of the calendar of the
-  interactions), with its forecast twin prev_fen_int_racha_ndvi.
-- hoja_* (block hoja, with meteo_dia.hoja.csv, the HRL of Copernicus per cell
-  of experimentos/arbolado/celdas_hrl.py): the broadleaved share of the
-  network (hoja_frondosa, CT weighted) and the gust excess times that share
-  in the leaf season (hoja_int_racha), with its forecast twins.
-- Two and three days ahead (HORIZONS): Gold also keeps what ICON-EU forecast
-  two days before (metp2_*, gusts and rain) and, once landed, three days
-  before (metp3_*). They give prev2_* / prev3_* (the daily weather and the
-  extremes of the forecast, prev2_ext_*, computed here from the climate of
-  each cell when Gold has no metp2_racha_clima_1h), the blocks dia_comun_48h
-  and dia_comun_72h (the dia_* those forecasts also give), the warnings of
-  AEMET sent before aviso_corte_h of D - 2 and D - 3 (aviso48_*, aviso72_*,
-  blocks avisos_48h and avisos_72h) and the last day of weather known that
-  evening (hace2_*, hace3_*, the weather of D - 2 and D - 3). A variant with
-  "horizonte": 2 (or 3) is scored in the forecast comparison with those
-  forecasts and warnings in place of the ones of the day before: what the
-  operator would have had two or three evenings before. The history
-  (hist_*) is the one known when D starts, a day or two later than that
-  evening; with retraso_conocido_dias of a week the difference is small.
-- Other weather models (meteo_dia.previsiones_extra, with
-  --previsiones-extra): the forecast of the day before of GFS, GEM or any
-  other model of the Previous Runs API, landed by
-  job_landing_meteo_openmeteo --fuente openmeteo_previo_<clave> and read
-  here from its Bronze table, joined per cell and hour (metp1<clave>_*) and
-  turned into the same daily weather and extremes (prev<clave>_*). They are
-  never features: the forecast comparison scores the variants of
-  variante_prevision also with each of them (prevision_<clave>) and with
-  the mean of all the models (prevision_media, prevision_media_cuantiles),
-  to measure what a second model, or the mean of several, adds to ICON-EU.
-
-Variants (meteo_dia.variantes): blocks, single variables of other blocks
-(variables) and first day of training. The variant operativa is the one that
-job_ml_riesgo_manana fits and scores every evening: of the day before it
-only takes the strongest gust and the rain, which are known that same
-evening. Every year Y is scored by models chosen and fitted only on the days
-before Y
-(rolling_evaluation of job_ml_horas_riesgo), with the strongest gust of the
-day before, of the day itself and the highest warning as references.
-
-Every variant also gets rango, the mean of the percentiles in the year of
-its logistic regression and its XGBoost.
-
-Metrics on the years every variant scored, against y_dia: PR-AUC of the
-days, lift, the share of the days with interruptions that falls in the 5,
-10 and 20 % of the days of each year with more risk (a crew on alert those
-days), PR-AUC by distribuidora and the block bootstrap by dates of the
-paired differences (meteo_dia.comparaciones).
-
-Outputs: ml_runs and ml_metricas with run_id dia_*, resumen.md,
-metricas.csv, comparacion.csv, diferencias.csv, anios.csv and filas.csv in
-exportar_dir/<run_id>/.
+Every year is scored by models chosen and fitted only on the days before it (rolling_evaluation of
+job_ml_horas_riesgo). The forecast comparison fits on the reanalysis and scores the days of anios_prevision again
+with what ICON-EU forecast the day before, raw and mapped to the reanalysis by quantiles.
 
     docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g \\
         --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py,/app/jobs/04_ml/job_ml_horas_riesgo.py \\
@@ -183,7 +37,7 @@ if HERE not in sys.path:
 import ml_metrics  # noqa: E402
 from calendario import holiday_flags, season  # noqa: E402
 from job_ml_horas_riesgo import distributor_weather, export, rolling_evaluation  # noqa: E402
-from job_ml_meteo_historia import add_history, read_events  # noqa: E402
+from job_ml_meteo_historia import add_history, read_events, variant_years  # noqa: E402
 from job_ml_train import (  # noqa: E402
     METRICS_TABLE,
     RUNS_TABLE,
@@ -311,6 +165,13 @@ EXTRA_FORECAST_COLUMNS = {
 MEAN_SOURCE = "prevision_media"
 
 
+def cell_weights(spark) -> pd.DataFrame:
+    """(distribuidora_id, celda_id, n_ct): how many CTs every distribuidora has in every cell (map_ct_celda)."""
+    return (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
+            .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
+            .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+
+
 def horizon_of(variant: dict) -> int:
     return int(variant.get("horizonte", 1))
 
@@ -426,7 +287,7 @@ def derived_extent(weather, prefixes: list = None):
     return weather
 
 
-def drought_features(spark, weather, start: pd.Timestamp, end: pd.Timestamp, climatology_until: pd.Timestamp,
+def drought_features(weather, start: pd.Timestamp, end: pd.Timestamp, climatology_until: pd.Timestamp,
                      windows: dict = None) -> pd.DataFrame:
     """
     (distribuidora_id, fecha, seq_3m, seq_6m): the rain minus the reference
@@ -505,9 +366,7 @@ def phenology_features(spark, cfg: dict, start: pd.Timestamp, end: pd.Timestamp)
     rows = rows[rows["n_validos"] >= float(settings.get("fraccion_valida", 0.5)) * rows["n_pixeles"]].drop(columns="_w")
     if rows.empty:
         return empty
-    weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-               .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-               .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+    weights = cell_weights(spark)
     joined = rows.merge(weights, on="celda_id", how="inner")
     if joined.empty:
         logger.warning("No phenology: the cells of %s are not the ones of %s", path, CELLS_TABLE)
@@ -560,9 +419,7 @@ def corridor_exposure(spark, cfg: dict) -> dict:
     corridor = pd.read_csv(path)
     if not {"corr_pct_dosel_8m", "corr_km_linea"} <= set(corridor.columns):
         return {}
-    weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-               .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-               .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+    weights = cell_weights(spark)
     joined = weights.merge(corridor[["celda_id", "corr_pct_dosel_8m", "corr_km_linea"]].dropna(), on="celda_id", how="inner")
     if joined.empty:
         return {}
@@ -593,34 +450,33 @@ def add_corridor(pdf: pd.DataFrame, shares: dict, forecasts: dict) -> list:
     return names
 
 
-def leaf_exposure(spark, cfg: dict) -> dict:
+def leaf_exposure(spark, cfg: dict, key: str = "hoja", column: str = "hrl_pct_frondosa") -> dict:
     """
     {distribuidora_id: share of broadleaved trees}: the share of the cells of
     the network covered by broadleaved trees (Dominant Leaf Type of the HRL of
     Copernicus, hrl_celdas.csv of meteo_dia.hoja.csv), weighted by the CT of
     each cell. Empty without the file or the cells.
     """
-    path = (cfg.get("hoja") or {}).get("csv")
+    path = (cfg.get(key) or {}).get("csv")
     if not path or not os.path.exists(path) or not spark.catalog.tableExists(CELLS_TABLE):
         if path:
             logger.warning("No leaf type: %s or %s not found", path, CELLS_TABLE)
         return {}
     leaves = pd.read_csv(path)
-    if "hrl_pct_frondosa" not in leaves.columns:
+    if column not in leaves.columns:
         return {}
-    weights = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-               .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-               .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
-    joined = weights.merge(leaves[["celda_id", "hrl_pct_frondosa"]].dropna(), on="celda_id", how="inner")
+    weights = cell_weights(spark)
+    joined = weights.merge(leaves[["celda_id", column]].dropna(), on="celda_id", how="inner")
     if joined.empty:
         return {}
-    joined["_w"] = joined["hrl_pct_frondosa"] * joined["n_ct"]
+    joined["_w"] = joined[column] * joined["n_ct"]
     out = (joined.groupby("distribuidora_id")["_w"].sum() / joined.groupby("distribuidora_id")["n_ct"].sum()).to_dict()
-    logger.info("Broadleaved share of the networks from %s: %s", path, {int(k): round(v, 3) for k, v in out.items()})
+    logger.info("%s of the networks from %s: %s", column, path, {int(k): round(v, 3) for k, v in out.items()})
     return {int(k): float(v) for k, v in out.items()}
 
 
-def add_leaf(pdf: pd.DataFrame, shares: dict, forecasts: dict) -> list:
+def add_leaf(pdf: pd.DataFrame, shares: dict, forecasts: dict, prefix_name: str = "hoja_",
+             share_name: str = "hoja_frondosa") -> list:
     """
     Adds the block hoja to pdf and returns its names: hoja_frondosa (the
     broadleaved share of the network) and hoja_int_racha, the gust excess times
@@ -631,15 +487,116 @@ def add_leaf(pdf: pd.DataFrame, shares: dict, forecasts: dict) -> list:
         return []
     share = pdf["distribuidora_id"].map(shares).astype("float64")
     leaf = pdf["fecha"].dt.month.between(4, 10).astype("float64")
-    pdf["hoja_frondosa"] = share
-    names = ["hoja_frondosa"]
+    pdf[share_name] = share
+    names = [share_name]
     versions = [("", "ext_racha_clima_max")] + [(f"{HORIZONS[h]['prev']}_", f"{HORIZONS[h]['prev']}_ext_racha_clima_max")
                                                 for h in sorted(forecasts)]
     for prefix, gust in versions:
         if gust in pdf.columns:
-            pdf[f"{prefix}hoja_int_racha"] = gust_excess(pdf[gust]) * share * leaf
-            names.append(f"{prefix}hoja_int_racha")
+            pdf[f"{prefix}{prefix_name}int_racha"] = gust_excess(pdf[gust]) * share * leaf
+            names.append(f"{prefix}{prefix_name}int_racha")
     return names
+
+
+def add_regimes(pdf: pd.DataFrame, forecasts: dict) -> list:
+    """
+    The block regimen: the gust read by the kind of weather that brings it
+    (idea 6 of docs/revision-literatura.md; Yang 2020, Cerrai 2019, Garland
+    2026 find different damage per regime). Three terms, all known the
+    evening before through their forecast twins (<prev>_reg_*):
+    reg_temporal, the gust excess over the climate of the cell in the cold
+    season (October to April) on a day with 5 mm of rain or more, the
+    Atlantic storm; reg_conveccion, the rain of the wettest hour in the warm
+    season (May to September), capped at 30 mm, the summer thunderstorm, and
+    reg_conveccion_racha, that rain times the gust excess; reg_calor, the
+    degrees of the maximum temperature over 35 in the warm season.
+    """
+    month = pdf["fecha"].dt.month
+    cold = (~month.between(5, 9)).astype("float64")
+    warm = month.between(5, 9).astype("float64")
+    names = []
+    versions = [("", "ext_racha_clima_max", "dia_lluvia_max", "dia_lluvia_hora_max", "dia_temp_max")]
+    for horizon in sorted(forecasts):
+        prev = HORIZONS[horizon]["prev"]
+        versions.append((f"{prev}_", f"{prev}_ext_racha_clima_max", f"{prev}_lluvia_max", f"{prev}_lluvia_hora_max",
+                         f"{prev}_temp_max"))
+    for prefix, gust, rain, rain_hour, temp in versions:
+        if gust not in pdf.columns:
+            continue
+        excess = gust_excess(pdf[gust])
+        new = {}
+        if rain in pdf.columns:
+            new[f"{prefix}reg_temporal"] = excess * cold * (pdf[rain] >= 5.0).astype("float64")
+        if rain_hour in pdf.columns:
+            burst = pdf[rain_hour].clip(lower=0.0, upper=30.0) * warm
+            new[f"{prefix}reg_conveccion"] = burst
+            new[f"{prefix}reg_conveccion_racha"] = burst * excess
+        if temp in pdf.columns:
+            new[f"{prefix}reg_calor"] = (pdf[temp] - 35.0).clip(lower=0.0) * warm
+        for name, values in new.items():
+            pdf[name] = values.astype("float64")
+            names.append(name)
+    return names
+
+
+def add_fragility(pdf: pd.DataFrame, forecasts: dict, until: pd.Timestamp, label: str = MAIN_LABEL) -> list:
+    """
+    The block fragilidad: a fragility curve (idea 9 of the review; Dunn 2018,
+    Panteli 2017), the share of days with a failure as a monotone function of
+    the gust over the climate of the cell, fitted by isotonic regression on the
+    days before until only (the years scored later never see it), and read for
+    every day: frag_prob and its log-odds frag_logit, with the twins from the
+    forecast of every horizon (<prev>_frag_*). Empty with too few days to fit.
+    """
+    from sklearn.isotonic import IsotonicRegression
+
+    fit = pdf[(pdf["fecha"] < until) & pdf["ext_racha_clima_max"].notna() & pdf[label].notna()]
+    if len(fit) < 365 or fit[label].sum() < 10:
+        logger.warning("No fragility curve: %s days and %s with a failure before %s", len(fit),
+                       int(fit[label].sum()) if len(fit) else 0, until.date())
+        return []
+    curve = IsotonicRegression(increasing=True, out_of_bounds="clip", y_min=1e-4, y_max=1 - 1e-4)
+    curve.fit(fit["ext_racha_clima_max"].to_numpy(), fit[label].to_numpy().astype("float64"))
+    knots = np.quantile(fit["ext_racha_clima_max"], [0.5, 0.9, 0.99])
+    logger.info("Fragility curve on %s days before %s: %s", len(fit), until.date(),
+                {round(float(k), 2): round(float(curve.predict([k])[0]), 4) for k in knots})
+    names = []
+    versions = [("", "ext_racha_clima_max")] + [(f"{HORIZONS[h]['prev']}_", f"{HORIZONS[h]['prev']}_ext_racha_clima_max")
+                                                for h in sorted(forecasts)]
+    for prefix, gust in versions:
+        if gust not in pdf.columns:
+            continue
+        values = pdf[gust]
+        prob = pd.Series(np.nan, index=pdf.index)
+        ok = values.notna()
+        prob[ok] = curve.predict(values[ok].to_numpy())
+        pdf[f"{prefix}frag_prob"] = prob.astype("float64")
+        pdf[f"{prefix}frag_logit"] = np.log(prob / (1 - prob)).astype("float64")
+        names += [f"{prefix}frag_prob", f"{prefix}frag_logit"]
+    return names
+
+
+def nao_features(cfg: dict, days: pd.Series) -> pd.DataFrame:
+    """
+    The block nao: the daily North Atlantic Oscillation index of NOAA CPC
+    (meteo_dia.nao.csv, from norm.daily.nao.cdas.z500.19500101_current.csv) as known the evening before. CPC
+    updates the file around 14:00 UTC with the data up to two days before, so at 20:30 of D - 1 the last value is
+    the one of D - 3 (meteo_dia.nao.retraso_dias). nao_dia is that value and nao_30d the mean of the 30 days ending
+    there; a day missing at the end (CPC did not update) takes the one before. A negative NAO sends the Atlantic
+    storms further south, over the Peninsula. Empty without the file.
+    """
+    nao_cfg = cfg.get("nao") or {}
+    path = nao_cfg.get("csv")
+    if not path or not os.path.exists(path):
+        return pd.DataFrame(columns=["fecha"])
+    nao = pd.read_csv(path, parse_dates=["fecha"]).set_index("fecha")["nao"].asfreq("D")
+    wanted = pd.DatetimeIndex(sorted(days.unique()))
+    lag = pd.Timedelta(days=int(nao_cfg.get("retraso_dias", 3)))
+    end = max(nao.index.max(), wanted.max() - lag)
+    nao = nao.reindex(pd.date_range(nao.index.min(), end, freq="D")).ffill(limit=1)
+    month = nao.rolling(30, min_periods=20).mean()
+    return pd.DataFrame({"fecha": wanted, "nao_dia": nao.reindex(wanted - lag).to_numpy(),
+                         "nao_30d": month.reindex(wanted - lag).to_numpy()})
 
 
 def derived_direction(weather):
@@ -1002,7 +959,8 @@ def block_of(name: str) -> str:
                           ("prev_", "prevision"), ("prev2_", "prevision_48h"), ("prev3_", "prevision_72h"),
                           ("ext_fraccion_", "extension"), ("ext_int_", "interacciones"),
                           ("ext_pend_", "pendiente_red"), ("ext_dir_", "direccion"), ("ext_", "extremos"),
-                          ("seq_", "sequia"), ("hie_", "hielo"), ("fen_", "fenologia"), ("hoja_", "hoja"), ("corr_", "corredor")):
+                          ("seq_", "sequia"), ("hie_", "hielo"), ("fen_", "fenologia"), ("hoja_", "hoja"), ("corr_", "corredor"),
+                          ("reg_", "regimen"), ("frag_", "fragilidad"), ("cad_", "caducas"), ("nao_", "nao")):
         if name.startswith(prefix):
             return block
     return "calendario" if name == SEASON_FEATURE else "otros"
@@ -1074,7 +1032,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
         if "hie_horas" in ice_forecast.columns:
             pdf = pdf.merge(ice_forecast.rename(columns={"hie_horas": "prev_hie_horas"}),
                             on=["distribuidora_id", "fecha"], how="left")
-    drought = drought_features(spark, weather, start, end, pd.Timestamp(cfg.get("sequia_clima_hasta", "2022-01-01")))
+    drought = drought_features(weather, start, end, pd.Timestamp(cfg.get("sequia_clima_hasta", "2022-01-01")))
     drought_names = [c for c in drought.columns if c.startswith("seq_")]
     if drought_names:
         pdf = pdf.merge(drought, on=["distribuidora_id", "fecha"], how="left")
@@ -1155,9 +1113,23 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
     leaf_names = add_leaf(pdf, leaf_exposure(spark, cfg), forecasts)
     forecast_columns += [n for n in leaf_names if not n.startswith("hoja_")]
     leaf_names = [n for n in leaf_names if n.startswith("hoja_")]
+    # The same with the deciduous broadleaves of the Mapa Forestal de España (block caducas, cad_*): the HRL counts
+    # the holm oak as broadleaved, the MFE tells the leaves that fall from the ones that stay.
+    deciduous = add_leaf(pdf, {k: v / 100.0 for k, v in leaf_exposure(
+        spark, cfg, "caducas", "mfe_copa_caducifolia_pct").items()}, forecasts, "cad_", "cad_copa")
+    forecast_columns += [n for n in deciduous if not n.startswith("cad_")]
+    leaf_names += [n for n in deciduous if n.startswith("cad_")]
     corridor_names = add_corridor(pdf, corridor_exposure(spark, cfg), forecasts)
     forecast_columns += [n for n in corridor_names if not n.startswith("corr_")]
     leaf_names += [n for n in corridor_names if n.startswith("corr_")]
+    teleconnection = nao_features(cfg, pdf["fecha"])
+    if len(teleconnection.columns) > 1:
+        pdf = pdf.merge(teleconnection, on="fecha", how="left")
+        leaf_names += ["nao_dia", "nao_30d"]
+    regime_names = add_regimes(pdf, forecasts) + add_fragility(
+        pdf, forecasts, pd.Timestamp(cfg.get("fragilidad_hasta", "2022-01-01")))
+    forecast_columns += [n for n in regime_names if not n.startswith(("reg_", "frag_"))]
+    leaf_names += [n for n in regime_names if n.startswith(("reg_", "frag_"))]
 
     warnings_first = None
     warning_names = []
@@ -1165,9 +1137,7 @@ def build_dataset(spark, config: dict, cfg: dict) -> tuple:
         source = spark.table(WARNINGS_TABLE)
         columns = ["celda_id", "fenomeno_codigo", "nivel_num", "tipo_mensaje", "enviado_ts", "inicio_ts", "fin_ts"]
         warnings = source.select(*columns, *[c for c in ("parametro",) if c in source.columns]).toPandas()
-        cells = (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-                 .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-                 .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+        cells = cell_weights(spark)
         base_names = ["aviso_max_nivel"] + [f"aviso_{name}_nivel" for name in WARNING_GROUPS] + WARNING_DETAILS
         # The warnings known the evening before (aviso_*) and two or three evenings before (aviso48_*, aviso72_*).
         for horizon, spec in HORIZONS.items():
@@ -1235,11 +1205,6 @@ def variant_features(variant: dict, blocks: dict) -> list:
     every = {name for names in blocks.values() for name in names}
     chosen += [name for name in variant.get("variables", []) if name in every and name not in chosen]
     return chosen
-
-
-def variant_years(variant: dict, cfg: dict) -> list:
-    first = pd.Timestamp(variant["desde"]) + pd.Timedelta(days=int(cfg["dias_minimos_entreno"]))
-    return [int(y) for y in cfg["anios_evaluacion"] if pd.Timestamp(f"{int(y)}-01-01") >= first]
 
 
 def top_share(y: np.ndarray, score: np.ndarray, year: np.ndarray, share: float, seed: int = 0) -> float:
@@ -1436,9 +1401,9 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
     swap = [(f"dia_{name}", f"{prefix}_{name}") for name in common]
     swap += [(c, f"{prefix}_{c}") for c in features
-             if c.startswith(("ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_")) and f"{prefix}_{c}" in pdf.columns]
+             if c.startswith(("ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_", "cad_int_")) and f"{prefix}_{c}" in pdf.columns]
     swapped = {column for column, _ in swap}
-    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_")) and c not in swapped]
+    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_", "cad_int_")) and c not in swapped]
     if perfect:
         logger.warning("Variant %s at %s day(s): %s stay from the reanalysis (no forecast of them at this horizon)",
                        variant["nombre"], horizon, perfect)

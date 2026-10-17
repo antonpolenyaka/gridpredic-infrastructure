@@ -10,7 +10,7 @@ Two scopes (column ambito):
   everything below it (map_tag_ct). Telecontrolled CTs only.
 - AGUAS_ARRIBA, clave_id = posicion_id: series of the bays of the switches
   that have cut each transformer (map_aguas_arriba), that is the tags of the
-  switch, of its siblings and of the bay itself. In EOSA the feeder currents
+  switch, of its siblings and of the bay itself. In our TedisNet copy the feeder currents
   of the substations (AI.INTENSIDAD, 800 tags with series) live there, so
   this is the scope that gives measurements to the CTs without telemetry.
 
@@ -269,7 +269,8 @@ def main():
         write_table(activity, ACTIVITY_TABLE, partition_by=["fecha_mes"], replace_where=condition)
 
         ambito = f"{lo:%Y-%m}"
-        written = spark.table(AGG_TABLE).where(
+        # The partition filter first, so the checks read only the months just written.
+        written = spark.table(AGG_TABLE).where(condition).where(
             (F.col("hora") >= ts_lit(lo)) & (F.col("hora") < ts_lit(hi))
         )
 
@@ -282,7 +283,7 @@ def main():
                    detalle=f"{row['claves']} keys, {row['muestras']} samples")
 
         hours = int((hi - lo).total_seconds() // 3600)
-        active = spark.table(ACTIVITY_TABLE).where(
+        active = spark.table(ACTIVITY_TABLE).where(condition).where(
             (F.col("hora") >= ts_lit(lo)) & (F.col("hora") < ts_lit(hi))
         ).select("hora").distinct().count()
 

@@ -2,12 +2,12 @@
 
 Este documento explica cómo entrenamos y evaluamos el modelo de predicción de interrupciones sobre el dataset de Gold, qué decisiones hemos tomado y dónde quedan los resultados. Los requisitos y las métricas de aceptación están en la [model card](model_card.md); aquí está el cómo.
 
-El código está en `etl/jobs/04_ml/` y los parámetros en `etl/config/04_ml/config_ml.json`. Los modelos con la historia meteorológica desde 2017, los avisos de AEMET, el riesgo del día siguiente y las fuentes públicas que los alimentan están en [causas-incidencias.md](causas-incidencias.md), apartado 8, junto con el job que calcula cada tarde el riesgo de mañana (`job_ml_riesgo_manana.py`, lanzado por `dag_riesgo_manana`).
+El código está en `etl/jobs/04_ml/` y los parámetros en `etl/config/04_ml/config_ml.json`. Los modelos con la historia meteorológica desde 2017, los avisos de AEMET, el riesgo del día siguiente y las fuentes públicas que los alimentan están en [causas-incidencias.md](causas-incidencias.md), apartado 8, junto con el job que calcula cada tarde el riesgo de mañana (`job_ml_riesgo_manana.py`, lanzado por `dag_riesgo_manana`); las variables de ese modelo del día están en [ml-riesgo-dia.md](ml-riesgo-dia.md).
 
 | Fichero | Qué hace |
 | --- | --- |
 | `job_ml_train.py` | Lee la versión del dataset, entrena, puntúa valid y test, calcula las métricas y escribe las tablas de resultados |
-| `ml_models.py` | Los cinco modelos (dos referencias y tres entrenados), la corrección de la probabilidad por el muestreo y las importancias |
+| `ml_models.py` | Los cinco modelos de este documento (dos referencias y tres entrenados), los submodelos por grupo, la logística equilibrada y el modelo de Poisson que prueba el riesgo del día, la corrección de la probabilidad por el muestreo y las importancias |
 | `ml_metrics.py` | PR-AUC, ROC-AUC, alertas con presupuesto, episodios, antelación y PR-AUC de cada feature sola |
 | `train.sh` | Lanza el job con `spark-submit` desde el contenedor `spark-master` |
 
@@ -23,7 +23,7 @@ Es un problema muy desbalanceado: en el dataset `ds_20261010T045104_a5a2531cacbb
 | --- | --- | --- |
 | Muestra de train | `split = 'train'` y `en_muestra_train`: todos los positivos y el 2 % de los negativos (unas 885.000 filas) | Entrenar los modelos. Cabe en memoria del driver en float32 |
 | Muestra de valid | `split = 'valid'`: todos los positivos y un 2 % de los negativos, con peso 1 / 0,02 en los negativos | Parada temprana de XGBoost y elección de la configuración de cada modelo por la PR-AUC ponderada |
-| Valid completo | Las 11,2 millones de filas de 2025 | Métricas que reportamos y comparación entre modelos |
+| Valid completo | Los 11,2 millones de filas de 2025 | Métricas que reportamos y comparación entre modelos |
 | Test completo | 2026 hasta `evaluacion.test_hasta` | Estimación final, una sola vez y con `--evaluar-test` |
 
 Nunca usamos validación cruzada aleatoria: el modelo se usa sobre los mismos CT en el futuro, así que lo evaluamos igual. Los CT no se separan entre splits.
@@ -48,7 +48,7 @@ Por eso probamos un bloque de contexto (`contexto_red`) calculado en el momento 
 
 ## 4. Grupos de CT y submodelos
 
-En la tutoría del 08.10.2026 el profesor de análisis de datos nos recomendó no entrenar un único modelo para los casi 1.300 CT: mezclar CT grandes y pequeños, urbanos y rurales, de zonas con distinta meteorología, diluye la capacidad de predicción. La propuesta es agrupar los CT en conjuntos homogéneos (por ejemplo con k-means) y entrenar un submodelo para cada grupo, empezando por el grupo más homogéneo y con más incidencias como piloto. Las métricas de la línea base ya lo apuntaban: la distribuidora 1366 tiene una PR-AUC 3,5 veces mayor que la tasa base, y las otras dos apenas la superan.
+En la tutoría del 08.10.2026 el profesor de análisis de datos nos recomendó no entrenar un único modelo para los casi 1.300 CT: mezclar CT grandes y pequeños, urbanos y rurales, de zonas con distinta meteorología, diluye la capacidad de predicción. La propuesta es agrupar los CT en conjuntos homogéneos (por ejemplo con k-means) y entrenar un submodelo para cada grupo, empezando por el grupo más homogéneo y con más incidencias como piloto. Las métricas de la línea base ya lo apuntaban: la Distribuidora 3 (id 1366) tiene una PR-AUC 3,5 veces mayor que la tasa base, y las otras dos apenas la superan.
 
 - **Grupos** (`clusters`): k-means sobre una fila por CT con el tipo de zona del municipio (urbana, semiurbana, rural concentrada, rural dispersa), la potencia, los abonados, las salidas, los transformadores, el tamaño del grupo de red, la telemetría, la tensión, las coordenadas (como aproximación de la meteorología), la distribuidora y la tasa de interrupciones del CT en train. Las variables asimétricas van en escala logarítmica, las categóricas en one-hot y todas estandarizadas. k se elige por silueta entre 3 y 8, con un mínimo de 20 CT en el grupo más pequeño. Solo se usan datos estáticos o de train, así que los grupos no miran valid ni test. El reparto queda en `l3_gold.ml_clusters_ct`, y el perfil de cada grupo en el resumen y en `grupos_ct.csv`.
 - **Submodelos** (`submodelos`): un XGBoost por grupo con la configuración elegida para el modelo global y parada temprana sobre las filas del grupo en la muestra de valid. Un grupo con menos de 200 positivos en la muestra de train se queda con el modelo global. El conjunto se evalúa como un modelo más, `xgboost_cluster`, con las mismas métricas y sobre las mismas filas que el global. La búsqueda guarda, por grupo, la PR-AUC del submodelo frente a la del global.
@@ -60,15 +60,15 @@ En la tutoría del 08.10.2026 el profesor de análisis de datos nos recomendó n
 
 La meteorología era lo que la model card daba como pendiente ("entrará cuando esté ingerida") y lo que más explica las interrupciones sistémicas. Viene de la [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) (CC BY 4.0, plan gratuito para uso no comercial), con el modelo ECMWF IFS, de 9 km y horario desde 2017. Es el único de los reanálisis gratuitos que da a la vez ráfagas de viento y precipitación.
 
-- **Qué se pide:** temperatura, humedad, precipitación, nieve, viento, ráfagas y presión a nivel del mar, de hora en hora, del 01.12.2020 al 31.08.2026. El dataset de Gold va del 01.01.2021 al 14.08.2026 y las features miran hasta 7 días atrás, así que con ese margen no falta ninguna hora.
-- **Dónde:** los 73 municipios de `data/reference_data/municipios.xlsx` agrupados en celdas de 0,1 grados (unos 11 km, cerca de la rejilla de 9 km del modelo), que son 43. Así la descarga completa son unas 6.450 llamadas del plan gratuito, por debajo del límite de 10.000 al día.
+- **Qué se pide:** temperatura, humedad, precipitación, nieve, viento, ráfagas y presión a nivel del mar, de hora en hora, del 01.01.2017 al 31.08.2026 (la primera descarga empezaba el 01.12.2020; la historia se alargó hasta 2017 en la 0.9.0). El dataset de Gold va del 08.01.2021 al 14.08.2026 y las features miran hasta 7 días atrás, así que con ese margen no falta ninguna hora.
+- **Dónde:** los 73 municipios de `data/reference_data/municipios.xlsx` agrupados en celdas de 0,1 grados (unos 11 km, cerca de la rejilla de 9 km del modelo), que son 43. Con el periodo de la primera descarga eran unas 6.450 llamadas del plan gratuito, por debajo del límite de 10.000 al día; desde 2017 son más, y si se acaba el cupo diario la siguiente ejecución sigue donde iba.
 - **Landing** (`etl/jobs/00_landing/job_landing_meteo_openmeteo.py`): una petición por celda y año, guardada tal cual (JSON) en `datalake/00_landing/meteo/openmeteo/`. Es reanudable y respeta los límites por minuto, hora y día. La configuración está en `etl/config/01_bronze/config_bronze_meteo.json`.
 - **Bronze** (`etl/jobs/01_bronze/job_bronze_meteo_openmeteo.py`): `l1_bronze.meteo_openmeteo_hora` en hora local de Madrid, la misma convención que Calser y TedisNet. Las dos horas UTC que caen en la misma hora local al cambiar al horario de invierno se fusionan. `l1_bronze.meteo_openmeteo_celdas` asigna cada municipio a su celda.
 - **Silver** (`job_silver_f_meteo_hora.py`, `job_silver_d_meteo_celda.py`): igual que el resto de la capa. Nombres en castellano con su unidad (`racha_kmh`, `precipitacion_mm`...), una sola fila por celda y hora, valores fuera de rango físico a nulo con el flag `fuera_rango`, flag `racha_menor_viento`, recuento de horas que faltan (el salto del cambio al horario de verano no cuenta como hueco) y métricas en `l2_silver.dq_metrics`. `d_meteo_celda` deja cada municipio con su celda, el código INE a cinco cifras y el nombre normalizado.
 - **Gold** (`job_gold_meteo_celda_hora.py`, en `dag_gold`): `l3_gold.map_ct_celda` cruza el municipio de cada CT en Calser (`dim_ct.municipio_id`, que es el código INE) con `d_meteo_celda` por código y, si falla, por nombre sin tildes (columna `cruce`). Las coordenadas del municipio entran como `ct_lat_municipio` y `ct_lon_municipio` y en la clusterización, porque las de `dim_ct` estaban vacías. Son tablas nuevas e independientes: no se reconstruye nada de lo que ya había en Silver ni en Gold, y la meteorología no se mete en `features_ct_hora`; el entrenamiento la une por `(celda_id, hora)`.
 - **Features** (`l3_gold.meteo_celda_hora`): `met_*` son las últimas horas (ráfaga y viento de la hora; ráfaga máxima de 3, 6 y 24 h; lluvia de 1, 3, 6 y 24 h; nieve de 24 h; temperatura, mínima y máxima de 24 h; humedad; presión y su cambio en 3 y 24 h). `metprev_*` son las 3 horas siguientes: ráfaga máxima, lluvia y nieve. `met_region_*` y `metprev_region_*` son el máximo de todas las celdas, que da el tamaño del temporal. La fila de cada hora describe la hora que termina entonces, así que se conoce a esa hora, igual que el resto de features.
 - **Sobre la previsión:** `metprev_*` usa el reanálisis como si fuera una previsión perfecta de las 3 horas siguientes. En operación sería la previsión de AEMET o del ECMWF, que a 1-3 horas es buena pero no perfecta, así que el resultado con estas features es una cota superior. Con `meteo.prevision: false` en `config_ml.json` el entrenamiento las deja fuera, para medir cuánto aporta solo la meteorología observada.
-- **Limitación:** ninguna fuente gratuita da rayos históricos y la propia Open-Meteo avisa de que con estos datos no se pueden estimar tormentas. Las tormentas eléctricas solo se aproximan con ráfagas y precipitación intensa.
+- **Limitación:** ninguna fuente gratuita da rayos históricos y la propia Open-Meteo avisa de que con estos datos no se pueden estimar tormentas. Las tormentas eléctricas solo se aproximan con ráfagas y precipitación intensa y, desde la 0.9.0, con el CAPE de los modelos GFS archivados (`met_cape_*`).
 
 ## 6. Modelos
 
@@ -78,7 +78,7 @@ La meteorología era lo que la model card daba como pendiente ("entrará cuando 
 | `naif_historico` | Referencia | Ordena los CT por sus interrupciones conocidas en 365 días (y 90 y 30 para desempatar). Es lo que haría un operador sin modelo y la referencia que pide la model card |
 | `logistica` | Regresión logística L2 | Referencia interpretable. Imputación por mediana con indicador de nulo, escala `sign(x) * log(1 + abs(x))` y estandarización |
 | `random_forest` | Random Forest de scikit-learn | Otro modelo de árboles para comparar con el boosting. Acepta nulos sin imputar |
-| `xgboost` | Gradient boosting (XGBoost, `hist`) | Candidato principal, el que presentamos en las presentaciones. Parada temprana sobre la PR-AUC de la muestra de valid |
+| `xgboost` | Gradient boosting (XGBoost, `hist`) | Candidato principal, el que llevamos a las presentaciones. Parada temprana sobre la PR-AUC de la muestra de valid |
 
 Para cada modelo entrenado `busqueda` tiene una lista corta de configuraciones (3 para la logística, 2 para el bosque, 4 para XGBoost). Se entrenan todas con la muestra de train y se queda la de mejor PR-AUC en la muestra de valid. Todas quedan registradas en `ml_runs.busqueda_json`, también las descartadas, para poder explicar la elección en la memoria. `--sin-busqueda` usa solo la primera de cada lista (para una prueba rápida).
 
@@ -177,9 +177,9 @@ Primera comparación (11.10.2026, 500 réplicas, tasa base 0,00038):
 Lo que se puede afirmar con estos datos:
 
 - XGBoost aprende algo real: en tres de las cuatro ejecuciones su PR-AUC es mayor que la de la tasa base con un intervalo que no cruza el cero (unas dos veces la prevalencia).
-- Ninguna de las tres ampliaciones (estado de la red, grupos de CT, meteorología) mejora a la ejecución base de forma demostrable. El 0,0019 de grupos tiene un intervalo de 0,0001 a 0,0077: sale casi todo de unos pocos días de la distribuidora 2.
+- Ninguna de las tres ampliaciones (estado de la red, grupos de CT, meteorología) mejora a la ejecución base de forma demostrable. El 0,0019 de grupos tiene un intervalo de 0,0001 a 0,0077: sale casi todo de unos pocos días de la Distribuidora 2.
 - Los submodelos por grupo nunca superan al XGBoost global de su ejecución (probabilidad entre el 12 % y el 34 % en total).
-- En la distribuidora 1366, XGBoost queda por encima de su tasa base en más del 93 % de las réplicas en las cuatro ejecuciones, y es donde la PR-AUC es más alta (0,003 a 0,006 frente a una prevalencia de 0,0009).
+- En la Distribuidora 3 (id 1366), XGBoost queda por encima de su tasa base en más del 93 % de las réplicas en las cuatro ejecuciones, y es donde la PR-AUC es más alta (0,003 a 0,006 frente a una prevalencia de 0,0009).
 
 ### Horas de riesgo por distribuidora
 
@@ -216,9 +216,9 @@ Lo que sale de aquí:
 - Las 4.258 horas positivas de valid por CT son solo 68 horas positivas por distribuidora, unas 31 incidencias en todo 2025: cada incidencia toca de media a unos 45 CT a la vez. La muestra efectiva es el número de incidencias, unas 30 al año en valid y un centenar en train, y eso explica la inestabilidad de todas las comparaciones por CT.
 - XGBoost queda por encima de la tasa base y del naif histórico en todas las réplicas, con o sin previsión (un lift de 12 a 22).
 - La racha máxima de la zona en las últimas 3 horas, sola, ya multiplica por 5 la tasa base. El modelo la supera en PR-AUC en el 90 - 95 % de las réplicas, pero el intervalo de la diferencia cruza el cero, y con 2 horas de alerta por distribuidora y día avisa de las mismas incidencias o de menos.
-- La previsión perfecta de las 3 horas siguientes no mejora el resultado: sin ella la PR-AUC sale incluso más alta, porque la búsqueda elige otra configuración (`min_child_weight` 20) y casi todo viene de la distribuidora 2. Con 31 incidencias la elección de la configuración en valid es en sí misma ruidosa.
+- La previsión perfecta de las 3 horas siguientes no mejora el resultado: sin ella la PR-AUC sale incluso más alta, porque la búsqueda elige otra configuración (`min_child_weight` 20) y casi todo viene de la Distribuidora 2. Con 31 incidencias la elección de la configuración en valid es en sí misma ruidosa.
 - Lo que más pesa en los dos modelos es la meteorología (lluvia, rachas, temperatura mínima, humedad) y el estado de la red aguas arriba: reenganches en 6 y 24 h, defectos a tierra en el grupo de red, microcortes y cortes del SCADA, cambios de comunicaciones.
-- Las distribuidoras 2 y 3 tienen las mismas horas positivas en test (26 y 2 locales), pero solo coinciden en 4 horas: no hay interrupciones duplicadas entre ellas. Sí comparten el mismo instante de inicio en eventos de transporte o del sistema que les afectan a la vez, como el apagón del 28.04.2025.
+- La Distribuidora 2 y la Distribuidora 1 (ids 2 y 3) tienen las mismas horas positivas en test (26 y 2 locales), pero solo coinciden en 4 horas: no hay interrupciones duplicadas entre ellas. Sí comparten el mismo instante de inicio en eventos de transporte o del sistema que les afectan a la vez, como el apagón del 28.04.2025.
 
 #### Evaluación por años
 
@@ -248,7 +248,7 @@ Conclusiones:
 - Todos los modelos entrenados quedan por encima de la tasa base y del naif histórico en todas las réplicas, unas 3 veces la prevalencia. Hay señal, y es sobre todo meteorológica y del estado de la red aguas arriba.
 - Sin previsión, ningún modelo supera a la regla de la racha máxima observada en la zona: XGBoost y la logística quedan empatados con ella y el bosque por debajo. Las cifras de 0,03 a 0,06 de la evaluación sobre valid salían de elegir y medir en el mismo año.
 - Con la previsión perfecta de las 3 horas siguientes el bosque llega a 6 veces la prevalencia y supera a la racha observada (99 % de las réplicas), pero no a la racha prevista. El valor está en la previsión del tiempo; un modelo en producción necesitaría una previsión real (AEMET, ECMWF) en lugar del reanálisis, y esta cifra es la cota superior de lo que podría aportar.
-- Con un presupuesto fijo de horas por día ningún modelo avisa de más incidencias que elegir las horas al azar. Los modelos saben qué días son peligrosos (temporal, red alterada), no a qué hora empezará la interrupción dentro del día; la alerta útil es por día o por umbral de riesgo, no por un número fijo de horas diarias.
+- Con un presupuesto fijo de horas por día ningún modelo avisa de más incidencias que elegir las horas al azar. Los modelos saben qué días son peligrosos (temporal, red alterada) pero no a qué hora empezará la interrupción dentro del día, así que la alerta útil es por día o por umbral de riesgo.
 
 #### Evaluación final en test
 
@@ -306,7 +306,6 @@ Lectura:
 - Separar no ayuda: un modelo por distribuidora queda igual que el global, y el modelo por zona sale peor (lift de 1,6 medido por zona y hora): cada celda de 9 km tiene muy pocas incidencias propias.
 - Esta comparación se hizo después de usar test, así que test no se ha vuelto a usar para elegir entre variantes.
 
-
 ## 10. Cómo lanzarlo
 
 Requisitos: el dataset de Gold construido (`dag_gold` terminado) y las imágenes de Spark reconstruidas con las dependencias nuevas (`xgboost-cpu`, `scikit-learn` y `pyarrow` en `infra/spark/requirements.txt`).
@@ -334,6 +333,6 @@ El job no va en Airflow a propósito. El driver hace el entrenamiento y usa todo
 ## 11. Pendiente
 
 - MLflow como servicio en `compose.yaml` (con Postgres y MinIO, que ya están) para registrar cada ejecución con sus métricas y artefactos. Mientras tanto `ml_runs` cumple esa función y guarda lo mismo.
-- Política de reentreno: el modelo no se reentrena online. Se reentrena en batch cada 1 a 3 meses con los datos nuevos (recomendación de la tutoría), y cada reentreno es una ejecución más de este job con su `run_id` y su versión de dataset.
-- Reentrenar con train + valid antes de la evaluación final, si el tiempo lo permite. Ahora el modelo que se evalúa en test es el mismo que se ha elegido en valid, entrenado solo con train.
-- DAG `04_ml` de inferencia que escriba `predicciones_ct_hora` sobre `features_ct_hora` con el modelo elegido.
+- Política de reentreno: el modelo por CT y hora no se reentrena online. Se reentrena en batch cada 1 a 3 meses con los datos nuevos (recomendación de la tutoría), y cada reentreno es una ejecución más de este job con su `run_id` y su versión de dataset. El riesgo del día siguiente es otra cosa: `dag_riesgo_manana` lo vuelve a entrenar cada tarde con todos los días etiquetados.
+- Reentrenar con train + valid antes de la evaluación final, si el tiempo lo permite. Ahora el modelo por CT y hora que se evalúa en test es el mismo que se ha elegido en valid, entrenado solo con train (las horas de riesgo ya se evaluaron en test reentrenadas con todas las horas hasta 2025).
+- DAG `04_ml` de inferencia que escriba `predicciones_ct_hora` sobre `features_ct_hora` con el modelo elegido. Ha dejado de hacer falta: el aviso de 1 a 3 horas por CT no sirve como alerta ([model_card.md](model_card.md)), y la inferencia que corre cada tarde es la del riesgo del día siguiente.

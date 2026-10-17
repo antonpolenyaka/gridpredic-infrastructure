@@ -1,0 +1,15 @@
+{
+ "ficheros_antes": 2032,
+ "gb_antes": 6.75,
+ "ficheros_compactada": 70,
+ "gb_compactada": 3.8,
+ "min_compactar": 69.8,
+ "particiones": 70,
+ "errores": 0,
+ "ficheros_orden_z": 106,
+ "gb_orden_z": 3.56,
+ "min_orden_z": 14.7,
+ "particiones_orden_z": 13,
+ "columnas_con_estadisticas": 32,
+ "columnas_tabla": 267
+}

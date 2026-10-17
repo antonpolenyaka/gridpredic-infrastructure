@@ -24,7 +24,7 @@ learnt from the real databases shapes the rules:
   really ElementTypeId appear). Outside 1 - 4 it is set to null and flagged.
 - An element without node in SystemNodes never enters the flood fill, so it
   can never be Off: tiene_nodo tells Gold which transformers are observable.
-- Some events carry an impossible time: in EOSA there are On events stamped
+- Some events carry an impossible time: in our TedisNet copy there are On events stamped
   13.09.2026 (a month after the backup) that Calser processed on 29.01.2026.
   The time of an event comes from the field device, so a wrong RTU clock ends
   up here. An event later than its own processing time is flagged

@@ -3,8 +3,8 @@ Silver fact of the Extremadura module of Calser: what the distribuidora
 reports to the Junta de Extremadura about every incident (incidencias_ex)
 and how it learnt about it (incidencias_metodos_recogida_ex).
 
-The three databases have the module (1.752 of 2.019 incidents in EOSA, and
-most of Pitarch and Valle de Santa Ana). What it adds to f_incidencia:
+The three databases have the module (1.752 of 2.019 incidents in Distribuidora 1,
+and most of Distribuidora 2 and Distribuidora 3). What it adds to f_incidencia:
 
 - casuistica: the regional cause code (21 force majeure, 23 generation,
   25 transport, 28 other distribuidora, 29 private installations,

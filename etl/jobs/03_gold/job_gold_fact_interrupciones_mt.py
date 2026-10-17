@@ -10,7 +10,7 @@ One row per interruption event of a CT, in three variants (column variante):
   acometida or abonado).
 - amplia: principal plus the CT interruptions longer than 180 s without a
   valid incident. The association with an incident is manual in Calser and
-  26 - 28 % of the interruptions of EOSA and Pitarch have none, so their cause
+  26 - 28 % of the interruptions of Distribuidora 1 and Distribuidora 2 have none, so their cause
   is unknown. It measures how much the result depends on that gap.
 - todas: every CT level interruption longer than 180 s, planned works
   included. It is never a label: it tells when a CT was already without

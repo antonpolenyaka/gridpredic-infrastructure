@@ -1,0 +1,9 @@
+{
+  "generado_utc": "2026-10-15T14:49:07+00:00",
+  "fuentes": [
+    "mfe50_06.shp",
+    "mfe50_10.shp"
+  ],
+  "licencia": "MITECO, Mapa Forestal de España 1:50.000, Banco de Datos de la Naturaleza",
+  "celdas": 43
+}

@@ -20,13 +20,13 @@ tested on small synthetic data.
   exposure and local weather; they do not say which line will break.
 - The split keeps the probability of the day. The zone scores are rescaled
   (rescale_to_day) so that the probability that some zone fails equals the
-  probability of the day of the distribuidora, the one that is validated.
+  daily probability of the distribuidora, the one that is validated.
 - Municipalities and CTs inherit the risk of their lines (municipality_risk,
   ct_risk): a CT has the probability of its line times the share of the
   incidents of the line that cut it (shrunk towards the mean of the line).
 - When: the hours of the day with the forecast gust near its peak
   (risk_window). Three of five incidents of weather start within three
-  hours of the strongest gust of the day of their cell, more on the windy
+  hours of their cell's strongest gust of the day, more on the windy
   days (lag_stats, computed again every evening).
 - Why: the mix of causes of the incidents of days like tomorrow (cause_mix),
   by the strongest forecast gust: with gusts of 70 km/h or more, half of
@@ -427,7 +427,7 @@ def cascade_rule(starts: pd.DataFrame, hours: float = 3.0) -> dict:
         return out
     one = starts.sort_values("inicio_ts").drop_duplicates(["distribuidora_id", "periodo_id", "incidencia_id"])
     rows = []
-    for dist, g in one.groupby("distribuidora_id"):
+    for _, g in one.groupby("distribuidora_id"):
         t = g["inicio_ts"].to_numpy()
         for i in range(len(t)):
             later = t[i + 1:]
@@ -491,7 +491,7 @@ def crew_plan(municipalities: pd.DataFrame, crews: int, speed_kmh: float = 60.0,
     if weights.sum() <= 0:
         weights = m["n_ct"].to_numpy(dtype=float)
     minutes = haversine_km(pts, pts) * road_factor / speed_kmh * 60.0
-    source = f"línea recta por {road_factor:g} a {speed_kmh:g} km/h"
+    source = f"línea recta por {road_factor:g} a {speed_kmh:g} km/h".replace(".", ",")
     if road_minutes is not None and len(road_minutes):
         by_road = road_minutes.reindex(index=m["municipio"], columns=m["municipio"]).to_numpy(dtype=float)
         known = np.isfinite(by_road)
@@ -556,7 +556,8 @@ def positioning(window: dict, plan: dict, lead_min: int = 60) -> str:
         hour = max(0, int(window["inicio"]) - max(0, int(round(lead_min / 60.0))))
         return (f"brigadas en sus bases a las {hour}:00 (una hora antes de la franja de más riesgo, "
                 f"de {int(window['inicio'])}:00 a {int(window['fin']) + 1}:00)")
-    return "sin franja de viento: guardia normal, con las bases propuestas si hay que elegir"
+    # Not "guardia normal": a warning of AEMET can reinforce the guard of a day without wind (guardia of the payload).
+    return "sin franja de viento; si hay que elegir, las bases propuestas"
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ and server ts_actualizacion) are copied from the change, and the
 level of the event is resolved from LibTagClass_EnumValues_EventLevels
 (class of the tag + enum value), the same way the SCADA does.
 
-The level id is an installation catalog (EOSA has 1 Normal, 2 Aviso,
+The level id is an installation catalog (our TedisNet copy has 1 Normal, 2 Aviso,
 3 Alarma and 100 - 103 with colours), so nivel_severidad takes the Level
 column of LibEventLevels (1 normal, 2 aviso, 3 alarma), which is what Gold
 counts.
