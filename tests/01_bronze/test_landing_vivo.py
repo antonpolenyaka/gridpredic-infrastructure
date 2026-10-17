@@ -77,8 +77,30 @@ def test_the_forecast_of_every_cell(fs, cfg, monkeypatch):
     assert fs.ls("/vivo/20261014/prevision", detail=False) == ["/vivo/20261014/prevision/39.50_-6.40.json"]
     saved = json.loads(fs.cat("/vivo/20261014/prevision/39.50_-6.40.json"))
     assert saved["_peticion"]["celda_id"] == "39.50_-6.40" and saved["_peticion"]["modelo"] == "icon_eu"
+    assert saved["_peticion"]["reserva"] is False
     assert saved["_peticion"]["dias_futuros"] == 3 and len(saved["hourly"]["time"]) == 72
-    assert sorted(asked) == ["Open-Meteo 38.70_-6.90", "Open-Meteo 39.50_-6.40"]
+    # The cell that fails is asked to the reserve model too before giving up.
+    assert sorted(asked) == ["Open-Meteo gfs_seamless 38.70_-6.90", "Open-Meteo icon_eu 38.70_-6.90",
+                             "Open-Meteo icon_eu 39.50_-6.40"]
+
+
+def test_the_reserve_model_when_icon_eu_does_not_answer(fs, cfg, monkeypatch):
+    asked = []
+
+    def fake_fetch(url, label=None, **kwargs):
+        asked.append(label)
+        if "models=icon_eu" in url:
+            raise RuntimeError("HTTP 503 for Open-Meteo")
+        return answer()
+
+    monkeypatch.setattr(vivo, "fetch", fake_fetch)
+    monkeypatch.setattr(vivo.time, "sleep", lambda s: None)
+    cells = {f"39.{i}0_-6.40": (39.0 + i / 10, -6.4) for i in range(6)}
+    assert vivo.land_forecast(fs, cfg, "/vivo/20261015", cells) == (6, 0)
+    saved = json.loads(fs.cat("/vivo/20261015/prevision/39.50_-6.40.json"))
+    assert saved["_peticion"]["modelo"] == "gfs_seamless" and saved["_peticion"]["reserva"] is True
+    # After three cells in a row without ICON-EU the rest go straight to the reserve.
+    assert len([a for a in asked if "icon_eu" in a]) == 3 and len([a for a in asked if "gfs_seamless" in a]) == 6
 
 
 def test_the_warnings_of_aemet(fs, cfg, monkeypatch, caplog):
