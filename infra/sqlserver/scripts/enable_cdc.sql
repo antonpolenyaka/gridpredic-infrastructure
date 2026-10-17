@@ -24,8 +24,6 @@ VALUES
     ('SystemDeviceStates'),
     ('SystemElectricElectricalBranches'),
     ('SystemElectricElectricalCoils'),
-    ('SystemElectricElectricalLVLines'),
-    ('SystemElectricElectricalLVSubscribers'),
     ('SystemElectricElectricalNodes'),
     ('SystemElectricElectricalSwitchTerminals'),
     ('SystemElectricElectricalTransformers'),
@@ -76,4 +74,47 @@ END;
 
 CLOSE table_cursor;
 DEALLOCATE table_cursor;
+GO
+
+
+-- Baja tension: las tablas de lineas y de abonados guardan el nombre, el CUPS,
+-- el contador y la direccion de cada abonado. Ningun trabajo las lee, asi que
+-- no se capturan; en una base que ya las tenia con CDC se desactiva, lo que
+-- borra sus tablas de cambios (cdc.dbo_*_CT) pero no toca las de origen.
+DECLARE @excluded TABLE (
+    name sysname
+);
+
+INSERT INTO @excluded (name)
+VALUES
+    ('SystemElectricElectricalLVLines'),
+    ('SystemElectricElectricalLVSubscribers');
+
+
+DECLARE @excluded_table sysname;
+
+DECLARE excluded_cursor CURSOR LOCAL FAST_FORWARD FOR
+    SELECT name FROM @excluded;
+
+OPEN excluded_cursor;
+FETCH NEXT FROM excluded_cursor INTO @excluded_table;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM sys.tables
+        WHERE object_id = OBJECT_ID(N'dbo.' + @excluded_table)
+          AND is_tracked_by_cdc = 1
+    )
+        EXEC sys.sp_cdc_disable_table
+            @source_schema = N'dbo',
+            @source_name = @excluded_table,
+            @capture_instance = N'all';
+
+    FETCH NEXT FROM excluded_cursor INTO @excluded_table;
+END;
+
+CLOSE excluded_cursor;
+DEALLOCATE excluded_cursor;
 GO
