@@ -9,8 +9,10 @@
 ## Cómo se ha probado
 
 - [ ] `ruff check .` sin errores
+- [ ] `python -m pytest tests/01_bronze -q` en verde (si cambia Landing o Bronze; la CI no lo pasa)
 - [ ] `python -m pytest tests/02_silver -q` en verde
 - [ ] `python -m pytest tests/03_gold -q` en verde (si cambia Silver o Gold)
+- [ ] `python -m pytest tests/04_ml -q` en verde (si cambia `etl/jobs/04_ml` o su configuración)
 - [ ] `docker compose config` sin avisos (si cambia `compose.yaml` o `.env.example`)
 - [ ] Ejecutado contra el stack real: DAG / job / script y resultado observado
 

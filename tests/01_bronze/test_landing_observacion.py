@@ -72,9 +72,9 @@ def test_the_dashboard_sees_the_gust_of_the_day_near_every_network(fs, tmp_path,
     cfg = obs.observation_settings(obs.load_config())
     cfg["landing"] = "memory://datalake/00_landing/vivo"
     risk = {"distribuidoras": [
-        {"id": 2, "nombre": "Pitarch", "municipios": [{"nombre": "Casar de Cáceres", "lat": 39.56, "lon": -6.42}]},
-        {"id": 3, "nombre": "EOSA", "municipios": [{"nombre": "Hervás", "lat": 40.27, "lon": -5.86}]},
-        {"id": 1366, "nombre": "Valle de Santa Ana", "municipios": [{"nombre": "Valle de Santa Ana", "lat": 38.37, "lon": -6.78}]},
+        {"id": 2, "nombre": "Distribuidora 2", "municipios": [{"nombre": "Casar de Cáceres", "lat": 39.56, "lon": -6.42}]},
+        {"id": 3, "nombre": "Distribuidora 1", "municipios": [{"nombre": "Hervás", "lat": 40.27, "lon": -5.86}]},
+        {"id": 1366, "nombre": "Distribuidora 3", "municipios": [{"nombre": "Valle de Santa Ana", "lat": 38.37, "lon": -6.78}]},
     ]}
     with open(tmp_path / "riesgo.json", "w", encoding="utf-8") as file:
         json.dump(risk, file)
@@ -106,9 +106,9 @@ def forecast(day: str, peak_hour: int, peak: float, window: tuple) -> dict:
     """What dag_riesgo_manana leaves in riesgo_<day>.json, reduced to what the verification reads."""
     profile = [{"hora": h, "racha_max": peak if h == peak_hour else 20.0, "lluvia": 0.0} for h in range(24)]
     return {"fecha": day, "distribuidoras": [
-        {"id": 2, "nombre": "Pitarch", "nivel": "alto", "probabilidad": 0.12, "perfil": profile, "franja": {"inicio": window[0], "fin": window[1]},
+        {"id": 2, "nombre": "Distribuidora 2", "nivel": "alto", "probabilidad": 0.12, "perfil": profile, "franja": {"inicio": window[0], "fin": window[1]},
          "aviso_max_nivel": 2.0, "municipios": [{"nombre": "Casar de Cáceres", "lat": 39.56, "lon": -6.42}]},
-        {"id": 3, "nombre": "EOSA", "nivel": "bajo", "probabilidad": 0.02, "perfil": profile, "franja": {},
+        {"id": 3, "nombre": "Distribuidora 1", "nivel": "bajo", "probabilidad": 0.02, "perfil": profile, "franja": {},
          "municipios": [{"nombre": "Hervás", "lat": 40.27, "lon": -5.86}]},
     ]}
 
@@ -121,18 +121,18 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
         if day == "2026-07-19":
             # The evening of the 18th also gave an outlook of the 20th: alto for Pitarch.
             risk["pasado_manana"] = {"fecha": "2026-07-20", "fecha_texto": "20.07.2026",
-                                     "distribuidoras": [{"id": 2, "nombre": "Pitarch", "nivel": "alto", "probabilidad": 0.12}]}
+                                     "distribuidoras": [{"id": 2, "nombre": "Distribuidora 2", "nivel": "alto", "probabilidad": 0.12}]}
         with open(tmp_path / f"riesgo_{day.replace('-', '')}.json", "w", encoding="utf-8") as file:
             json.dump(risk, file)
     with open(tmp_path / "riesgo.json", "w", encoding="utf-8") as file:
         json.dump(forecast("2026-07-20", 14, 80.0, (13, 16)), file)
     # The band of the ensemble of yesterday: the observed 72 falls inside 55 - 75 for Pitarch.
     with open(tmp_path / "ensemble_20260719.json", "w", encoding="utf-8") as file:
-        json.dump({"fecha": "2026-07-19", "distribuidoras": [{"id": 2, "nombre": "Pitarch", "pico": {"p10": 55, "p50": 63, "p90": 75}, "supera": {"50": 0.9, "70": 0.3}},
-                                                            {"id": 3, "nombre": "EOSA", "pico": {"p10": 50, "p50": 58, "p90": 70}, "supera": {"50": 0.8}}]}, file)
+        json.dump({"fecha": "2026-07-19", "distribuidoras": [{"id": 2, "nombre": "Distribuidora 2", "pico": {"p10": 55, "p50": 63, "p90": 75}, "supera": {"50": 0.9, "70": 0.3}},
+                                                            {"id": 3, "nombre": "Distribuidora 1", "pico": {"p10": 50, "p50": 58, "p90": 70}, "supera": {"50": 0.8}}]}, file)
     # The forecast of AEMET by municipality of yesterday: a peak of 60 at 13:00 against the observed 72.
     with open(tmp_path / "aemet_20260719.json", "w", encoding="utf-8") as file:
-        json.dump({"fecha": "2026-07-19", "distribuidoras": [{"id": 2, "nombre": "Pitarch", "pico": {"racha_kmh": 60, "hora": 13, "municipio": "x"}}]}, file)
+        json.dump({"fecha": "2026-07-19", "distribuidoras": [{"id": 2, "nombre": "Distribuidora 2", "pico": {"racha_kmh": 60, "hora": 13, "municipio": "x"}}]}, file)
     # The run of the day before landed the same stations one day earlier: with it, yesterday has its 24 hours.
     earlier = []
     for r in records():

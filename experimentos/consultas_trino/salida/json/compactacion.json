@@ -1,0 +1,4414 @@
+{
+ "tabla": "l3_gold.dataset_train",
+ "zorder": [
+  "distribuidora_id",
+  "ct_id"
+ ],
+ "antes": {
+  "location": "s3a://datalake/03_gold/dataset_train",
+  "partitionColumns": "['split', 'fecha_mes']",
+  "numFiles": 2032,
+  "sizeInBytes": 6750408776
+ },
+ "compactacion": [
+  {
+   "split": "train",
+   "fecha_mes": "2021-01-01",
+   "filas": 740956,
+   "segundos": 84.5,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 16,
+    "filesAdded": {
+     "min": 9984398,
+     "max": 9984398,
+     "avg": 9984398.0,
+     "totalFiles": 1,
+     "totalSize": 9984398
+    },
+    "filesRemoved": {
+     "min": 891522,
+     "max": 903046,
+     "avg": 896902.8125,
+     "totalFiles": 16,
+     "totalSize": 14350445
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 16,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203295859,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-02-01",
+   "filas": 864360,
+   "segundos": 64.5,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 16,
+    "filesAdded": {
+     "min": 17487409,
+     "max": 17487409,
+     "avg": 17487409.0,
+     "totalFiles": 1,
+     "totalSize": 17487409
+    },
+    "filesRemoved": {
+     "min": 1688266,
+     "max": 1718990,
+     "avg": 1706129.0625,
+     "totalFiles": 16,
+     "totalSize": 27298065
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 16,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203360409,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-03-01",
+   "filas": 953006,
+   "segundos": 61.4,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 16,
+    "filesAdded": {
+     "min": 23391502,
+     "max": 23391502,
+     "avg": 23391502.0,
+     "totalFiles": 1,
+     "totalSize": 23391502
+    },
+    "filesRemoved": {
+     "min": 2359972,
+     "max": 2382726,
+     "avg": 2372856.3125,
+     "totalFiles": 16,
+     "totalSize": 37965701
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 16,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203421810,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-04-01",
+   "filas": 926492,
+   "segundos": 54.2,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 16,
+    "filesAdded": {
+     "min": 25339636,
+     "max": 25339636,
+     "avg": 25339636.0,
+     "totalFiles": 1,
+     "totalSize": 25339636
+    },
+    "filesRemoved": {
+     "min": 2544452,
+     "max": 2567027,
+     "avg": 2557613.125,
+     "totalFiles": 16,
+     "totalSize": 40921810
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 16,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203475968,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-05-01",
+   "filas": 956788,
+   "segundos": 57.9,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 16,
+    "filesAdded": {
+     "min": 26998591,
+     "max": 26998591,
+     "avg": 26998591.0,
+     "totalFiles": 1,
+     "totalSize": 26998591
+    },
+    "filesRemoved": {
+     "min": 2717941,
+     "max": 2766190,
+     "avg": 2733744.5,
+     "totalFiles": 16,
+     "totalSize": 43739912
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 16,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203533885,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-06-01",
+   "filas": 926599,
+   "segundos": 57.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 16,
+    "filesAdded": {
+     "min": 28528554,
+     "max": 28528554,
+     "avg": 28528554.0,
+     "totalFiles": 1,
+     "totalSize": 28528554
+    },
+    "filesRemoved": {
+     "min": 2916416,
+     "max": 2956951,
+     "avg": 2937694.4375,
+     "totalFiles": 16,
+     "totalSize": 47003111
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 16,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203590942,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-07-01",
+   "filas": 957528,
+   "segundos": 66.0,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 33412034,
+     "max": 33412034,
+     "avg": 33412034.0,
+     "totalFiles": 1,
+     "totalSize": 33412034
+    },
+    "filesRemoved": {
+     "min": 1283376,
+     "max": 2652057,
+     "avg": 2057518.625,
+     "totalFiles": 32,
+     "totalSize": 65840596
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203656919,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-08-01",
+   "filas": 953191,
+   "segundos": 55.8,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 40429833,
+     "max": 40429833,
+     "avg": 40429833.0,
+     "totalFiles": 1,
+     "totalSize": 40429833
+    },
+    "filesRemoved": {
+     "min": 1493509,
+     "max": 3071365,
+     "avg": 2374974.90625,
+     "totalFiles": 32,
+     "totalSize": 75999197
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203712782,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-09-01",
+   "filas": 919745,
+   "segundos": 66.9,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 47874676,
+     "max": 47874676,
+     "avg": 47874676.0,
+     "totalFiles": 1,
+     "totalSize": 47874676
+    },
+    "filesRemoved": {
+     "min": 1711221,
+     "max": 3536363,
+     "avg": 2722176.8125,
+     "totalFiles": 32,
+     "totalSize": 87109658
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203779707,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-10-01",
+   "filas": 765506,
+   "segundos": 49.7,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 36706057,
+     "max": 36706057,
+     "avg": 36706057.0,
+     "totalFiles": 1,
+     "totalSize": 36706057
+    },
+    "filesRemoved": {
+     "min": 1421767,
+     "max": 2957217,
+     "avg": 2280187.75,
+     "totalFiles": 32,
+     "totalSize": 72966008
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203829383,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-11-01",
+   "filas": 926615,
+   "segundos": 64.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 43272222,
+     "max": 43272222,
+     "avg": 43272222.0,
+     "totalFiles": 1,
+     "totalSize": 43272222
+    },
+    "filesRemoved": {
+     "min": 1682259,
+     "max": 3525008,
+     "avg": 2683889.15625,
+     "totalFiles": 32,
+     "totalSize": 85884453
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203893505,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-12-01",
+   "filas": 957382,
+   "segundos": 61.2,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 43976573,
+     "max": 43976573,
+     "avg": 43976573.0,
+     "totalFiles": 1,
+     "totalSize": 43976573
+    },
+    "filesRemoved": {
+     "min": 1708584,
+     "max": 3629895,
+     "avg": 2739822.5625,
+     "totalFiles": 32,
+     "totalSize": 87674322
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792203954682,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-01-01",
+   "filas": 940995,
+   "segundos": 58.2,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 45430780,
+     "max": 45430780,
+     "avg": 45430780.0,
+     "totalFiles": 1,
+     "totalSize": 45430780
+    },
+    "filesRemoved": {
+     "min": 2738416,
+     "max": 2787203,
+     "avg": 2762235.0625,
+     "totalFiles": 32,
+     "totalSize": 88391522
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204012924,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-02-01",
+   "filas": 864745,
+   "segundos": 55.6,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 41490200,
+     "max": 41490200,
+     "avg": 41490200.0,
+     "totalFiles": 1,
+     "totalSize": 41490200
+    },
+    "filesRemoved": {
+     "min": 2594577,
+     "max": 2644530,
+     "avg": 2626130.375,
+     "totalFiles": 32,
+     "totalSize": 84036172
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204068562,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-03-01",
+   "filas": 950542,
+   "segundos": 64.8,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 47470138,
+     "max": 47470138,
+     "avg": 47470138.0,
+     "totalFiles": 1,
+     "totalSize": 47470138
+    },
+    "filesRemoved": {
+     "min": 2974274,
+     "max": 3016471,
+     "avg": 2992950.0625,
+     "totalFiles": 32,
+     "totalSize": 95774402
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204133356,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-04-01",
+   "filas": 851135,
+   "segundos": 57.6,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 42378459,
+     "max": 42378459,
+     "avg": 42378459.0,
+     "totalFiles": 1,
+     "totalSize": 42378459
+    },
+    "filesRemoved": {
+     "min": 2695002,
+     "max": 2757620,
+     "avg": 2730344.8125,
+     "totalFiles": 32,
+     "totalSize": 87371034
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204190954,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-05-01",
+   "filas": 957451,
+   "segundos": 66.6,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 47747422,
+     "max": 47747422,
+     "avg": 47747422.0,
+     "totalFiles": 1,
+     "totalSize": 47747422
+    },
+    "filesRemoved": {
+     "min": 3102109,
+     "max": 3139906,
+     "avg": 3120987.84375,
+     "totalFiles": 32,
+     "totalSize": 99871611
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204257515,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-06-01",
+   "filas": 926565,
+   "segundos": 55.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 48298371,
+     "max": 48298371,
+     "avg": 48298371.0,
+     "totalFiles": 1,
+     "totalSize": 48298371
+    },
+    "filesRemoved": {
+     "min": 3103286,
+     "max": 3158265,
+     "avg": 3134621.5625,
+     "totalFiles": 32,
+     "totalSize": 100307890
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204312847,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-07-01",
+   "filas": 957250,
+   "segundos": 63.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 22,
+    "filesAdded": {
+     "min": 47218335,
+     "max": 47218335,
+     "avg": 47218335.0,
+     "totalFiles": 1,
+     "totalSize": 47218335
+    },
+    "filesRemoved": {
+     "min": 1975010,
+     "max": 4217416,
+     "avg": 4089521.409090909,
+     "totalFiles": 22,
+     "totalSize": 89969471
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 22,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204376114,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-08-01",
+   "filas": 957513,
+   "segundos": 58.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 22,
+    "filesAdded": {
+     "min": 45637285,
+     "max": 45637285,
+     "avg": 45637285.0,
+     "totalFiles": 1,
+     "totalSize": 45637285
+    },
+    "filesRemoved": {
+     "min": 1958565,
+     "max": 4160715,
+     "avg": 4034005.6818181816,
+     "totalFiles": 22,
+     "totalSize": 88748125
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 22,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204434266,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-09-01",
+   "filas": 926471,
+   "segundos": 59.9,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 22,
+    "filesAdded": {
+     "min": 46205963,
+     "max": 46205963,
+     "avg": 46205963.0,
+     "totalFiles": 1,
+     "totalSize": 46205963
+    },
+    "filesRemoved": {
+     "min": 1943810,
+     "max": 4155811,
+     "avg": 4025984.5,
+     "totalFiles": 22,
+     "totalSize": 88571659
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 22,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204494196,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-10-01",
+   "filas": 957286,
+   "segundos": 63.6,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 22,
+    "filesAdded": {
+     "min": 49515847,
+     "max": 49515847,
+     "avg": 49515847.0,
+     "totalFiles": 1,
+     "totalSize": 49515847
+    },
+    "filesRemoved": {
+     "min": 2057368,
+     "max": 4414308,
+     "avg": 4287177.0,
+     "totalFiles": 22,
+     "totalSize": 94317894
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 22,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204557772,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-11-01",
+   "filas": 926031,
+   "segundos": 58.0,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 22,
+    "filesAdded": {
+     "min": 47886809,
+     "max": 47886809,
+     "avg": 47886809.0,
+     "totalFiles": 1,
+     "totalSize": 47886809
+    },
+    "filesRemoved": {
+     "min": 1950911,
+     "max": 4305046,
+     "avg": 4174598.0,
+     "totalFiles": 22,
+     "totalSize": 91841156
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 22,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204615779,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-12-01",
+   "filas": 450051,
+   "segundos": 31.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 22,
+    "filesAdded": {
+     "min": 22220694,
+     "max": 22220694,
+     "avg": 22220694.0,
+     "totalFiles": 1,
+     "totalSize": 22220694
+    },
+    "filesRemoved": {
+     "min": 989988,
+     "max": 2101172,
+     "avg": 2032961.4090909092,
+     "totalFiles": 22,
+     "totalSize": 44725151
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 22,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204647064,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-01-01",
+   "filas": 653681,
+   "segundos": 43.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 33853072,
+     "max": 33853072,
+     "avg": 33853072.0,
+     "totalFiles": 1,
+     "totalSize": 33853072
+    },
+    "filesRemoved": {
+     "min": 2275404,
+     "max": 2322229,
+     "avg": 2296220.1875,
+     "totalFiles": 32,
+     "totalSize": 73479046
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204690208,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-02-01",
+   "filas": 863823,
+   "segundos": 57.2,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 43371467,
+     "max": 43371467,
+     "avg": 43371467.0,
+     "totalFiles": 1,
+     "totalSize": 43371467
+    },
+    "filesRemoved": {
+     "min": 2921798,
+     "max": 2972669,
+     "avg": 2946775.84375,
+     "totalFiles": 32,
+     "totalSize": 94296827
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204747416,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-03-01",
+   "filas": 952143,
+   "segundos": 67.4,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 50870893,
+     "max": 50870893,
+     "avg": 50870893.0,
+     "totalFiles": 1,
+     "totalSize": 50870893
+    },
+    "filesRemoved": {
+     "min": 3333461,
+     "max": 3396106,
+     "avg": 3358292.21875,
+     "totalFiles": 32,
+     "totalSize": 107465351
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204814870,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-04-01",
+   "filas": 925173,
+   "segundos": 72.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 48429396,
+     "max": 48429396,
+     "avg": 48429396.0,
+     "totalFiles": 1,
+     "totalSize": 48429396
+    },
+    "filesRemoved": {
+     "min": 3231319,
+     "max": 3277259,
+     "avg": 3250909.0625,
+     "totalFiles": 32,
+     "totalSize": 104029090
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204887146,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-05-01",
+   "filas": 956512,
+   "segundos": 65.9,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 52022966,
+     "max": 52022966,
+     "avg": 52022966.0,
+     "totalFiles": 1,
+     "totalSize": 52022966
+    },
+    "filesRemoved": {
+     "min": 3400223,
+     "max": 3477239,
+     "avg": 3431220.5,
+     "totalFiles": 32,
+     "totalSize": 109799056
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792204953055,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-06-01",
+   "filas": 926416,
+   "segundos": 60.7,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 50979112,
+     "max": 50979112,
+     "avg": 50979112.0,
+     "totalFiles": 1,
+     "totalSize": 50979112
+    },
+    "filesRemoved": {
+     "min": 3398658,
+     "max": 3475018,
+     "avg": 3436399.125,
+     "totalFiles": 32,
+     "totalSize": 109964772
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205013783,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-07-01",
+   "filas": 957423,
+   "segundos": 63.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 51281125,
+     "max": 51281125,
+     "avg": 51281125.0,
+     "totalFiles": 1,
+     "totalSize": 51281125
+    },
+    "filesRemoved": {
+     "min": 3490119,
+     "max": 3576881,
+     "avg": 3527592.78125,
+     "totalFiles": 32,
+     "totalSize": 112882969
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205077113,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-08-01",
+   "filas": 957404,
+   "segundos": 74.2,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 52378434,
+     "max": 52378434,
+     "avg": 52378434.0,
+     "totalFiles": 1,
+     "totalSize": 52378434
+    },
+    "filesRemoved": {
+     "min": 3581983,
+     "max": 3667103,
+     "avg": 3626181.4375,
+     "totalFiles": 32,
+     "totalSize": 116037806
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205151301,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-09-01",
+   "filas": 919363,
+   "segundos": 59.4,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 52681111,
+     "max": 52681111,
+     "avg": 52681111.0,
+     "totalFiles": 1,
+     "totalSize": 52681111
+    },
+    "filesRemoved": {
+     "min": 3520056,
+     "max": 3591091,
+     "avg": 3547284.9375,
+     "totalFiles": 32,
+     "totalSize": 113513118
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205210673,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-10-01",
+   "filas": 956931,
+   "segundos": 62.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 55877525,
+     "max": 55877525,
+     "avg": 55877525.0,
+     "totalFiles": 1,
+     "totalSize": 55877525
+    },
+    "filesRemoved": {
+     "min": 3710115,
+     "max": 3782337,
+     "avg": 3737061.40625,
+     "totalFiles": 32,
+     "totalSize": 119585965
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205273014,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-11-01",
+   "filas": 926572,
+   "segundos": 58.9,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 52834815,
+     "max": 52834815,
+     "avg": 52834815.0,
+     "totalFiles": 1,
+     "totalSize": 52834815
+    },
+    "filesRemoved": {
+     "min": 3493122,
+     "max": 3546703,
+     "avg": 3523933.59375,
+     "totalFiles": 32,
+     "totalSize": 112765875
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205331917,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-12-01",
+   "filas": 957468,
+   "segundos": 59.7,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 54558656,
+     "max": 54558656,
+     "avg": 54558656.0,
+     "totalFiles": 1,
+     "totalSize": 54558656
+    },
+    "filesRemoved": {
+     "min": 3630718,
+     "max": 3697907,
+     "avg": 3663466.34375,
+     "totalFiles": 32,
+     "totalSize": 117230923
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205391565,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-01-01",
+   "filas": 948491,
+   "segundos": 62.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 53523588,
+     "max": 53523588,
+     "avg": 53523588.0,
+     "totalFiles": 1,
+     "totalSize": 53523588
+    },
+    "filesRemoved": {
+     "min": 3598958,
+     "max": 3664233,
+     "avg": 3631459.5,
+     "totalFiles": 32,
+     "totalSize": 116206704
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205453676,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-02-01",
+   "filas": 888457,
+   "segundos": 60.0,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 49827561,
+     "max": 49827561,
+     "avg": 49827561.0,
+     "totalFiles": 1,
+     "totalSize": 49827561
+    },
+    "filesRemoved": {
+     "min": 3375044,
+     "max": 3451911,
+     "avg": 3411655.46875,
+     "totalFiles": 32,
+     "totalSize": 109172975
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205513637,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-03-01",
+   "filas": 956167,
+   "segundos": 65.4,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 53604655,
+     "max": 53604655,
+     "avg": 53604655.0,
+     "totalFiles": 1,
+     "totalSize": 53604655
+    },
+    "filesRemoved": {
+     "min": 3615514,
+     "max": 3700703,
+     "avg": 3673397.84375,
+     "totalFiles": 32,
+     "totalSize": 117548731
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205579027,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-04-01",
+   "filas": 863754,
+   "segundos": 60.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 50601133,
+     "max": 50601133,
+     "avg": 50601133.0,
+     "totalFiles": 1,
+     "totalSize": 50601133
+    },
+    "filesRemoved": {
+     "min": 3332033,
+     "max": 3410403,
+     "avg": 3363205.25,
+     "totalFiles": 32,
+     "totalSize": 107622568
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205639111,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-05-01",
+   "filas": 940972,
+   "segundos": 68.0,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 55105183,
+     "max": 55105183,
+     "avg": 55105183.0,
+     "totalFiles": 1,
+     "totalSize": 55105183
+    },
+    "filesRemoved": {
+     "min": 3615020,
+     "max": 3706482,
+     "avg": 3659343.40625,
+     "totalFiles": 32,
+     "totalSize": 117098989
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205707090,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-06-01",
+   "filas": 921552,
+   "segundos": 59.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 55956784,
+     "max": 55956784,
+     "avg": 55956784.0,
+     "totalFiles": 1,
+     "totalSize": 55956784
+    },
+    "filesRemoved": {
+     "min": 3643418,
+     "max": 3732175,
+     "avg": 3685667.1875,
+     "totalFiles": 32,
+     "totalSize": 117941350
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205766174,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-07-01",
+   "filas": 957510,
+   "segundos": 63.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 58021482,
+     "max": 58021482,
+     "avg": 58021482.0,
+     "totalFiles": 1,
+     "totalSize": 58021482
+    },
+    "filesRemoved": {
+     "min": 3801494,
+     "max": 3864323,
+     "avg": 3829722.46875,
+     "totalFiles": 32,
+     "totalSize": 122551119
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205829257,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-08-01",
+   "filas": 954198,
+   "segundos": 59.9,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 78006720,
+     "max": 78006720,
+     "avg": 78006720.0,
+     "totalFiles": 1,
+     "totalSize": 78006720
+    },
+    "filesRemoved": {
+     "min": 3683297,
+     "max": 3760269,
+     "avg": 3723453.25,
+     "totalFiles": 32,
+     "totalSize": 119150504
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205889129,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-09-01",
+   "filas": 926509,
+   "segundos": 60.2,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 77340633,
+     "max": 77340633,
+     "avg": 77340633.0,
+     "totalFiles": 1,
+     "totalSize": 77340633
+    },
+    "filesRemoved": {
+     "min": 3645935,
+     "max": 3740738,
+     "avg": 3688822.5625,
+     "totalFiles": 32,
+     "totalSize": 118042322
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792205949348,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-10-01",
+   "filas": 953966,
+   "segundos": 67.2,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 83597264,
+     "max": 83597264,
+     "avg": 83597264.0,
+     "totalFiles": 1,
+     "totalSize": 83597264
+    },
+    "filesRemoved": {
+     "min": 3870869,
+     "max": 3958702,
+     "avg": 3921492.65625,
+     "totalFiles": 32,
+     "totalSize": 125487765
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206016511,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-11-01",
+   "filas": 922741,
+   "segundos": 64.8,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 79347178,
+     "max": 79347178,
+     "avg": 79347178.0,
+     "totalFiles": 1,
+     "totalSize": 79347178
+    },
+    "filesRemoved": {
+     "min": 3714133,
+     "max": 3776688,
+     "avg": 3746814.5,
+     "totalFiles": 32,
+     "totalSize": 119898064
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206081262,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "purga",
+   "fecha_mes": "2024-12-01",
+   "filas": 6435,
+   "segundos": 6.9,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 435900,
+     "max": 435900,
+     "avg": 435900.0,
+     "totalFiles": 1,
+     "totalSize": 435900
+    },
+    "filesRemoved": {
+     "min": 109771,
+     "max": 115489,
+     "avg": 112570.0625,
+     "totalFiles": 32,
+     "totalSize": 3602242
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206088131,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-12-01",
+   "filas": 951037,
+   "segundos": 63.8,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 80140521,
+     "max": 80140521,
+     "avg": 80140521.0,
+     "totalFiles": 1,
+     "totalSize": 80140521
+    },
+    "filesRemoved": {
+     "min": 3761337,
+     "max": 3829696,
+     "avg": 3795954.0625,
+     "totalFiles": 32,
+     "totalSize": 121470530
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206151878,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-01-01",
+   "filas": 957498,
+   "segundos": 62.0,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 80677497,
+     "max": 80677497,
+     "avg": 80677497.0,
+     "totalFiles": 1,
+     "totalSize": 80677497
+    },
+    "filesRemoved": {
+     "min": 3786169,
+     "max": 3837719,
+     "avg": 3815653.78125,
+     "totalFiles": 32,
+     "totalSize": 122100921
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206213915,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-02-01",
+   "filas": 864674,
+   "segundos": 60.0,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 72927548,
+     "max": 72927548,
+     "avg": 72927548.0,
+     "totalFiles": 1,
+     "totalSize": 72927548
+    },
+    "filesRemoved": {
+     "min": 3405557,
+     "max": 3492960,
+     "avg": 3452313.03125,
+     "totalFiles": 32,
+     "totalSize": 110474017
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206273858,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-03-01",
+   "filas": 955545,
+   "segundos": 60.7,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 82085087,
+     "max": 82085087,
+     "avg": 82085087.0,
+     "totalFiles": 1,
+     "totalSize": 82085087
+    },
+    "filesRemoved": {
+     "min": 3825442,
+     "max": 3883585,
+     "avg": 3851984.0625,
+     "totalFiles": 32,
+     "totalSize": 123263490
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206334513,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-04-01",
+   "filas": 913955,
+   "segundos": 61.6,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 77812072,
+     "max": 77812072,
+     "avg": 77812072.0,
+     "totalFiles": 1,
+     "totalSize": 77812072
+    },
+    "filesRemoved": {
+     "min": 3628254,
+     "max": 3711915,
+     "avg": 3676320.59375,
+     "totalFiles": 32,
+     "totalSize": 117642259
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206396127,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-05-01",
+   "filas": 957518,
+   "segundos": 64.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 79991663,
+     "max": 79991663,
+     "avg": 79991663.0,
+     "totalFiles": 1,
+     "totalSize": 79991663
+    },
+    "filesRemoved": {
+     "min": 3782117,
+     "max": 3846241,
+     "avg": 3810615.75,
+     "totalFiles": 32,
+     "totalSize": 121939704
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206460409,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-06-01",
+   "filas": 922657,
+   "segundos": 63.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 78064598,
+     "max": 78064598,
+     "avg": 78064598.0,
+     "totalFiles": 1,
+     "totalSize": 78064598
+    },
+    "filesRemoved": {
+     "min": 3679168,
+     "max": 3766245,
+     "avg": 3716788.96875,
+     "totalFiles": 32,
+     "totalSize": 118937247
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206523488,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-07-01",
+   "filas": 950913,
+   "segundos": 63.6,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 81112973,
+     "max": 81112973,
+     "avg": 81112973.0,
+     "totalFiles": 1,
+     "totalSize": 81112973
+    },
+    "filesRemoved": {
+     "min": 3808675,
+     "max": 3891448,
+     "avg": 3850065.34375,
+     "totalFiles": 32,
+     "totalSize": 123202091
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206587043,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-08-01",
+   "filas": 957381,
+   "segundos": 67.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 80627288,
+     "max": 80627288,
+     "avg": 80627288.0,
+     "totalFiles": 1,
+     "totalSize": 80627288
+    },
+    "filesRemoved": {
+     "min": 3800041,
+     "max": 3878709,
+     "avg": 3839442.28125,
+     "totalFiles": 32,
+     "totalSize": 122862153
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206654286,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-09-01",
+   "filas": 926640,
+   "segundos": 61.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 76954783,
+     "max": 76954783,
+     "avg": 76954783.0,
+     "totalFiles": 1,
+     "totalSize": 76954783
+    },
+    "filesRemoved": {
+     "min": 3613209,
+     "max": 3708926,
+     "avg": 3673881.40625,
+     "totalFiles": 32,
+     "totalSize": 117564205
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206715608,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-10-01",
+   "filas": 955958,
+   "segundos": 67.3,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 82153962,
+     "max": 82153962,
+     "avg": 82153962.0,
+     "totalFiles": 1,
+     "totalSize": 82153962
+    },
+    "filesRemoved": {
+     "min": 3846419,
+     "max": 3914010,
+     "avg": 3877170.21875,
+     "totalFiles": 32,
+     "totalSize": 124069447
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206782916,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-11-01",
+   "filas": 926382,
+   "segundos": 63.9,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 81517192,
+     "max": 81517192,
+     "avg": 81517192.0,
+     "totalFiles": 1,
+     "totalSize": 81517192
+    },
+    "filesRemoved": {
+     "min": 3791850,
+     "max": 3850232,
+     "avg": 3821147.03125,
+     "totalFiles": 32,
+     "totalSize": 122276705
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206846791,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "purga",
+   "fecha_mes": "2025-12-01",
+   "filas": 6435,
+   "segundos": 6.8,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 447509,
+     "max": 447509,
+     "avg": 447509.0,
+     "totalFiles": 1,
+     "totalSize": 447509
+    },
+    "filesRemoved": {
+     "min": 109547,
+     "max": 117908,
+     "avg": 113301.1875,
+     "totalFiles": 32,
+     "totalSize": 3625638
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206853588,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-12-01",
+   "filas": 951059,
+   "segundos": 73.8,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 79526705,
+     "max": 79526705,
+     "avg": 79526705.0,
+     "totalFiles": 1,
+     "totalSize": 79526705
+    },
+    "filesRemoved": {
+     "min": 3773532,
+     "max": 3831393,
+     "avg": 3799627.78125,
+     "totalFiles": 32,
+     "totalSize": 121588089
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206927330,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-01-01",
+   "filas": 956165,
+   "segundos": 67.4,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 84554816,
+     "max": 84554816,
+     "avg": 84554816.0,
+     "totalFiles": 1,
+     "totalSize": 84554816
+    },
+    "filesRemoved": {
+     "min": 3946397,
+     "max": 4014122,
+     "avg": 3979880.625,
+     "totalFiles": 32,
+     "totalSize": 127356180
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792206994756,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-02-01",
+   "filas": 864653,
+   "segundos": 59.7,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 78487426,
+     "max": 78487426,
+     "avg": 78487426.0,
+     "totalFiles": 1,
+     "totalSize": 78487426
+    },
+    "filesRemoved": {
+     "min": 3690828,
+     "max": 3768618,
+     "avg": 3732251.6875,
+     "totalFiles": 32,
+     "totalSize": 119432054
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207054486,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-03-01",
+   "filas": 955867,
+   "segundos": 63.1,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 82171034,
+     "max": 82171034,
+     "avg": 82171034.0,
+     "totalFiles": 1,
+     "totalSize": 82171034
+    },
+    "filesRemoved": {
+     "min": 3924493,
+     "max": 3996037,
+     "avg": 3961571.6875,
+     "totalFiles": 32,
+     "totalSize": 126770294
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207117556,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-04-01",
+   "filas": 926257,
+   "segundos": 60.2,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 79764014,
+     "max": 79764014,
+     "avg": 79764014.0,
+     "totalFiles": 1,
+     "totalSize": 79764014
+    },
+    "filesRemoved": {
+     "min": 3817859,
+     "max": 3869666,
+     "avg": 3842618.40625,
+     "totalFiles": 32,
+     "totalSize": 122963789
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207177762,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-05-01",
+   "filas": 957524,
+   "segundos": 67.6,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 81323041,
+     "max": 81323041,
+     "avg": 81323041.0,
+     "totalFiles": 1,
+     "totalSize": 81323041
+    },
+    "filesRemoved": {
+     "min": 3916055,
+     "max": 3994612,
+     "avg": 3947834.4375,
+     "totalFiles": 32,
+     "totalSize": 126330702
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207245367,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-06-01",
+   "filas": 886962,
+   "segundos": 60.7,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 32,
+    "filesAdded": {
+     "min": 77307180,
+     "max": 77307180,
+     "avg": 77307180.0,
+     "totalFiles": 1,
+     "totalSize": 77307180
+    },
+    "filesRemoved": {
+     "min": 3676706,
+     "max": 3755040,
+     "avg": 3719840.71875,
+     "totalFiles": 32,
+     "totalSize": 119034903
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 32,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207306057,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-07-01",
+   "filas": 947707,
+   "segundos": 64.8,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 6,
+    "filesAdded": {
+     "min": 58692436,
+     "max": 58692436,
+     "avg": 58692436.0,
+     "totalFiles": 1,
+     "totalSize": 58692436
+    },
+    "filesRemoved": {
+     "min": 11667275,
+     "max": 13451228,
+     "avg": 13129718.333333334,
+     "totalFiles": 6,
+     "totalSize": 78778310
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 6,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207370839,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-08-01",
+   "filas": 401319,
+   "segundos": 23.8,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 6,
+    "filesAdded": {
+     "min": 22121065,
+     "max": 22121065,
+     "avg": 22121065.0,
+     "totalFiles": 1,
+     "totalSize": 22121065
+    },
+    "filesRemoved": {
+     "min": 4864427,
+     "max": 5571620,
+     "avg": 5445425.333333333,
+     "totalFiles": 6,
+     "totalSize": 32672552
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": null,
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 6,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207394648,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  }
+ ],
+ "orden_z": [
+  {
+   "split": "valid",
+   "fecha_mes": "2025-01-01",
+   "filas": 957498,
+   "ficheros_antes": 1,
+   "bytes": 80677497,
+   "tam_max_fichero": 16777216,
+   "segundos": 74.9,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 13903326,
+     "max": 15399788,
+     "avg": 14924529.25,
+     "totalFiles": 4,
+     "totalSize": 59698117
+    },
+    "filesRemoved": {
+     "min": 80677497,
+     "max": 80677497,
+     "avg": 80677497.0,
+     "totalFiles": 1,
+     "totalSize": 80677497
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 80677497
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 80677497
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207476903,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-02-01",
+   "filas": 864674,
+   "ficheros_antes": 1,
+   "bytes": 72927548,
+   "tam_max_fichero": 16777216,
+   "segundos": 64.2,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 11610489,
+     "max": 15682951,
+     "avg": 13482847.25,
+     "totalFiles": 4,
+     "totalSize": 53931389
+    },
+    "filesRemoved": {
+     "min": 72927548,
+     "max": 72927548,
+     "avg": 72927548.0,
+     "totalFiles": 1,
+     "totalSize": 72927548
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 72927548
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 72927548
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207547323,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-03-01",
+   "filas": 955545,
+   "ficheros_antes": 1,
+   "bytes": 82085087,
+   "tam_max_fichero": 16777216,
+   "segundos": 68.9,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 14267193,
+     "max": 15825363,
+     "avg": 15240974.0,
+     "totalFiles": 4,
+     "totalSize": 60963896
+    },
+    "filesRemoved": {
+     "min": 82085087,
+     "max": 82085087,
+     "avg": 82085087.0,
+     "totalFiles": 1,
+     "totalSize": 82085087
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 82085087
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 82085087
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207621736,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-04-01",
+   "filas": 913955,
+   "ficheros_antes": 1,
+   "bytes": 77812072,
+   "tam_max_fichero": 16777216,
+   "segundos": 63.9,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 14026188,
+     "max": 15036485,
+     "avg": 14538433.75,
+     "totalFiles": 4,
+     "totalSize": 58153735
+    },
+    "filesRemoved": {
+     "min": 77812072,
+     "max": 77812072,
+     "avg": 77812072.0,
+     "totalFiles": 1,
+     "totalSize": 77812072
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 77812072
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 77812072
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207691273,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-05-01",
+   "filas": 957518,
+   "ficheros_antes": 1,
+   "bytes": 79991663,
+   "tam_max_fichero": 16777216,
+   "segundos": 65.5,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 12206910,
+     "max": 16242365,
+     "avg": 14818732.75,
+     "totalFiles": 4,
+     "totalSize": 59274931
+    },
+    "filesRemoved": {
+     "min": 79991663,
+     "max": 79991663,
+     "avg": 79991663.0,
+     "totalFiles": 1,
+     "totalSize": 79991663
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 79991663
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 79991663
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207761747,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-06-01",
+   "filas": 922657,
+   "ficheros_antes": 1,
+   "bytes": 78064598,
+   "tam_max_fichero": 16777216,
+   "segundos": 72.7,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 12411634,
+     "max": 16248183,
+     "avg": 14367219.5,
+     "totalFiles": 4,
+     "totalSize": 57468878
+    },
+    "filesRemoved": {
+     "min": 78064598,
+     "max": 78064598,
+     "avg": 78064598.0,
+     "totalFiles": 1,
+     "totalSize": 78064598
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 78064598
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 78064598
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207840373,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-07-01",
+   "filas": 950913,
+   "ficheros_antes": 1,
+   "bytes": 81112973,
+   "tam_max_fichero": 16777216,
+   "segundos": 64.9,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 14204487,
+     "max": 16420408,
+     "avg": 15146528.25,
+     "totalFiles": 4,
+     "totalSize": 60586113
+    },
+    "filesRemoved": {
+     "min": 81112973,
+     "max": 81112973,
+     "avg": 81112973.0,
+     "totalFiles": 1,
+     "totalSize": 81112973
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 81112973
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 81112973
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207909582,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-08-01",
+   "filas": 957381,
+   "ficheros_antes": 1,
+   "bytes": 80627288,
+   "tam_max_fichero": 16777216,
+   "segundos": 65.5,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 12492949,
+     "max": 17484155,
+     "avg": 14893071.25,
+     "totalFiles": 4,
+     "totalSize": 59572285
+    },
+    "filesRemoved": {
+     "min": 80627288,
+     "max": 80627288,
+     "avg": 80627288.0,
+     "totalFiles": 1,
+     "totalSize": 80627288
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 80627288
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 80627288
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792207979856,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-09-01",
+   "filas": 926640,
+   "ficheros_antes": 1,
+   "bytes": 76954783,
+   "tam_max_fichero": 16777216,
+   "segundos": 67.9,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 12014529,
+     "max": 16063474,
+     "avg": 14269576.0,
+     "totalFiles": 4,
+     "totalSize": 57078304
+    },
+    "filesRemoved": {
+     "min": 76954783,
+     "max": 76954783,
+     "avg": 76954783.0,
+     "totalFiles": 1,
+     "totalSize": 76954783
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 76954783
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 76954783
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792208052284,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-10-01",
+   "filas": 955958,
+   "ficheros_antes": 1,
+   "bytes": 82153962,
+   "tam_max_fichero": 16777216,
+   "segundos": 74.7,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 13306429,
+     "max": 16762272,
+     "avg": 15262612.25,
+     "totalFiles": 4,
+     "totalSize": 61050449
+    },
+    "filesRemoved": {
+     "min": 82153962,
+     "max": 82153962,
+     "avg": 82153962.0,
+     "totalFiles": 1,
+     "totalSize": 82153962
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 82153962
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 82153962
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792208131714,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-11-01",
+   "filas": 926382,
+   "ficheros_antes": 1,
+   "bytes": 81517192,
+   "tam_max_fichero": 16777216,
+   "segundos": 67.9,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 11789354,
+     "max": 16876007,
+     "avg": 15274652.5,
+     "totalFiles": 4,
+     "totalSize": 61098610
+    },
+    "filesRemoved": {
+     "min": 81517192,
+     "max": 81517192,
+     "avg": 81517192.0,
+     "totalFiles": 1,
+     "totalSize": 81517192
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 81517192
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 81517192
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792208205036,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "purga",
+   "fecha_mes": "2025-12-01",
+   "filas": 6435,
+   "ficheros_antes": 1,
+   "bytes": 447509,
+   "tam_max_fichero": 16777216,
+   "segundos": 2.6,
+   "metricas": {
+    "numFilesAdded": 1,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 447509,
+     "max": 447509,
+     "avg": 447509.0,
+     "totalFiles": 1,
+     "totalSize": 447509
+    },
+    "filesRemoved": {
+     "min": 447509,
+     "max": 447509,
+     "avg": 447509.0,
+     "totalFiles": 1,
+     "totalSize": 447509
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 447509
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 447509
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792208212188,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-12-01",
+   "filas": 951059,
+   "ficheros_antes": 1,
+   "bytes": 79526705,
+   "tam_max_fichero": 16777216,
+   "segundos": 62.4,
+   "metricas": {
+    "numFilesAdded": 4,
+    "numFilesRemoved": 1,
+    "filesAdded": {
+     "min": 13291044,
+     "max": 15675534,
+     "avg": 14756567.0,
+     "totalFiles": 4,
+     "totalSize": 59026268
+    },
+    "filesRemoved": {
+     "min": 79526705,
+     "max": 79526705,
+     "avg": 79526705.0,
+     "totalFiles": 1,
+     "totalSize": 79526705
+    },
+    "partitionsOptimized": 1,
+    "zOrderStats": {
+     "strategyName": "all",
+     "inputCubeFiles": {
+      "num": 0,
+      "size": 0
+     },
+     "inputOtherFiles": {
+      "num": 1,
+      "size": 79526705
+     },
+     "inputNumCubes": 0,
+     "mergedFiles": {
+      "num": 1,
+      "size": 79526705
+     },
+     "numOutputCubes": 1,
+     "mergedNumCubes": null
+    },
+    "clusteringStats": null,
+    "numBins": 1,
+    "numBatches": 1,
+    "totalConsideredFiles": 1,
+    "totalFilesSkipped": 0,
+    "preserveInsertionOrder": false,
+    "numFilesSkippedToReduceWriteAmplification": 0,
+    "numBytesSkippedToReduceWriteAmplification": 0,
+    "startTimeMs": 1792208279077,
+    "endTimeMs": 0,
+    "totalClusterParallelism": 4,
+    "totalScheduledTasks": 0,
+    "autoCompactParallelismStats": null,
+    "deletionVectorStats": null,
+    "numTableColumns": 267,
+    "numTableColumnsWithStats": 32
+   },
+   "error": null
+  }
+ ],
+ "particiones": [
+  {
+   "split": "train",
+   "fecha_mes": "2021-01-01",
+   "filas": 740956
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-02-01",
+   "filas": 864360
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-03-01",
+   "filas": 953006
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-04-01",
+   "filas": 926492
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-05-01",
+   "filas": 956788
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-06-01",
+   "filas": 926599
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-07-01",
+   "filas": 957528
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-08-01",
+   "filas": 953191
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-09-01",
+   "filas": 919745
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-10-01",
+   "filas": 765506
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-11-01",
+   "filas": 926615
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2021-12-01",
+   "filas": 957382
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-01-01",
+   "filas": 940995
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-02-01",
+   "filas": 864745
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-03-01",
+   "filas": 950542
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-04-01",
+   "filas": 851135
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-05-01",
+   "filas": 957451
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-06-01",
+   "filas": 926565
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-07-01",
+   "filas": 957250
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-08-01",
+   "filas": 957513
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-09-01",
+   "filas": 926471
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-10-01",
+   "filas": 957286
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-11-01",
+   "filas": 926031
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2022-12-01",
+   "filas": 450051
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-01-01",
+   "filas": 653681
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-02-01",
+   "filas": 863823
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-03-01",
+   "filas": 952143
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-04-01",
+   "filas": 925173
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-05-01",
+   "filas": 956512
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-06-01",
+   "filas": 926416
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-07-01",
+   "filas": 957423
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-08-01",
+   "filas": 957404
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-09-01",
+   "filas": 919363
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-10-01",
+   "filas": 956931
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-11-01",
+   "filas": 926572
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2023-12-01",
+   "filas": 957468
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-01-01",
+   "filas": 948491
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-02-01",
+   "filas": 888457
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-03-01",
+   "filas": 956167
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-04-01",
+   "filas": 863754
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-05-01",
+   "filas": 940972
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-06-01",
+   "filas": 921552
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-07-01",
+   "filas": 957510
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-08-01",
+   "filas": 954198
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-09-01",
+   "filas": 926509
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-10-01",
+   "filas": 953966
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-11-01",
+   "filas": 922741
+  },
+  {
+   "split": "purga",
+   "fecha_mes": "2024-12-01",
+   "filas": 6435
+  },
+  {
+   "split": "train",
+   "fecha_mes": "2024-12-01",
+   "filas": 951037
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-01-01",
+   "filas": 957498
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-02-01",
+   "filas": 864674
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-03-01",
+   "filas": 955545
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-04-01",
+   "filas": 913955
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-05-01",
+   "filas": 957518
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-06-01",
+   "filas": 922657
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-07-01",
+   "filas": 950913
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-08-01",
+   "filas": 957381
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-09-01",
+   "filas": 926640
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-10-01",
+   "filas": 955958
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-11-01",
+   "filas": 926382
+  },
+  {
+   "split": "purga",
+   "fecha_mes": "2025-12-01",
+   "filas": 6435
+  },
+  {
+   "split": "valid",
+   "fecha_mes": "2025-12-01",
+   "filas": 951059
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-01-01",
+   "filas": 956165
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-02-01",
+   "filas": 864653
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-03-01",
+   "filas": 955867
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-04-01",
+   "filas": 926257
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-05-01",
+   "filas": 957524
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-06-01",
+   "filas": 886962
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-07-01",
+   "filas": 947707
+  },
+  {
+   "split": "test",
+   "fecha_mes": "2026-08-01",
+   "filas": 401319
+  }
+ ],
+ "despues_compactar": {
+  "location": "s3a://datalake/03_gold/dataset_train",
+  "partitionColumns": "['split', 'fecha_mes']",
+  "numFiles": 70,
+  "sizeInBytes": 3801868851
+ },
+ "segundos_compactar": 4187.0,
+ "despues_orden_z": {
+  "location": "s3a://datalake/03_gold/dataset_train",
+  "partitionColumns": "['split', 'fecha_mes']",
+  "numFiles": 106,
+  "sizeInBytes": 3556320458
+ },
+ "segundos_orden_z": 884.4,
+ "historia": [
+  {
+   "version": 94,
+   "timestamp": "2026-10-17 03:37:58",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 93,
+   "timestamp": "2026-10-17 03:36:52",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 92,
+   "timestamp": "2026-10-17 03:36:44",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 91,
+   "timestamp": "2026-10-17 03:35:31",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 90,
+   "timestamp": "2026-10-17 03:34:07",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 89,
+   "timestamp": "2026-10-17 03:32:59",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 88,
+   "timestamp": "2026-10-17 03:31:49",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 87,
+   "timestamp": "2026-10-17 03:30:40",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 86,
+   "timestamp": "2026-10-17 03:29:21",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 85,
+   "timestamp": "2026-10-17 03:28:11",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 84,
+   "timestamp": "2026-10-17 03:27:01",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 83,
+   "timestamp": "2026-10-17 03:25:47",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 82,
+   "timestamp": "2026-10-17 03:24:36",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 81,
+   "timestamp": "2026-10-17 03:23:14",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 80,
+   "timestamp": "2026-10-17 03:22:45",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 79,
+   "timestamp": "2026-10-17 03:21:45",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 78,
+   "timestamp": "2026-10-17 03:20:45",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 77,
+   "timestamp": "2026-10-17 03:19:37",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 76,
+   "timestamp": "2026-10-17 03:18:37",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 75,
+   "timestamp": "2026-10-17 03:17:34",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 74,
+   "timestamp": "2026-10-17 03:16:34",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 73,
+   "timestamp": "2026-10-17 03:15:27",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 72,
+   "timestamp": "2026-10-17 03:14:13",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 71,
+   "timestamp": "2026-10-17 03:14:06",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 70,
+   "timestamp": "2026-10-17 03:12:57",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 69,
+   "timestamp": "2026-10-17 03:11:55",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 68,
+   "timestamp": "2026-10-17 03:10:53",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 67,
+   "timestamp": "2026-10-17 03:09:46",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 66,
+   "timestamp": "2026-10-17 03:08:43",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 65,
+   "timestamp": "2026-10-17 03:07:40",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 64,
+   "timestamp": "2026-10-17 03:06:35",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 63,
+   "timestamp": "2026-10-17 03:05:34",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 62,
+   "timestamp": "2026-10-17 03:04:33",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 61,
+   "timestamp": "2026-10-17 03:03:33",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 60,
+   "timestamp": "2026-10-17 03:02:27",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 59,
+   "timestamp": "2026-10-17 03:01:27",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 58,
+   "timestamp": "2026-10-17 03:01:21",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 57,
+   "timestamp": "2026-10-17 03:00:16",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 56,
+   "timestamp": "2026-10-17 02:59:09",
+   "operation": "OPTIMIZE"
+  },
+  {
+   "version": 55,
+   "timestamp": "2026-10-17 02:58:08",
+   "operation": "OPTIMIZE"
+  }
+ ]
+}

@@ -613,7 +613,7 @@ def weather_warnings(spark, aemet, cells: list):
 
 
 def confidence_level(values):
-    """Level of the confidence of FIRMS: l, n, h of VIIRS and 0 - 100 of MODIS -> 1 low, 2 nominal, 3 high."""
+    """FIRMS confidence level (l, n, h for VIIRS, 0 - 100 for MODIS) as 1 low, 2 nominal, 3 high."""
     import numpy as np
     import pandas as pd
 

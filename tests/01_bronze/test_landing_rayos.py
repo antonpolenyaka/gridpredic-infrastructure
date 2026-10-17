@@ -123,10 +123,10 @@ def test_the_landing_downloads_only_what_is_missing_and_the_json_tells_the_lines
 
     # riesgo.json of dag_riesgo_manana gives the municipalities: Montánchez under the flashes, Zafra 100 km south.
     risk = {"distribuidoras": [
-        {"id": 3, "nombre": "EOSA", "municipios": [{"nombre": "Montánchez", "lat": 39.32, "lon": -6.12, "zonas": ["Montánchez / Torre"]},
+        {"id": 3, "nombre": "Distribuidora 1", "municipios": [{"nombre": "Montánchez", "lat": 39.32, "lon": -6.12, "zonas": ["Montánchez / Torre"]},
                                                    {"nombre": "Alcuéscar", "lat": 39.18, "lon": -6.23, "zonas": ["Alcuéscar"]}]},
-        {"id": 2, "nombre": "Pitarch", "municipios": [{"nombre": "Zafra", "lat": 38.42, "lon": -6.42, "zonas": ["Zafra"]}]},
-        {"id": 1366, "nombre": "Valle de Santa Ana", "municipios": []},
+        {"id": 2, "nombre": "Distribuidora 2", "municipios": [{"nombre": "Zafra", "lat": 38.42, "lon": -6.42, "zonas": ["Zafra"]}]},
+        {"id": 1366, "nombre": "Distribuidora 3", "municipios": []},
     ]}
     with open(os.path.join(cfg["dashboard_dir"], "riesgo.json"), "w", encoding="utf-8") as file:
         json.dump(risk, file)

@@ -66,6 +66,7 @@ import argparse
 import glob
 import hashlib
 import json
+import tempfile
 import math
 import os
 import re
@@ -98,6 +99,8 @@ from job_ml_riesgo_dia import (  # noqa: E402
     WARNING_GROUPS,
     WARNINGS_TABLE,
     build_dataset,
+    cell_weights,
+    nao_features,
     daily_weather,
     day_calendar,
     extremes,
@@ -333,7 +336,7 @@ def gold_hours(spark, day: pd.Timestamp, days_before: int = 31) -> tuple:
     pdf["hora"] = pd.to_datetime(pdf["hora"])
     of_day = pdf["hora"].dt.floor("D") == day
     out = pdf[["celda_id", "hora"]].copy()
-    for variable, (name, low, high) in LIVE_VARIABLES.items():
+    for name, low, high in LIVE_VARIABLES.values():
         past = pd.to_numeric(pdf[f"met_{name}"], errors="coerce") if f"met_{name}" in pdf else pd.Series(np.nan, index=pdf.index)
         ahead = pd.to_numeric(pdf[f"metp1_{name}"], errors="coerce") if f"metp1_{name}" in pdf else pd.Series(np.nan, index=pdf.index)
         values = ahead.where(of_day, past)
@@ -515,11 +518,31 @@ def warning_features(warnings: pd.DataFrame, cells: pd.DataFrame, day: pd.Timest
 # Lakehouse
 # ---------------------------------------------------------------------------
 
-def cell_weights(spark) -> pd.DataFrame:
-    """(distribuidora_id, celda_id, n_ct): the CTs of every distribuidora in every cell (map_ct_celda)."""
-    return (spark.table(CELLS_TABLE).where(F.col("celda_id").isNotNull())
-            .groupBy(F.col("distribuidora_id").cast("long").alias("distribuidora_id"), "celda_id")
-            .agg(F.count(F.lit(1)).cast("double").alias("n_ct")).toPandas())
+def live_nao(fs, folder: str, nao_cfg: dict) -> dict:
+    """
+    meteo_dia.nao with csv pointing to a local copy of the file of the repository extended with the NAO landed this
+    evening (<folder>/nao.csv, the CSV of CPC). Without that file the configuration is returned as it was.
+    """
+    nao_cfg = dict(nao_cfg or {})
+    landed = f"{folder}/nao.csv"
+    try:
+        if not fs.exists(landed):
+            logger.info("No NAO landed in %s: the block nao stops at the file of the repository", landed)
+            return nao_cfg
+        with fs.open(landed, "r") as file:
+            fresh = pd.read_csv(file)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("NAO of %s not read (%s)", landed, str(error)[:200])
+        return nao_cfg
+    fresh = pd.DataFrame({"fecha": pd.to_datetime(fresh[["year", "month", "day"]]), "nao": fresh.iloc[:, 3]})
+    base = pd.read_csv(nao_cfg["csv"], parse_dates=["fecha"]) if nao_cfg.get("csv") and os.path.exists(nao_cfg["csv"]) \
+        else pd.DataFrame(columns=["fecha", "nao"])
+    merged = (pd.concat([base, fresh[fresh["fecha"] >= "2016-10-01"]]).drop_duplicates("fecha", keep="last")
+              .sort_values("fecha"))
+    path = os.path.join(tempfile.gettempdir(), "nao_diario_vivo.csv")
+    merged.to_csv(path, index=False)
+    logger.info("NAO index up to %s", merged["fecha"].max().date())
+    return {**nao_cfg, "csv": path}
 
 
 def cell_places(spark) -> pd.DataFrame:
@@ -585,7 +608,7 @@ def save_prediction(spark, pdf: pd.DataFrame, table: str, day: pd.Timestamp, col
 
 
 # ---------------------------------------------------------------------------
-# Zones (riesgo_zonas): where, when, why, how much and the crews
+# Zones and crews (riesgo_zonas)
 # ---------------------------------------------------------------------------
 
 def gold_cell_days(spark) -> pd.DataFrame:
@@ -832,13 +855,22 @@ def zone_rows_table(zone_out: dict, day: pd.Timestamp, run_id: str, created) -> 
     return pd.DataFrame(rows)
 
 
-def follow_up(spark, table: str, events: pd.DataFrame, end: pd.Timestamp, levels: dict) -> dict:
+def follow_up(spark, table: str, events: pd.DataFrame, end: pd.Timestamp, levels: dict, names: dict = None) -> dict:
     """
     What happened on the days already predicted: the level and probability of
     every past row of the table against the incidents of Calser (any cause),
     up to the last day with labels. Days without labels yet are kept with
-    averias null.
+    averias null. names ({distribuidora_id: name}, riesgo_manana.nombres)
+    names every row as today, not with the name saved with the old rows.
     """
+    names = names or {}
+
+    def name_of(row):
+        try:
+            return names.get(int(row.distribuidora_id), row.distribuidora)
+        except (TypeError, ValueError):
+            return row.distribuidora
+
     if not spark.catalog.tableExists(table):
         return {}
     past = spark.table(table).select("fecha", "distribuidora_id", "distribuidora", "probabilidad", "nivel", "run_id").toPandas()
@@ -861,7 +893,7 @@ def follow_up(spark, table: str, events: pd.DataFrame, end: pd.Timestamp, levels
                "dias_con_averia": int((done["averias"] > 0).sum()) if len(done) else 0,
                "acierto_alto": float((high["averias"] > 0).mean()) if len(high) else None,
                "averia_en_bajo": float((low["averias"] > 0).mean()) if len(low) else None}
-    days = [{"fecha": f"{r.fecha:%d.%m.%Y}", "distribuidora": r.distribuidora, "nivel": r.nivel,
+    days = [{"fecha": f"{r.fecha:%d.%m.%Y}", "distribuidora": name_of(r), "nivel": r.nivel,
              "probabilidad": float(r.probabilidad), "averias": None if pd.isna(r.averias) else int(r.averias)}
             for r in past.sort_values(["fecha", "distribuidora_id"]).itertuples()]
     return {"resumen": summary, "dias": days}
@@ -875,7 +907,7 @@ def dashboard_payload(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out
     cascade = common.get("cascada", {})
     rule_text = []
     if lags:
-        rule_text.append(f"El {100 * lags['en_3h']:.0f} % de las averías por viento empiezan a menos de 3 h del pico de racha del día "
+        rule_text.append(f"El {100 * lags['en_3h']:.0f} % de las averías por meteorología empiezan a menos de 3 h del pico de racha del día "
                          f"(el {100 * lags['en_6h']:.0f} % a menos de 6 h, {lags['n']} averías).")
     if cascade.get("todas") is not None:
         rule_text.append(f"Tras una avería, otra en las {cascade['horas']:.0f} h siguientes en el {100 * cascade['todas']:.0f} % de los casos"
@@ -1032,11 +1064,7 @@ def reasons(terms: np.ndarray, values: np.ndarray, features: list, k: int) -> st
     return "; ".join(f"{reason_text(group, named)} (x{number(math.exp(total), 1)})" for total, group in chosen[:int(k)])
 
 
-def level_of(percentile: float, levels: dict) -> str:
-    for name, threshold in sorted(levels.items(), key=lambda item: -float(item[1])):
-        if percentile >= float(threshold):
-            return name
-    return "bajo"
+level_of = rz.level_of
 
 
 def windiest_places(hours: pd.DataFrame, places: pd.DataFrame, day: pd.Timestamp, k: int) -> dict:
@@ -1467,6 +1495,9 @@ def main(argv=None):
                                     "job_landing_vivo.py --fuente prevision first")
         spark = get_spark(config)
     cfg["hasta"] = f"{day:%Y-%m-%d}"
+    # The NAO landed this evening extends the file of the repository up to the last day CPC has published
+    # (D - 3 of the day scored; block nao, only used when the variant has it).
+    cfg["nao"] = live_nao(fs, folder, cfg.get("nao"))
     pdf, blocks, _ = build_dataset(spark, config, cfg)
     missing_blocks = [b for b in variant["bloques"] if not blocks.get(b)]
     if missing_blocks:
@@ -1494,7 +1525,8 @@ def main(argv=None):
     # Tomorrow, from the live Landing.
     dists = sorted(rows["distribuidora_id"].unique().tolist())
     weights = cell_weights(spark)
-    hours = gold_columns(cells_hours, cell_climate(spark))
+    climate = cell_climate(spark)
+    hours = gold_columns(cells_hours, climate)
     hourly = distributor_hours(hours, weights)
     live = pd.DataFrame({"distribuidora_id": dists})
     live = live.merge(weather_features(hourly, day, cfg), on="distribuidora_id", how="left")
@@ -1509,6 +1541,11 @@ def main(argv=None):
     logger.info("Warnings of AEMET (answered for every area: %s): %s CAP rows, %s in the cells of the network, %s in "
                 "force on %s", answered, len(cap_rows), len(warnings), len(warnings_of_day(warnings, day)), day.date())
     live = live.merge(warning_features(warnings, weights, day, dists), on="distribuidora_id", how="left")
+
+    teleconnection = nao_features(cfg, pd.Series([day]))
+    if len(teleconnection.columns) > 1:
+        for column in ("nao_dia", "nao_30d"):
+            live[column] = float(teleconnection[column].iloc[0])
 
     live["hora"] = day
     history = add_history(live, known, cfg["ventanas_historia_dias"])
@@ -1539,7 +1576,6 @@ def main(argv=None):
     coverage = covered.groupby("distribuidora_id")["n_ct"].sum() / weights.groupby("distribuidora_id")["n_ct"].sum()
     places = windiest_places(hours, cell_places(spark), day, int(rcfg["zonas"]))
     names = {**distributor_names(spark), **{int(k): str(v) for k, v in rcfg.get("nombres", {}).items()}}
-    climate = cell_climate(spark)
     zone_out = {}
     if spark.catalog.tableExists(DIM_TABLE):
         zone_out = zone_outputs(spark, config, rcfg, cfg, variant, pdf, events, live, probability, cells_hours, climate,
@@ -1627,7 +1663,7 @@ def main(argv=None):
         "calser_hasta": calser, "prevision_pedida_utc": forecast_asked, "avisos_texto": warning_text,
     }
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
-    seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"])
+    seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"], names)
     notes = report_notes(out, info)
     payload = attach_second_opinions(dashboard_payload(day, out, info, zone_out, seguimiento, args.run_id, notes), rcfg.get("dashboard_dir"))
     payload["pasado_manana"] = outlook_payload(outlook, day)

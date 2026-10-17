@@ -28,3 +28,7 @@ derby.log
 
 # Salidas de las pruebas manuales
 _runlogs/*.csv
+
+# Correspondencias con los nombres reales de las distribuidoras (solo en el portatil)
+_runlogs/anonimizar_nombres.json
+experimentos/aves/titulares.json

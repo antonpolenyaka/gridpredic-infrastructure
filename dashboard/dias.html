@@ -19,19 +19,27 @@
   .cifras { margin-bottom: var(--s-3); }
   #tabla .scroll { max-height: none; }
   #tabla table { font-size: var(--fs-1); }
-  #tabla td { padding: 10px 10px; }
-  #tabla td:first-child, #tabla th:first-child { min-width: 110px; }
+  #tabla td { padding: 10px 8px; }
+  #tabla th { padding-left: 8px; padding-right: 8px; }
+  #tabla td:first-child, #tabla th:first-child { min-width: 84px; }
   tr.vivo td { background: var(--accent-soft); }
   .prob { color: var(--muted); font-size: var(--fs-0); white-space: nowrap; }
-  .celda-dist { min-width: 230px; }
+  /* Each network in three short lines (level and probability; warning and window; what the evening of two days
+     before said), with the full window in the tooltip, so the whole table fits in about 800 px. */
+  .celda-dist { min-width: 124px; }
   .celda-dist .prob { white-space: normal; }
+  .celda-dist .linea { display: block; margin-top: 3px; }
+  .nw { white-space: nowrap; }
   .origen { color: var(--muted); font-size: var(--fs-0); }
-  td.origen { min-width: 200px; white-space: normal; }
-  .enlaces a { margin-right: 10px; white-space: nowrap; }
+  td.origen { min-width: 96px; white-space: normal; }
+  td.enlaces { min-width: 72px; }
+  .enlaces a { display: block; margin: 0 0 6px; line-height: 1.35; }
   dl.paginas { display: grid; grid-template-columns: max-content 1fr; gap: var(--s-2) var(--s-4); margin: 0; max-width: 100ch; }
   dl.paginas dt { font-weight: 600; } dl.paginas dd { margin: 0; color: var(--muted); }
   @media (max-width: 640px) { dl.paginas { grid-template-columns: 1fr; } dl.paginas dd { margin-bottom: var(--s-2); } }
   pre { max-width: 100ch; }
+  /* A file name or a parameter never splits across two lines. */
+  p.texto code, dl.paginas code { white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -43,7 +51,7 @@
     <a href="historial.html">Día a día 2022 - 2026</a>
     <a href="negocio.html">Negocio y cifras</a>
   </div>
-  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></span>
+  <span class="derecha"><a href="dias.html#ayuda">Qué hay en cada página</a><a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a></span>
 </nav>
 <header class="page">
   <div class="page-top">
@@ -55,14 +63,14 @@
   <section id="resumen">
     <h2>Lo que hay guardado</h2>
     <div class="cifras" id="cifras"></div>
-    <p class="texto">Cada tarde a las 20:30 el sistema guarda el riesgo del día siguiente con fecha (<code>riesgo_AAAAMMDD.json</code>) y su parte de guardia. Los días repetidos desde Gold (una tormenta pasada, vista con la previsión y los avisos que había aquella tarde) se guardan igual y se distinguen en la columna "Cómo se hizo". Al abrir un día se ve el mismo cuadro de mando que vio la guardia aquella tarde.</p>
+    <p class="texto">Cada tarde a las 20:30 el sistema guarda el riesgo del día siguiente con fecha (<code>riesgo_AAAAMMDD.json</code>) y su parte de guardia. Los días repetidos (una tormenta pasada, puntuada otra vez con la previsión y los avisos que había aquella tarde) se guardan igual y se distinguen en la columna "Cómo se hizo". Al abrir un día se ve el mismo cuadro de mando que vio la guardia aquella tarde.</p>
   </section>
   <section id="dias">
     <h2>Días</h2>
     <div class="controles">
       <label>Año: <select id="anio"><option value="">todos</option></select></label>
       <label>Nivel: <select id="nivel"><option value="">cualquiera</option><option value="muy alto">muy alto en alguna red</option><option value="alto">alto o más en alguna red</option><option value="guardia">guardia reforzada en alguna red</option><option value="repetido">solo días repetidos</option><option value="vivo">solo ejecuciones de las 20:30</option></select></label>
-      <label>Buscar: <input type="search" id="buscar" placeholder="fecha, run, municipio..."></label>
+      <label>Buscar: <input type="search" id="buscar" placeholder="fecha, nivel, guardia..."></label>
       <span class="origen" id="contador"></span>
     </div>
     <div id="tabla"></div>
@@ -70,16 +78,16 @@
   <section id="ayuda">
     <h2>Qué hay en cada página</h2>
     <dl class="paginas">
-      <dt><a href="index.html">Riesgo de mañana</a></dt><dd>El cuadro de mando en vivo: nivel y probabilidad por distribuidora, franja horaria, líneas, municipios y CT por riesgo, bases de las brigadas, rayos y estaciones durante el día, y la verificación del día anterior. Con <code>?dia=AAAAMMDD</code> muestra un día archivado (los enlaces "Ver" de esta página).</dd>
+      <dt><a href="index.html">Riesgo de mañana</a></dt><dd>El cuadro de mando en vivo: nivel y probabilidad por distribuidora, franja horaria, líneas, municipios y CT por riesgo, bases de las brigadas, rayos y estaciones durante el día, y la verificación del día anterior. Con <code>?dia=AAAAMMDD</code> muestra un día archivado (los enlaces "Cuadro de mando" de esta página).</dd>
       <dt><a href="dias.html">Días archivados</a></dt><dd>Esta página: todos los días con riesgo guardado, de las ejecuciones de las 20:30 y de los días repetidos, con su parte de guardia.</dd>
       <dt><a href="historial.html">Día a día 2022 - 2026</a></dt><dd>Un calendario por distribuidora y año con el nivel que habría dado el sistema cada tarde y las averías que hubo (<code>historico.json</code>, del caso de negocio).</dd>
       <dt><a href="negocio.html">Negocio y cifras</a></dt><dd>Lo que habría pasado con el sistema en marcha: horas-cliente cubiertas, los peores días, la guardia a igual presupuesto, el sector (GECOS) y la retribución.</dd>
-      <dt><a href="http://localhost:8080" target="_blank" rel="noopener">Airflow</a></dt><dd>Los trabajos programados: <code>dag_riesgo_manana</code> (20:30), <code>dag_observacion_vivo</code> (cada hora: estaciones, verificación, parte de la mañana, avisos de AEMET durante el día) y <code>dag_rayos_vivo</code> (cada 15 min).</dd>
+      <dt><a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a></dt><dd>Los trabajos programados: <code>dag_riesgo_manana</code> (20:30), <code>dag_observacion_vivo</code> (cada hora: estaciones, verificación, parte de la mañana, avisos de AEMET durante el día) y <code>dag_rayos_vivo</code> (cada 15 min); los domingos a las 04:10, <code>dag_mantenimiento_delta</code> compacta las tablas del lakehouse.</dd>
     </dl>
     <h3>Repetir un día que no está</h3>
     <p class="texto">Desde PowerShell en el portátil (los días desde enero de 2024, que es cuando empieza la previsión guardada de ICON-EU):</p>
-    <pre>docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml exec -T spark-master /opt/spark/bin/spark-submit --driver-memory 4g /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json --fecha 2026-01-28 --desde-gold --solo-archivo</pre>
-    <p class="texto">Al terminar, el día aparece en esta lista y se abre con "Ver". El detalle está en <code>docs/operacion-diaria.md</code>, apartado 3b.</p>
+    <pre>docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml exec -T spark-master /opt/spark/bin/spark-submit --driver-memory 4g --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json --fecha 2026-01-28 --desde-gold --solo-archivo</pre>
+    <p class="texto">Al terminar, el día aparece en esta lista y se abre con su enlace "Cuadro de mando". El detalle está en <code>docs/operacion-diaria.md</code>, apartado 3b.</p>
   </section>
 </main>
 <footer id="pie"></footer>
@@ -107,19 +115,34 @@
   }
 
   function origen(day, live) {
-    if (day.repetido) return `día repetido desde Gold (${esc(day.generado || "")})`;
+    // "generado" is "15.10.2026 18:45 UTC": the moment the file was written, in brackets after the kind of run.
+    const when = day.generado ? ` (${esc(day.generado)})` : "";
+    if (day.repetido) return "día repetido" + when;
     const run = String(day.run_id || "");
-    const kind = run.startsWith("scheduled") ? "ejecución de las 20:30" : run.startsWith("manual") ? "ejecución lanzada a mano" : run ? "ejecución " + esc(run) : "ejecución";
+    const kind = run.startsWith("scheduled") ? "ejecución de la tarde" : run.startsWith("manual") ? "ejecución lanzada a mano" : run ? "ejecución " + esc(run) : "ejecución";
     const isLive = live && live.fecha === day.fecha;
-    return kind + (day.generado ? " del " + esc(day.generado) : "") + (isLive ? " (es el día en vivo)" : "");
+    return kind + when + (isLive ? ", el día en vivo" : "");
+  }
+
+  // The window of the day in a few words ("franja 6 - 14 h, pico 99 km/h", ranges that never break); the sentence of
+  // the job stays in the tooltip. Returns HTML.
+  function franjaCorta(text) {
+    const s = String(text || "");
+    let m = /de (\d+):00 a (\d+):00, con el pico de racha \((\d+) km\/h\)/.exec(s);
+    if (m) return `franja <span class="nw">${m[1]} - ${m[2]} h</span>, pico <span class="nw">${m[3]} km/h</span>`;
+    m = /racha máxima prevista de (\d+) km\/h/.exec(s);
+    if (m) return `sin franja (racha <span class="nw">${m[1]} km/h</span>)`;
+    return esc(s);
   }
 
   function celda(d, early) {
     const guard = d.guardia_reforzada ? ` <span class="nivel guardia-pill" title="${esc(d.guardia_motivo || "guardia reforzada")}">guardia</span>` : "";
-    const warn = d.aviso_max_nivel >= 1 ? ` <span class="prob" title="aviso de AEMET">aviso ${esc(WARN[Math.round(d.aviso_max_nivel)] || d.aviso_max_nivel)}</span>` : "";
+    const warn = d.aviso_max_nivel >= 1 ? `aviso ${esc(WARN[Math.round(d.aviso_max_nivel)] || d.aviso_max_nivel)}` : "";
+    const franja = franjaCorta(d.franja);
     // What the evening of two days before said of this day (the outlook of pasado manana), to see how stable it was.
-    const before = early ? `<br><span class="prob" title="orientación a dos días, de la tarde anterior a la víspera">dos tardes antes: <span class="nivel ${cls(early.nivel)}">${esc(early.nivel || "?")}</span> ${pct(early.probabilidad)}</span>` : "";
-    return `<td class="celda-dist"><span class="nivel ${cls(d.nivel)}">${esc(d.nivel || "?")}</span> <span class="prob">${pct(d.probabilidad)}</span>${guard}${warn}<br><span class="prob">${esc(d.franja || "")}</span>${before}</td>`;
+    const before = early ? `<span class="prob linea" title="orientación a dos días, de la tarde anterior a la víspera">dos tardes antes: <span class="nivel ${cls(early.nivel)}">${esc(early.nivel || "?")}</span> ${pct(early.probabilidad)}</span>` : "";
+    return `<td class="celda-dist" title="${esc(d.franja || "")}"><span class="nivel ${cls(d.nivel)}">${esc(d.nivel || "?")}</span> <span class="prob">${pct(d.probabilidad)}</span>${guard}`
+      + `<span class="prob linea">${[warn, franja].filter(Boolean).join("; ")}</span>${before}</td>`;
   }
 
   // fecha -> {nombre: outlook} from the entries whose pasado_manana points at that day.
@@ -140,8 +163,8 @@
     const said = early[day.fecha] || {};
     const cells = names.map((n) => by[n] ? celda(by[n], said[n]) : "<td></td>").join("");
     const files = day.ficheros || {};
-    const links = [`<a href="index.html?dia=${esc(day.dia)}">Ver el cuadro de mando</a>`];
-    if (files.parte_guardia) links.push(`<a href="data/${esc(files.parte_guardia)}">Parte de guardia (xlsx)</a>`);
+    const links = [`<a href="index.html?dia=${esc(day.dia)}">Cuadro de mando</a>`];
+    if (files.parte_guardia) links.push(`<a href="data/${esc(files.parte_guardia)}" title="el parte de guardia de ese día (xlsx)">Parte de guardia</a>`);
     links.push(`<a href="data/${esc(day.fichero)}" title="el JSON completo">JSON</a>`);
     const isLive = live && live.fecha === day.fecha;
     return `<tr class="${isLive ? "vivo" : ""}"><td><b>${esc(day.fecha_texto || day.fecha)}</b><br><span class="origen">${esc(weekday(day.fecha))}</span></td>${cells}<td class="origen">${origen(day, live)}</td><td class="enlaces">${links.join("")}</td></tr>`;
@@ -186,14 +209,15 @@
     const worstDays = days.filter((d) => worst(d) >= 2).length;
     const guard = days.filter((d) => (d.distribuidoras || []).some((x) => x.guardia_reforzada)).length;
     const first = days.length ? days[days.length - 1].fecha_texto : "-", last = days.length ? days[0].fecha_texto : "-";
+    // Singular and plural: "1 día con guardia reforzada", "3 días con guardia reforzada".
     document.getElementById("cifras").innerHTML = [
-      [days.length, "días con riesgo guardado"],
-      [days.length - replayed, "ejecuciones de la tarde"],
-      [replayed, "días repetidos desde Gold"],
-      [worstDays, "días con alguna red en alto o muy alto"],
-      [guard, "días con guardia reforzada"],
-      [live ? esc(live.fecha_texto || live.fecha) : "-", "día en vivo (riesgo.json)"],
-    ].map(([v, l]) => `<div class="cifra"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+      [days.length, "día con riesgo guardado", "días con riesgo guardado"],
+      [days.length - replayed, "ejecución de la tarde", "ejecuciones de la tarde"],
+      [replayed, "día repetido", "días repetidos"],
+      [worstDays, "día con alguna red en alto o muy alto", "días con alguna red en alto o muy alto"],
+      [guard, "día con guardia reforzada", "días con guardia reforzada"],
+      [live ? esc(live.fecha_texto || live.fecha) : "-", "día en vivo (riesgo.json)", "día en vivo (riesgo.json)"],
+    ].map(([v, one, many]) => `<div class="cifra"><div class="v">${v}</div><div class="l">${v === 1 ? one : many}</div></div>`).join("");
     document.getElementById("fuentes").textContent = `Índice generado el ${index.generado || "?"}; días del ${first} al ${last}.`;
     const years = [...new Set(days.map((d) => String(d.fecha).slice(0, 4)))].sort().reverse();
     const select = document.getElementById("anio");
@@ -213,9 +237,9 @@
     document.getElementById("pie").textContent = "El índice (data/indice.json) lo escribe el propio trabajo del riesgo cada vez que guarda un día; si falta un día reciente, mira dag_riesgo_manana en Airflow.";
   }
 
-  fetch("data/indice.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(start)
-    .catch((e) => {
-      document.getElementById("fuentes").textContent = "Todavía no hay índice (data/indice.json): se escribe en la próxima ejecución de las 20:30 o al repetir un día. " + e;
+  fetch("data/indice.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(start, (e) => {
+      document.getElementById("fuentes").textContent = `Todavía no hay índice (data/indice.json, ${e.message}): se escribe en la próxima ejecución de las 20:30 o al repetir un día.`;
       document.getElementById("tabla").innerHTML = `<div class="vacio">Sin índice. Mientras tanto, el día en vivo está en <a href="index.html">Riesgo de mañana</a>.</div>`;
     });
 })();

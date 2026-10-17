@@ -1,0 +1,29 @@
+{"ficheros_antes": 2032, "gb_antes": 6.75, "ficheros_compactada": 70, "gb_compactada": 3.8, "min_compactar": 69.8, "particiones": 70, "errores": 0, "ficheros_orden_z": 106, "gb_orden_z": 3.56, "min_orden_z": 14.7, "particiones_orden_z": 13, "columnas_con_estadisticas": 32, "columnas_tabla": 267}
+c1a  A   -                                        frío   7.53 caliente  4.77 splits 2058 leídas  61801970 MB     0.0 est 61801970 útiles 61801970 
+c1a  DE  -                                        frío   5.37 caliente  1.05 splits  132 leídas  61801970 MB     0.0 est 61801970 útiles 61801970 
+c1c  A   -                                        frío   0.37 caliente  None splits   19 leídas         1 MB    0.01 est          útiles          
+c2a  A   -                                        frío   5.28 caliente   1.1 splits   41 leídas    957498 MB    5.33 est   861748 útiles   546066 
+c2a  C   -                                        frío   5.32 caliente  1.19 splits   41 leídas    957498 MB    5.33 est   319166 útiles   546066 
+c2a  DE  -                                        frío   4.37 caliente  0.81 splits   13 leídas    957498 MB    1.82 est   319166 útiles   546066 
+c2b  A   -                                        frío   5.03 caliente  1.07 splits   41 leídas    957498 MB    5.33 est   861748 útiles   546066 
+c2b  C   -                                        frío   5.07 caliente  0.91 splits   41 leídas    957498 MB    5.33 est   319166 útiles   546066 
+c2b  DE  -                                        frío   4.22 caliente  0.71 splits   13 leídas    957498 MB    1.82 est   319166 útiles   546066 
+c2c  A   -                                        frío   5.33 caliente  1.14 splits   41 leídas    317498 MB    5.33 est   861748 útiles     7440 
+c2c  DE  -                                        frío   3.88 caliente  0.76 splits   10 leídas    233404 MB    0.45 est    77801 útiles     7440 
+c2d  A   -                                        frío   4.29 caliente  1.04 splits   41 leídas    317498 MB    5.33 est   861748 útiles     7440 
+c2d  C   -                                        frío   5.25 caliente  0.94 splits   41 leídas    317498 MB    5.33 est   319166 útiles     7440 
+c2d  DE  -                                        frío   5.77 caliente  0.71 splits   10 leídas    233404 MB    0.45 est    77801 útiles     7440 
+c3a  A   -                                        frío   4.54 caliente  0.81 splits   44 leídas   3642573 MB    6.47 est  3642573 útiles  3642573 
+c3b  A   -                                        frío    4.6 caliente  0.68 splits   35 leídas    376637 MB    1.39 est    31992 útiles    31992 
+c3c  A   -                                        frío   4.29 caliente   0.7 splits   35 leídas    376637 MB    1.39 est    31992 útiles    31992 
+c4a  A   -                                        frío    2.1 caliente  0.47 splits   22 leídas        21 MB    0.06 est       21 útiles       21 
+c5a  A   -                                        frío   7.75 caliente   2.3 splits   78 leídas   1368955 MB    6.73 est   957498 útiles   957498 REPLICATED est=? real=957498 | REPLICATED est=? real=957498
+c5b  A   -                                        frío   8.13 caliente  2.27 splits   78 leídas   1368955 MB    6.73 est   957498 útiles   957498 REPLICATED est=? real=957498 | REPLICATED est=? real=957498
+c5b  F   join_distribution_type=BROADCAST         frío   8.63 caliente  2.31 splits   78 leídas   1368955 MB    6.73 est   957498 útiles   957498 REPLICATED est=? real=957498 | REPLICATED est=? real=957498
+c5b  F   join_distribution_type=PARTITIONED       frío   8.89 caliente  2.74 splits   94 leídas   1335549 MB    6.73 est   957498 útiles   957498 PARTITIONED est=? real=957498 | PARTITIONED est=? real=957498
+c5b  C   -                                        frío   9.48 caliente  3.15 splits   85 leídas   2294461 MB    6.75 est   957498 útiles   957498 REPLICATED est=1242508 real=957498 | REPLICATED est=728056 real=957498
+c5b  DE  -                                        frío   9.79 caliente  2.53 splits   57 leídas   2294461 MB    3.24 est   957498 útiles   957498 REPLICATED est=1242508 real=957498 | REPLICATED est=728056 real=957498
+c5c  A   -                                        frío   6.85 caliente  1.82 splits   78 leídas    727552 MB    6.92 est    31992 útiles    31992 REPLICATED est=? real=7440 | REPLICATED est=? real=7440
+c5c  F   enable_dynamic_filtering=false           frío   7.25 caliente  2.04 splits   78 leídas    727552 MB    6.73 est    31992 útiles    31992 REPLICATED est=? real=7440 | REPLICATED est=? real=7440
+c5c  C   -                                        frío   7.07 caliente  2.17 splits   85 leídas    366363 MB    6.02 est   319166 útiles     7440 REPLICATED est=199636 real=7440 | REPLICATED est=116978 real=7440
+c5c  DE  -                                        frío   7.12 caliente   1.6 splits   54 leídas    282269 MB    0.95 est    77801 útiles     7440 REPLICATED est=48664 real=7440 | REPLICATED est=28515 real=7440

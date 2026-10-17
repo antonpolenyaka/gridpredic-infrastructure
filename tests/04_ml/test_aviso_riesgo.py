@@ -111,8 +111,8 @@ def test_a_failed_task_goes_to_the_webhook(monkeypatch):
 
     context = {"task_instance": TI(), "logical_date": "2026-10-14T18:30:00+00:00", "exception": RuntimeError("The forecast of ICON-EU for 2026-10-15 did not land")}
     text = av.failure_message(context)
-    assert text == ("GridPredic: la tarea prevision de dag_riesgo_manana ha fallado (intento 2), ejecución 2026-10-14T18:30: "
-                    "The forecast of ICON-EU for 2026-10-15 did not land. Airflow: http://localhost:8080")
+    assert text == ("GridPredic: la tarea prevision de dag_riesgo_manana ha fallado (intento 2), ejecución del 14.10.2026 20:30: "
+                    "The forecast of ICON-EU for 2026-10-15 did not land. Airflow: http://localhost:8084")
     monkeypatch.delenv("AVISO_WEBHOOK_URL", raising=False)
     assert av.notify_failure(context) == "sin url"
     sent = []
