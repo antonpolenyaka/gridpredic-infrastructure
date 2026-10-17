@@ -560,6 +560,7 @@
     ]
   },
   "caso_negocio": {
+    "margen_etiquetas_dias": 7,
     "anios": [2022, 2023, 2024, 2025, 2026],
     "brigadas": {"3": [1, 2], "2": [1, 2], "1366": [1]},
     "movilizacion_min": 30.0,
@@ -579,7 +580,8 @@
     "horario": "30 20 * * *",
     "landing": "s3://datalake/00_landing/vivo",
     "tabla": "l3_gold.riesgo_dia_siguiente",
-    "margen_etiquetas_dias": 7,
+    "margen_etiquetas_dias": 45,
+    "historia_margen_dias": 7,
     "historia_desfasada": "sin_historia",
     "niveles": {"muy alto": 0.95, "alto": 0.9, "medio": 0.75},
     "motivos": 3,

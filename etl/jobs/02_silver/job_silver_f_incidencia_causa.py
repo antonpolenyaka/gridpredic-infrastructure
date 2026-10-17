@@ -24,6 +24,13 @@ can be checked against what the operator wrote.
 The rules are in causas_incidencia.py, documented and tested without Spark.
 A few thousand incidents fit in the driver: the classification runs in
 pandas and only the keys and the result go back to Spark.
+
+One rule needs every distribuidora at once (common_supply): an unplanned
+incident that starts in the same second as one of another distribuidora is
+a failure of the supply that feeds both, the provider upstream (Iberdrola,
+for example), whatever its text says. It becomes aguas_arriba, subcausa
+proveedor_comun, with fuente_causa otra_red. The planned ones and the
+blackout of 28.04.2025 keep their cause.
 """
 
 import re
@@ -60,6 +67,8 @@ TECHNICAL_TEXT = re.compile(r"^(incompleta )?scada( fecha (final|inicio) modific
 
 TEXT_OUTPUTS = ["causa", "subcausa", "componente", "origen", "regla", "fuente_causa", "casuistica_nombre",
                 "nivel_afectacion", "texto_causa"]
+# Causes that a start shared with another distribuidora does not change.
+COMMON_SUPPLY_KEEP = ("programada", "apagon")
 FLAG_OUTPUTS = ["meteo_en_texto", "maniobra_reparacion"]
 
 
@@ -163,6 +172,25 @@ def classify_frame(pdf: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def common_supply(pdf: pd.DataFrame, out: pd.DataFrame) -> pd.DataFrame:
+    """
+    out (one row per row of pdf, in the same order) with the unplanned incidents that start in the same second
+    as one of another distribuidora turned into aguas_arriba / proveedor_comun: a cut of the provider that feeds
+    two or more distribuidoras leaves them without supply at once, and each operator writes the agent (wind,
+    fauna, a fault) or nothing.
+    """
+    starts = pd.to_datetime(pdf["inicio_ts"], errors="coerce").dt.floor("s")
+    unplanned = pdf["clasificacion_id"].astype(str).str.strip().str.upper().eq("CL_IMPRE") & starts.notna()
+    frame = pd.DataFrame({"distribuidora_id": pdf["distribuidora_id"], "inicio": starts})[unplanned]
+    networks = frame.groupby("inicio")["distribuidora_id"].nunique()
+    shared = starts.isin(set(networks[networks >= 2].index))
+    hit = (unplanned & shared).to_numpy() & ~out["causa"].isin(COMMON_SUPPLY_KEEP).to_numpy()
+    out = out.copy()
+    out.loc[hit, ["causa", "subcausa", "origen", "regla", "fuente_causa"]] = [
+        "aguas_arriba", "proveedor_comun", "aguas_arriba", "simultanea_otra_red", "otra_red"]
+    return out
+
+
 def build(incidents: DataFrame, ex: DataFrame, summary: DataFrame) -> DataFrame:
     base = incidents.select(
         *KEYS, "source_database", "inicio_ts", "fin_ts", "duracion_s", "clasificacion_id", "factor_id",
@@ -185,7 +213,8 @@ def build(incidents: DataFrame, ex: DataFrame, summary: DataFrame) -> DataFrame:
                     "descripcion", "observaciones", "resolucion", "instalacion_origen", "instalacion_cabecera",
                     "n_int_ct", "n_int_salida", "n_int_acometida", "n_int_abonado", "int_descripciones", "motivos",
                     "trabajos"]
-    result = classify_frame(base.select(*text_columns).toPandas())
+    pdf = base.select(*text_columns).toPandas()
+    result = common_supply(pdf, classify_frame(pdf))
 
     spark = incidents.sparkSession
     schema = StructType(
@@ -228,6 +257,8 @@ def main():
     dq.add(ENTITY, "sin_causa_desde_2016_ct", recent.where(F.col("causa") == "sin_causa").count(), recent_total,
            umbral_pct=5.0, detalle="incidencias de CT desde 2016 sin ninguna causa en texto ni en codigo")
     dq.add(ENTITY, "causa_por_codigo_oficial", out.where(F.col("fuente_causa") == "codigo_oficial").count(), total)
+    dq.add(ENTITY, "proveedor_comun", out.where(F.col("subcausa") == "proveedor_comun").count(), total,
+           detalle="incidencias imprevistas que empiezan en el mismo segundo que una de otra distribuidora")
 
     dq.flush()
     logger.info("Silver completed: %s", TARGET_TABLE)

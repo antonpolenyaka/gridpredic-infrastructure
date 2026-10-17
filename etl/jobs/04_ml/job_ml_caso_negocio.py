@@ -69,6 +69,7 @@ from job_ml_train import RUNS_TABLE, get_spark, load_config, logger, save_frame 
 
 DEFAULTS = {
     "anios": [2022, 2023, 2024, 2025],
+    "margen_etiquetas_dias": 7,
     "brigadas": {},
     "movilizacion_min": 30.0,
     "recorte_min": 110.0,
@@ -652,7 +653,10 @@ def main(argv=None):
         cfg["hasta"] = f"{today:%Y-%m-%d}"
     pdf, blocks, _ = build_dataset(spark, config, cfg)
     events, _ = read_events(spark, cfg)
-    ends = [calser_until(spark, events, today).floor("D") - pd.Timedelta(days=int(rcfg["margen_etiquetas_dias"])), today - pd.Timedelta(days=1)]
+    # Its own margin (caso_negocio.margen_etiquetas_dias): the evening waits 45 days since 17.10.2026, the figures of the
+    # business case keep the 7 days they were published with.
+    margin = int(ccfg["margen_etiquetas_dias"])
+    ends = [calser_until(spark, events, today).floor("D") - pd.Timedelta(days=margin), today - pd.Timedelta(days=1)]
     if "dia_racha_max" in pdf.columns:
         ends.append(pdf.loc[pdf["dia_racha_max"].notna(), "fecha"].max())
     if "avisos" in variant["bloques"]:
