@@ -7,10 +7,16 @@ Nothing else in the project ran either, so MinIO kept every old file of the
 tables that are rewritten by month (features_ct_hora, labels_ct_hora,
 agg_medida_hora...) and thousands of small files in the CDC tables of Bronze.
 
-    spark-submit job_mantenimiento_delta.py [--bases l1_bronze,l2_silver,l3_gold] [--horas 168] [--sin-vacuum] [--parar-a 18]
+    spark-submit job_mantenimiento_delta.py [--bases l1_bronze,l2_silver,l3_gold] [--horas 168] [--sin-vacuum]
+        [--parar-a 18] [--solo-vacuum l3_gold.dataset_train]
 
 A table that fails (a concurrent write of the streaming, say) is logged and
 skipped; the next week tries again.
+
+dataset_train only gets VACUUM: it is compacted by partition, and the months
+of 2025 ordered by (distribuidora_id, ct_id) with ZORDER, by
+experimentos/consultas_trino/compactar_dataset.py, and a plain OPTIMIZE would
+merge the ordered files of each month into one again.
 """
 
 import argparse
@@ -24,6 +30,8 @@ from pyspark.sql import SparkSession
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("mantenimiento_delta")
 
+ONLY_VACUUM = "l3_gold.dataset_train"
+
 
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="OPTIMIZE and VACUUM of the Delta tables")
@@ -32,7 +40,18 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--sin-vacuum", action="store_true", help="Only OPTIMIZE")
     parser.add_argument("--parar-a", type=int, default=None,
                         help="Local hour (Madrid) from which no new table is started, to leave Spark free for the evening")
+    parser.add_argument("--solo-vacuum", default=ONLY_VACUUM,
+                        help="Tables (comma separated) that keep their own file layout: VACUUM without OPTIMIZE")
     return parser.parse_args(argv)
+
+
+def actions(name: str, args: argparse.Namespace) -> list:
+    """What the week does with a table: OPTIMIZE unless it keeps its own layout, then VACUUM unless --sin-vacuum."""
+    keep = {t.strip() for t in (args.solo_vacuum or "").split(",") if t.strip()}
+    steps = [] if name in keep else ["optimize"]
+    if not args.sin_vacuum:
+        steps.append("vacuum")
+    return steps
 
 
 def delta_tables(spark, database: str) -> list:
@@ -68,16 +87,20 @@ def main(argv=None) -> int:
                 break
             start = time.time()
             try:
+                steps = actions(name, args)
+                if not steps:
+                    continue
                 files, size = files_of(spark, name)
-                spark.sql(f"OPTIMIZE {name}")
-                if not args.sin_vacuum:
+                if "optimize" in steps:
+                    spark.sql(f"OPTIMIZE {name}")
+                if "vacuum" in steps:
                     spark.sql(f"VACUUM {name} RETAIN {args.horas} HOURS")
                 files_after, size_after = files_of(spark, name)
                 before_files += files
                 after_files += files_after
                 done += 1
-                logger.info("%s: %s -> %s files, %.1f -> %.1f MB in %.0f s", name, files, files_after, size / 1e6,
-                            size_after / 1e6, time.time() - start)
+                logger.info("%s (%s): %s -> %s files, %.1f -> %.1f MB in %.0f s", name, " + ".join(steps), files,
+                            files_after, size / 1e6, size_after / 1e6, time.time() - start)
             except Exception as error:  # noqa: BLE001
                 failed += 1
                 logger.warning("%s: skipped (%s)", name, str(error)[:200])
