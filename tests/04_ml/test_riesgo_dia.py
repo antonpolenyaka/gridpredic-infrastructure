@@ -425,8 +425,8 @@ def config_path(workdir):
         "hasta": "2026-01-01",
         "anios_evaluacion": [2023, 2024, 2025],
         "bootstrap_reps": 50,
-        "modelos": ["tasa_base", "logistica", "xgboost", "poisson"],
-        "busqueda": {"logistica": [{"C": 0.1}], "poisson": [{"alpha": 1.0}],
+        "modelos": ["tasa_base", "logistica", "xgboost", "poisson", "logistica_firth"],
+        "busqueda": {"logistica": [{"C": 0.1}], "poisson": [{"alpha": 1.0}], "logistica_firth": [{"flic": True}],
                      "xgboost": [{"max_depth": 2, "min_child_weight": 5, "learning_rate": 0.1, "subsample": 0.8,
                                   "colsample_bytree": 0.8, "n_estimators": 200, "early_stopping_rounds": 20,
                                   "verbose": 0}]},
@@ -526,10 +526,39 @@ def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
     assert references.loc["naif_aviso", "dias_positivos_en_top_10pct"] > 0.3
     # The two models of every variant together by their percentiles in the year.
     assert table.loc[("perfecta", "rango"), "pr_auc"] > 2 * nothing
-    assert len(read(folder, "diferencias.csv")) == 2
+    # The pairs of the configuration, and Firth against the L2 logistic regression in every variant.
+    pairs = set(zip(*[read(folder, "diferencias.csv")[c] for c in ("a", "b")]))
+    assert {("perfecta__logistica", "ayer__logistica"), ("avisos__logistica", "ayer__logistica")} <= pairs
+    assert ("perfecta__logistica_firth", "perfecta__logistica") in pairs
     # The model of counts (fitted on n_dia) ranks the days like the logistic regression.
     counted = table.loc[("perfecta", "poisson"), "pr_auc"]
     assert counted > 2 * nothing and counted > 0.7 * perfect
+
+
+def test_the_calibration_of_the_probabilities(result):
+    _, folder = result
+    table = read(folder, "comparacion.csv").set_index(["variante", "modelo"])
+    for column in ("bss", "pendiente_calibracion", "intercepto_calibracion"):
+        assert column in table.columns
+    # The models that give a probability have a calibration; the mean of two rankings does not.
+    for model in ("logistica", "logistica_firth", "poisson", "xgboost"):
+        assert np.isfinite(table.loc[("perfecta", model), "bss"])
+    assert np.isnan(table.loc[("perfecta", "rango"), "bss"])
+    # The weather of the day says much more than the base rate of the years before, whose skill is about zero.
+    assert table.loc[("perfecta", "logistica"), "bss"] > 0.05
+    assert table.reset_index().set_index("modelo").loc["tasa_base", "bss"] < 0.02
+    assert 0.3 < table.loc[("perfecta", "logistica_firth"), "pendiente_calibracion"] < 3
+    # Firth ranks like the L2 logistic regression.
+    assert table.loc[("perfecta", "logistica_firth"), "pr_auc"] > 0.7 * table.loc[("perfecta", "logistica"), "pr_auc"]
+    metrics = read(folder, "metricas.csv")
+    measured = set(metrics["metrica"])
+    assert {"brier", "log_loss", "prob_media", "bss"} <= measured
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "bss es la mejora del Brier" in text
+    forecast = read(folder, "prevision.csv")
+    assert forecast["bss"].notna().any()
+    differences = read(folder, "prevision_diferencias.csv").set_index(["a", "b"])
+    assert ("perfecta_comun__logistica_firth__prevision", "perfecta_comun__logistica__prevision") in differences.index
 
 
 def test_the_real_forecast_scores_the_years_it_covers(result):
