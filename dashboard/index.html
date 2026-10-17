@@ -51,6 +51,7 @@
 </header>
 <main id="main"></main>
 <footer id="pie"></footer>
+<aside class="licencias" aria-label="Fuentes y licencias">Fuentes: previsión meteorológica de Open-Meteo (CC BY 4.0), con ICON-EU de DWD y GFS de NOAA; avisos, observaciones y previsión por municipio de AEMET OpenData (información elaborada utilizando, entre otras, la obtenida de la Agencia Estatal de Meteorología); rayos del Lightning Imager de MTG (EUMETSAT); mapa y tiempos por carretera de OpenStreetMap (© colaboradores de OpenStreetMap, ODbL) con OSRM; índices de calidad del sector del Ministerio para la Transición Ecológica y el Reto Demográfico y de la CNMC. Los datos de red son de TedisNet y Calser de las tres distribuidoras, con los nombres seudonimizados.</aside>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/gsap/gsap.min.js"></script>
 <script src="vendor/gsap/ScrollTrigger.min.js"></script>
@@ -179,7 +180,7 @@
     const meta = [];
     if (f.prevision_pedida) meta.push(["Previsión de ICON-EU", "pedida el " + f.prevision_pedida]);
     if (f.avisos_texto) meta.push(["Avisos de AEMET", f.avisos_texto]);
-    if (f.calser_hasta) meta.push(["Calser", "hasta el " + f.calser_hasta + (f.historia_al_dia ? "" : " (historia de incidencias no al día)")]);
+    if (f.calser_hasta) meta.push(["Calser", "hasta el " + f.calser_hasta + (f.historia_al_dia ? "" : f.historia_en_modelo === false ? " (historia de incidencias no al día: el modelo se entrena sin ella)" : " (historia de incidencias no al día)")]);
     if (data.modelo) meta.push(["Modelo", `${data.modelo.descripcion || ""}, entrenado con ${num(data.modelo.dias)} días de distribuidora hasta el ${data.modelo.entrenado_hasta}`]);
     const run = String(data.run_id || "");
     const kind = run.startsWith("scheduled") ? "ejecución programada de las 20:30" : run.startsWith("manual") ? "ejecución lanzada a mano" : run ? "ejecución " + run : "";
