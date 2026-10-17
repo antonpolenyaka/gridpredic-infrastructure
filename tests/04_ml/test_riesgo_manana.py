@@ -764,3 +764,25 @@ def test_the_follow_up_names_the_old_rows_as_today():
     assert out["resumen"]["dias_con_resultado"] == 2 and out["resumen"]["acierto_alto"] == 0.5
     # Without names, the ones saved with the rows.
     assert rm.follow_up(Spark(), "t", events, pd.Timestamp("2026-08-02"), levels)["dias"][0]["distribuidora"] == "Nombre viejo B"
+
+
+def test_an_old_run_of_the_forecast_is_told_in_the_notes(tmp_path):
+    folder = tmp_path / "20261018"
+    folder.mkdir()
+    fs = rm.LocalFiles()
+    # An older Landing without the file: nothing to say.
+    assert rm.forecast_run(fs, str(folder)) == {}
+    run = {"modelo": "icon_eu", "dominio": "dwd_icon_eu", "pasada_utc": "2026-10-17T03:00:00+00:00",
+           "disponible_utc": "2026-10-17T05:55:00+00:00", "horas_desde_pasada": 15.5}
+    (folder / "prevision_modelo.json").write_text(json.dumps(run), encoding="utf-8")
+    assert rm.forecast_run(fs, str(folder))["horas_desde_pasada"] == 15.5
+    out = pd.DataFrame({"distribuidora": ["Distribuidora 1"], "cobertura_prevision": [1.0]})
+    info = {"avisos_disponibles": True, "historia_al_dia": True, "calser_hasta": pd.Timestamp("2026-10-10"),
+            "pasada_prevision": run, "pasada_max_horas": rm.STALE_RUN_H}
+    notes = rm.report_notes(out, info)
+    assert len(notes) == 1 and "pasada de 17.10.2026 03:00 UTC" in notes[0] and "16 horas" in notes[0]
+    # A run of the afternoon, three or four hours old at 20:30, is the normal evening.
+    info["pasada_prevision"] = {**run, "horas_desde_pasada": 3.6}
+    assert rm.report_notes(out, info) == []
+    (folder / "prevision_modelo.json").write_text("{broken", encoding="utf-8")
+    assert rm.forecast_run(fs, str(folder)) == {}
