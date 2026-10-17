@@ -170,7 +170,7 @@ El asesor técnico (Josep Anton Sànchez) nos vio el 13.07 y el 08.10.2026, y el
 | Estación del año y entrenamiento que cubra todas las estaciones | 08.10 (técnico) | 5.3.3, 5.3.4 y 5.4 |
 | Reentreno en batch cada uno a tres meses, aparte de la predicción | 08.10 (técnico) | 5.7.1 |
 | Datos en el disco interno | 08.10 (técnico) | 4.7.2: no cabían; seguimos en el externo |
-| Captura en flujo desde las tablas de SQL Server con CDC y Kafka | 17.07 (prototipo) | 4.3.2, 4.5.2 y 4.6: Debezium y Kafka con 31 tablas System* |
+| Captura en flujo desde las tablas de SQL Server con CDC y Kafka | 17.07 (prototipo) | 4.3.2, 4.5.2 y 4.6: Debezium y Kafka con 29 tablas System* |
 | Datos sintéticos para el flujo, si hacía falta | 17.07 (prototipo) | No hizo falta: el CDC corre sobre las copias restauradas |
 | Zonas como en clase, algún dato no tabular y una arquitectura más amplia que lo construido | 17.07 (prototipo) | 4.1, 4.3, 4.3.3 y 4.4 |
 | Zonas también para el análisis, sin notebooks en el proceso, y orquestación con Airflow | 17.07 (prototipo) | 4.3 y 4.3.2 |

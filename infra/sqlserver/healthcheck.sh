@@ -38,8 +38,6 @@ SQLCMD="/opt/mssql-tools18/bin/sqlcmd"
                 'SystemDeviceStates',
                 'SystemElectricElectricalBranches',
                 'SystemElectricElectricalCoils',
-                'SystemElectricElectricalLVLines',
-                'SystemElectricElectricalLVSubscribers',
                 'SystemElectricElectricalNodes',
                 'SystemElectricElectricalSwitchTerminals',
                 'SystemElectricElectricalTransformers',
@@ -65,7 +63,7 @@ SQLCMD="/opt/mssql-tools18/bin/sqlcmd"
             )
             AND schema_id = SCHEMA_ID('dbo')
             AND is_tracked_by_cdc = 1
-        ) <> 31
+        ) <> 29
             THROW 50000, 'CDC tables are not ready', 1;
     " \
     >/dev/null 2>&1

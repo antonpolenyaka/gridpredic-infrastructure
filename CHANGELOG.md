@@ -21,6 +21,7 @@ Lo que sale de las tres pasadas de investigación del 17.10.2026: la calibració
 
 ### Cambiado
 
+- La captura de cambios de TedisNet deja fuera las tablas de baja tensión con datos del abonado (`SystemElectricElectricalLVSubscribers` y `SystemElectricElectricalLVLines`, que ningún trabajo leía): 29 tablas en `enable_cdc.sql`, en la comprobación de salud de SQL Server y en el conector de Debezium. `enable_cdc.sql` les quita el CDC en una base que ya lo tenía y `tests/01_bronze/test_cdc_tablas.py` comprueba que las tres listas coinciden y que no vuelven.
 - Documentación: cuadernos 3s, 3t y 3u y fuentes nuevas en [investigacion-continua.md](docs/investigacion-continua.md); segunda revisión de literatura con los DOI comprobados y las correcciones a la primera pasada en [revision-literatura.md](docs/revision-literatura.md); calibración y valor en [caso-de-negocio.md](docs/caso-de-negocio.md) (2c), [cifras.md](docs/cifras.md) y la ficha del modelo; límites mensuales y normas revisadas en [network-analysis.md](docs/network-analysis.md); Trino y las características de tabla en la ficha del dataset; la previsión en sombra en [operacion-diaria.md](docs/operacion-diaria.md).
 
 ## [0.15.0] - 17.10.2026
