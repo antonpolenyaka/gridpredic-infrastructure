@@ -325,3 +325,77 @@ def test_the_nao_index_of_noaa(fs, monkeypatch):
 def test_the_thresholds_of_the_ensemble_stop_at_the_first_one_nobody_reaches():
     assert vivo.threshold_text({"50": 0.3, "70": 0.0, "90": 0.0}, [50, 70, 90]) == "el 30 % supera 50 km/h, ninguno supera 70 km/h"
     assert vivo.threshold_text({"50": 0.0, "70": 0.0, "90": 0.0}, [50, 70, 90]) == "ninguno supera 50 km/h"
+
+
+def meta_answer(started: datetime, available_after_h: float = 3.0) -> bytes:
+    """The meta.json of a domain of Open-Meteo: unix times of the last run and of when it was available."""
+    start = int(started.timestamp())
+    return json.dumps({"last_run_initialisation_time": start,
+                       "last_run_availability_time": start + int(available_after_h * 3600),
+                       "last_run_modification_time": start + int(available_after_h * 3600) - 60,
+                       "update_interval_seconds": 10800, "temporal_resolution_seconds": 3600}).encode()
+
+
+def test_the_run_that_open_meteo_serves(fs, cfg, monkeypatch):
+    started = datetime.now(ZoneInfo("UTC")) - timedelta(hours=5)
+    asked = []
+
+    def fake_fetch(url, **kwargs):
+        asked.append(url)
+        return meta_answer(started)
+
+    monkeypatch.setattr(vivo, "fetch", fake_fetch)
+    run = vivo.model_run(cfg["prevision"])
+    assert asked == ["https://api.open-meteo.com/data/dwd_icon_eu/static/meta.json"]
+    assert run["modelo"] == "icon_eu" and run["dominio"] == "dwd_icon_eu"
+    assert run["pasada_utc"] == started.replace(microsecond=0).isoformat()
+    assert 4.9 < run["horas_desde_pasada"] < 5.2 and run["actualizacion_s"] == 10800
+    # The native grid and IFS are their own domains.
+    vivo.model_run(cfg["prevision"], "dwd_icon_eu_native")
+    assert asked[-1].endswith("/data/dwd_icon_eu_native/static/meta.json")
+    # An answer without a run is an error for model_run and only a warning when the evening saves it.
+    monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: b'{"error": true, "reason": "The service is overloaded"}')
+    with pytest.raises(RuntimeError):
+        vivo.model_run(cfg["prevision"])
+    assert vivo.land_model_run(fs, cfg["prevision"], "/vivo/20261014/prevision_modelo.json") is None
+    assert not fs.exists("/vivo/20261014/prevision_modelo.json")
+
+
+def test_the_shadow_forecasts_never_fail_the_evening(fs, cfg, monkeypatch, tmp_path):
+    config = vivo.load_config()
+    config["riesgo_manana"]["landing"] = "/vivo"
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+    cells = {"39.50_-6.40": (39.5, -6.4), "38.70_-6.90": (38.7, -6.9)}
+    monkeypatch.setattr(vivo, "load_meteo_config", lambda: {"openmeteo": {}})
+    monkeypatch.setattr(vivo, "study_cells", lambda fs, meteo: cells)
+    monkeypatch.setattr(vivo.time, "sleep", lambda s: None)
+    started = datetime.now(ZoneInfo("UTC")) - timedelta(hours=4)
+    asked = []
+
+    def fake_fetch(url, **kwargs):
+        asked.append(url)
+        if "static/meta.json" in url:
+            return meta_answer(started)
+        if "models=ecmwf_ifs" in url:
+            raise RuntimeError("HTTP 503 The service is overloaded")
+        return answer()
+
+    monkeypatch.setattr(vivo, "fetch", fake_fetch)
+    assert vivo.main(["--fuente", "prevision", "--fecha", "2026-10-14", "--config", str(path)], fs=fs) == 0
+    day = "/vivo/20261014"
+    # The forecast that scores, its run, and the native grid in its own folder; IFS failed and left nothing.
+    assert len(fs.ls(f"{day}/prevision", detail=False)) == 2
+    run = json.loads(fs.cat(f"{day}/prevision_modelo.json"))
+    assert run["dominio"] == "dwd_icon_eu" and 3.9 < run["horas_desde_pasada"] < 4.2
+    native = sorted(fs.ls(f"{day}/prevision_sombra/icon_eu_nativo", detail=False))
+    assert native == [f"{day}/prevision_sombra/icon_eu_nativo/38.70_-6.90.json",
+                      f"{day}/prevision_sombra/icon_eu_nativo/39.50_-6.40.json"]
+    saved = json.loads(fs.cat(native[0]))
+    assert saved["_peticion"]["modelo"] == "dwd_icon_eu_native" and saved["_peticion"]["dias_pasados"] == 0
+    assert fs.exists(f"{day}/prevision_sombra/icon_eu_nativo_modelo.json")
+    assert not fs.exists(f"{day}/prevision_sombra/ifs")
+    shadow_urls = [u for u in asked if "models=dwd_icon_eu_native" in u]
+    assert shadow_urls and all("past_days=0" in u and "forecast_days=3" in u for u in shadow_urls)
+    # Alone, the shadow source says when a model did not answer at all.
+    assert vivo.main(["--fuente", "prevision_sombra", "--fecha", "2026-10-15", "--config", str(path)], fs=fs) == 1
