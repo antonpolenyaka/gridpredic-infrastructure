@@ -2,6 +2,26 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
+## [0.16.0] - sin publicar
+
+Lo que sale de las tres pasadas de investigación del 17.10.2026: la calibración y el valor económico de la víspera, dos logísticas para pocos eventos, la previsión de ICON-EU en su rejilla nativa e IFS guardadas cada tarde, la previsión de IFS de la víspera para 2024 - 2025 y los límites mensuales de Extremadura.
+
+### Añadido
+
+- Calibración y valor de la probabilidad de la víspera (cuaderno 3s): `experimentos/evaluacion/calibracion_valor.py` sobre la tabla de días del caso de negocio da la fiabilidad por tramos y por niveles, el Brier skill score, la pendiente y el intercepto de calibración, el valor relativo de Richardson (por días con avería y por horas-cliente) y el beneficio neto de Vickers para las reglas de los niveles y la regla probabilística, con y sin el 28.01.2026 y con bootstrap por fechas y por semanas. Salidas en `experimentos/evaluacion/salida/`.
+- Dos logísticas para pocos eventos en `ml_models.py` (cuaderno 3t): `logistica_firth` (penalización de Jeffreys, Firth 1993, con el intercepto de FLIC de Puhr y otros 2017) y `logistica_bayes` (moda de la posterior con la prior de Cauchy de Gelman y otros 2008), sin nada que ajustar, con numpy y scipy. Las pruebas comprueban las fórmulas cerradas de Firth y el gradiente nulo de la posterior.
+- `ml_metrics.calibration` (Brier, BSS, log loss, pendiente e intercepto de Cox y probabilidad media) y bootstrap por bloques de días seguidos (`day_blocks`, `meteo_dia.bootstrap_bloque_dias`).
+- Calibración de cada modelo que da una probabilidad en `job_ml_riesgo_dia.py`, con columnas en las tablas de comparación, diferencias emparejadas de Firth y Cauchy frente a la L2 de cada variante y la opción `--anios-prevision`.
+- La pasada de la previsión de la tarde: `job_landing_vivo.py` guarda en `prevision_modelo.json` la hora de la pasada de ICON-EU que sirvió Open-Meteo (el `meta.json` del dominio) y `job_ml_riesgo_manana.py` avisa en el informe y en el cuadro de mando si tenía más de 9 horas.
+- Previsión en sombra (cuaderno 3u): la tarea `prevision_sombra` de `dag_riesgo_manana`, que no va antes de `puntuar`, guarda cada tarde la misma previsión desde la rejilla nativa de ICON-EU (`dwd_icon_eu_native`, lo que servirá `icon_eu` tras el 30.11.2026) y desde IFS HRES 9 km, en `prevision_sombra/<clave>/<celda>.json` (`riesgo_manana.prevision_sombra`; `job_landing_vivo.py --fuente prevision_sombra`). Un modelo que falla tres celdas seguidas se deja para otro día. `job_comparar_sombra.py` compara cada fuente con la rejilla regular por red.
+- `job_landing_meteo_pasadas.py`: la previsión de la víspera de IFS rehecha desde las pasadas de las 00 UTC del día anterior de la Single Runs API, del 15.03.2024 al 31.12.2025, con todas las celdas en una petición, un tope de llamadas por día (UTC) y `--esperar` para seguir al día siguiente. La Bronze de Open-Meteo lee sus ficheros de un día (`answers_of`) y añade el sufijo de la Previous Runs API (`sufijo`), e IFS entra en `meteo_dia.previsiones_extra`.
+- Límites mensuales de Extremadura (art. 9.6 de la Ley 2/2002, Decreto-ley 1/2018) en la sección 2 de `job_analisis_red.py`: TIEPI y NIEPI de cada mes por distribuidora, provincia y zona y la racha de meses seguidos por encima; `experimentos/evaluacion/limites_mensuales.py` los cruza con los días de alerta.
+- `tests/03_gold/test_compatibilidad_trino.py`: falla si un job activa liquid clustering, row tracking, checkpoints v2 u otra característica de tabla que el conector de Delta de Trino no lee.
+
+### Cambiado
+
+- Documentación: cuadernos 3s, 3t y 3u y fuentes nuevas en [investigacion-continua.md](docs/investigacion-continua.md); segunda revisión de literatura con los DOI comprobados y las correcciones a la primera pasada en [revision-literatura.md](docs/revision-literatura.md); calibración y valor en [caso-de-negocio.md](docs/caso-de-negocio.md) (2c), [cifras.md](docs/cifras.md) y la ficha del modelo; límites mensuales y normas revisadas en [network-analysis.md](docs/network-analysis.md); Trino y las características de tabla en la ficha del dataset; la previsión en sombra en [operacion-diaria.md](docs/operacion-diaria.md).
+
 ## [0.15.0] - 17.10.2026
 
 El sector como referencia, la recomendación de guardia, los avisos de AEMET durante el día, la orientación de pasado mañana, el cuadro de mando rediseñado con la página pública y el cuaderno de las pruebas (de 3 a 3r), ninguna de las cuales mejora el modelo del día.
