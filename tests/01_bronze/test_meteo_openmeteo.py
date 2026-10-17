@@ -177,3 +177,99 @@ def test_a_stored_answer_without_a_new_variable_is_asked_again(tmp_path):
     assert landing.missing_variables(Local(), str(stored), ["wind_gusts_10m_previous_day1",
                                                             "wind_gusts_10m_previous_day3"]) == [
         "wind_gusts_10m_previous_day3"]
+
+
+def single_run_answer(lat: float, lon: float, run, gust_of_hour) -> dict:
+    """One location of the Single Runs API: 72 hours from the run, unix time in UTC."""
+    times = pd.date_range(run, periods=72, freq="h", tz="UTC")
+    return {"latitude": lat, "longitude": lon, "elevation": 400.0,
+            "hourly": {"time": [int(t.timestamp()) for t in times],
+                       "wind_gusts_10m": [gust_of_hour(t) for t in times],
+                       "precipitation": [0.1] * 72, "wind_speed_10m": [10.0] * 72,
+                       "temperature_2m": [12.0] * 72, "relative_humidity_2m": [80.0] * 72}}
+
+
+def test_the_forecast_of_the_day_before_from_single_runs(monkeypatch, tmp_path):
+    import json
+    from datetime import datetime, timezone
+
+    import fsspec
+    import job_landing_meteo_pasadas as pasadas
+
+    cfg = landing.load_config()["openmeteo_pasadas_ifs"]
+    assert cfg["modelo"] == "ecmwf_ifs" and cfg["sufijo"] == "_previous_day1" and cfg["desde"] == "2024-03-15"
+    # The run of 00 UTC of the day before, asked with every cell at once.
+    run = pasadas.run_of(date(2025, 1, 15), cfg)
+    assert run == datetime(2025, 1, 14, 0, tzinfo=timezone.utc)
+    url = pasadas.request_url([("a", (39.5, -6.4)), ("b", (40.1, -5.9))], run, cfg)
+    for part in ("single-runs-api.open-meteo.com", "latitude=39.5000,40.1000", "longitude=-6.4000,-5.9000",
+                 "models=ecmwf_ifs", "run=2025-01-14T00:00", "forecast_days=3", "timeformat=unixtime"):
+        assert part in url
+
+    # The hours of the day in the wall clock of Madrid, with the suffix of the Previous Runs API.
+    location = single_run_answer(39.5, -6.4, "2025-01-14 00:00", lambda t: float(t.hour))
+    hours = pasadas.hours_of_day(location, date(2025, 1, 15), "Europe/Madrid", ["wind_gusts_10m"], "_previous_day1")
+    assert len(hours["time"]) == 24 and list(hours) == ["time", "wind_gusts_10m_previous_day1"]
+    # 00:00 in Madrid in winter is 23:00 UTC of the day before.
+    assert hours["wind_gusts_10m_previous_day1"][0] == 23.0
+    # The day the clock goes back has 25 hours.
+    autumn = single_run_answer(39.5, -6.4, "2025-10-25 00:00", lambda t: 1.0)
+    assert len(pasadas.hours_of_day(autumn, date(2025, 10, 26), "Europe/Madrid", ["wind_gusts_10m"], "_x")["time"]) == 25
+
+    # The whole Landing on a memory file system: a budget of two runs a day, a run that is not in the archive.
+    memory = fsspec.filesystem("memory")
+    memory.store.clear()
+    memory.pseudo_dirs.clear()
+    memory.pseudo_dirs.append("")
+    cells = [{"celda_id": "39.50_-6.40", "celda_latitud": 39.5, "celda_longitud": -6.4},
+             {"celda_id": "40.10_-5.90", "celda_latitud": 40.1, "celda_longitud": -5.9}]
+    monkeypatch.setattr(pasadas, "read_reference", lambda fs, path: [])
+    monkeypatch.setattr(pasadas, "municipality_cells", lambda rows, size: cells)
+    config = landing.load_config()
+    config["openmeteo_pasadas_ifs"] = {**cfg, "landing": "memory://pasadas", "desde": "2025-01-13",
+                                       "hasta": "2025-01-16", "max_llamadas_dia": 4, "pausa_s": 0}
+    path = str(tmp_path / "config.json")
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(config, file)
+    asked = []
+
+    def fake_fetch(url, retries, wait_s):
+        stamp = url.split("run=")[1][:16]
+        asked.append(stamp)
+        if stamp.startswith("2025-01-12"):
+            raise RuntimeError('HTTP 400 for url: {"reason":"The requested model run is not available"}')
+        return [single_run_answer(39.5, -6.4, stamp, lambda t: 30.0), single_run_answer(40.1, -5.9, stamp, lambda t: 50.0)]
+
+    monkeypatch.setattr(pasadas, "fetch", fake_fetch)
+    clock = {"now": datetime(2026, 10, 17, 19, 0, tzinfo=timezone.utc)}
+    slept = []
+
+    def sleep(seconds):
+        slept.append(seconds)
+        clock["now"] = clock["now"] + pd.Timedelta(seconds=seconds).to_pytimedelta()
+
+    # Two runs fit in the budget of the day (two cells, one call each): it stops with the code of the daily limit.
+    code = pasadas.main(["--config", path], fs=memory, clock=lambda: clock["now"], sleep=sleep)
+    assert code == landing.DAILY_LIMIT_EXIT and asked == ["2025-01-15T00:00", "2025-01-14T00:00"]
+    # Waiting for the next day (UTC) it ends the window; the missing run is noted, never asked again.
+    code = pasadas.main(["--config", path, "--esperar"], fs=memory, clock=lambda: clock["now"], sleep=sleep)
+    assert code == 0 and asked[2:] == ["2025-01-13T00:00", "2025-01-12T00:00"]
+    assert any(s > 3600 for s in slept)
+    assert json.loads(memory.cat("/pasadas/_sin_pasada.json")) == {"2025-01-13": "2025-01-12T00:00:00+00:00"}
+    usage = json.loads(memory.cat("/pasadas/_llamadas.json"))
+    assert usage == {"2026-10-17": 4.0, "2026-10-18": 4.0}
+    saved = json.loads(memory.cat("/pasadas/dias/2025-01-16.json"))
+    assert saved["_peticion"]["pasada_utc"] == "2025-01-15T00:00:00+00:00"
+    assert [u["_peticion"]["celda_id"] for u in saved["ubicaciones"]] == ["39.50_-6.40", "40.10_-5.90"]
+    assert pasadas.main(["--config", path], fs=memory, clock=lambda: clock["now"], sleep=sleep) == 0
+    assert len(asked) == 4
+
+    # Bronze reads every location of the file as an answer of its own, with the suffixed names.
+    variables = [f"{v}{cfg['sufijo']}" for v in cfg["variables"]]
+    frames = [bronze.payload_frame(answer, variables, "Europe/Madrid") for answer in bronze.answers_of(saved)]
+    hourly = bronze.merge_local_hours(pd.concat(frames, ignore_index=True), variables)
+    assert hourly["celda_id"].value_counts().to_dict() == {"39.50_-6.40": 24, "40.10_-5.90": 24}
+    assert hourly.groupby("celda_id")["wind_gusts_10m_previous_day1"].max().to_dict() == {
+        "39.50_-6.40": 30.0, "40.10_-5.90": 50.0}
+    assert (hourly["hora"].dt.date == date(2025, 1, 16)).all()
+    assert bronze.answers_of({"hourly": {}}) == [{"hourly": {}}]

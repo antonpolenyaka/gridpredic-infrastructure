@@ -288,6 +288,21 @@ def read_json(fs, path: str) -> dict:
         return json.load(file)
 
 
+# The run of ICON-EU is published every three hours and takes about three to arrive: a run older than this when the
+# evening asked for it means Open-Meteo stopped publishing new ones (as its DWD ensemble did from 06.10.2026).
+STALE_RUN_H = 9.0
+
+
+def forecast_run(fs, folder: str) -> dict:
+    """The run of the forecast of the evening (prevision_modelo.json of the Landing), {} when the Landing has none."""
+    path = f"{folder}/prevision_modelo.json"
+    try:
+        return read_json(fs, path) if fs.exists(path) else {}
+    except (OSError, ValueError) as error:
+        logger.warning("Run of the forecast unreadable in %s: %s", path, error)
+        return {}
+
+
 def forecast_hours(fs, folder: str, zone: str) -> tuple:
     """
     (celda_id, hora and the columns of LIVE_VARIABLES, latest pedido_utc):
@@ -932,7 +947,9 @@ def dashboard_payload(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out
         "modelo": {"variante": info["variante"], "descripcion": f"{MODEL_NAMES.get(info['modelo'], info['modelo'])}, variante {info['variante']}",
                    "dias": info["dias"], "positivos": info["positivos"], "entrenado_hasta": f"{info['entrenado_hasta']:%d.%m.%Y}",
                    "zonas": {k: v for k, v in common.items() if k in ("n_zonas", "dias", "positivos", "params")}},
-        "fuentes": {"prevision_pedida": moment(info["prevision_pedida_utc"]), "avisos_texto": info["avisos_texto"],
+        "fuentes": {"prevision_pedida": moment(info["prevision_pedida_utc"]),
+                    "pasada_prevision": moment((info.get("pasada_prevision") or {}).get("pasada_utc")),
+                    "avisos_texto": info["avisos_texto"],
                     "calser_hasta": f"{info['calser_hasta']:%d.%m.%Y}" if pd.notna(info["calser_hasta"]) else None,
                     "historia_al_dia": info["historia_al_dia"], "avisos_disponibles": info["avisos_disponibles"]},
         "distribuidoras": dists, "reglas": {"texto": " ".join(rule_text), "retardos": common.get("retardos", {}),
@@ -1105,6 +1122,12 @@ def report_notes(out: pd.DataFrame, info: dict) -> list:
     for row in out[out["cobertura_prevision"] < 0.999].itertuples():
         notes.append(f"{row.distribuidora}: solo el {number(100 * row.cobertura_prevision, 0)} % de sus CT está en "
                      "celdas con previsión.")
+    run = info.get("pasada_prevision") or {}
+    hours = run.get("horas_desde_pasada")
+    if hours is not None and float(hours) > float(info.get("pasada_max_horas", STALE_RUN_H)):
+        notes.append(f"La previsión es de la pasada de {moment(run.get('pasada_utc'))}, que tenía "
+                     f"{number(float(hours), 0)} horas cuando se pidió: Open-Meteo no ha publicado pasadas nuevas de "
+                     "ICON-EU y el día se puntúa con una previsión vieja.")
     return notes
 
 
@@ -1661,6 +1684,8 @@ def main(argv=None):
         "positivos": int(rows[MAIN_LABEL].sum()), "desde": pd.Timestamp(variant["desde"]), "entrenado_hasta": end,
         "niveles": rcfg["niveles"], "avisos_disponibles": answered, "historia_al_dia": up_to_date,
         "calser_hasta": calser, "prevision_pedida_utc": forecast_asked, "avisos_texto": warning_text,
+        "pasada_prevision": {} if args.desde_gold else forecast_run(fs, folder),
+        "pasada_max_horas": float(rcfg.get("pasada_max_horas", STALE_RUN_H)),
     }
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
     seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"], names)
