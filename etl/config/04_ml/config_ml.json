@@ -598,7 +598,9 @@
       "reintentos": 4,
       "espera_reintento_s": 30,
       "timeout_s": 120,
-      "max_fallos": 0.1
+      "max_fallos": 0.1,
+      "modelos_reserva": ["gfs_seamless"],
+      "fallos_seguidos_reserva": 3
     },
     "avisos": {
       "api": "https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area/{area}",
