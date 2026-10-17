@@ -30,6 +30,12 @@ Bronze of the hourly weather downloaded by job_landing_meteo_openmeteo.py.
   degrees. It is the weather the operator could know the day before, to
   measure how much of what the reanalysis gives survives with a real
   forecast. A suffixed variable is merged like the variable it forecasts.
+  The other models of the Previous Runs API (openmeteo_previo_gfs, _gem,
+  _ukmo) go the same way to their own tables.
+- With --fuente openmeteo_pasadas_ifs, meteo_openmeteo_previo_ifs_hora: the
+  forecast of the day before of IFS HRES 9 km rebuilt from single runs by
+  job_landing_meteo_pasadas.py. Its files hold one day of every cell
+  (ubicaciones), each location read as an answer of its own.
 
 The whole table is rebuilt in every run (a few million rows).
 
@@ -72,6 +78,13 @@ def payload_frame(payload: dict, variables: list, zone: str) -> pd.DataFrame:
     return df
 
 
+def answers_of(data) -> list:
+    """The answers of one file: itself, or every location of a file of single runs (ubicaciones)."""
+    if isinstance(data, dict) and "ubicaciones" in data:
+        return list(data["ubicaciones"])
+    return list(data) if isinstance(data, list) else [data]
+
+
 def forecast_of(variable: str) -> str:
     """The variable a forecast of the Previous Runs API is about (wind_gusts_10m_previous_day1 -> wind_gusts_10m)."""
     return re.sub(r"_previous_day\d+$", "", variable)
@@ -107,7 +120,8 @@ def main(argv=None):
     args, _ = parser.parse_known_args(argv)
 
     cfg = load_config()[args.fuente]
-    variables = list(cfg["variables"])
+    # The single runs are asked with the plain names and landed with the suffix of the Previous Runs API (sufijo).
+    variables = [f"{v}{cfg.get('sufijo', '')}" for v in cfg["variables"]]
     zone = cfg.get("zona_horaria", "Europe/Madrid")
     landing = cfg["landing"].rstrip("/")
 
@@ -129,7 +143,7 @@ def main(argv=None):
     frames = []
     for path in files:
         with fs.open(path, "r") as file:
-            frames.append(payload_frame(json.load(file), variables, zone))
+            frames += [payload_frame(answer, variables, zone) for answer in answers_of(json.load(file))]
 
     hourly = merge_local_hours(pd.concat(frames, ignore_index=True), variables)
     hourly["anio"] = hourly["hora"].dt.year.astype("int32")

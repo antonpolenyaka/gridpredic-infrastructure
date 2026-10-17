@@ -361,6 +361,7 @@
     "desde": "2017-01-08",
     "hasta": "2026-01-01",
     "anios_evaluacion": [2022, 2023, 2024, 2025],
+    "bootstrap_bloque_dias": 7,
     "aviso_corte_h": 20,
     "incidencias_dia_varias": 2,
     "calor_umbral_c": 35,
@@ -384,6 +385,12 @@
       {"nombre": "operativa", "desde": "2018-06-25",
        "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos"],
        "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_sin_historia", "desde": "2018-06-25",
+       "bloques": ["calendario", "avisos", "dia_comun", "extremos"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"]},
+      {"nombre": "operativa_historia_mediana", "desde": "2018-06-25",
+       "bloques": ["calendario", "historia", "avisos", "dia_comun", "extremos"],
+       "variables": ["ayer_racha_max", "ayer_lluvia_max"], "historia_al_puntuar": "mediana"},
       {"nombre": "operativa_racha", "desde": "2018-06-25",
        "bloques": ["calendario", "historia", "avisos", "dia_comun_48h", "extremos_racha"],
        "variables": ["ayer_racha_max", "ayer_lluvia_max"], "horizonte": 1},
@@ -453,12 +460,13 @@
                            "operativa_pendiente_red", "operativa_direccion", "operativa_mas", "operativa_sequia",
                            "operativa_hielo", "operativa_fenologia", "operativa_hoja", "operativa_corredor",
                            "operativa_regimen", "operativa_fragilidad", "operativa_caducas", "operativa_nao",
-                           "operativa_nao_fragilidad"],
+                           "operativa_nao_fragilidad", "operativa_sin_historia", "operativa_historia_mediana"],
     "anios_prevision": [2024, 2025],
     "previsiones_extra": [
       {"clave": "gfs", "tabla": "l1_bronze.meteo_openmeteo_previo_gfs_hora", "nombre": "GFS 0,25 grados"},
       {"clave": "gem", "tabla": "l1_bronze.meteo_openmeteo_previo_gem_hora", "nombre": "GEM 15 km"},
-      {"clave": "ukmo", "tabla": "l1_bronze.meteo_openmeteo_previo_ukmo_hora", "nombre": "UKMO 10 km (desde 2025)"}
+      {"clave": "ukmo", "tabla": "l1_bronze.meteo_openmeteo_previo_ukmo_hora", "nombre": "UKMO 10 km (desde 2025)"},
+      {"clave": "ifs", "tabla": "l1_bronze.meteo_openmeteo_previo_ifs_hora", "nombre": "IFS HRES 9 km (pasada de las 00 UTC del día anterior, desde 15.03.2024)"}
     ],
     "comparaciones_prevision": [
       ["comun_avisos_extremos__logistica__prevision", "comun_avisos__logistica__prevision"],
@@ -501,7 +509,10 @@
       ["operativa_hoja__logistica__prevision_cuantiles", "operativa__logistica__prevision_cuantiles"],
       ["operativa__poisson__prevision", "operativa__logistica__prevision"],
       ["operativa__logistica_equilibrada__prevision", "operativa__logistica__prevision"],
-      ["operativa__poisson__prevision_cuantiles", "operativa__logistica__prevision_cuantiles"]
+      ["operativa__poisson__prevision_cuantiles", "operativa__logistica__prevision_cuantiles"],
+      ["operativa_sin_historia__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_historia_mediana__logistica__prevision", "operativa__logistica__prevision"],
+      ["operativa_sin_historia__logistica__prevision", "operativa_historia_mediana__logistica__prevision"]
     ],
     "comparaciones": [
       ["ayer__logistica", "calendario_historia__logistica"],
@@ -542,7 +553,10 @@
       ["operativa_nao__logistica", "operativa__logistica"],
       ["operativa_nao_fragilidad__logistica", "operativa__logistica"],
       ["operativa__poisson", "operativa__logistica"],
-      ["operativa__logistica_equilibrada", "operativa__logistica"]
+      ["operativa__logistica_equilibrada", "operativa__logistica"],
+      ["operativa_sin_historia__logistica", "operativa__logistica"],
+      ["operativa_historia_mediana__logistica", "operativa__logistica"],
+      ["operativa_sin_historia__logistica", "operativa_historia_mediana__logistica"]
     ]
   },
   "caso_negocio": {
@@ -566,6 +580,7 @@
     "landing": "s3://datalake/00_landing/vivo",
     "tabla": "l3_gold.riesgo_dia_siguiente",
     "margen_etiquetas_dias": 7,
+    "historia_desfasada": "sin_historia",
     "niveles": {"muy alto": 0.95, "alto": 0.9, "medio": 0.75},
     "motivos": 3,
     "zonas": 3,
@@ -597,7 +612,9 @@
       "reintentos": 4,
       "espera_reintento_s": 30,
       "timeout_s": 120,
-      "max_fallos": 0.1
+      "max_fallos": 0.1,
+      "modelos_reserva": ["gfs_seamless"],
+      "fallos_seguidos_reserva": 3
     },
     "avisos": {
       "api": "https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area/{area}",
@@ -620,6 +637,10 @@
       "max_fallos": 0.3,
       "tiempo_max_s": 600
     },
+    "prevision_sombra": [
+      {"clave": "icon_eu_nativo", "modelo": "dwd_icon_eu_native", "nombre": "ICON-EU en su rejilla nativa"},
+      {"clave": "ifs", "modelo": "ecmwf_ifs", "nombre": "IFS HRES 9 km"}
+    ],
     "ensemble": {
       "api": "https://ensemble-api.open-meteo.com/v1/ensemble",
       "modelos": [

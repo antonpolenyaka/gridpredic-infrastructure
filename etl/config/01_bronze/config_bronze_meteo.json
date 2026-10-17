@@ -156,5 +156,32 @@
     "espera_reintento_s": 60,
     "zona_horaria": "Europe/Madrid",
     "tabla_horas": "l1_bronze.meteo_openmeteo_previo_ukmo_hora"
+  },
+  "openmeteo_pasadas_ifs": {
+    "api": "https://single-runs-api.open-meteo.com/v1/forecast",
+    "referencia_municipios": "s3://datalake/00_landing/reference_data/municipios.xlsx",
+    "landing": "s3://datalake/00_landing/meteo/openmeteo_pasadas_ifs",
+    "modelo": "ecmwf_ifs",
+    "variables": [
+      "wind_gusts_10m",
+      "wind_speed_10m",
+      "precipitation",
+      "temperature_2m",
+      "relative_humidity_2m"
+    ],
+    "sufijo": "_previous_day1",
+    "hora_pasada_utc": 0,
+    "dias_antes": 1,
+    "dias_pasada": 3,
+    "celda_grados": 0.1,
+    "desde": "2024-03-15",
+    "hasta": "2025-12-31",
+    "orden": "reciente",
+    "max_llamadas_dia": 8500,
+    "pausa_s": 40,
+    "reintentos": 5,
+    "espera_reintento_s": 60,
+    "zona_horaria": "Europe/Madrid",
+    "tabla_horas": "l1_bronze.meteo_openmeteo_previo_ifs_hora"
   }
 }

@@ -333,6 +333,8 @@ section.seguimiento, section.notas-seccion, #diario { padding: var(--s-4) var(--
 
 /* ---------------------------------------------------------------- footer */
 footer { padding: var(--s-4) var(--gutter) var(--s-6); color: var(--muted); font-size: var(--fs-0); line-height: 1.5; max-width: var(--page-max); }
+/* The sources and licences of every page, under the footer that each page fills in. */
+aside.licencias { max-width: var(--page-max); margin: calc(-1 * var(--s-5)) auto 0; padding: 0 var(--gutter) var(--s-6); color: var(--muted); font-size: var(--fs-0); line-height: 1.5; }
 
 /* ---------------------------------------------------------------- motion */
 details > *:not(summary) { animation: abrir var(--t-base) var(--ease); }

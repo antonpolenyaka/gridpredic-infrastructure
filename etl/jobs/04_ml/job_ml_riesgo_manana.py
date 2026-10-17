@@ -24,9 +24,14 @@ job_landing_vivo left in <riesgo_manana.landing>/<D as YYYYMMDD>:
   (avisos_disponibles false).
 - The calendar of D and the incidents known in Calser before D. When the
   copy of Calser in the lakehouse ends more than margen_etiquetas_dias
-  before D, the history is left empty and the model takes the median of the
-  training days (historia_al_dia false): zero incidents in the last days
-  would read as a calm network.
+  before D (historia_al_dia false), zero incidents in the last days would
+  read as a calm network, so the model of the evening is fitted without
+  the history of incidents (riesgo_manana.historia_desfasada
+  "sin_historia"). With "mediana" the history stays in the model and
+  tomorrow takes the median of the training days, as the evening did until
+  17.10.2026: a model that learned to lean on the history then scores a day
+  without it, which job_ml_riesgo_dia measures with the variants
+  operativa_sin_historia and operativa_historia_mediana.
 
 Training days: from the first day of the variant to the last day with
 labels (the last incident of Calser minus margen_etiquetas_dias), weather of
@@ -44,7 +49,9 @@ the reasons (the GROUPS of features that raise the probability most against
 an average day, with the factor they multiply its odds by; none below the
 base rate), the municipalities with the strongest forecast gust against the
 climate of their cell, and the main inputs. Also a row in ml_runs and
-resumen.md and prediccion.csv in exportar_dir/<run_id>/.
+resumen.md, prediccion.csv, the coefficients of the model when it is linear
+(coeficientes.csv, ml_models.linear_terms) and the model as fitted
+(modelo.pkl) in exportar_dir/<run_id>/.
 
     docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g \\
         /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json --fecha 2026-10-14
@@ -69,6 +76,7 @@ import json
 import tempfile
 import math
 import os
+import pickle
 import re
 import sys
 import uuid
@@ -85,6 +93,7 @@ for folder in (HERE, os.path.join(HERE, "..", "00_landing"), os.path.join(HERE, 
         sys.path.insert(0, folder)
 
 import ml_metrics  # noqa: E402
+import ml_models  # noqa: E402
 from job_bronze_datos_publicos import parse_aemet_archive, polygon_points  # noqa: E402
 from job_bronze_meteo_openmeteo import merge_local_hours, payload_frame  # noqa: E402
 from job_landing_meteo_openmeteo import filesystem  # noqa: E402
@@ -286,6 +295,33 @@ def live_filesystem(path: str):
 def read_json(fs, path: str) -> dict:
     with fs.open(path, "r") as file:
         return json.load(file)
+
+
+# The run of ICON-EU is published every three hours and takes about three to arrive: a run older than this when the
+# evening asked for it means Open-Meteo stopped publishing new ones (as its DWD ensemble did from 06.10.2026).
+STALE_RUN_H = 9.0
+
+
+def forecast_models(fs, folder: str) -> dict:
+    """{model: cells} of the forecast of the evening (_peticion.modelo of every cell): the reserve when ICON-EU failed."""
+    counts = {}
+    for path in sorted(fs.glob(f"{folder}/prevision/*.json")):
+        try:
+            model = (read_json(fs, path).get("_peticion") or {}).get("modelo") or "?"
+        except (OSError, ValueError):
+            continue
+        counts[model] = counts.get(model, 0) + 1
+    return counts
+
+
+def forecast_run(fs, folder: str) -> dict:
+    """The run of the forecast of the evening (prevision_modelo.json of the Landing), {} when the Landing has none."""
+    path = f"{folder}/prevision_modelo.json"
+    try:
+        return read_json(fs, path) if fs.exists(path) else {}
+    except (OSError, ValueError) as error:
+        logger.warning("Run of the forecast unreadable in %s: %s", path, error)
+        return {}
 
 
 def forecast_hours(fs, folder: str, zone: str) -> tuple:
@@ -932,9 +968,12 @@ def dashboard_payload(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out
         "modelo": {"variante": info["variante"], "descripcion": f"{MODEL_NAMES.get(info['modelo'], info['modelo'])}, variante {info['variante']}",
                    "dias": info["dias"], "positivos": info["positivos"], "entrenado_hasta": f"{info['entrenado_hasta']:%d.%m.%Y}",
                    "zonas": {k: v for k, v in common.items() if k in ("n_zonas", "dias", "positivos", "params")}},
-        "fuentes": {"prevision_pedida": moment(info["prevision_pedida_utc"]), "avisos_texto": info["avisos_texto"],
+        "fuentes": {"prevision_pedida": moment(info["prevision_pedida_utc"]),
+                    "pasada_prevision": moment((info.get("pasada_prevision") or {}).get("pasada_utc")),
+                    "avisos_texto": info["avisos_texto"],
                     "calser_hasta": f"{info['calser_hasta']:%d.%m.%Y}" if pd.notna(info["calser_hasta"]) else None,
-                    "historia_al_dia": info["historia_al_dia"], "avisos_disponibles": info["avisos_disponibles"]},
+                    "historia_al_dia": info["historia_al_dia"], "avisos_disponibles": info["avisos_disponibles"],
+                    "historia_en_modelo": bool(info.get("historia_en_modelo", info["historia_al_dia"]))},
         "distribuidoras": dists, "reglas": {"texto": " ".join(rule_text), "retardos": common.get("retardos", {}),
                                             "cascada": cascade},
         "seguimiento": seguimiento, "notas": notes,
@@ -994,6 +1033,21 @@ def contributions(scorer, X: np.ndarray):
 
         return model.get_booster().predict(xgboost.DMatrix(X), pred_contribs=True)[:, :-1]
     return None
+
+
+def save_model(config: dict, folder_id: str, scorer) -> None:
+    """The model of the evening as fitted, modelo.pkl next to resumen.md: to look at it or score again later."""
+    folder = config.get("exportar_dir")
+    if not folder:
+        return
+    target = os.path.join(folder, folder_id, "modelo.pkl")
+    try:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as file:
+            pickle.dump(scorer, file)
+        logger.info("Model of the evening saved in %s", target)
+    except (OSError, pickle.PicklingError, TypeError, AttributeError) as error:
+        logger.warning("Model of the evening not saved in %s: %s", target, error)
 
 
 def listed(words: list) -> str:
@@ -1100,11 +1154,25 @@ def report_notes(out: pd.DataFrame, info: dict) -> list:
     if not info["avisos_disponibles"]:
         notes.append("AEMET no ha dado los avisos: el día se puntúa sin avisos, como si no hubiera ninguno.")
     if not info["historia_al_dia"]:
+        how = ("el modelo toma la mediana de los días de entrenamiento" if info.get("historia_en_modelo")
+               else "el modelo de esta tarde se entrena sin ella")
         notes.append(f"La copia de Calser llega hasta el {info['calser_hasta']:%d.%m.%Y}: la historia de incidencias "
-                     "no está al día y el modelo toma la mediana de los días de entrenamiento.")
+                     f"no está al día y {how}.")
     for row in out[out["cobertura_prevision"] < 0.999].itertuples():
         notes.append(f"{row.distribuidora}: solo el {number(100 * row.cobertura_prevision, 0)} % de sus CT está en "
                      "celdas con previsión.")
+    models = info.get("prevision_modelos") or {}
+    reserve = {m: n for m, n in models.items() if m != info.get("prevision_modelo_principal", "icon_eu")}
+    if reserve:
+        total = sum(models.values())
+        notes.append("ICON-EU no respondió para " + ", ".join(f"{n} de {total} celdas" for n in reserve.values())
+                     + ": su previsión es la de " + ", ".join(reserve) + ", el modelo de reserva.")
+    run = info.get("pasada_prevision") or {}
+    hours = run.get("horas_desde_pasada")
+    if hours is not None and float(hours) > float(info.get("pasada_max_horas", STALE_RUN_H)):
+        notes.append(f"La previsión es de la pasada de {moment(run.get('pasada_utc'))}, que tenía "
+                     f"{number(float(hours), 0)} horas cuando se pidió: Open-Meteo no ha publicado pasadas nuevas de "
+                     "ICON-EU y el día se puntúa con una previsión vieja.")
     return notes
 
 
@@ -1242,7 +1310,7 @@ def attach_second_opinions(payload: dict, folder: str) -> dict:
 def two_day_outlook(spark, config: dict, rcfg: dict, cfg: dict, pdf: pd.DataFrame, blocks: dict, end: pd.Timestamp,
                     hourly: pd.DataFrame, cells_hours: pd.DataFrame, weights: pd.DataFrame, warnings: pd.DataFrame,
                     dists: list, known: pd.DataFrame, up_to_date: bool, day: pd.Timestamp, names: dict,
-                    forecast_asked: str, run_id: str, created) -> pd.DataFrame:
+                    forecast_asked: str, run_id: str, created, history_in_model: bool = True) -> pd.DataFrame:
     """
     The outlook of D + 2 (pasado mañana) from the same forecast and warnings
     of the evening: the variant of two days ahead (riesgo_manana.
@@ -1251,6 +1319,8 @@ def two_day_outlook(spark, config: dict, rcfg: dict, cfg: dict, pdf: pd.DataFram
     fitted on the same training days and scored on D + 2. Levels by the same
     percentiles. Empty when the variant, its blocks or the forecast of D + 2
     are missing: an orientation to plan, never a reason to fail the evening.
+    Without history_in_model it is fitted without the history of incidents,
+    as the model of D.
     """
     wanted = rcfg.get("variante_pasado_manana")
     variant = next((v for v in cfg["variantes"] if v["nombre"] == wanted), None) if wanted else None
@@ -1259,6 +1329,8 @@ def two_day_outlook(spark, config: dict, rcfg: dict, cfg: dict, pdf: pd.DataFram
         return pd.DataFrame()
     day2 = day + pd.Timedelta(days=1)
     features = variant_features(variant, blocks)
+    if not history_in_model:
+        features = [f for f in features if not f.startswith("hist_")]
     rows = pdf[(pdf["fecha"] >= pd.Timestamp(variant["desde"])) & (pdf["fecha"] <= end)].reset_index(drop=True)
     name = rcfg["modelo"]
     scorer, _, X_train = fit(rows, features, name, config, cfg)
@@ -1517,6 +1589,15 @@ def main(argv=None):
     rows = pdf[(pdf["fecha"] >= pd.Timestamp(variant["desde"])) & (pdf["fecha"] <= end)].reset_index(drop=True)
     logger.info("Training days of %s up to %s: %s (%s with interruptions); Calser up to %s", variant["nombre"],
                 end.date(), len(rows), int(rows[MAIN_LABEL].sum()), calser)
+    # Tomorrow's history is only known when the copy of Calser reaches D minus the margin. Without it the model
+    # is fitted without the history, so tomorrow is never scored with the median of the training days.
+    up_to_date = bool(pd.notna(calser) and calser >= day - margin)
+    history_in_model = up_to_date or rcfg.get("historia_desfasada", "sin_historia") == "mediana"
+    if not history_in_model:
+        dropped = [f for f in features if f.startswith("hist_")]
+        features = [f for f in features if not f.startswith("hist_")]
+        logger.warning("Calser up to %s: the model of this evening is fitted without the history of incidents %s",
+                       calser, dropped)
 
     name = rcfg["modelo"]
     scorer, search, X_train = fit(rows, features, name, config, cfg)
@@ -1551,7 +1632,6 @@ def main(argv=None):
     history = add_history(live, known, cfg["ventanas_historia_dias"])
     live["hist_dias_desde_ultima"] = live.pop("hist_horas_desde_ultima") / 24.0
     history = [h for h in history if h != "hist_horas_desde_ultima"] + ["hist_dias_desde_ultima"]
-    up_to_date = bool(pd.notna(calser) and calser >= day - margin)
     if not up_to_date:
         live[history] = np.nan
     live = pd.concat([live, day_calendar(pd.Series(day, index=live.index))], axis=1)
@@ -1643,7 +1723,8 @@ def main(argv=None):
     if not args.desde_gold:
         try:
             outlook = two_day_outlook(spark, config, rcfg, cfg, pdf, blocks, end, hourly, cells_hours, weights, warnings,
-                                      dists, known, up_to_date, day, names, forecast_asked, args.run_id, created)
+                                      dists, known, up_to_date, day, names, forecast_asked, args.run_id, created,
+                                      history_in_model)
         except Exception as error:  # noqa: BLE001
             logger.error("Outlook of D + 2 not computed: %s", error)
 
@@ -1660,14 +1741,21 @@ def main(argv=None):
         "variante": variant["nombre"], "modelo": name, "params": scorer.params, "dias": len(rows),
         "positivos": int(rows[MAIN_LABEL].sum()), "desde": pd.Timestamp(variant["desde"]), "entrenado_hasta": end,
         "niveles": rcfg["niveles"], "avisos_disponibles": answered, "historia_al_dia": up_to_date,
+        "historia_en_modelo": history_in_model,
         "calser_hasta": calser, "prevision_pedida_utc": forecast_asked, "avisos_texto": warning_text,
+        "pasada_prevision": {} if args.desde_gold else forecast_run(fs, folder),
+        "prevision_modelos": {} if args.desde_gold else forecast_models(fs, folder),
+        "prevision_modelo_principal": rcfg.get("prevision", {}).get("modelo", "icon_eu"),
+        "pasada_max_horas": float(rcfg.get("pasada_max_horas", STALE_RUN_H)),
     }
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
     seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"], names)
     notes = report_notes(out, info)
     payload = attach_second_opinions(dashboard_payload(day, out, info, zone_out, seguimiento, args.run_id, notes), rcfg.get("dashboard_dir"))
     payload["pasado_manana"] = outlook_payload(outlook, day)
-    export(config, folder_id, report_text(day, out, info, zone_out), {"prediccion": out, "zonas": zone_rows})
+    export(config, folder_id, report_text(day, out, info, zone_out),
+           {"prediccion": out, "zonas": zone_rows, "coeficientes": pd.DataFrame(ml_models.linear_terms(scorer))})
+    save_model(config, folder_id, scorer)
     write_dashboard(config, rcfg, folder_id, payload, day, args.solo_archivo)
 
     run = pd.DataFrame([{

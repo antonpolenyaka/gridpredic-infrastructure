@@ -427,7 +427,8 @@ def sample_negatives(rows: pd.DataFrame, label: str, share: float, seed: int) ->
 
 def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: dict, cfg: dict, years: list,
                        only_first: bool, test_until: str = None, names: list = None,
-                       references: bool = True, negative_share: float = 1.0) -> tuple:
+                       references: bool = True, negative_share: float = 1.0, blank: list = None,
+                       terms: list = None) -> tuple:
     """
     One fold per year Y of years, never touching test: the models are chosen
     on the last share (fraccion_validacion_interna) of the hours before Y,
@@ -444,6 +445,15 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
     With test_until (only with --evaluar-test) the hours of test before it
     join the pool, so the year of test can be scored once with the same
     procedure.
+
+    blank lists features that are fitted as they are but scored empty in the
+    year Y, so the model fills them with the median of its training rows: the
+    evening does that with the history of incidents when the copy of Calser
+    is not up to date (job_ml_riesgo_dia, historia_al_puntuar).
+
+    terms, a list, gets the coefficients of every linear model of every
+    fold (ml_models.linear_terms, with anio and modelo), to see how stable
+    they are from one year to the next.
 
     Returns (scored rows of every year with the column anio, search rows,
     scorers and inner data of the last fold).
@@ -504,10 +514,17 @@ def rolling_evaluation(pdf: pd.DataFrame, features: list, label: str, config: di
         for name in [n for n in scorers if n in ml_models.TRAINED]:
             scorers[name] = refit(name, scorers[name], full, seed, n_jobs, negative_share)
         del Xa, ya, full
+        if terms is not None:
+            for name, scorer in scorers.items():
+                terms += [{"anio": year, "modelo": name, **row} for row in ml_models.linear_terms(scorer)]
         if "tasa_base" in scorers:
             scorers["tasa_base"] = ml_models.build_reference("tasa_base", features, float(before[label].mean()))
 
-        Xs, _ = to_arrays(target, features, label)
+        scoring = target
+        if blank:
+            scoring = target.copy()
+            scoring[[c for c in blank if c in scoring.columns]] = np.nan
+        Xs, _ = to_arrays(scoring, features, label)
         for name, scorer in scorers.items():
             target[f"p_{name}"] = scorer.score(Xs)
 
