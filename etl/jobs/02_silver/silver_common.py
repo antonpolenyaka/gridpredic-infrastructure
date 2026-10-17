@@ -336,9 +336,11 @@ def read_calser_union(spark: SparkSession, table: str, required: bool = True):
     Reads the same table from the three Calser databases, adds
     source_database and distribuidora_id and returns the union.
 
-    A database with rows but without DistributorId stops the job: CT codes
-    repeat between distribuidoras, so a row without distribuidora would be
-    joined to the wrong CT later on.
+    A database with rows but without DistributorId stops the job: every
+    Calser database numbers its CT on its own and nothing keeps two
+    distribuidoras from using the same code (none is shared between the
+    Distribuidora 1 and 2 in the copies of 14.08.2026), so a row without
+    distribuidora could be joined to the wrong CT later on.
     """
     parts = []
 

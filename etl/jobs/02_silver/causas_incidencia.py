@@ -11,7 +11,8 @@ own:
 - The cause code of the Extremadura module (incidencias_ex, casuistica
   21 - 36: atmospheric, external agents, internal, unknown, private
   installations, other distribuidora...) is only filled with care from
-  2020: before, almost every incident has 35 (unknown), the default value.
+  2016: from 2011 to 2015, 85 - 93 % of the incidents have 35 (unknown),
+  the default value, and 93 - 97 % have 35 or 34 (internal).
 - The free text (description, observations, resolution, the descriptions
   of its interruptions, the reasons and works of the planned ones, and the
   installation where it started) is the richest source, but about half of

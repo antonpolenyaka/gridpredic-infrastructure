@@ -60,7 +60,19 @@ WARNING_VALUE = r";\s*([\d.,]+)\s*(?:km/h|mm|cm|ºC|°C)"
 WARNING_DETAILS = ["aviso_det_racha_kmh", "aviso_det_lluvia_12h_mm", "aviso_det_lluvia_1h_mm", "aviso_det_viento_horas",
                    "aviso_det_viento_ct", "aviso_det_tiempo_ct", "aviso_det_tormenta_ct"]
 # Models with one score per variant (the references score the same in every variant that has their feature).
-TRAINED = ("logistica", "xgboost", "random_forest", "rango", "logistica_equilibrada", "poisson")
+TRAINED = ("logistica", "xgboost", "random_forest", "rango", "logistica_equilibrada", "poisson", "logistica_firth",
+           "logistica_bayes")
+# The models whose score is the probability of a day with an incident, on which the calibration is measured. The
+# score of poisson is the expected number of incidents, so 1 - exp(-score) is its probability of at least one; rango
+# and the references (a feature, a count) are not probabilities.
+PROBABILITY_MODELS = ("tasa_base", "logistica", "logistica_equilibrada", "logistica_firth", "logistica_bayes",
+                      "xgboost", "random_forest")
+CALIBRATION = [("brier", "brier"), ("bss", "bss"), ("log_loss", "log_loss"), ("pendiente_calibracion", "pendiente"),
+               ("intercepto_calibracion", "intercepto"), ("prob_media", "prob_media")]
+# The calibration columns of the comparison tables.
+CALIBRATION_SHOWN = ["bss", "pendiente_calibracion", "intercepto_calibracion"]
+# The logistic regressions for few events against the L2 one, with the same weather of the day.
+FEW_EVENTS = ("logistica_firth", "logistica_bayes")
 
 # Daily weather of a distribuidora: name -> (hourly column of distributor_weather, aggregation over the day).
 DAILY = {
@@ -715,10 +727,15 @@ DEFAULTS = {
     "anios_prevision": [2024, 2025],
     "cobertura_minima_prevision": 0.9,
     "bootstrap_reps": 500,
+    # Days per block of the bootstrap (1: whole dates; 7: weeks, for storms of several days).
+    "bootstrap_bloque_dias": 1,
     "busqueda": {
         "logistica": [{"C": 0.003}, {"C": 0.01}, {"C": 0.03}, {"C": 0.1}],
         "logistica_equilibrada": [{"C": 0.003}, {"C": 0.01}, {"C": 0.03}, {"C": 0.1}],
         "poisson": [{"alpha": 10.0}, {"alpha": 3.0}, {"alpha": 1.0}, {"alpha": 0.3}],
+        # Firth and the Cauchy prior have nothing to tune: one configuration each, the defaults of their authors.
+        "logistica_firth": [{"flic": True}],
+        "logistica_bayes": [{"escala": 1.25}],
         "xgboost": [{"max_depth": 2, "min_child_weight": 5, "learning_rate": 0.05, "subsample": 0.8,
                      "colsample_bytree": 0.8, "n_estimators": 1500, "early_stopping_rounds": 100, "verbose": 0},
                     {"max_depth": 3, "min_child_weight": 5, "learning_rate": 0.05, "subsample": 0.8,
@@ -748,6 +765,9 @@ def parse_args(argv=None) -> argparse.Namespace:
                              "(their Bronze tables) and with the mean of all the models")
     parser.add_argument("--modelos", default=None,
                         help="Comma separated models to train in place of meteo_dia.modelos")
+    parser.add_argument("--anios-prevision", default=None,
+                        help="Comma separated years of the forecast comparison in place of meteo_dia.anios_prevision "
+                             "(2025 alone: the year every extra model covers)")
     args, _ = parser.parse_known_args(argv)
 
     if not args.run_id:
@@ -1207,6 +1227,38 @@ def variant_features(variant: dict, blocks: dict) -> list:
     return chosen
 
 
+def blank_features(variant: dict, features: list) -> list:
+    """
+    The features that a variant fits as they are but scores empty, so the model fills them with the median of
+    its training days. With historia_al_puntuar "mediana" they are the history of incidents (hist_*): that is
+    how the evening scored while the copy of Calser was not up to date, before it learned to fit without them
+    (the variant without the block historia measures that).
+    """
+    if variant.get("historia_al_puntuar") == "mediana":
+        return [f for f in features if f.startswith("hist_")]
+    return []
+
+
+def coefficient_stability(terms: pd.DataFrame) -> pd.DataFrame:
+    """
+    By variant, model and variable, the coefficients of the linear models of every year of the rolling evaluation
+    (ml_models.linear_terms): their mean, spread and range, the odds ratio of the mean for one standard deviation
+    and whether the sign is the same every year (signo_estable). Sorted by the size of the mean.
+    """
+    if terms.empty:
+        return pd.DataFrame()
+    keys = ["variante", "modelo", "variable"]
+    out = terms.groupby(keys)["coeficiente"].agg(anios="count", media="mean", desviacion="std", minimo="min",
+                                                 maximo="max").reset_index()
+    out["razon_por_desviacion"] = np.exp(out["media"])
+    stable = (terms.assign(signo=np.sign(terms["coeficiente"])).groupby(keys)["signo"].nunique().eq(1)
+              .rename("signo_estable").reset_index())
+    out = out.merge(stable, on=keys)
+    out["peso"] = out["media"].abs()
+    return (out.sort_values(["variante", "modelo", "peso"], ascending=[True, True, False]).drop(columns="peso")
+            .reset_index(drop=True))
+
+
 def top_share(y: np.ndarray, score: np.ndarray, year: np.ndarray, share: float, seed: int = 0) -> float:
     """Part of the positive days that falls in the share of the days with the highest score of each year."""
     rng = np.random.default_rng(seed)
@@ -1221,8 +1273,29 @@ def top_share(y: np.ndarray, score: np.ndarray, year: np.ndarray, share: float, 
     return hits / positives if positives else float("nan")
 
 
+def as_probability(name: str, score: np.ndarray):
+    """
+    The probability of a day with an incident that the score of name
+    (<variant>__<model>[__<weather>]) gives, or None when the score is not a
+    probability (rango, the references).
+    """
+    parts = name.split("__")
+    model = parts[1] if len(parts) > 1 else parts[0]
+    score = np.asarray(score, dtype=np.float64)
+    if model == "poisson":
+        return 1.0 - np.exp(-np.clip(score, 0.0, None))
+    if model in PROBABILITY_MODELS:
+        return np.clip(score, 0.0, 1.0)
+    return None
+
+
 def day_metrics(scored: pd.DataFrame, columns: list, shares: list, seed: int = 0) -> pd.DataFrame:
-    """Long table of metrics, the columns of ml_metrics.evaluate (modelo, etiqueta, segmento, ...)."""
+    """
+    Long table of metrics, the columns of ml_metrics.evaluate (modelo,
+    etiqueta, segmento, ...): the ranking (PR-AUC, ROC-AUC, the positive days
+    in the riskiest days of each year) for every score, and the calibration
+    (ml_metrics.calibration) for the scores that are probabilities.
+    """
     rows = []
     segments = [("total", "total", np.ones(len(scored), dtype=bool))]
     segments += [("distribuidora", str(d), (scored["distribuidora_id"] == d).to_numpy())
@@ -1243,6 +1316,11 @@ def day_metrics(scored: pd.DataFrame, columns: list, shares: list, seed: int = 0
                          ("lift_pr_auc", ap / prevalence if prevalence else float("nan"))]
                 found += [(f"dias_positivos_en_top_{int(round(share * 100))}pct",
                            top_share(y, s, years[mask], float(share), seed)) for share in shares]
+                p = as_probability(model, s)
+                if p is not None and n:
+                    finite = np.isfinite(p)
+                    measured = ml_metrics.calibration(y[finite], p[finite])
+                    found += [(metric, measured[key]) for metric, key in CALIBRATION]
                 rows += [(model, label, segment, value, metric, float(v), n, pos) for metric, v in found]
 
     return pd.DataFrame(rows, columns=["modelo", "etiqueta", "segmento", "valor_segmento", "metrica", "valor",
@@ -1251,7 +1329,8 @@ def day_metrics(scored: pd.DataFrame, columns: list, shares: list, seed: int = 0
 
 def comparison_table(metrics: pd.DataFrame, shares: list) -> pd.DataFrame:
     rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)]
-    wanted = ["pr_auc", "lift_pr_auc", "roc_auc"] + [f"dias_positivos_en_top_{int(round(s * 100))}pct" for s in shares]
+    wanted = (["pr_auc", "lift_pr_auc", "roc_auc"] + [f"dias_positivos_en_top_{int(round(s * 100))}pct" for s in shares]
+              + CALIBRATION_SHOWN)
     table = rows[rows["metrica"].isin(wanted)].pivot_table(index="modelo", columns="metrica", values="valor")
     table = table[[c for c in wanted if c in table.columns]].reset_index()
     split = table["modelo"].str.split("__", n=1, expand=True)
@@ -1290,7 +1369,8 @@ def forecast_comparison(metrics: pd.DataFrame, shares: list) -> pd.DataFrame:
     named p_<variant>__<model>__<weather> and p_ayer__<model>.
     """
     rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)]
-    wanted = ["pr_auc", "lift_pr_auc", "roc_auc"] + [f"dias_positivos_en_top_{int(round(s * 100))}pct" for s in shares]
+    wanted = (["pr_auc", "lift_pr_auc", "roc_auc"] + [f"dias_positivos_en_top_{int(round(s * 100))}pct" for s in shares]
+              + CALIBRATION_SHOWN)
     table = rows[rows["metrica"].isin(wanted)].pivot_table(index="modelo", columns="metrica", values="valor")
     table = table[[c for c in wanted if c in table.columns]].reset_index()
     parts = table["modelo"].str.split("__", n=2, expand=True).reindex(columns=[0, 1, 2])
@@ -1308,6 +1388,28 @@ def by_year(metrics: pd.DataFrame) -> pd.DataFrame:
     table = rows.pivot_table(index="modelo", columns="split", values="valor").reset_index()
     table.columns = [str(c).replace("cv_", "pr_auc ") for c in table.columns]
     return once(table)
+
+
+def calibration_by_year(metrics: pd.DataFrame, model: str = "operativa__logistica") -> pd.DataFrame:
+    """
+    The calibration of one model year by year (cv_<year>): the observed rate, the mean probability, the BSS and
+    the slope and intercept of the recalibration. It says whether the probability keeps the observed rate when
+    the way the labels are recorded changes, as from November 2025, when Calser imports the interruptions from
+    TedisNet. Without that model, the L2 logistic regression of the first variant that has one.
+    """
+    wanted = ["prevalencia", "prob_media", "bss", "pendiente_calibracion", "intercepto_calibracion"]
+    rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)
+                   & metrics["split"].str.startswith("cv_") & (metrics["split"] != "cv_comun")
+                   & metrics["metrica"].isin(wanted)]
+    models = sorted(m for m in rows["modelo"].unique() if str(m).endswith("__logistica"))
+    if model not in models:
+        model = models[0] if models else None
+    if model is None:
+        return pd.DataFrame()
+    table = rows[rows["modelo"] == model].pivot_table(index="split", columns="metrica", values="valor").reset_index()
+    table.insert(0, "anio", table.pop("split").str[len("cv_"):])
+    table.insert(0, "modelo", model)
+    return table[["modelo", "anio"] + [c for c in wanted if c in table.columns]]
 
 
 def once(table: pd.DataFrame) -> pd.DataFrame:
@@ -1396,6 +1498,7 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     not give stays from the reanalysis and is logged as a perfect forecast.
     """
     features = variant_features(variant, blocks)
+    blank = blank_features(variant, features)
     horizon = horizon_of(variant)
     prefix = HORIZONS[horizon]["prev"]
     common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
@@ -1435,7 +1538,7 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
 
     for year in years:
         scored, _, scorers, _ = rolling_evaluation(rows, features, MAIN_LABEL, config, cfg, [year], only_first,
-                                                   names=cfg["modelos"])
+                                                   names=cfg["modelos"], blank=blank)
         target = rows[rows["anio"] == year].copy()
         other_years = rows[rows["anio"].isin([y for y in years if y != year])]
         fitting = (other_years if len(other_years) else target).copy()
@@ -1474,6 +1577,9 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
 
         out = target[["distribuidora_id", "fecha", "anio"] + LABELS].copy()
         for source, frame in frames.items():
+            if blank:
+                frame = frame.copy()
+                frame[blank] = np.nan
             X = frame[features].to_numpy(dtype=np.float32, na_value=np.nan)
             for model, scorer in scorers.items():
                 out[f"p_{model}__{source}"] = scorer.score(X)
@@ -1489,6 +1595,27 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
         sources += [f"prevision_{key}", f"prevision_{key}_cuantiles"]
     return add_rank_mean(found, {f"p_rango__{source}": (f"p_logistica__{source}", f"p_xgboost__{source}")
                                  for source in sources})
+
+
+def coefficients_text(stability: pd.DataFrame, variant: str = "operativa", model: str = "logistica",
+                      rows: int = 12) -> str:
+    """The section of the report with the largest coefficients of a variant and model and how stable they are."""
+    if stability.empty:
+        return "## Coeficientes de los modelos lineales\n\nNinguna variante tiene un modelo lineal."
+    chosen = stability[(stability["modelo"] == model) & (stability["variable"] != "(intercepto)")]
+    if variant in set(chosen["variante"]):
+        chosen = chosen[chosen["variante"] == variant]
+    elif not chosen.empty:
+        variant = chosen["variante"].iloc[0]
+    else:
+        return "## Coeficientes de los modelos lineales\n\nNo hay coeficientes de la logística en esta ejecución."
+    table = chosen.head(rows)[["variable", "media", "desviacion", "razon_por_desviacion", "signo_estable", "anios"]]
+    stable = int(chosen["signo_estable"].sum())
+    return (f"## Coeficientes de la logística de {variant}\n\nUn ajuste por año de la evaluación, sobre la escala "
+            "que ve el modelo (mediana para los huecos, logaritmo con signo y estandarización): exp(coeficiente) es "
+            "la razón de odds de una desviación típica de esa escala. signo_estable dice si el signo es el mismo "
+            f"todos los años ({stable} de {len(chosen)} variables). Todos en coeficientes_estabilidad.csv, y año a "
+            "año en coeficientes.csv.\n\n" + ml_metrics.markdown_table(table, digits=3))
 
 
 def models_text(cfg: dict) -> str:
@@ -1530,6 +1657,8 @@ def main(argv=None):
         cfg["comparar_previsiones_extra"] = True
     if args.modelos:
         cfg["modelos"] = [m.strip() for m in args.modelos.split(",") if m.strip()]
+    if args.anios_prevision:
+        cfg["anios_prevision"] = [int(y) for y in args.anios_prevision.split(",") if y.strip()]
     seed = int(config.get("semilla", 0))
     shares = [float(s) for s in cfg["fracciones_top"]]
     version = f"meteo_dia_{cfg['desde']}_{cfg['hasta']}"
@@ -1554,18 +1683,22 @@ def main(argv=None):
     # The models of the hours get the settings of the days: no purge between
     # days, the grids of meteo_dia.busqueda.
     run_cfg = {**cfg, "purga_horas": float(cfg.get("purga_horas", 0))}
-    outs, search, last = [], [], {}
+    outs, search, last, all_terms = [], [], {}, []
     for variant in variants:
         years = variant_years(variant, cfg)
         if not years:
             logger.warning("Variant %s skipped: no year of evaluation has enough days before it", variant["nombre"])
             continue
         features = variant_features(variant, blocks)
+        blank = blank_features(variant, features)
         rows = pdf[pdf["fecha"] >= pd.Timestamp(variant["desde"])]
-        logger.info("Variant %s: %s features, training from %s, years %s", variant["nombre"], len(features),
-                    variant["desde"], years)
+        logger.info("Variant %s: %s features, training from %s, years %s%s", variant["nombre"], len(features),
+                    variant["desde"], years, f"; scored without {blank}" if blank else "")
+        terms = []
         scored, found, scorers, _ = rolling_evaluation(rows, features, MAIN_LABEL, config, run_cfg, years,
-                                                       args.sin_busqueda, names=cfg["modelos"])
+                                                       args.sin_busqueda, names=cfg["modelos"], blank=blank,
+                                                       terms=terms)
+        all_terms += [{"variante": variant["nombre"], **row} for row in terms]
         out = scored[["distribuidora_id", "fecha", "anio"] + LABELS].copy()
         for column in [c for c in scored.columns if c.startswith("p_")]:
             out[f"p_{variant['nombre']}__{column[2:]}"] = scored[column].to_numpy()
@@ -1575,6 +1708,8 @@ def main(argv=None):
 
     if not outs:
         raise ValueError("No variant could be scored")
+    coefficients = pd.DataFrame(all_terms)
+    stability = coefficient_stability(coefficients)
 
     scored = outs[0]
     for out in outs[1:]:
@@ -1600,13 +1735,18 @@ def main(argv=None):
     comparison = comparison_table(metrics[metrics["split"] == "cv_comun"], shares) if common else pd.DataFrame()
 
     reps = int(cfg["bootstrap_reps"])
+    block = int(cfg.get("bootstrap_bloque_dias", 1))
     pairs = [(f"p_{a}", f"p_{b}") for a, b in cfg["comparaciones"] if f"p_{a}" in columns and f"p_{b}" in columns]
+    # The logistic regressions for few events against the L2 one of the same variant.
+    pairs += [(f"p_{v['nombre']}__{m}", f"p_{v['nombre']}__logistica") for v in variants for m in FEW_EVENTS
+              if f"p_{v['nombre']}__{m}" in columns and f"p_{v['nombre']}__logistica" in columns]
+    pairs = list(dict.fromkeys(pairs))
     intervals, differences = pd.DataFrame(), pd.DataFrame()
     if common and pairs:
         named = sorted({name for pair in pairs for name in pair})
         intervals, replicas = ml_metrics.bootstrap_pr_auc(
             pooled[MAIN_LABEL].to_numpy(), np.ones(len(pooled)), pooled["fecha"].to_numpy(),
-            {name[2:]: pooled[name].to_numpy() for name in named}, reps, seed)
+            {name[2:]: pooled[name].to_numpy() for name in named}, reps, seed, block)
         differences = ml_metrics.paired_differences(replicas, [(a[2:], b[2:]) for a, b in pairs])
 
     # The real forecast: the models of variante_prevision (one variant or a
@@ -1642,7 +1782,10 @@ def main(argv=None):
             forecast_table = forecast_comparison(forecast_metrics, shares)
             wanted = []
             for name in [r["nombre"] for r in references]:
-                for m in ("logistica", "xgboost", "rango"):
+                for m in ("logistica_firth", "logistica_bayes", "logistica_equilibrada", "poisson"):
+                    for source in ("prevision", "prevision_cuantiles"):
+                        wanted.append((f"p_{name}__{m}__{source}", f"p_{name}__logistica__{source}"))
+                for m in ("logistica", "xgboost", "rango") + FEW_EVENTS:
                     wanted += [(f"p_{name}__{m}__prevision_cuantiles", f"p_{name}__{m}__reanalisis"),
                                (f"p_{name}__{m}__prevision", f"p_{name}__{m}__reanalisis"),
                                (f"p_{name}__{m}__prevision_cuantiles", f"p_ayer__{m}")]
@@ -1657,7 +1800,7 @@ def main(argv=None):
                 named = sorted({name for pair in wanted for name in pair})
                 _, replicas = ml_metrics.bootstrap_pr_auc(
                     found[MAIN_LABEL].to_numpy(), np.ones(len(found)), found["fecha"].to_numpy(),
-                    {name[2:]: found[name].to_numpy() for name in named}, reps, seed)
+                    {name[2:]: found[name].to_numpy() for name in named}, reps, seed, block)
                 forecast_differences = ml_metrics.paired_differences(replicas, [(a[2:], b[2:]) for a, b in wanted])
             logger.info("Real forecast of ICON-EU on %s days of %s", len(found), years_forecast)
 
@@ -1667,10 +1810,12 @@ def main(argv=None):
         "variante": v["nombre"], "desde": v["desde"], "bloques": "+".join(v["bloques"]),
         "horizonte_dias": horizon_of(v),
         "anios": ",".join(str(y) for y in variant_years(v, cfg)), "n_features": len(variant_features(v, blocks)),
+        "historia_al_puntuar": v.get("historia_al_puntuar", ""),
     } for v in variants])
     per_dist = by_distribuidora(metrics)
     totals = sizes.groupby("anio")[[f"dias_{label}" for label in LABELS]].sum().reset_index()
     top = f"dias_positivos_en_top_{int(round(shares[1] * 100))}pct" if len(shares) > 1 else ""
+    bootstrap_text = "bootstrap por fechas" if block <= 1 else f"bootstrap por bloques de {block} días"
     warning_text = (f"Los avisos de AEMET cuentan desde el {warnings_first:%d.%m.%Y}, si se enviaron antes de las "
                     f"{int(cfg['aviso_corte_h'])}:00 del día anterior." if warnings_first is not None
                     else "Sin avisos de AEMET en Silver.")
@@ -1687,17 +1832,26 @@ def main(argv=None):
         "## Días con interrupción por año\n\n" + ml_metrics.markdown_table(totals, digits=0),
         "## Variantes\n\n" + ml_metrics.markdown_table(variant_rows, digits=0),
         f"## Comparación en los años comunes\n\n{top} es la parte de los días con avería que caen en el "
-        f"{int(round(shares[1] * 100)) if len(shares) > 1 else ''} % de días con más riesgo de cada año.\n\n"
+        f"{int(round(shares[1] * 100)) if len(shares) > 1 else ''} % de días con más riesgo de cada año. "
+        "Para los modelos que dan una probabilidad, bss es la mejora del Brier frente a decir cada día la tasa "
+        "observada, pendiente_calibracion es la pendiente de la recalibración logística (menos de 1: probabilidades "
+        "demasiado extremas) e intercepto_calibracion su intercepto con la pendiente en 1 (menos de 0: anuncia más "
+        "riesgo del que hay).\n\n"
         + ml_metrics.markdown_table(comparison, digits=4),
         f"## Días con {int(cfg['incidencias_dia_varias'])} incidencias o más\n\nLos mismos modelos frente a "
         "y_dia_varias, los días que empiezan varias incidencias en la distribuidora y piden más de una brigada.\n\n"
         + ml_metrics.markdown_table(busy_days_table(metrics[metrics["split"] == "cv_comun"], shares), digits=4),
         "## PR-AUC por año\n\n" + ml_metrics.markdown_table(by_year(metrics), digits=4),
+        "## Calibración por año\n\nLa logística de la variante de producción (o de la primera variante que la tiene) "
+        "año a año: tasa observada, probabilidad media, BSS y pendiente e intercepto de la recalibración. Desde "
+        "noviembre de 2025 Calser importa las interrupciones de TedisNet, y un cambio en cómo se registran se vería "
+        "aquí antes que en la PR-AUC.\n\n" + ml_metrics.markdown_table(calibration_by_year(metrics), digits=4),
         "## PR-AUC por distribuidora en los años comunes\n\n" + ml_metrics.markdown_table(per_dist, digits=4),
-        f"## PR-AUC con intervalo del 95 % (bootstrap por fechas, {reps} réplicas)\n\n"
+        f"## PR-AUC con intervalo del 95 % ({bootstrap_text}, {reps} réplicas)\n\n"
         + ml_metrics.markdown_table(intervals, digits=4),
         "## Diferencias emparejadas (a - b)\n\nSi el intervalo cruza el cero, los datos no distinguen a de b.\n\n"
         + ml_metrics.markdown_table(differences, digits=4),
+        coefficients_text(stability),
     ] + ([
         f"## Con la previsión real del día anterior ({', '.join(str(y) for y in years_forecast)})\n\n"
         f"Los modelos de {', '.join(r['nombre'] for r in references)} se entrenan con el reanálisis y puntúan los "
@@ -1711,7 +1865,9 @@ def main(argv=None):
     export(config, args.run_id, report, {"metricas": metrics, "comparacion": comparison, "anios": by_year(metrics),
                                          "distribuidoras": per_dist, "intervalos": intervals,
                                          "diferencias": differences, "filas": sizes, "prevision": forecast_table,
-                                         "prevision_diferencias": forecast_differences, "variantes": variant_rows})
+                                         "prevision_diferencias": forecast_differences, "variantes": variant_rows,
+                                         "coeficientes": coefficients, "coeficientes_estabilidad": stability,
+                                         "calibracion_anios": calibration_by_year(metrics)})
 
     summary = metrics[(metrics["split"] == "cv_comun") & (metrics["segmento"] == "total")
                       & (metrics["etiqueta"] == MAIN_LABEL) & (metrics["metrica"] == "pr_auc")]

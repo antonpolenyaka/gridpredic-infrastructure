@@ -180,3 +180,45 @@ Lo que se ha hecho con cada fuente e idea desde que se escribió esta revisión,
 | Calendario agrícola, festivos locales | Descartado con los datos | Solo tendría sentido para las averías de terceros (maquinaria, obras), y en Calser hay 9 incidencias de CT de terceros desde 2016 (de 563): no hay con qué aprenderlo. Los festivos comunes de Extremadura ya están en el calendario del modelo |
 | Bandas de riesgo como cuantiles conformales | No probado | Es presentación, no acierto: los niveles ya se calibran por percentiles y las tasas por banda están medidas (9 veces entre muy alto y bajo) |
 
+## 6. Segunda revisión (17.10.2026): eventos raros, calibración, valor y fuentes
+
+Tres pasadas de investigación el 17.10.2026, la segunda y la tercera para comprobar en la fuente primaria lo que dijo la primera. Lo que entró en el código está en los apartados 3s, 3t y 3u de [investigacion-continua.md](investigacion-continua.md). Los DOI se comprobaron en Crossref o en la página del editor; donde no se pudo, se dice.
+
+### 6.1 Métodos para pocos eventos
+
+| Referencia (DOI) | Qué aporta | Qué hicimos |
+|---|---|---|
+| Firth, D. (1993). Bias reduction of maximum likelihood estimates. Biometrika 80(1):27-38. doi:10.1093/biomet/80.1.27 (corrección en 82(3):667, doi:10.1093/biomet/82.3.667-b) | Penaliza la verosimilitud con la prior de Jeffreys: quita el sesgo de primer orden y da coeficientes finitos con separación | `logistica_firth` en `ml_models.py` (3t) |
+| Puhr, R., Heinze, G., Nold, M., Lusa, L. y Geroldinger, A. (2017). Firth's logistic regression with rare events: accurate effect estimates and predictions? Statistics in Medicine. doi:10.1002/sim.7273 (arXiv:2101.07620) | Firth sesga al alza las probabilidades de un suceso raro; FLIC vuelve a ajustar el intercepto y FLAC aumenta los datos con un indicador | FLIC en `logistica_firth` (3t) |
+| King, G. y Zeng, L. (2001). Logistic Regression in Rare Events Data. Political Analysis 9(2):137-163. doi:10.1093/oxfordjournals.pan.a004868 | Corrección del intercepto cuando se submuestrean los negativos y del sesgo de los coeficientes | El modelo del día usa todos los días: la corrección del prior no aplica y la del sesgo es del orden de la de Firth. La corrección del prior ya está en `ml_models.prior_correction` para el modelo por horas |
+| Gelman, A., Jakulin, A., Pittau, M. G. y Su, Y.-S. (2008). A weakly informative default prior distribution for logistic and other regression models. Annals of Applied Statistics 2(4). doi:10.1214/08-AOAS191 | Prior de Cauchy centrada en 0 con escala 2,5 para variables escaladas a desviación 0,5 (10 para el intercepto) | `logistica_bayes` con escala 1,25 sobre variables escaladas a desviación 1 (3t) |
+| Gelman, A. (2006). Prior distributions for variance parameters in hierarchical models (comment on article by Browne and Draper). Bayesian Analysis 1(3):515-534. doi:10.1214/06-BA117A | Con muy pocos grupos la varianza del efecto aleatorio apenas se identifica | Con tres redes no montamos el modelo jerárquico que proponía la primera pasada: el bloque `distribuidora` (una variable por red) cumple ese papel, y Firth o Cauchy encogen mucho menos que la L2 el término de cada red |
+| Cox, D. R. (1958). Two further applications of a model for binary regression. Biometrika 45(3-4):562. doi:10.1093/biomet/45.3-4.562 | La pendiente y el intercepto de la recalibración logística | `ml_metrics.calibration` (3s y 3t) |
+
+### 6.2 Cómo medir el valor de una previsión
+
+| Referencia (DOI) | Qué aporta | Qué hicimos |
+|---|---|---|
+| Murphy, A. H. (1977). The Value of Climatological, Categorical and Probabilistic Forecasts in the Cost-Loss Ratio Situation. Monthly Weather Review 105(7):803-816. doi:10.1175/1520-0493(1977)105<0803:TVOCCA>2.0.CO;2 (DOI tomado de las referencias enlazadas de AMS y Wiley) | El modelo de coste y pérdida: actuar cuesta C, no actuar cuando pasa algo cuesta L | Base de la curva de valor (3s) |
+| Richardson, D. S. (2000). Skill and relative economic value of the ECMWF ensemble prediction system. QJRMS 126(563):649-667. doi:10.1002/qj.49712656313 | Valor relativo según el cociente C / L, de 0 (decidir sin previsión) a 1 (previsión perfecta) | `experimentos/evaluacion/calibracion_valor.py`, por días y por horas-cliente (3s) |
+| Vickers, A. J. y Elkin, E. B. (2006). Decision Curve Analysis: A Novel Method for Evaluating Prediction Models. Medical Decision Making 26(6):565-574. doi:10.1177/0272989X06295361 | Beneficio neto frente a actuar siempre y nunca, según el umbral de probabilidad | La misma salida (3s) |
+| Angelopoulos, A. N. y Bates, S. A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification. arXiv:2107.07511, doi:10.48550/arXiv.2107.07511 | Conjuntos de predicción con cobertura garantizada | Trabajo futuro |
+| Hawkes, A. G. (1971). Spectra of some self-exciting and mutually exciting point processes. Biometrika 58(1):83-90. doi:10.1093/biomet/58.1.83 | Procesos que se excitan a sí mismos | Trabajo futuro: un segundo aviso tras la primera avería del día (tras una avería hay otra en 3 h en el 11 % de los casos y en el 30 % si la primera fue por meteorología) |
+
+### 6.3 Trabajos recientes sobre cortes por meteorología
+
+- Stanishevska, I. y Guikema, S. (Universidad de Stavanger). arXiv:2510.03959, doi:10.48550/arXiv.2510.03959 (v4 del 07.01.2026). Alerta a 48 h de cortes por tormenta en Michigan con datos abiertos (EAGLE-I y METAR), con una puerta logística por condado y hora. En test, PR-AUC 0,059 frente a una prevalencia de 0,050 (1,2 veces) y ROC-AUC 0,560; bootstrap por bloques de 168 horas, y con cuatro picos de referencia los intervalos del recall van del 0 % al 100 %. Es el trabajo más parecido por tamaño de muestra y por enfoque, pero la unidad no es la nuestra (hora y condado frente a día y red): nuestro 6,9 veces la tasa base no se compara sin explicar esa diferencia.
+- Jacobs, J., Piburn, J. y Myers, A. arXiv:2608.12560, doi:10.48550/arXiv.2608.12560 (12.08.2026). Regresión beta-binomial jerárquica con B-splines para la recuperación tras un evento (EAGLE-I, sur de Wisconsin). Referencia de agrupamiento parcial, no de previsión de la víspera.
+- Rao, S. y otros (2025). Power outages and social vulnerability in the U.S. Gulf Coast: multilevel Bayesian models of outage durations amid rising extreme weather. Humanities and Social Sciences Communications 12, 912. doi:10.1057/s41599-025-05274-0. Modelos bayesianos multinivel con brms (según el extracto de métodos; el texto completo no se pudo abrir).
+- Azizi y otros (2026). Addressing the data imbalance issue in machine learning modeling of rare and disruptive outage events. Scientific Reports 16, 8876. doi:10.1038/s41598-026-41838-z. Tormentas sintéticas con un VAE y difusión condicionada (Eversource Energy Center, UConn). Con cientos de tormentas mejora el error; con unos 17 eventos al año por red no hay base para condicionar un generador.
+- Moldovan y otros (2026). AIFS Single 1.1.0: an update to ECMWF's machine-learned weather forecast model AIFS. GMD 19:4703-4724. doi:10.5194/gmd-19-4703-2026. AIFS es operativo desde el 25.02.2025 y AIFS ENS desde el 01.07.2025 (v2 desde el 12.05.2026, página de ECMWF). AIFS no da racha en sus salidas abiertas; IFS sí (`10fg`, 0,25 grados).
+- Rehman y Teferle (2026). Physics vs. AI in weather prediction: evaluating GraphCast, AIFS, and FuXi against an observation-corrected WRF model for flash floods. GMD 19:9831-9855. doi:10.5194/gmd-19-9831-2026.
+- Prieto-Godino y otros (2025), IJEPES 170, 110811, doi:10.1016/j.ijepes.2025.110811, ya en la tabla 1.1. La primera pasada le atribuyó que Iberdrola usa ese modelo con la previsión del día siguiente; sin el texto completo no lo hemos podido comprobar y no lo citamos.
+
+### 6.4 Correcciones a la primera pasada
+
+- El percentil 80 del TIEPI en zona rural dispersa es de 15 h (RD 1955/2000, art. 106.3); las 25 h salían de un blog.
+- La incidencia #2190 de Open-Meteo se abrió y se cerró el 09.10.2026: el conjunto de ICON-EU no estaba "sin actualizar", DWD cambió sus rejillas con la pasada de las 06 UTC del 06.10.2026. Lo que sigue abierto es la #2194 (el `meta.json` del conjunto de DWD congelado y `precipitation_probability` sin datos nuevos).
+- Liquid clustering no se puede activar en las tablas que lee Trino: su conector de Delta solo admite la característica de tabla deletion vectors (documentación de Trino 483). Hay una prueba que lo vigila (`tests/03_gold/test_compatibilidad_trino.py`).
+- El incentivo de calidad de la Circular 8/2025 cuenta el TIEPI de las interrupciones programadas y de las imprevistas propias y de transporte; la primera pasada decía que solo contaba el imprevisto. El código y la documentación ya lo hacían bien.
+- El plazo de la disposición transitoria cuarta de la Circular 8/2025 (distribuidoras con menos de 10.000 clientes que piden no aplicar el TOTEX en 2029 - 2031) acabó el 01.10.2026.

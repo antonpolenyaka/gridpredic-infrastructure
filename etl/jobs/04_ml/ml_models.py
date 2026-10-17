@@ -42,14 +42,29 @@ Models (name in config_ml.json):
   (Liu et al. 2005, Guikema and Quiring 2012): a day with six incidents
   teaches more than one with one. Compared with the others on the same
   binary metrics.
+- logistica_firth: the logistic regression with the bias reduction of
+  Firth (1993) and the intercept of FLIC (Puhr et al. 2017), on the same
+  pipeline. Nothing to tune.
+- logistica_bayes: the logistic regression at the mode of the posterior
+  with the weakly informative Cauchy prior of Gelman et al. (2008), on the
+  same pipeline. Nothing to tune either.
+
+The last two answer the few events of the model of the day: about 17 days
+with an incident a year per network for 20 - 40 features, 3 - 6 events per
+variable against the 10 - 20 of the usual rules, so the maximum likelihood
+overfits and the L2 has to choose its C on a handful of positives.
 """
 
 import time
 
 import numpy as np
+from sklearn.base import BaseEstimator, ClassifierMixin
 
 
-TRAINED = ("logistica", "random_forest", "xgboost", "logistica_equilibrada", "poisson")
+TRAINED = ("logistica", "random_forest", "xgboost", "logistica_equilibrada", "poisson", "logistica_firth",
+           "logistica_bayes")
+# The models on the pipeline of imputation, log scale and standardisation, whose importance is the coefficient.
+LINEAR = ("logistica", "logistica_equilibrada", "poisson", "logistica_firth", "logistica_bayes")
 REFERENCES = ("tasa_base", "naif_historico")
 ALL_MODELS = REFERENCES + TRAINED
 
@@ -91,6 +106,252 @@ def signed_log1p(x):
     so the fitted pipeline can be pickled and sent to the executors.
     """
     return np.sign(x) * np.log1p(np.abs(x))
+
+
+# ---------------------------------------------------------------------------
+# Logistic regressions for few events
+# ---------------------------------------------------------------------------
+
+def independent_columns(X) -> np.ndarray:
+    """
+    Indexes of a set of linearly independent columns of X once the model has
+    an intercept: QR with column pivoting on the centred columns of unit
+    norm. A constant column and a copy of another one are left out. The
+    missing indicators of two features that are missing on the same days are
+    the same column, and without a strong penalty the information matrix of
+    the likelihood would be singular.
+    """
+    from scipy.linalg import qr
+
+    X = np.asarray(X, dtype=np.float64)
+    centred = X - X.mean(axis=0)
+    norms = np.sqrt((centred ** 2).sum(axis=0))
+    raw = np.sqrt((X ** 2).sum(axis=0))
+    # Relative to the size of the column: a constant column keeps a rounding residue after centring.
+    varying = np.flatnonzero(norms > 1e-10 * np.maximum(raw, 1e-300))
+
+    if varying.size == 0:
+        return varying
+
+    _, r, pivot = qr(centred[:, varying] / norms[varying], mode="economic", pivoting=True)
+    diagonal = np.abs(np.diag(r))
+    rank = int((diagonal > 1e-7 * diagonal[0]).sum())
+    return np.sort(varying[pivot[:rank]])
+
+
+def intercept_with_offset(y, w, offset, start: float = 0.0, tol: float = 1e-10, max_iter: int = 100) -> float:
+    """
+    The maximum likelihood intercept b of a logistic regression whose linear
+    predictor is b + offset (offset fixed): the root of sum w (y - p) = 0,
+    by Newton. Without positives or without negatives there is no root and
+    start is returned.
+    """
+    from scipy.special import expit
+
+    y, w, offset = (np.asarray(a, dtype=np.float64) for a in (y, w, offset))
+    target, total = float(np.sum(w * y)), float(np.sum(w))
+
+    if target <= 0.0 or target >= total:
+        return float(start)
+
+    b = float(start)
+    for _ in range(max_iter):
+        p = expit(b + offset)
+        curvature = float(np.sum(w * p * (1.0 - p)))
+        delta = float(np.clip((target - float(np.sum(w * p))) / max(curvature, 1e-300), -5.0, 5.0))
+        b += delta
+        if abs(delta) < tol:
+            break
+
+    return b
+
+
+class FirthLogisticRegression(ClassifierMixin, BaseEstimator):
+    """
+    Logistic regression with the bias reduction of Firth (1993): the log
+    likelihood gets the penalty 0.5 log |X'WX|, the Jeffreys prior. It
+    removes the first order bias of the coefficients with few events and
+    keeps them finite when a feature separates the classes, and it has
+    nothing to tune. With a single binary feature it gives the odds ratio of
+    the 2 x 2 table with half an event added to every cell.
+
+    The penalty pulls the probabilities of a rare event towards 0.5. With
+    flic (Puhr et al. 2017) the intercept is fitted again without the
+    penalty, with the rest of the linear predictor as an offset, so the mean
+    probability of the training rows is the observed rate; the ranking does
+    not change.
+
+    Newton-Raphson on the modified score, with a cap on the step and step
+    halving on the penalised likelihood, as the logistf package of R does.
+    Constant and repeated columns get coefficient 0 (independent_columns).
+    """
+
+    def __init__(self, flic: bool = True, max_iter: int = 100, tol: float = 1e-6, max_step: float = 5.0,
+                 max_halvings: int = 30):
+        self.flic = flic
+        self.max_iter = max_iter
+        self.tol = tol
+        self.max_step = max_step
+        self.max_halvings = max_halvings
+
+    @staticmethod
+    def _penalised(Z, y, w, beta) -> float:
+        from scipy.special import expit
+
+        eta = Z @ beta
+        loglik = float(np.sum(w * (y * eta - np.logaddexp(0.0, eta))))
+        p = expit(eta)
+        sign, logdet = np.linalg.slogdet(Z.T @ (Z * (w * p * (1.0 - p))[:, None]))
+        return loglik + 0.5 * logdet if sign > 0 else -np.inf
+
+    def fit(self, X, y, sample_weight=None):
+        from scipy.special import expit
+
+        X = np.asarray(X, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64).ravel()
+        w = np.ones(len(y)) if sample_weight is None else np.asarray(sample_weight, dtype=np.float64)
+        self.classes_ = np.array([0, 1])
+        self.n_features_in_ = X.shape[1]
+
+        columns = independent_columns(X)
+        Z = np.column_stack([np.ones(len(y)), X[:, columns]])
+        rate = float(np.clip(np.average(y, weights=w), 1e-8, 1.0 - 1e-8))
+        beta = np.zeros(Z.shape[1])
+        beta[0] = np.log(rate / (1.0 - rate))
+        current = self._penalised(Z, y, w, beta)
+        self.converged_ = False
+
+        for iteration in range(1, int(self.max_iter) + 1):
+            p = expit(Z @ beta)
+            weight = w * p * (1.0 - p)
+            # info^-1 Z': the hat values and the Newton step come out of the same solve.
+            solved = np.linalg.solve(Z.T @ (Z * weight[:, None]), Z.T)
+            hat = weight * np.einsum("ij,ji->i", Z, solved)
+            step = solved @ (w * (y - p) + hat * (0.5 - p))
+            largest = float(np.abs(step).max())
+            if largest > self.max_step:
+                step *= self.max_step / largest
+
+            candidate = self._penalised(Z, y, w, beta + step)
+            for _ in range(int(self.max_halvings)):
+                if candidate >= current - 1e-10 * max(1.0, abs(current)):
+                    break
+                step /= 2.0
+                candidate = self._penalised(Z, y, w, beta + step)
+
+            beta, current = beta + step, candidate
+            if float(np.abs(step).max()) < self.tol:
+                self.converged_ = True
+                break
+
+        self.n_iter_ = iteration
+        coef = np.zeros(X.shape[1])
+        coef[columns] = beta[1:]
+        intercept = float(beta[0])
+        self.intercept_firth_ = intercept
+
+        if self.flic:
+            intercept = intercept_with_offset(y, w, X @ coef, intercept)
+
+        self.coef_ = coef[None, :]
+        self.intercept_ = np.array([intercept])
+        return self
+
+    def decision_function(self, X):
+        return np.asarray(X, dtype=np.float64) @ self.coef_[0] + self.intercept_[0]
+
+    def predict_proba(self, X):
+        from scipy.special import expit
+
+        p = expit(self.decision_function(X))
+        return np.column_stack([1.0 - p, p])
+
+    def predict(self, X):
+        return (self.decision_function(X) > 0).astype(int)
+
+
+class CauchyLogisticRegression(ClassifierMixin, BaseEstimator):
+    """
+    Logistic regression at the mode of the posterior with the weakly
+    informative prior of Gelman et al. (2008): independent Cauchy
+    distributions centred at 0, with scale 2.5 for inputs scaled to a
+    standard deviation of 0.5 and 10 for the intercept. The pipeline scales
+    the features to a standard deviation of 1, so the default scale is 1.25,
+    the same prior per unit of the scaled feature. Unlike the normal prior
+    of the L2, the heavy tails of the Cauchy let a strong effect (the gust
+    on a storm day) keep its size while the weak ones are pulled towards 0,
+    and there is no C to choose on a handful of positives.
+
+    The fit writes the Cauchy as a scale mixture of normals: every step is a
+    Newton step of a ridge whose penalty per coefficient, 2 / (s^2 + b^2),
+    follows the current coefficient, with step halving on the log posterior
+    (the iteration of the bayesglm function of the arm package of R). The
+    prior is not log concave, but with thousands of days the likelihood
+    dominates and the mode is unique in practice.
+    """
+
+    def __init__(self, scale: float = 1.25, intercept_scale: float = 10.0, max_iter: int = 200, tol: float = 1e-8):
+        self.scale = scale
+        self.intercept_scale = intercept_scale
+        self.max_iter = max_iter
+        self.tol = tol
+
+    @staticmethod
+    def _log_posterior(Z, y, w, beta, scales) -> float:
+        eta = Z @ beta
+        return float(np.sum(w * (y * eta - np.logaddexp(0.0, eta))) - np.sum(np.log1p((beta / scales) ** 2)))
+
+    def fit(self, X, y, sample_weight=None):
+        from scipy.special import expit
+
+        X = np.asarray(X, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64).ravel()
+        w = np.ones(len(y)) if sample_weight is None else np.asarray(sample_weight, dtype=np.float64)
+        self.classes_ = np.array([0, 1])
+        self.n_features_in_ = X.shape[1]
+
+        Z = np.column_stack([np.ones(len(y)), X])
+        scales = np.r_[float(self.intercept_scale), np.full(X.shape[1], float(self.scale))]
+        rate = float(np.clip(np.average(y, weights=w), 1e-8, 1.0 - 1e-8))
+        beta = np.zeros(Z.shape[1])
+        beta[0] = np.log(rate / (1.0 - rate))
+        current = self._log_posterior(Z, y, w, beta, scales)
+        self.converged_ = False
+
+        for iteration in range(1, int(self.max_iter) + 1):
+            p = expit(Z @ beta)
+            penalty = 2.0 / (scales ** 2 + beta ** 2)
+            gradient = Z.T @ (w * (y - p)) - penalty * beta
+            step = np.linalg.solve(Z.T @ (Z * (w * p * (1.0 - p))[:, None]) + np.diag(penalty), gradient)
+
+            candidate = self._log_posterior(Z, y, w, beta + step, scales)
+            for _ in range(30):
+                if candidate >= current - 1e-12 * max(1.0, abs(current)):
+                    break
+                step /= 2.0
+                candidate = self._log_posterior(Z, y, w, beta + step, scales)
+
+            beta, current = beta + step, candidate
+            if float(np.abs(step).max()) < self.tol:
+                self.converged_ = True
+                break
+
+        self.n_iter_ = iteration
+        self.coef_ = beta[None, 1:]
+        self.intercept_ = beta[:1].copy()
+        return self
+
+    def decision_function(self, X):
+        return np.asarray(X, dtype=np.float64) @ self.coef_[0] + self.intercept_[0]
+
+    def predict_proba(self, X):
+        from scipy.special import expit
+
+        p = expit(self.decision_function(X))
+        return np.column_stack([1.0 - p, p])
+
+    def predict(self, X):
+        return (self.decision_function(X) > 0).astype(int)
 
 
 class Scorer:
@@ -211,7 +472,7 @@ class EstimatorScorer(Scorer):
 # ---------------------------------------------------------------------------
 
 def build_estimator(name: str, params: dict, seed: int, n_jobs: int):
-    if name in ("logistica", "logistica_equilibrada", "poisson"):
+    if name in LINEAR:
         from sklearn.impute import SimpleImputer
         from sklearn.linear_model import LogisticRegression, PoissonRegressor
         from sklearn.pipeline import Pipeline
@@ -219,6 +480,13 @@ def build_estimator(name: str, params: dict, seed: int, n_jobs: int):
 
         if name == "poisson":
             model = PoissonRegressor(alpha=float(params.get("alpha", 1.0)), max_iter=int(params.get("max_iter", 1000)))
+        elif name == "logistica_firth":
+            model = FirthLogisticRegression(flic=bool(params.get("flic", True)),
+                                            max_iter=int(params.get("max_iter", 100)))
+        elif name == "logistica_bayes":
+            model = CauchyLogisticRegression(scale=float(params.get("escala", 1.25)),
+                                             intercept_scale=float(params.get("escala_intercepto", 10.0)),
+                                             max_iter=int(params.get("max_iter", 200)))
         else:
             model = LogisticRegression(
                 C=float(params.get("C", 0.1)),
@@ -333,6 +601,31 @@ def build_reference(name: str, feature_names: list, base_rate: float, naive_feat
 # Examination
 # ---------------------------------------------------------------------------
 
+def linear_terms(scorer) -> list:
+    """
+    The coefficients of a fitted linear model (LINEAR) on the scale it sees:
+    every feature after the median imputation, the signed log and the
+    standardisation, so exp(coeficiente) is the odds ratio (for poisson, the
+    ratio of the rate) of one standard deviation of that scale. One row per
+    feature, one per missing indicator added by the imputer (<feature>__falta)
+    and the intercept. Empty for any other model.
+    """
+    model = getattr(scorer, "estimator", None)
+    if getattr(scorer, "name", None) not in LINEAR or not hasattr(model, "named_steps"):
+        return []
+    final = model.named_steps["modelo"]
+    coef = np.asarray(final.coef_, dtype=np.float64)
+    coef = coef[0] if coef.ndim == 2 else coef
+    names = list(scorer.feature_names)
+    indicator = getattr(model.named_steps["imputar"], "indicator_", None)
+    labels = names + ([f"{names[j]}__falta" for j in indicator.features_] if indicator is not None else [])
+    rows = [{"variable": "(intercepto)", "coeficiente": float(np.ravel(final.intercept_)[0])}]
+    rows += [{"variable": name, "coeficiente": float(value)} for name, value in zip(labels, coef)]
+    for row in rows:
+        row["razon_por_desviacion"] = float(np.exp(row["coeficiente"]))
+    return rows
+
+
 def importances(scorer: Scorer, X_sample=None) -> dict:
     """
     {metric: array per feature}. For XGBoost the mean absolute SHAP value
@@ -358,7 +651,7 @@ def importances(scorer: Scorer, X_sample=None) -> dict:
     elif scorer.name == "random_forest":
         out["importancia_impureza"] = scorer.estimator.feature_importances_
 
-    elif scorer.name in ("logistica", "logistica_equilibrada", "poisson"):
+    elif scorer.name in LINEAR:
         coef = np.asarray(scorer.estimator.named_steps["modelo"].coef_)
         coef = coef[0] if coef.ndim == 2 else coef
         # The first len(names) coefficients are the features; the rest are

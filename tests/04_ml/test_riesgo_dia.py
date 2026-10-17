@@ -145,6 +145,52 @@ def test_quantile_map_takes_the_forecast_to_the_scale_of_the_reanalysis():
     assert rd.quantile_map([1.0, 2.0], [3.0, 4.0], [5.0]).tolist() == [5.0]
 
 
+def test_a_variant_can_score_the_history_with_the_median_as_the_stale_evening():
+    variant = {"nombre": "operativa_historia_mediana", "historia_al_puntuar": "mediana"}
+    features = ["dist_1", "cal_dia_semana", "hist_incidencias_7d", "hist_dias_desde_ultima", "dia_racha_max"]
+    assert rd.blank_features(variant, features) == ["hist_incidencias_7d", "hist_dias_desde_ultima"]
+    assert rd.blank_features({"nombre": "operativa"}, features) == []
+
+    # Six years of days where the history tells the days apart: fitted with it, but scored empty, the year of
+    # evaluation gets the median of the training days and the history no longer moves the probability.
+    rng = np.random.default_rng(0)
+    days = pd.date_range("2019-01-01", "2024-12-31", freq="D")
+    history = rng.poisson(1.0, len(days)).astype(float)
+    noise = rng.normal(size=len(days))
+    label = (rng.random(len(days)) < 1 / (1 + np.exp(-(-3.0 + 1.5 * history)))).astype(int)
+    pdf = pd.DataFrame({"hora": days, "split": "train", "hist_incidencias_7d": history, "cal_ruido": noise,
+                        "y_dia": label})
+    config = {"semilla": 0, "n_jobs": 1, "busqueda": {"logistica": [{"C": 1.0}]}}
+    cfg = {"fraccion_validacion_interna": 0.25, "purga_horas": 0}
+    columns = ["hist_incidencias_7d", "cal_ruido"]
+    full, _, _, _ = rd.rolling_evaluation(pdf, columns, "y_dia", config, cfg, [2024], True, names=["logistica"],
+                                          references=False)
+    blank, _, _, _ = rd.rolling_evaluation(pdf, columns, "y_dia", config, cfg, [2024], True, names=["logistica"],
+                                           references=False, blank=["hist_incidencias_7d"])
+    assert np.corrcoef(full["p_logistica"], full["hist_incidencias_7d"])[0, 1] > 0.8
+    assert abs(np.corrcoef(blank["p_logistica"], blank["hist_incidencias_7d"])[0, 1]) < 0.1
+    # The values themselves are kept: only the scoring sees them empty.
+    assert blank["hist_incidencias_7d"].notna().all()
+
+
+def test_the_stability_of_the_coefficients_from_one_year_to_the_next():
+    terms = pd.DataFrame([
+        {"variante": "operativa", "modelo": "logistica", "anio": year, "variable": variable, "coeficiente": value}
+        for year, values in {2023: (0.8, 0.1, -2.0), 2024: (0.6, -0.1, -2.1), 2025: (0.7, 0.05, -1.9)}.items()
+        for variable, value in zip(("dia_racha_max", "cal_finde", "(intercepto)"), values)])
+    table = rd.coefficient_stability(terms).set_index("variable")
+    # Sorted by the size of the mean, the intercept included.
+    assert table.index.tolist() == ["(intercepto)", "dia_racha_max", "cal_finde"]
+    assert table.loc["dia_racha_max", "media"] == pytest.approx(0.7)
+    assert table.loc["dia_racha_max", "razon_por_desviacion"] == pytest.approx(np.exp(0.7))
+    assert table.loc["dia_racha_max", "signo_estable"] and not table.loc["cal_finde", "signo_estable"]
+    assert (table["anios"] == 3).all()
+    text = rd.coefficients_text(table.reset_index().assign(variante="operativa", modelo="logistica"))
+    assert text.startswith("## Coeficientes de la logística de operativa") and "(1 de 2 variables)" in text
+    assert "(intercepto)" not in text
+    assert rd.coefficient_stability(pd.DataFrame()).empty
+
+
 def test_top_share_counts_the_positive_days_of_the_top_of_each_year():
     y = np.array([1, 0, 0, 0, 1, 0, 0, 0, 0, 1])
     score = np.array([0.9, 0.1, 0.2, 0.3, 0.05, 0.8, 0.1, 0.2, 0.3, 0.7])
@@ -425,8 +471,8 @@ def config_path(workdir):
         "hasta": "2026-01-01",
         "anios_evaluacion": [2023, 2024, 2025],
         "bootstrap_reps": 50,
-        "modelos": ["tasa_base", "logistica", "xgboost", "poisson"],
-        "busqueda": {"logistica": [{"C": 0.1}], "poisson": [{"alpha": 1.0}],
+        "modelos": ["tasa_base", "logistica", "xgboost", "poisson", "logistica_firth"],
+        "busqueda": {"logistica": [{"C": 0.1}], "poisson": [{"alpha": 1.0}], "logistica_firth": [{"flic": True}],
                      "xgboost": [{"max_depth": 2, "min_child_weight": 5, "learning_rate": 0.1, "subsample": 0.8,
                                   "colsample_bytree": 0.8, "n_estimators": 200, "early_stopping_rounds": 20,
                                   "verbose": 0}]},
@@ -437,6 +483,8 @@ def config_path(workdir):
             {"nombre": "perfecta", "desde": "2019-01-08", "bloques": ["calendario", "historia", "ayer", "dia"]},
             {"nombre": "perfecta_comun", "desde": "2019-01-08",
              "bloques": ["calendario", "historia", "ayer", "dia_comun"]},
+            {"nombre": "perfecta_comun_mediana", "desde": "2019-01-08",
+             "bloques": ["calendario", "historia", "ayer", "dia_comun"], "historia_al_puntuar": "mediana"},
             {"nombre": "perfecta_extremos", "desde": "2019-01-08",
              "bloques": ["calendario", "historia", "ayer", "dia", "extremos"]},
             {"nombre": "comun_avisos", "desde": "2019-06-25",
@@ -468,7 +516,8 @@ def config_path(workdir):
         "caducas": {"csv": mfe_csv(workdir)},
         "nao": {"csv": nao_csv(workdir)},
         "variante_prevision": ["perfecta_comun", "comun_avisos", "comun_avisos_extremos", "operativa_racha",
-                               "operativa_48h", "operativa_72h", "operativa_mas", "operativa_fenologia"],
+                               "operativa_48h", "operativa_72h", "operativa_mas", "operativa_fenologia",
+                               "perfecta_comun_mediana"],
         "anios_prevision": [2024, 2025],
         # A second model in Bronze and one that is not there (left out with a warning).
         "previsiones_extra": [{"clave": "gfs", "tabla": "l1_bronze.meteo_openmeteo_previo_gfs_hora", "nombre": "GFS"},
@@ -526,10 +575,80 @@ def test_the_forecast_and_the_warnings_tell_the_days_apart(result):
     assert references.loc["naif_aviso", "dias_positivos_en_top_10pct"] > 0.3
     # The two models of every variant together by their percentiles in the year.
     assert table.loc[("perfecta", "rango"), "pr_auc"] > 2 * nothing
-    assert len(read(folder, "diferencias.csv")) == 2
+    # The pairs of the configuration, and Firth against the L2 logistic regression in every variant.
+    pairs = set(zip(*[read(folder, "diferencias.csv")[c] for c in ("a", "b")]))
+    assert {("perfecta__logistica", "ayer__logistica"), ("avisos__logistica", "ayer__logistica")} <= pairs
+    assert ("perfecta__logistica_firth", "perfecta__logistica") in pairs
     # The model of counts (fitted on n_dia) ranks the days like the logistic regression.
     counted = table.loc[("perfecta", "poisson"), "pr_auc"]
     assert counted > 2 * nothing and counted > 0.7 * perfect
+
+
+def test_the_calibration_of_the_probabilities(result):
+    _, folder = result
+    table = read(folder, "comparacion.csv").set_index(["variante", "modelo"])
+    for column in ("bss", "pendiente_calibracion", "intercepto_calibracion"):
+        assert column in table.columns
+    # The models that give a probability have a calibration; the mean of two rankings does not.
+    for model in ("logistica", "logistica_firth", "poisson", "xgboost"):
+        assert np.isfinite(table.loc[("perfecta", model), "bss"])
+    assert np.isnan(table.loc[("perfecta", "rango"), "bss"])
+    # The weather of the day says much more than the base rate of the years before, whose skill is about zero.
+    assert table.loc[("perfecta", "logistica"), "bss"] > 0.05
+    assert table.reset_index().set_index("modelo").loc["tasa_base", "bss"] < 0.02
+    assert 0.3 < table.loc[("perfecta", "logistica_firth"), "pendiente_calibracion"] < 3
+    # Firth ranks like the L2 logistic regression.
+    assert table.loc[("perfecta", "logistica_firth"), "pr_auc"] > 0.7 * table.loc[("perfecta", "logistica"), "pr_auc"]
+    metrics = read(folder, "metricas.csv")
+    measured = set(metrics["metrica"])
+    assert {"brier", "log_loss", "prob_media", "bss"} <= measured
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "bss es la mejora del Brier" in text
+    forecast = read(folder, "prevision.csv")
+    assert forecast["bss"].notna().any()
+    differences = read(folder, "prevision_diferencias.csv").set_index(["a", "b"])
+    assert ("perfecta_comun__logistica_firth__prevision", "perfecta_comun__logistica__prevision") in differences.index
+
+
+def test_the_calibration_year_by_year(result):
+    _, folder = result
+    table = read(folder, "calibracion_anios.csv")
+    # Without operativa in the test, the L2 logistic regression of the first variant that has one.
+    assert table["modelo"].nunique() == 1 and table["modelo"].iloc[0].endswith("__logistica")
+    assert sorted(table["anio"].astype(int)) == [2023, 2024, 2025]
+    assert {"prevalencia", "prob_media", "bss", "pendiente_calibracion", "intercepto_calibracion"} <= set(table.columns)
+    assert table["prob_media"].between(0, 1).all()
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "## Calibración por año" in text
+
+
+def test_the_coefficients_of_every_year_are_kept(result):
+    _, folder = result
+    terms = read(folder, "coeficientes.csv")
+    assert {"variante", "modelo", "anio", "variable", "coeficiente", "razon_por_desviacion"} <= set(terms.columns)
+    # One fit per year of the evaluation for every linear model of every variant, the intercept included.
+    logistic = terms[(terms["variante"] == "perfecta") & (terms["modelo"] == "logistica")]
+    assert sorted(logistic["anio"].unique()) == [2023, 2024, 2025]
+    assert (logistic.groupby("anio")["variable"].apply(lambda v: "(intercepto)" in set(v))).all()
+    assert set(terms["modelo"]) <= {"logistica", "logistica_firth", "poisson"}
+    stability = read(folder, "coeficientes_estabilidad.csv")
+    assert {"media", "desviacion", "signo_estable", "anios"} <= set(stability.columns)
+    text = open(os.path.join(folder, "resumen.md"), encoding="utf-8").read()
+    assert "## Coeficientes de la logística de" in text
+
+
+def test_the_history_scored_with_the_median_as_the_stale_evening(result):
+    _, folder = result
+    variants = read(folder, "variantes.csv").set_index("variante")
+    assert variants.loc["perfecta_comun_mediana", "historia_al_puntuar"] == "mediana"
+    assert variants["historia_al_puntuar"].fillna("").eq("mediana").sum() == 1
+    # The same features and the same fits, but the year scored without its history.
+    table = read(folder, "comparacion.csv").set_index(["variante", "modelo"])
+    same = table.loc[("perfecta_comun", "logistica")]
+    stale = table.loc[("perfecta_comun_mediana", "logistica")]
+    assert stale["bss"] != pytest.approx(same["bss"], rel=1e-9)
+    forecast = read(folder, "prevision.csv")
+    assert (forecast["variante"] == "perfecta_comun_mediana").any()
 
 
 def test_the_real_forecast_scores_the_years_it_covers(result):
@@ -538,7 +657,8 @@ def test_the_real_forecast_scores_the_years_it_covers(result):
     # The variants of the forecast, with the models of yesterday once; the one of three days ahead has no
     # forecast in Gold (no metp3_*) and is skipped.
     assert set(full["variante"]) == {"perfecta_comun", "comun_avisos", "comun_avisos_extremos", "ayer",
-                                     "operativa_racha", "operativa_48h", "operativa_mas", "operativa_fenologia"}
+                                     "operativa_racha", "operativa_48h", "operativa_mas", "operativa_fenologia",
+                                     "perfecta_comun_mediana"}
     table = full[full["variante"].isin(["perfecta_comun", "ayer"])].set_index(["tiempo_del_dia", "modelo"])
     assert {"reanalisis", "prevision", "prevision_cuantiles", "solo_ayer"} <= set(table.index.get_level_values(0))
     warned = full[full["variante"] == "comun_avisos"].set_index(["tiempo_del_dia", "modelo"])

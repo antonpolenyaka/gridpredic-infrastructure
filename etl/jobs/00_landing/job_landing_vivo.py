@@ -11,7 +11,23 @@ config_ml.json.
   included). The days ahead are the forecast of the day to predict; today
   is the weather of the day before it; the days before give the run of hot
   days. One request per cell, saved as it comes with _peticion (cell, model,
-  when it was asked).
+  when it was asked). A cell that ICON-EU does not answer is asked to the
+  models of modelos_reserva (GFS, whose forecast scored almost the same in
+  notebook 3j), and after fallos_seguidos_reserva cells in a row without
+  ICON-EU the rest go straight to the reserve; _peticion says which model
+  gave every cell. Besides, prevision_modelo.json keeps when the run that
+  Open-Meteo served started and when it became available (the meta.json of
+  the domain of the model): the scoring warns when that run is old, as when
+  the DWD ensemble froze from 06.10.2026 (Open-Meteo issue #2194).
+- prevision_sombra (its own task of dag_riesgo_manana, never upstream of
+  the score): the same forecast of the days ahead from the other models of
+  riesgo_manana.prevision_sombra, in prevision_sombra/<clave>/<cell>.json,
+  never used to score. ICON-EU on its native grid (dwd_icon_eu_native),
+  which is what models=icon_eu will serve after 30.11.2026 (Open-Meteo PR
+  #2160), so the evenings before that date measure the jump of the gusts;
+  and IFS HRES 9 km (ecmwf_ifs), the model of the reanalysis the day model
+  is trained on. A model that fails max_fallos_seguidos cells in a row is
+  left for the evening.
 - avisos: the warnings of adverse weather of AEMET OpenData that are in
   force, the last ones issued for the areas of the configuration
   (avisos_cap/ultimoelaborado), as AEMET gives them (a tar of CAP messages).
@@ -36,9 +52,9 @@ config_ml.json.
   ensemble.umbrales_kmh, with a sentence for the page.
 
 Everything goes to <landing>/<day to predict, YYYYMMDD>/prevision/<cell>.json,
-avisos/<area>.tar (avisos/<area>.vacio.json when AEMET has none) and
-ensemble/<punto>.json, so the scoring job reads exactly what was known that
-evening. A source that is already there for the day is asked again (the
+prevision_modelo.json, prevision_sombra/<clave>/<cell>.json, avisos/<area>.tar
+(avisos/<area>.vacio.json when AEMET has none) and ensemble/<punto>.json, so
+the scoring job reads exactly what was known that evening. A source that is already there for the day is asked again (the
 forecast changes during the day): the last run of the evening wins.
 
 The day to predict is tomorrow in the time zone of the configuration unless
@@ -78,7 +94,11 @@ CONFIG_CANDIDATES = [
     "/opt/airflow/config/04_ml/config_ml.json",
     os.path.join(HERE, "..", "..", "config", "04_ml", "config_ml.json"),
 ]
-SOURCES = ("prevision", "avisos", "ensemble", "aemet_municipios", "nao")
+SOURCES = ("prevision", "prevision_sombra", "avisos", "ensemble", "aemet_municipios", "nao")
+# The meta.json of every domain of Open-Meteo: when its last run started, when it was available, how often it runs.
+META_URL = "https://api.open-meteo.com/data/{dominio}/static/meta.json"
+# The domain behind a model name of the Forecast API (the others are their own domain: dwd_icon_eu_native, ecmwf_ifs).
+MODEL_DOMAINS = {"icon_eu": "dwd_icon_eu", "icon_global": "dwd_icon", "icon_d2": "dwd_icon_d2"}
 NAO_URL = "https://ftp.cpc.ncep.noaa.gov/cwlinks/norm.daily.nao.cdas.z500.19500101_current.csv"
 AEMET_MUNICIPIOS_DEFAULTS = {
     "api": "https://opendata.aemet.es/opendata/api/prediccion/especifica/municipio/horaria/{ine}",
@@ -160,6 +180,92 @@ def forecast_url(lat: float, lon: float, prevision: dict) -> str:
     return f"{prevision['api']}?{urllib.parse.urlencode(query, safe=',')}"
 
 
+def model_run(prevision: dict, model: str = None) -> dict:
+    """
+    When the last run of the model that Open-Meteo serves started and when it
+    became available, from the meta.json of its domain, and how old it was
+    when it was asked (horas_desde_pasada).
+    """
+    model = model or prevision.get("modelo", "icon_eu")
+    domain = MODEL_DOMAINS.get(model, model)
+    raw = fetch(prevision.get("meta_url", META_URL).format(dominio=domain), retries=2, wait_s=10,
+                timeout=float(prevision.get("timeout_s", 120)), label=f"Open-Meteo meta {domain}")
+    meta = json.loads(raw.decode("utf-8"))
+    if meta.get("error") or not meta.get("last_run_initialisation_time"):
+        raise RuntimeError(f"no run in the meta.json of {domain}: {str(meta)[:160]}")
+    asked = datetime.now(timezone.utc)
+
+    def stamp(key):
+        value = meta.get(key)
+        return datetime.fromtimestamp(int(value), tz=timezone.utc).isoformat(timespec="seconds") if value else None
+
+    started = int(meta["last_run_initialisation_time"])
+    return {"modelo": model, "dominio": domain, "pasada_utc": stamp("last_run_initialisation_time"),
+            "disponible_utc": stamp("last_run_availability_time"), "actualizacion_s": meta.get("update_interval_seconds"),
+            "pedido_utc": asked.isoformat(timespec="seconds"),
+            "horas_desde_pasada": round((asked.timestamp() - started) / 3600.0, 2)}
+
+
+def land_model_run(fs, prevision: dict, path: str, model: str = None):
+    """model_run saved in path; a failure is only logged (the forecast itself is what the evening needs)."""
+    try:
+        run = model_run(prevision, model)
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Run of %s unknown: %s", model or prevision.get("modelo", "icon_eu"), str(error)[:200])
+        return None
+    with fs.open(path, "w") as file:
+        json.dump(run, file)
+    logger.info("Run of %s that Open-Meteo serves: %s, available %s, %.1f h old", run["modelo"], run["pasada_utc"],
+                run["disponible_utc"], run["horas_desde_pasada"])
+    return run
+
+
+def land_shadow(fs, cfg: dict, folder: str, cells: dict) -> dict:
+    """
+    {clave: (cells saved, cells failed)}: the forecast of the days ahead from
+    every model of prevision_sombra, in <folder>/prevision_sombra/<clave>/<cell>.json,
+    with its run in <folder>/prevision_sombra/<clave>_modelo.json.
+    """
+    prevision = cfg["prevision"]
+    out = {}
+    for shadow in cfg.get("prevision_sombra") or []:
+        params = {**prevision, "modelo": shadow["modelo"], "dias_pasados": int(shadow.get("dias_pasados", 0)),
+                  "dias_futuros": int(shadow.get("dias_futuros", prevision.get("dias_futuros", 3)))}
+        key = shadow["clave"]
+        done = failed = in_a_row = 0
+        for cell, (lat, lon) in sorted(cells.items()):
+            if in_a_row >= int(shadow.get("max_fallos_seguidos", 3)):
+                logger.warning("Shadow forecast %s: %s cells in a row failed, the model is left for tonight", key,
+                               in_a_row)
+                failed += len(cells) - done - failed
+                break
+            try:
+                raw = fetch(forecast_url(lat, lon, params), retries=int(shadow.get("reintentos", 2)),
+                            wait_s=float(shadow.get("espera_reintento_s", 20)),
+                            timeout=float(prevision.get("timeout_s", 120)), label=f"Open-Meteo {key} {cell}")
+                payload = json.loads(raw.decode("utf-8"))
+                if not payload.get("hourly", {}).get("time"):
+                    raise RuntimeError(f"empty answer {str(payload)[:200]}")
+            except Exception as error:  # noqa: BLE001
+                failed += 1
+                in_a_row += 1
+                logger.warning("Shadow forecast %s of cell %s not downloaded: %s", key, cell, str(error)[:160])
+                continue
+            in_a_row = 0
+            payload["_peticion"] = {"celda_id": cell, "modelo": shadow["modelo"], "clave": key,
+                                    "pedido_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                    "dias_pasados": params["dias_pasados"], "dias_futuros": params["dias_futuros"]}
+            with fs.open(f"{folder}/prevision_sombra/{key}/{cell}.json", "w") as file:
+                json.dump(payload, file)
+            done += 1
+            time.sleep(float(prevision.get("pausa_s", 0.5)))
+        if done:
+            land_model_run(fs, params, f"{folder}/prevision_sombra/{key}_modelo.json", shadow["modelo"])
+        logger.info("Shadow forecast %s (%s): %s cells saved, %s failed", key, shadow["modelo"], done, failed)
+        out[key] = (done, failed)
+    return out
+
+
 def study_cells(fs, meteo: dict) -> dict:
     """{cell: (latitude, longitude)} of the reanalysis: the municipalities of the reference file in cells."""
     places = municipality_cells(read_reference(fs, meteo["referencia_municipios"]), float(meteo["celda_grados"]))
@@ -169,24 +275,40 @@ def study_cells(fs, meteo: dict) -> dict:
     return cells
 
 
+def ask_forecast(lat: float, lon: float, prevision: dict, model: str, cell: str) -> dict:
+    """The answer of one model for one cell; an error when it does not come or has no hours."""
+    raw = fetch(forecast_url(lat, lon, {**prevision, "modelo": model}), retries=int(prevision.get("reintentos", 4)),
+                wait_s=float(prevision.get("espera_reintento_s", 30)), timeout=float(prevision.get("timeout_s", 120)),
+                label=f"Open-Meteo {model} {cell}")
+    payload = json.loads(raw.decode("utf-8"))
+    if not payload.get("hourly", {}).get("time"):
+        raise RuntimeError(f"empty answer {str(payload)[:200]}")
+    return payload
+
+
 def land_forecast(fs, cfg: dict, folder: str, cells: dict) -> tuple:
     """(cells saved, cells failed): the forecast of every cell in <folder>/prevision/<cell>.json."""
     prevision = cfg["prevision"]
-    done = failed = 0
+    primary = prevision.get("modelo", "icon_eu")
+    reserve = [m for m in prevision.get("modelos_reserva") or [] if m != primary]
+    done = failed = in_a_row = 0
     for cell, (lat, lon) in sorted(cells.items()):
-        try:
-            raw = fetch(forecast_url(lat, lon, prevision), retries=int(prevision.get("reintentos", 4)),
-                        wait_s=float(prevision.get("espera_reintento_s", 30)),
-                        timeout=float(prevision.get("timeout_s", 120)), label=f"Open-Meteo {cell}")
-            payload = json.loads(raw.decode("utf-8"))
-            hours = len(payload.get("hourly", {}).get("time", []))
-            if not hours:
-                raise RuntimeError(f"empty answer {str(payload)[:200]}")
-        except Exception as error:  # noqa: BLE001
+        down = bool(reserve) and in_a_row >= int(prevision.get("fallos_seguidos_reserva", 3))
+        payload, model = None, None
+        for candidate in ([] if down else [primary]) + reserve:
+            try:
+                payload, model = ask_forecast(lat, lon, prevision, candidate, cell), candidate
+                break
+            except Exception as error:  # noqa: BLE001
+                logger.warning("Forecast of %s for cell %s not downloaded: %s", candidate, cell, str(error)[:200])
+        in_a_row = 0 if model == primary else in_a_row + 1
+        if payload is None:
             failed += 1
-            logger.error("Forecast of cell %s not downloaded: %s", cell, str(error)[:200])
+            logger.error("Forecast of cell %s not downloaded from any model", cell)
             continue
-        payload["_peticion"] = {"celda_id": cell, "modelo": prevision.get("modelo", "icon_eu"),
+        if model != primary:
+            logger.warning("Cell %s scored with the forecast of %s: %s did not answer", cell, model, primary)
+        payload["_peticion"] = {"celda_id": cell, "modelo": model, "reserva": model != primary,
                                 "pedido_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                                 "dias_pasados": int(prevision.get("dias_pasados", 31)),
                                 "dias_futuros": int(prevision.get("dias_futuros", 3))}
@@ -596,9 +718,16 @@ def main(argv=None, fs=None) -> int:
     if args.fuente == "nao":
         return 0 if land_nao(fs, cfg, folder) else 1
 
+    if args.fuente == "prevision_sombra":
+        cells = study_cells(fs, load_meteo_config()["openmeteo"])
+        shadows = land_shadow(fs, cfg, folder, cells)
+        return 0 if all(done for done, _ in shadows.values()) else 1
+
     if args.fuente == "prevision":
         cells = study_cells(fs, load_meteo_config()["openmeteo"])
         done, failed = land_forecast(fs, cfg, folder, cells)
+        if done:
+            land_model_run(fs, cfg["prevision"], f"{folder}/prevision_modelo.json")
         # A few cells may fail and be scored with the others; without most of them there is no forecast.
         if done < (1.0 - float(cfg["prevision"].get("max_fallos", 0.1))) * len(cells):
             logger.error("Only %s of %s cells have a forecast", done, len(cells))
