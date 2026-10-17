@@ -42,6 +42,10 @@ Estado a 16.10.2026 (la versión 0.15.0 cierra el desarrollo el 18.10.2026): pip
 - **Language(s) (NLP):** no aplica (datos numéricos y categóricos; documentación en castellano)
 - **License:** propietaria
 - **Finetuned from model [optional]:** no aplica; se entrena desde cero
+- **Model date:** 13.10.2026, primera tarde en producción del modelo del día; desde entonces se reentrena cada tarde con todos los días etiquetados
+- **Model version:** variante `operativa` de `etl/config/04_ml/config_ml.json` en la versión 0.15.0 del repositorio; cada tarde deja su `run_id` y la configuración de su modelo en `l3_gold.ml_runs`
+
+En resumen: en producción está el riesgo del día siguiente por distribuidora (regresión logística con la previsión real de ICON-EU de la víspera y los avisos de AEMET), que da cada tarde una probabilidad, un nivel por percentiles de su propia red y una recomendación de guardia. El modelo por CT y hora se evaluó (XGBoost dobla la tasa base) y no pasa a producción.
 
 ### Model Sources [optional]
 
@@ -162,6 +166,8 @@ En el portátil del stack (12 CPU lógicas, 32 GB): el modelo por CT entrena sob
 | ROC-AUC | Secundaria, para comparar con la literatura | Se reporta |
 | Estabilidad por segmento | Que el modelo no funcione solo en una distribuidora | Publicamos los resultados de cada segmento, también los de los segmentos en los que sale peor |
 
+**Umbrales de decisión del modelo en producción.** El nivel de cada tarde sale de dónde cae la probabilidad entre los días de entrenamiento de la misma red: medio desde el percentil 75, alto desde el 90 y muy alto desde el 95. Alerta es alto o muy alto. La guardia reforzada se recomienda con alerta o con un aviso de AEMET de viento o tormenta para el día. Con la previsión real de 2024 - 2026, la alerta acierta en 13 de cada 100 días, recoge el 41 % de los días con avería y deja en alerta el 11 % de los días tranquilos.
+
 ### Results
 
 **Por CT y hora (valid 2025, 500 réplicas por días).** Tasa base 0,00038. XGBoost llega a 0,00077 [0,00016 - 0,00183] en la configuración básica y su ventaja sobre la tasa base es significativa (99,8 % de las réplicas); ni el estado agregado de la red, ni los grupos de CT por k-means, ni la meteorología lo mejoran de forma demostrable, y los submodelos por grupo nunca superan al modelo global. El modelo encuentra "días malos" pero no el CT concreto.
@@ -230,10 +236,10 @@ Entrenamiento local en un portátil (12 CPU lógicas, 32 GB) sobre datos agregad
 
 ## Technical Specifications [optional]
 
-- Entrada: fila de `features_ct_hora` (un CT, una hora).
-- Salida: probabilidad en [0, 1] y, aplicado el umbral acordado, alerta sí/no con su explicación SHAP.
+- Modelo del día (en producción). Entrada: una fila por distribuidora y día con lo que se sabe a las 20:30 de la víspera (calendario, historia de Calser, tiempo de ayer, avisos de AEMET y la previsión de ICON-EU para el día). Salida: probabilidad, nivel, motivos, franja horaria, guardia recomendada y su reparto por líneas, municipios y CT. Tiempo: entre 4 min 33 s y 5 min 38 s la puntuación, reentreno incluido, y unos 15 minutos la tarde completa.
+- Modelo por CT y hora (evaluado, no en producción). Entrada: fila de `features_ct_hora` (un CT, una hora). Salida: probabilidad en [0, 1] y, aplicado el umbral acordado, alerta sí/no con su explicación SHAP.
 - Dependencias: Python, xgboost (`xgboost-cpu` 3.0.5), scikit-learn 1.7.2, pandas y pyarrow, fijadas en `infra/spark/requirements.txt`. Para los gráficos SHAP de los notebooks, el paquete `shap`; MLflow queda pendiente.
-- Latencia objetivo en serving: inferencia por debajo de un minuto por ciclo horario para todos los CT de una distribuidora.
+- Latencia objetivo del modelo por CT y hora, si se sirviera: inferencia por debajo de un minuto por ciclo horario para todos los CT de una distribuidora.
 
 ## Citation [optional]
 
