@@ -65,6 +65,17 @@ GOLD = "l3_gold"
 
 DQ_METRICS_TABLE = f"{GOLD}.dq_metrics"
 
+# Columns that must never be features (leakage or keys of the label): the
+# registry of job_gold_features_ct_hora refuses them and job_gold_dq_checks
+# checks the registered features against the same list.
+# n_posiciones_aguas_arriba counts the bays of the whole history, future cuts
+# included: aa_n_posiciones is its version known at hora.
+FORBIDDEN_FEATURES = frozenset({
+    "fecha_alta", "ts", "conocido_ts", "conocido_fin_ts", "inicio_ts", "fin_ts", "inicio_conocido_ts",
+    "fin_conocido_ts", "primer_conocido_ts", "en_corte", "en_corte_calser", "en_corte_scada", "ct_vigente",
+    "horas_hasta_proximo_evento", "n_posiciones_aguas_arriba",
+})
+
 # Where the configuration is looked for when --config is not given: the
 # Airflow container, the Spark master container and the repository itself.
 CONFIG_CANDIDATES = [
@@ -478,10 +489,12 @@ def hours_in(start, end_exclusive) -> Column:
 
 def era_expr(column, params: dict) -> Column:
     """
-    Era of the label (Calser import regime): 1 file imports until 06.02.2018,
-    2 manual / import without source until October 2025, 3 SCADA via TedisNet
-    since November 2025. Only era 3 has a guaranteed fine match between
-    features and labels.
+    Era of the label (how Calser recorded it): 1 until 06.02.2018 (file
+    imports, microcuts included), 2 until October 2025 (imports from TedisNet
+    with the 180 s minimum; the text "SCADA" marks them since 2010), 3 since
+    November 2025, when the hours of Calser match the ones of TedisNet to the
+    second. Only era 3 has a guaranteed fine match between features and
+    labels.
     """
     c = F.col(column) if isinstance(column, str) else column
     expr = None

@@ -2,7 +2,7 @@
 Final checks of the Gold layer, run after the dataset is built.
 
 1. Time alignment after the correction of the configuration. Pairs every
-   principal Calser interruption of era 3 (Calser imports from the SCADA)
+   principal Calser interruption of era 3 (its hours match the ones of TedisNet)
    with the nearest Off of the same CT in fact_cortes_scada. The median
    offset has to be close to zero: a constant hour or two would shift the
    whole 1 - 3 h window and the features would see the cut they are supposed
@@ -39,6 +39,7 @@ from pyspark.sql import functions as F
 from gold_common import (
     DQCollector,
     DQ_METRICS_TABLE,
+    FORBIDDEN_FEATURES,
     get_spark,
     gold_table,
     load_params,
@@ -56,10 +57,8 @@ JOB = "job_gold_dq_checks"
 ALIGNMENT_WINDOW_MINUTES = 180
 ALIGNED_TOLERANCE_MINUTES = 30
 
-FORBIDDEN = {"fecha_alta", "ts", "conocido_ts", "conocido_fin_ts", "inicio_ts", "fin_ts",
-             "inicio_conocido_ts", "fin_conocido_ts", "primer_conocido_ts", "en_corte",
-             "en_corte_calser", "en_corte_scada", "ct_vigente", "horas_hasta_proximo_evento",
-             "n_posiciones_aguas_arriba"}
+# Columns that must never be features: the single list of gold_common.
+FORBIDDEN = FORBIDDEN_FEATURES
 
 # A median delay of arrival this large is a clock or time zone difference.
 ARRIVAL_MEDIAN_REVIEW_S = 1800

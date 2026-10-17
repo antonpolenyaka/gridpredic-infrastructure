@@ -130,7 +130,8 @@ def aemet_municipios(day: str) -> None:
 
 @task(retries=0)
 def nao(day: str) -> None:
-    # Never a failure: without tonight's NAO the model takes the median of the training days.
+    # Never a failure: without tonight's NAO the scoring keeps the file of the repository (and the production
+    # variant does not use the NAO).
     try:
         code = land("nao", day)
     except Exception as error:  # noqa: BLE001

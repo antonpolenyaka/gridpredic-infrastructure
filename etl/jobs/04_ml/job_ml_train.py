@@ -824,10 +824,12 @@ def main(argv=None):
     seed = int(config.get("semilla", 0))
 
     names = args.modelos.split(",") if args.modelos else config["modelos"]
-    unknown = [n for n in names if n not in ml_models.ALL_MODELS]
+    # A trained model needs its grid in busqueda; the references need nothing.
+    known = tuple(ml_models.REFERENCES) + tuple(n for n in ml_models.TRAINED if n in config.get("busqueda", {}))
+    unknown = [n for n in names if n not in known]
 
     if unknown:
-        raise ValueError(f"Unknown models {unknown}, known: {ml_models.ALL_MODELS}")
+        raise ValueError(f"Unknown models or models without a grid in busqueda {unknown}, known: {known}")
 
     version = resolve_version(spark, args.dataset_version or config.get("dataset_version"))
     dataset_version = version["dataset_version"]

@@ -245,6 +245,30 @@ def common_block(horizon: int) -> str:
     return "dia_comun" if horizon == 1 else f"dia_comun_{24 * horizon}h"
 
 
+# The features that have a twin computed from the forecast of the evening before (<prev>_<feature>), besides
+# the dia_* of the common block: the extremes and the variables built on the gust or the rain of the day.
+FORECAST_TWIN_PREFIXES = ("ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_", "cad_int_")
+
+
+def forecast_swap(features: list, blocks: dict, horizon: int, columns) -> tuple:
+    """
+    The pairs (feature, forecast twin) that score a day with what the
+    forecast of the horizon said instead of the reanalysis: the dia_* of the
+    common block and the features with a prefix of FORECAST_TWIN_PREFIXES,
+    when the twin is among columns. Also the features that would need a twin
+    and have none at this horizon: they stay from the reanalysis, a perfect
+    forecast, and the caller logs them. The same rule for the evaluation of
+    job_ml_riesgo_dia and the replay of job_ml_caso_negocio.
+    """
+    prefix = HORIZONS[horizon]["prev"]
+    common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
+    swap = [(f"dia_{name}", f"{prefix}_{name}") for name in common if f"{prefix}_{name}" in columns]
+    swap += [(c, f"{prefix}_{c}") for c in features if c.startswith(FORECAST_TWIN_PREFIXES) and f"{prefix}_{c}" in columns]
+    swapped = {column for column, _ in swap}
+    perfect = [c for c in features if c.startswith(("dia_",) + FORECAST_TWIN_PREFIXES) and c not in swapped]
+    return swap, perfect
+
+
 def forecast_mapping(mapping: dict, gold_prefix: str) -> dict:
     """FORECAST_DAILY or FORECAST_EXTREME_DAILY read from another forecast of Gold (metp2_, metp3_)."""
     return {name: (column.replace("metp1_", f"{gold_prefix}_", 1), how) for name, (column, how) in mapping.items()}
@@ -1394,8 +1418,8 @@ def calibration_by_year(metrics: pd.DataFrame, model: str = "operativa__logistic
     """
     The calibration of one model year by year (cv_<year>): the observed rate, the mean probability, the BSS and
     the slope and intercept of the recalibration. It says whether the probability keeps the observed rate when
-    the way the labels are recorded changes, as from November 2025, when Calser imports the interruptions from
-    TedisNet. Without that model, the L2 logistic regression of the first variant that has one.
+    the way the labels are recorded changes, as from November 2025, when the hours of Calser start to match
+    the ones of TedisNet (era 3). Without that model, the L2 logistic regression of the first variant that has one.
     """
     wanted = ["prevalencia", "prob_media", "bss", "pendiente_calibracion", "intercepto_calibracion"]
     rows = metrics[(metrics["segmento"] == "total") & (metrics["etiqueta"] == MAIN_LABEL)
@@ -1501,12 +1525,7 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
     blank = blank_features(variant, features)
     horizon = horizon_of(variant)
     prefix = HORIZONS[horizon]["prev"]
-    common = [c[len("dia_"):] for c in blocks.get(common_block(horizon), [])]
-    swap = [(f"dia_{name}", f"{prefix}_{name}") for name in common]
-    swap += [(c, f"{prefix}_{c}") for c in features
-             if c.startswith(("ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_", "cad_int_")) and f"{prefix}_{c}" in pdf.columns]
-    swapped = {column for column, _ in swap}
-    perfect = [c for c in features if c.startswith(("dia_", "ext_", "hie_", "fen_int_", "hoja_int_", "corr_int_", "reg_", "frag_", "cad_int_")) and c not in swapped]
+    swap, perfect = forecast_swap(features, blocks, horizon, pdf.columns)
     if perfect:
         logger.warning("Variant %s at %s day(s): %s stay from the reanalysis (no forecast of them at this horizon)",
                        variant["nombre"], horizon, perfect)
@@ -1583,7 +1602,7 @@ def forecast_evaluation(pdf: pd.DataFrame, variant: dict, blocks: dict, config: 
             X = frame[features].to_numpy(dtype=np.float32, na_value=np.nan)
             for model, scorer in scorers.items():
                 out[f"p_{model}__{source}"] = scorer.score(X)
-        out["con_prevision"] = target[[f"{prefix}_{n}" for n in common]].notna().all(axis=1).to_numpy()
+        out["con_prevision"] = target[[source for column, source in swap if column.startswith("dia_")]].notna().all(axis=1).to_numpy()
         parts.append(out)
 
     if not parts:
@@ -1844,7 +1863,7 @@ def main(argv=None):
         "## PR-AUC por año\n\n" + ml_metrics.markdown_table(by_year(metrics), digits=4),
         "## Calibración por año\n\nLa logística de la variante de producción (o de la primera variante que la tiene) "
         "año a año: tasa observada, probabilidad media, BSS y pendiente e intercepto de la recalibración. Desde "
-        "noviembre de 2025 Calser importa las interrupciones de TedisNet, y un cambio en cómo se registran se vería "
+        "noviembre de 2025 las horas de Calser coinciden con las de TedisNet (la era 3), y un cambio en cómo se registran se vería "
         "aquí antes que en la PR-AUC.\n\n" + ml_metrics.markdown_table(calibration_by_year(metrics), digits=4),
         "## PR-AUC por distribuidora en los años comunes\n\n" + ml_metrics.markdown_table(per_dist, digits=4),
         f"## PR-AUC con intervalo del 95 % ({bootstrap_text}, {reps} réplicas)\n\n"
