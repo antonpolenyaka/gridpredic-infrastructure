@@ -51,7 +51,7 @@ import ml_metrics  # noqa: E402
 import riesgo_zonas as rz  # noqa: E402
 from job_ml_horas_riesgo import export, rolling_evaluation  # noqa: E402
 from job_ml_meteo_historia import FACTS_TABLE, read_events  # noqa: E402
-from job_ml_riesgo_dia import CELLS_TABLE, MAIN_LABEL, build_dataset, settings, variant_features  # noqa: E402
+from job_ml_riesgo_dia import CELLS_TABLE, MAIN_LABEL, build_dataset, forecast_swap, settings, variant_features  # noqa: E402
 from job_ml_riesgo_manana import (  # noqa: E402
     DEFAULTS as RISK_DEFAULTS,
     DIM_TABLE,
@@ -59,11 +59,11 @@ from job_ml_riesgo_manana import (  # noqa: E402
     calser_until,
     fit_zone_model,
     gold_cell_days,
+    labelled_until,
     live_filesystem,
     number,
     risk_settings,
     road_minutes,
-    warnings_until,
 )
 from job_ml_train import RUNS_TABLE, get_spark, load_config, logger, save_frame  # noqa: E402
 
@@ -116,9 +116,12 @@ def day_scores(pdf: pd.DataFrame, blocks: dict, variant: dict, years: list, conf
     """
     features = variant_features(variant, blocks)
     rows = pdf[pdf["fecha"] >= pd.Timestamp(variant["desde"])].copy()
-    common = [c[len("dia_"):] for c in blocks.get("dia_comun", [])]
-    swap = [(f"dia_{n}", f"prev_{n}") for n in common if f"prev_{n}" in rows.columns]
-    swap += [(c, f"prev_{c}") for c in features if c.startswith("ext_") and f"prev_{c}" in rows.columns]
+    # The same swap as the evaluation of job_ml_riesgo_dia (the day before, horizon 1): the dia_* of the common
+    # block and the features with a forecast twin; what has none stays from the reanalysis.
+    swap, perfect = forecast_swap(features, blocks, 1, rows.columns)
+    if perfect:
+        logger.warning("Variant %s: %s stay from the reanalysis in the forecast mode (no forecast twin)",
+                       variant["nombre"], perfect)
     parts = []
     for year in years:
         before = rows[rows["anio"] < year]
@@ -213,7 +216,7 @@ def zone_scores(spark, pdf: pd.DataFrame, ct: pd.DataFrame, ev: pd.DataFrame, va
     """One row per zone and day of years with the score of a zone model fitted on the years before."""
     zones = rz.zones_of(ct)
     starts = rz.local_starts(ev, ct)
-    weather = rz.zone_weather(ct, gold_cell_days(spark))
+    weather = rz.zone_weather(ct, gold_cell_days(spark, int(cfg["horas_minimas_dia"])))
     day_features = [c for c in pdf.columns if c.startswith(("cal_", "hist_", "aviso_", "dia_", "ext_", "ayer_"))
                     and c != "hist_horas_desde_ultima"]
     last = f"{max(years)}-12-31"
@@ -427,13 +430,13 @@ def policy_masks(d: pd.DataFrame) -> list:
             ("GridPredic con tantos días como avisos amarillos", same)]
 
 
-def detection_table(d: pd.DataFrame) -> pd.DataFrame:
+def detection_table(d: pd.DataFrame, worst_days: int = 10) -> pd.DataFrame:
     """
     Detection and false alarms of every policy, the metrics of the works that forecast the days with outages
     (Prieto-Godino et al. 2025 for Valencia and Albacete): a day to detect is one with an incident, one with
-    two or more, or one of the 10 worst days of its distribuidora and year by customer-hours (among the days
-    with some); detection is the part of those days the policy marks, false alarms the part of the other days
-    it marks too.
+    two or more, or one of the worst_days (caso_negocio.peores_dias) worst days of its distribuidora and year
+    by customer-hours (among the days with some); detection is the part of those days the policy marks, false
+    alarms the part of the other days it marks too.
     """
     if d.empty:
         return pd.DataFrame()
@@ -441,9 +444,9 @@ def detection_table(d: pd.DataFrame) -> pd.DataFrame:
     worst = pd.Series(False, index=d.index)
     for (_, _), g in d.groupby(["distribuidora_id", "anio"]):
         with_hours = g[g["clientes_hora_recortadas"] > 0]
-        worst.loc[with_hours.sort_values("clientes_hora_recortadas", ascending=False).index[:10]] = True
+        worst.loc[with_hours.sort_values("clientes_hora_recortadas", ascending=False).index[:worst_days]] = True
     targets = [("día con alguna incidencia", d["incidencias"] > 0), ("día con dos incidencias o más", d["incidencias"] >= 2),
-               ("los 10 peores días del año por horas-cliente", worst)]
+               (f"los {worst_days} peores días del año por horas-cliente", worst)]
     rows = []
     for name, mask in policy_masks(d):
         row = {"política": name, "parte de días marcados": round(float(mask.mean()), 3)}
@@ -540,9 +543,10 @@ def skill_text(d: pd.DataFrame) -> str:
         yy = (g["incidencias"] > 0).astype(int).to_numpy()
         if 0 < yy.sum() < len(yy):
             parts.append(f"{name} {ml_metrics.roc_auc(yy, g['probabilidad'].to_numpy(dtype=float)):.2f}")
-    brier, climate = float(np.mean((p - y) ** 2)), float(np.mean((y.mean() - y) ** 2))
-    return (f"Probabilidad de la víspera frente a los días con avería: {', '.join(parts)}; Brier {brier:.4f} frente a "
-            f"{climate:.4f} de la tasa base ({100 * y.mean():.1f} % de los días con avería).")
+    cal = ml_metrics.calibration(y, p)
+    slope = "" if not np.isfinite(cal["pendiente"]) else f"; pendiente de calibración {cal['pendiente']:.2f}"
+    return (f"Probabilidad de la víspera frente a los días con avería: {', '.join(parts)}; Brier {cal['brier']:.4f} frente a "
+            f"{cal['brier_referencia']:.4f} de la tasa base ({100 * y.mean():.1f} % de los días con avería), BSS {cal['bss']:.3f}{slope}.")
 
 
 def report_text(summary: pd.DataFrame, day_table: pd.DataFrame, ct_table: pd.DataFrame, ccfg: dict, run_id: str) -> str:
@@ -594,7 +598,7 @@ def report_text(summary: pd.DataFrame, day_table: pd.DataFrame, ct_table: pd.Dat
         if len(policies):
             parts.append("### Frente a los avisos de AEMET (los mismos días; avisos enviados antes de la tarde anterior)\n\n"
                          + ml_metrics.markdown_table(policies, 3))
-        detection = detection_table(d)
+        detection = detection_table(d, int(ccfg["peores_dias"]))
         if len(detection):
             positives = ", ".join(f"{k}: {v}" for k, v in detection.attrs.get("positivos", {}).items())
             parts.append("### Detección y falsas alarmas por día (las métricas de los trabajos que predicen los días con averías)\n\n"
@@ -655,15 +659,10 @@ def main(argv=None):
     events, _ = read_events(spark, cfg)
     # Its own margin (caso_negocio.margen_etiquetas_dias): the evening waits 45 days since 17.10.2026, the figures of the
     # business case keep the 7 days they were published with.
-    margin = int(ccfg["margen_etiquetas_dias"])
-    ends = [calser_until(spark, events, today).floor("D") - pd.Timedelta(days=margin), today - pd.Timedelta(days=1)]
-    if "dia_racha_max" in pdf.columns:
-        ends.append(pdf.loc[pdf["dia_racha_max"].notna(), "fecha"].max())
-    if "avisos" in variant["bloques"]:
-        ends.append(warnings_until(spark).floor("D"))
-    labelled_until = min(e for e in ends if pd.notna(e))
-    pdf = pdf[pdf["fecha"] <= labelled_until].reset_index(drop=True)
-    logger.info("Days with a known label up to %s", labelled_until.date())
+    known_until = labelled_until(spark, pdf, calser_until(spark, events, today), today, variant,
+                                 int(ccfg["margen_etiquetas_dias"]))
+    pdf = pdf[pdf["fecha"] <= known_until].reset_index(drop=True)
+    logger.info("Days with a known label up to %s", known_until.date())
     days = day_scores(pdf, blocks, variant, years, config, cfg, rcfg["niveles"])
     if days.empty:
         raise ValueError(f"No day of {years} could be scored")

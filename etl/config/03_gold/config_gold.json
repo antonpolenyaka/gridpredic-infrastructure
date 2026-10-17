@@ -92,6 +92,7 @@
     },
     "meteo": {
       "prevision_h": 3,
+      "aviso_prevision_h": 6,
       "region": true,
       "focos_radio_km": 15,
       "focos_latencia_h": 3,
@@ -163,7 +164,7 @@
     },
     {
       "name": "dq_checks",
-      "depends_on": ["dataset_train"]
+      "depends_on": ["dataset_train", "meteo_celda_hora", "contexto_ct"]
     }
   ]
 }

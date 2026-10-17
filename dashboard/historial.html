@@ -213,8 +213,8 @@
       });
     }
     const modeText = String((DATA.modos || {})[mode] || "");
-    document.getElementById("fuentes").innerHTML = `${esc(modeText.charAt(0).toUpperCase() + modeText.slice(1))}. Niveles: muy alto desde el percentil 95 de los días de entrenamiento, alto desde el 90, medio desde el 75.`;
-    document.getElementById("pie").textContent = "Cada día se puntúa con un modelo entrenado solo con los años anteriores, como hace el sistema cada tarde; las averías son las incidencias de causa local de Calser (sin aguas arriba, apagones, programadas ni maniobras) en los CT en estudio, con sus clientes y la duración real de cada corte. Generado el " + (DATA.generado || "") + ".";
+    document.getElementById("fuentes").innerHTML = `${esc(modeText.charAt(0).toUpperCase() + modeText.slice(1))}. ${esc(nivelesTexto(DATA.niveles))}`;
+    document.getElementById("pie").textContent = "Cada día se puntúa con un modelo entrenado solo con los años anteriores, como hace el sistema cada tarde; las averías son las incidencias de causa local de Calser (sin aguas arriba, apagones, programadas, maniobras ni las de la red de baja tensión o de un cliente) en los CT en estudio, con sus clientes y la duración real de cada corte. Generado el " + (DATA.generado || "") + ".";
   }
 
   document.querySelectorAll('input[name="modo"]').forEach((el) => el.addEventListener("change", render));
@@ -222,6 +222,14 @@
   // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
   function ordenar(lista) { return (lista || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { numeric: true })); }
   // The years of each kind of weather, as the file has them, next to its button.
+  // The levels come from historico.json (riesgo_manana.niveles): "muy alto desde el percentil 95 ..., alto desde el 90, medio desde el 75".
+  function nivelesTexto(niveles) {
+    const entries = Object.entries(niveles || { "muy alto": 0.95, alto: 0.9, medio: 0.75 }).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) return "";
+    const pct = (v) => String(Math.round(v * 100));
+    const [first, ...rest] = entries;
+    return `Niveles: ${first[0]} desde el percentil ${pct(first[1])} de los días de entrenamiento` + rest.map(([k, v]) => `, ${k} desde el ${pct(v)}`).join("") + ".";
+  }
   function anios() {
     for (const mode of ["prevision", "reanalisis"]) {
       const ys = DATA.distribuidoras.flatMap((x) => ((x.dias || {})[mode] || []).map((d) => String(d.f).slice(0, 4)));

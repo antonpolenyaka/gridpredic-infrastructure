@@ -86,14 +86,14 @@ def test_the_dashboard_sees_the_gust_of_the_day_near_every_network(fs, tmp_path,
     assert [s["idema"] for s in out["estaciones"]] == ["3469A", "4410X"]
     caceres = out["estaciones"][0]
     assert caceres["hora"] == "15:00" and caceres["racha_kmh"] == 29 and caceres["temp_c"] == 30.0
-    pitarch, eosa, vsa = out["distribuidoras"]
+    d2, d1, d3 = out["distribuidoras"]
     # Casar de Cáceres is 12 km from the station of Cáceres; Hervás is 33 km from Plasencia: none within 25 km.
-    assert pitarch["estaciones"] == 1 and pitarch["racha_max_kmh"] == 72 and pitarch["hora_racha_max"] == 10
-    assert len(pitarch["horas"]) == 16 and pitarch["horas"][0]["hora"] == 0
-    assert next(h for h in pitarch["horas"] if h["hora"] == 11)["lluvia_mm"] == 2.4
-    assert pitarch["texto"].startswith("racha máxima observada hoy 72 km/h a las 10:00")
-    assert eosa["estaciones"] == 0 and eosa["texto"] == "sin estaciones cerca de la red" and eosa["horas"] == []
-    assert vsa["estaciones"] == 0
+    assert d2["estaciones"] == 1 and d2["racha_max_kmh"] == 72 and d2["hora_racha_max"] == 10
+    assert len(d2["horas"]) == 16 and d2["horas"][0]["hora"] == 0
+    assert next(h for h in d2["horas"] if h["hora"] == 11)["lluvia_mm"] == 2.4
+    assert d2["texto"].startswith("racha máxima observada hoy 72 km/h a las 10:00")
+    assert d1["estaciones"] == 0 and d1["texto"] == "sin estaciones cerca de la red" and d1["horas"] == []
+    assert d3["estaciones"] == 0
     # Without the key nothing is asked; with a failing API the code says it.
     monkeypatch.delenv("AEMET_API_KEY")
     assert obs.main(["--dashboard-dir", str(tmp_path), "--landing", cfg["landing"]], fs=fs, now=NOW) == 2
@@ -119,14 +119,14 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
     for day, hour, peak, window in (("2026-07-19", 11, 60.0, (10, 15)), ("2026-07-20", 14, 80.0, (13, 16))):
         risk = forecast(day, hour, peak, window)
         if day == "2026-07-19":
-            # The evening of the 18th also gave an outlook of the 20th: alto for Pitarch.
+            # The evening of the 18th also gave an outlook of the 20th: alto for the Distribuidora 2.
             risk["pasado_manana"] = {"fecha": "2026-07-20", "fecha_texto": "20.07.2026",
                                      "distribuidoras": [{"id": 2, "nombre": "Distribuidora 2", "nivel": "alto", "probabilidad": 0.12}]}
         with open(tmp_path / f"riesgo_{day.replace('-', '')}.json", "w", encoding="utf-8") as file:
             json.dump(risk, file)
     with open(tmp_path / "riesgo.json", "w", encoding="utf-8") as file:
         json.dump(forecast("2026-07-20", 14, 80.0, (13, 16)), file)
-    # The band of the ensemble of yesterday: the observed 72 falls inside 55 - 75 for Pitarch.
+    # The band of the ensemble of yesterday: the observed 72 falls inside 55 - 75 for the Distribuidora 2.
     with open(tmp_path / "ensemble_20260719.json", "w", encoding="utf-8") as file:
         json.dump({"fecha": "2026-07-19", "distribuidoras": [{"id": 2, "nombre": "Distribuidora 2", "pico": {"p10": 55, "p50": 63, "p90": 75}, "supera": {"50": 0.9, "70": 0.3}},
                                                             {"id": 3, "nombre": "Distribuidora 1", "pico": {"p10": 50, "p50": 58, "p90": 70}, "supera": {"50": 0.8}}]}, file)
@@ -145,21 +145,21 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
     with open(tmp_path / "verificacion.json", encoding="utf-8") as file:
         out = json.load(file)
     assert out["ayer"]["fecha"] == "2026-07-19" and out["hoy"]["fecha"] == "2026-07-20" and list(out["dias"]) == ["2026-07-19"]
-    pitarch, eosa = out["ayer"]["distribuidoras"]
-    # Yesterday: 24 hours observed near Pitarch, peak 72 km/h at 10:00 local against 60 forecast at 11:00, inside the window 10 - 15.
-    assert pitarch["horas_observadas"] == 24 and pitarch["racha_observada_max"] == 72 and pitarch["hora_observada"] == 10
-    assert pitarch["racha_prevista_max"] == 60 and pitarch["hora_prevista"] == 11 and pitarch["error_kmh"] == 12 and pitarch["pico_en_franja"] is True
-    assert eosa["estaciones"] == 0 and "racha_observada_max" not in eosa and "error_kmh" not in eosa and eosa["racha_prevista_max"] == 60
-    assert pitarch["banda_p10"] == 55 and pitarch["banda_p90"] == 75 and pitarch["pico_en_banda"] is True
-    assert pitarch["racha_aemet_max"] == 60 and pitarch["hora_aemet"] == 13 and pitarch["error_aemet_kmh"] == 12 and "racha_aemet_max" not in eosa
-    assert pitarch["supera"] == {"50": 0.9, "70": 0.3} and pitarch["supero"] == {"50": True, "70": True} and "supero" not in eosa
-    assert pitarch["aviso_aemet"] == 2 and "aviso_aemet" not in eosa
-    assert eosa["banda_p50"] == 58 and "pico_en_banda" not in eosa
+    d2, d1 = out["ayer"]["distribuidoras"]
+    # Yesterday: 24 hours observed near the Distribuidora 2, peak 72 km/h at 10:00 local against 60 forecast at 11:00, inside the window 10 - 15.
+    assert d2["horas_observadas"] == 24 and d2["racha_observada_max"] == 72 and d2["hora_observada"] == 10
+    assert d2["racha_prevista_max"] == 60 and d2["hora_prevista"] == 11 and d2["error_kmh"] == 12 and d2["pico_en_franja"] is True
+    assert d1["estaciones"] == 0 and "racha_observada_max" not in d1 and "error_kmh" not in d1 and d1["racha_prevista_max"] == 60
+    assert d2["banda_p10"] == 55 and d2["banda_p90"] == 75 and d2["pico_en_banda"] is True
+    assert d2["racha_aemet_max"] == 60 and d2["hora_aemet"] == 13 and d2["error_aemet_kmh"] == 12 and "racha_aemet_max" not in d1
+    assert d2["supera"] == {"50": 0.9, "70": 0.3} and d2["supero"] == {"50": True, "70": True} and "supero" not in d1
+    assert d2["aviso_aemet"] == 2 and "aviso_aemet" not in d1
+    assert d1["banda_p50"] == 58 and "pico_en_banda" not in d1
     today = out["hoy"]["distribuidoras"][0]
     assert today["horas_observadas"] == 16 and today["error_kmh"] == 72 - 80 and today["pico_en_franja"] is False
     # What the outlook of two evenings before said of today; nothing for yesterday (no outlook pointed at it).
     assert today["nivel_dos_dias"] == "alto" and today["probabilidad_dos_dias"] == 0.12
-    assert "nivel_dos_dias" not in pitarch and "nivel_dos_dias" not in out["hoy"]["distribuidoras"][1]
+    assert "nivel_dos_dias" not in d2 and "nivel_dos_dias" not in out["hoy"]["distribuidoras"][1]
     # The summary only counts the complete days and only the networks with stations.
     assert [s["id"] for s in out["resumen"]] == [2]
     s = out["resumen"][0]

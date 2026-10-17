@@ -22,6 +22,9 @@ logger = logging.getLogger("aviso")
 DEFAULTS = {"url_env": "AVISO_WEBHOOK_URL", "nivel_minimo": "alto", "campo": "text", "timeout_s": 30, "rayos_cada_min": 60,
             "parte_manana_hora": 7}
 LEVEL_NAMES = {1: "amarillo", 2: "naranja", 3: "rojo"}
+# The addresses the messages point at (the ports of compose.yaml: the dashboard and Airflow).
+DASHBOARD_URL = "http://localhost:8086"
+AIRFLOW_URL = "http://localhost:8084"
 # The guard: reinforce it the days in alert (alto or muy alto) and the days with a wind or thunderstorm warning of
 # AEMET, the policy that covers most customer-hours per day spent in the replay of 2024 - 2026 (caso-de-negocio.md, 2b).
 GUARD_LEVELS = ("alto", "muy alto")
@@ -98,7 +101,7 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
     rule = (payload.get("reglas") or {}).get("texto")
     if rule:
         lines.append(rule)
-    lines.append("Cuadro de mando: http://localhost:8086")
+    lines.append(f"Cuadro de mando: {DASHBOARD_URL}")
     return "\n".join(lines)
 
 
@@ -172,7 +175,7 @@ def storm_message(payload: dict) -> str:
         if d.get("municipios"):
             line += f"; municipios bajo la tormenta: {', '.join(d['municipios'][:6])}" + (", ..." if len(d["municipios"]) > 6 else "")
         lines.append(line + ".")
-    lines.append("Antes del 17 % de las averías hubo rayos a menos de 10 km de la red en la hora previa (1 % en las horas normales). Cuadro de mando: http://localhost:8086")
+    lines.append(f"Antes del 17 % de las averías hubo rayos a menos de 10 km de la red en la hora previa (1,1 % en las ventanas sin incidencias). Cuadro de mando: {DASHBOARD_URL}")
     return "\n".join(lines)
 
 
@@ -251,7 +254,7 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
     lines = []
     if today_iso and (risk or {}).get("fecha") and str(risk["fecha"]) < today_iso:
         lines.append(f"Atención: no hay riesgo calculado para hoy (el último es del {day_text(risk['fecha'])}); "
-                     "mirar dag_riesgo_manana en Airflow (http://localhost:8084).")
+                     f"mirar dag_riesgo_manana en Airflow ({AIRFLOW_URL}).")
     if yesterday.get("distribuidoras"):
         parts = []
         for d in yesterday["distribuidoras"]:
@@ -292,7 +295,7 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
         lines.append(f"Hoy {day_text(today.get('fecha'))}: " + "; ".join(parts) + ".")
     if not lines:
         return ""
-    return "GridPredic, parte de la mañana.\n" + "\n".join(lines) + "\nCuadro de mando: http://localhost:8086"
+    return "GridPredic, parte de la mañana.\n" + "\n".join(lines) + f"\nCuadro de mando: {DASHBOARD_URL}"
 
 
 def send_morning(folder: str, rcfg: dict, state_path: str, now: datetime = None) -> str:
@@ -373,7 +376,7 @@ def failure_message(context: dict) -> str:
     when = context.get("logical_date") or context.get("execution_date") or context.get("run_id") or ""
     error = str(context.get("exception") or "")[:300]
     return (f"GridPredic: la tarea {task_id} de {dag_id} ha fallado" + (f" (intento {attempt})" if attempt else "")
-            + (f", ejecución del {run_time_text(when)}" if when else "") + (f": {error}" if error else "") + ". Airflow: http://localhost:8084")
+            + (f", ejecución del {run_time_text(when)}" if when else "") + (f": {error}" if error else "") + f". Airflow: {AIRFLOW_URL}")
 
 
 def notify_failure(context: dict) -> str:

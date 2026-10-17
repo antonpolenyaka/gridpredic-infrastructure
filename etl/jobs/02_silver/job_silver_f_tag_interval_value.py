@@ -59,7 +59,9 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from silver_common import (
+    DEFAULT_MAX_REJECTED_PCT,
     DQ_METRICS_TABLE,
+    MAX_REJECTED_PCT,
     DQCollector,
     get_spark,
     keep_first,
@@ -324,7 +326,8 @@ def main():
             rejected_total += row["count"]
             dq.add(ENTITY, f"rechazo:{row['_motivo']}", row["count"], total_in, ambito=month_label)
 
-        dq.add(ENTITY, "rechazo_total", rejected_total, total_in, umbral_pct=30.0, ambito=month_label)
+        dq.add(ENTITY, "rechazo_total", rejected_total, total_in,
+               umbral_pct=MAX_REJECTED_PCT.get(ENTITY, DEFAULT_MAX_REJECTED_PCT), ambito=month_label)
 
         sums = out.agg(*[F.sum(F.col(flag).cast("long")).alias(flag) for flag in FLAGS]).first()
 

@@ -1,4 +1,4 @@
-# Arranca un script de _runlogs (cola.ps1 o vigilar_airflow.ps1) si no esta ya corriendo. Lo usan las tareas
+# Arranca un script de _runlogs (cola.ps1, local del portatil y fuera del repositorio, o vigilar_airflow.ps1) si no esta ya corriendo. Lo usan las tareas
 # programadas de Windows al iniciar sesion y cada 30 minutos; espera a que Docker responda antes de arrancar.
 param([Parameter(Mandatory = $true)][string]$Script)
 $Path = "D:\GitHub\gridpredic-infrastructure\_runlogs\$Script"

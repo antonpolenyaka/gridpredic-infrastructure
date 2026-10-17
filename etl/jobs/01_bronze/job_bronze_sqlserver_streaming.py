@@ -196,8 +196,7 @@ def get_debezium_schemas(df):
     envelope_schema = value_json["schema"]
     key_schema = key_json["schema"]
 
-    before_field = get_field(envelope_schema, "before")
-    after_field = get_field(envelope_schema, "after")
+    after_field = get_field(envelope_schema, "after")  # before has the same fields
 
     row_fields = after_field["fields"]
     key_fields = key_schema["fields"]

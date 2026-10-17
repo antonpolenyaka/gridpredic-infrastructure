@@ -1,8 +1,7 @@
 """
 Silver dimension of the Calser LV outputs (salidas) of every CT.
 
-Integrates the salidas table of the three Calser databases. Completes the
-first Silver example of the repository (job_silver_f_salidas.py) with the
+Integrates the salidas table of the three Calser databases with the
 rules of the layer: distribuidora of every row, clean texts, deduplication by
 the Calser primary key and a check that the CT of the salida exists in the
 same period.

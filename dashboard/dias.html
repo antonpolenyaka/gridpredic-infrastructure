@@ -85,8 +85,8 @@
       <dt><a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a></dt><dd>Los trabajos programados: <code>dag_riesgo_manana</code> (20:30), <code>dag_observacion_vivo</code> (cada hora: estaciones, verificación, parte de la mañana, avisos de AEMET durante el día) y <code>dag_rayos_vivo</code> (cada 15 min); los domingos a las 04:10, <code>dag_mantenimiento_delta</code> compacta las tablas del lakehouse.</dd>
     </dl>
     <h3>Repetir un día que no está</h3>
-    <p class="texto">Desde PowerShell en el portátil (los días desde enero de 2024, que es cuando empieza la previsión guardada de ICON-EU):</p>
-    <pre>docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml exec -T spark-master /opt/spark/bin/spark-submit --driver-memory 4g --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json --fecha 2026-01-28 --desde-gold --solo-archivo</pre>
+    <p class="texto">Desde una terminal en la carpeta del repositorio (los días desde enero de 2024, que es cuando empieza la previsión guardada de ICON-EU):</p>
+    <pre>docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json --fecha 2026-01-28 --desde-gold --solo-archivo --run-id demo_20260128</pre>
     <p class="texto">Al terminar, el día aparece en esta lista y se abre con su enlace "Cuadro de mando". El detalle está en <code>docs/operacion-diaria.md</code>, apartado 3b.</p>
   </section>
 </main>
