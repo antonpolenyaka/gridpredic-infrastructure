@@ -139,9 +139,9 @@ def main(argv) -> int:
               ("aviso_vlt_cat", "Aviso de viento, lluvia o tormenta emitido la víspera",
                ["sin aviso", "amarillo", "naranja o rojo"]),
               ("tramo_lluvia", "Lluvia del día en la peor celda (mm)", None),
-              ("estacion_cat", "Estación", ["invierno", "primavera", "verano", "otoño"])]
+              ("estacion_cat", "Estación del año", ["invierno", "primavera", "verano", "otoño"])]
     rows = rate_panels(df, "y_dia", panels, base, os.path.join(out, "perfil_tramos.png"),
-                       "La avería sube con el viento, los avisos y la lluvia; con la estación, apenas cambia",
+                       "La avería sube con la racha, los avisos y la lluvia; con la estación del año, apenas cambia",
                        "Parte de los días del tramo con alguna avería, con su intervalo de Wilson del 95 %; bajo "
                        "cada tramo, cuántos días tiene.")
     pd.DataFrame(rows).to_csv(os.path.join(out, "tramos.csv"), index=False)
