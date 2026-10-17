@@ -90,6 +90,8 @@ def zone_table(dim: pd.DataFrame, cells: pd.DataFrame) -> pd.DataFrame:
     ct["zona"] = ct["grupo_red_id"].astype("int64").astype(str)
     for column in ("potencia_kva", "num_abonados"):
         ct[column] = pd.to_numeric(ct.get(column), errors="coerce").fillna(0.0)
+    # z_rural is the share of CT in rural dispersa (code 4 of the zone of the municipality); the CT of rural
+    # concentrada (3), most of the CT of the three networks, do not count as rural here.
     ct["rural"] = (pd.to_numeric(ct.get("tipo_zona_codigo"), errors="coerce") == 4).astype(float)
     ct["municipio"] = ct["municipio_nombre"].fillna("").astype(str)
     return ct.reset_index(drop=True)

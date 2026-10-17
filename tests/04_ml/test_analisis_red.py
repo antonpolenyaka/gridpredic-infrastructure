@@ -456,3 +456,31 @@ def test_works_and_third_party_damage(result):
     assert uno["crec_pob_ame"] == pytest.approx(0.01) and uno["proyeccion"] == "2024-2039"
     ames = read(folder, "crecimiento_ame.csv").set_index("ame_codigo")
     assert ames.loc[1009, "crec_pob_ame"] == pytest.approx(-0.13) and ames.loc[1012, "municipios"] == 2
+
+
+def test_the_monthly_limits_of_extremadura():
+    import job_analisis_red as ar
+
+    events = pd.DataFrame({
+        "distribuidora_id": [3, 3, 3, 3],
+        "municipio_id": [1, 1, 2, 1],
+        "ct_id": ["A", "B", "C", "A"],
+        "incidente": ["i1", "i1", "i2", "i3"],
+        "inicio_ts": pd.to_datetime(["2024-01-10 10:00", "2024-01-10 10:00", "2024-02-03 08:00", "2024-03-05 12:00"]),
+        "kva_h": [600.0, 400.0, 1500.0, 100.0],
+        "kva": [400.0, 250.0, 500.0, 400.0],
+    })
+    installed = pd.DataFrame({"distribuidora_id": [3, 3, 3], "provincia": ["Cáceres"] * 3, "zona": [3, 3, 2],
+                              "municipio_id": [1, 2, 9], "municipio_nombre": ["a", "b", "c"],
+                              "p_total_kva": [600.0, 400.0, 5000.0]})
+    limits = ar.DEFAULTS["limites_mensuales_extremadura"]
+    rows = pd.DataFrame(ar.monthly_zone_quality(events, installed, 2024, limits, last_month=4))
+    # Only the rural concentrada zone has a monthly limit; four months of 2024 up to the last one with data.
+    assert set(rows["zona"]) == {3} and rows["mes"].tolist() == [1, 2, 3, 4]
+    by_month = rows.set_index("mes")
+    # January: 1.000 kVA·h over 1.000 kVA of the zone is 1 h (above 0,88); the incident counts each CT once (0,65).
+    assert by_month.loc[1, "tiepi_h"] == pytest.approx(1.0) and by_month.loc[1, "niepi"] == pytest.approx(0.65)
+    assert by_month.loc[2, "tiepi_h"] == pytest.approx(1.5) and by_month.loc[3, "tiepi_h"] == pytest.approx(0.1)
+    assert by_month["supera"].tolist() == [True, True, False, False]
+    runs = ar.consecutive_months(rows)
+    assert runs.iloc[0]["meses_supera"] == 2 and runs.iloc[0]["racha_max_meses"] == 2

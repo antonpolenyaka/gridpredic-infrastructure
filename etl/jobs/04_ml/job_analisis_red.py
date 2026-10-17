@@ -142,6 +142,11 @@ DEFAULTS = {
         "1": [1.5, 2.5, 3], "2": [3.5, 5, 5], "3": [6, 10, 8], "4": [9, 15, 12],
     },
     "limites_individuales_bt": {"1": [5, 10], "2": [9, 13], "3": [14, 16], "4": [19, 22]},
+    # Extremadura: monthly TIEPI (h) and NIEPI by zone type of art. 9.6 of Ley 2/2002, as written by the
+    # Decreto-ley 1/2018 (DOE 227 of 22.11.2018, BOE-A-2019-1793). Two consecutive months above them oblige the
+    # distribuidora to present measures. Same scope as art. 106 (unplanned interruptions), an assumption: the
+    # table comes from a consolidated text, not from the DOE.
+    "limites_mensuales_extremadura": {"3": [0.88, 0.74], "4": [1.32, 1.10]},
     # Art. 105: average billed power of a customer, price of the kWh (access
     # tolls and charges of 2.0TD in 2026) and annual bill for the 10 % cap.
     "cliente_potencia_kw": 4.3,
@@ -922,16 +927,61 @@ def percentile80(values) -> float:
     return float(np.percentile(values, 80)) if values else float("nan")
 
 
+def monthly_zone_quality(events: pd.DataFrame, installed: pd.DataFrame, year: int, limits: dict,
+                         last_month: int = 12) -> list:
+    """
+    TIEPI and NIEPI of every month of year (up to last_month) by
+    distribuidora, province and zone type, against the monthly limits
+    ({zone: [TIEPI h, NIEPI]}) of the zones that have one. The installed
+    power is the one of the year, as in the annual figures.
+    """
+    rows = []
+    if installed.empty:
+        return rows
+    months = events["inicio_ts"].dt.month
+    for (dist, prov, zone), inst in installed.groupby(["distribuidora_id", "provincia", "zona"]):
+        limit = limits.get(str(int(zone))) if pd.notna(zone) else None
+        p_total = float(inst["p_total_kva"].sum())
+        if not limit or p_total <= 0:
+            continue
+        inside = (events["distribuidora_id"] == dist) & events["municipio_id"].isin(set(inst["municipio_id"]))
+        for month in range(1, int(last_month) + 1):
+            part = events[inside & (months == month)]
+            niepi = float(niepi_numerator(part, ["distribuidora_id"])["kva_niepi"].sum()) if len(part) else 0.0
+            tiepi = float(part["kva_h"].sum()) / p_total
+            rows.append({"distribuidora_id": dist, "provincia": prov, "zona": int(zone), "anio": int(year),
+                         "mes": month, "tiepi_h": tiepi, "limite_tiepi_h": float(limit[0]),
+                         "niepi": niepi / p_total, "limite_niepi": float(limit[1]),
+                         "supera": bool(tiepi > float(limit[0]) or niepi / p_total > float(limit[1]))})
+    return rows
+
+
+def consecutive_months(monthly: pd.DataFrame) -> pd.DataFrame:
+    """The longest run of consecutive months above a monthly limit, by distribuidora, province and zone."""
+    rows = []
+    for key, g in monthly.sort_values(["anio", "mes"]).groupby(["distribuidora_id", "provincia", "zona"]):
+        best = run = 0
+        for flag in g["supera"]:
+            run = run + 1 if flag else 0
+            best = max(best, run)
+        rows.append({"distribuidora_id": key[0], "provincia": key[1], "zona": key[2], "meses": len(g),
+                     "meses_supera": int(g["supera"].sum()), "racha_max_meses": best})
+    return pd.DataFrame(rows)
+
+
 def section_limits(data: Data, report: Report, state: dict):
     cfg = data.cfg
     ev = data.events[(data.events["variante"] == "todas") & data.events["computa_imprevista"]]
-    zonal, municipal, individual = [], [], []
+    zonal, municipal, individual, monthly = [], [], [], []
+    last = ev["inicio_ts"].max() if len(ev) else None
 
     for year in years_of(data):
         sub = ev[ev["anio"] == year]
         inst_m = data.installed(year, ["distribuidora_id", "provincia", "zona", "municipio_id", "municipio_nombre"])
         if inst_m.empty:
             continue
+        monthly += monthly_zone_quality(sub, inst_m, year, cfg.get("limites_mensuales_extremadura") or {},
+                                        last.month if last is not None and last.year == year else 12)
 
         k = sub.groupby(["distribuidora_id", "municipio_id"])["kva_h"].sum().rename("kva_h").reset_index()
         n = niepi_numerator(sub, ["distribuidora_id", "municipio_id"])
@@ -1016,6 +1066,21 @@ def section_limits(data: Data, report: Report, state: dict):
     ).reset_index()
     report.csv("calidad_individual_anual.csv", per_year)
 
+    monthly_text = ""
+    if monthly:
+        monthly = pd.DataFrame(monthly)
+        runs = consecutive_months(monthly)
+        for frame in (monthly, runs):
+            frame["distribuidora"] = frame["distribuidora_id"].map(data.databases)
+            frame["zona"] = frame["zona"].map(lambda z: ZONE_NAMES.get(int(z), z))
+        report.csv("limites_mensuales_extremadura.csv", monthly)
+        report.csv("limites_mensuales_extremadura_rachas.csv", runs)
+        monthly_text = (
+            "\nLímites mensuales de Extremadura (art. 9.6 de la Ley 2/2002, del Decreto-ley 1/2018: TIEPI de 0,88 h "
+            "y NIEPI de 0,74 en zona rural concentrada, 1,32 h y 1,10 en rural dispersa; dos meses seguidos por "
+            f"encima obligan a presentar medidas). Meses por encima: {int(monthly['supera'].sum())} de {len(monthly)}.\n\n"
+            + md_table(runs, ["distribuidora", "provincia", "zona", "meses", "meses_supera", "racha_max_meses"]))
+
     over = zonal[zonal["supera_tiepi"] | zonal["supera_p80"] | zonal["supera_niepi"]]
     worst = streaks.sort_values(["racha_max", "anios_supera"], ascending=False).head(10)
     worst = worst.assign(zona=worst["zona"].map(lambda z: ZONE_NAMES.get(int(z), z)))
@@ -1034,6 +1099,7 @@ def section_limits(data: Data, report: Report, state: dict):
         "es un mínimo porque faltan las de salida y abonado) y descuentos del art. 105 con "
         f"{fmt(power, 1)} kW de potencia media y {fmt(price, 4)} EUR/kWh:\n\n"
         + md_table(per_year)
+        + monthly_text
     )
     state["individual"] = per_year
 

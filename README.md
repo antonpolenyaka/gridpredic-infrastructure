@@ -77,7 +77,7 @@ job_silver_d_salida.py
 | --- | --- | --- |
 | Fuentes | **SQL Server 2022** | Bases de datos operacionales y fuentes batch |
 | Fuentes externas | **APIs públicas** | Meteorología de Open-Meteo, avisos, predicción y estaciones de AEMET, rayos de EUMETSAT y datos públicos |
-| CDC y mensajería | **Debezium, Kafka, Kafka Connect** | Captura y transporte de cambios en tiempo real |
+| CDC y mensajería | **Debezium, Kafka, Kafka Connect** | Captura y transporte de los cambios de SQL Server en flujo, con segundos de retraso |
 | Orquestación | **Apache Airflow** | Cargas batch, operación de cada tarde y mantenimiento semanal de las tablas Delta |
 | Procesamiento | **Apache Spark 4 + Delta Lake** | Ingesta streaming/batch, transformaciones Bronze -> Silver -> Gold y entrenamiento de los modelos (scikit-learn y XGBoost en el driver) |
 | Almacenamiento | **MinIO** | Object Storage compatible con S3 para Landing y Delta Lake |
@@ -107,6 +107,26 @@ job_silver_d_salida.py
 > ```
 >
 > Es un reemplazo directo: mismo binario `minio`, mismas variables `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD`, y trae el cliente `mc` del que dependen los scripts de `infra/minio/`.
+
+### Lo mismo en la nube
+
+Todo corre en un portátil con Docker, con las copias de las bases de las distribuidoras en local. Cada pieza tiene un servicio gestionado equivalente, y las capas, los formatos (Delta sobre almacenamiento de objetos) y los trabajos no cambiarían:
+
+| Pieza local | En AWS | En Azure |
+| --- | --- | --- |
+| MinIO | Amazon S3 | Azure Data Lake Storage Gen2 |
+| Spark 4 + Delta Lake | Amazon EMR o Databricks | Azure Databricks |
+| Hive Metastore | AWS Glue Data Catalog | Unity Catalog de Databricks |
+| Trino | Amazon Athena | Databricks SQL o Synapse serverless |
+| Airflow | Amazon MWAA | Airflow gestionado de Data Factory o de Fabric |
+| Debezium, Kafka Connect y Kafka | Amazon MSK con MSK Connect | Event Hubs con su interfaz de Kafka y Debezium |
+| nginx con las páginas estáticas | S3 con CloudFront | Azure Static Web Apps |
+
+SQL Server sigue en la distribuidora en cualquier caso: la captura de cambios y las cargas por lotes llegarían por una conexión privada.
+
+### Por qué los modelos van en el driver y no en MLlib
+
+Spark hace el trabajo pesado: leer las series del SCADA, los cortes y la meteorología y dejarlos en features por CT y hora o por distribuidora y día. Los modelos se entrenan después con scikit-learn y XGBoost sobre esa tabla, que cabe en la memoria del driver (el modelo del día tiene una fila por distribuidora y día), pasando de Spark a pandas con Arrow. MLlib no tiene la logística de Firth ni la prior de Cauchy que necesitamos con tan pocos eventos, y el XGBoost distribuido solo añade coste con estos tamaños. Además, scikit-learn permite probar cada modelo sin clúster, en segundos. Si un día el volumen lo pidiera (todas las líneas de una distribuidora grande por hora), el paso sería `xgboost.spark` o un modelo por grupo con `applyInPandas`, sin tocar las capas.
 
 ---
 
@@ -342,7 +362,7 @@ Database/Schema: lakehouse
 Username: <cualquier valor>
 ```
 
-No hay autenticación por contraseña configurada para Trino en este entorno local.
+No hay autenticación por contraseña configurada para Trino en este entorno local, y `compose.yaml` publica su puerto en todas las interfaces del portátil: el cortafuegos de Windows tiene que cerrarlo a la red (o publicarlo como `127.0.0.1:8085:8080`). Antes de abrirlo a nadie más habría que activar TLS, la autenticación por contraseña (o la del directorio de la distribuidora) y el control de acceso por reglas de Trino, con un rol de solo lectura sobre `l3_gold` para el cuadro de mando y los analistas y Bronze y Silver reservados a los trabajos, que ya acceden por Spark y no por Trino.
 
 Tiempos de consulta medidos el 16.10.2026 en el portátil, con el tiempo del propio servidor (`system.runtime.queries`), la primera vez y la segunda:
 
@@ -540,7 +560,7 @@ Las filas con `split = 'purga'` son las cinco horas de cada CT antes de cada fro
 
 Calidad de cada ejecución en `lakehouse.l3_gold.dq_metrics`, con el mismo esquema que la de Silver.
 
-Las tablas Delta de las tres capas se compactan una vez por semana: `dag_mantenimiento_delta` corre los domingos a las 04:10 (hora de Madrid) y lanza `job_mantenimiento_delta.py`, que hace OPTIMIZE y VACUUM con 168 horas de retención sobre `l1_bronze`, `l2_silver` y `l3_gold`. Con esa retención, el time travel solo llega a las versiones de la última semana. La primera pasada, lanzada a mano el viernes 16.10.2026, tardó 3 h 4 min y dejó 225 tablas en 559 ficheros, pero se saltó las cinco más grandes por falta de memoria del ejecutor; para ellas queda compactar por particiones. `dataset_train` la compactamos a mano por particiones el 17.10.2026, con los meses de 2025 ordenados por distribuidora y CT con ZORDER (`experimentos/consultas_trino/compactar_dataset.py`), y el mantenimiento solo le pasa VACUUM para no deshacer ese orden. Como todo DAG nuevo, llega pausado:
+Las tablas Delta de las tres capas se compactan una vez por semana: `dag_mantenimiento_delta` corre los domingos a las 04:10 (hora de Madrid) y lanza `job_mantenimiento_delta.py`, que hace OPTIMIZE y VACUUM con 168 horas de retención sobre `l1_bronze`, `l2_silver` y `l3_gold`. Con esa retención, el time travel solo llega a las versiones de la última semana. La primera pasada, lanzada a mano el viernes 16.10.2026, tardó 3 h 4 min y dejó 225 tablas en 559 ficheros, pero se saltó las cinco más grandes por falta de memoria del ejecutor; para ellas queda compactar por particiones. `dataset_train` la compactamos a mano por particiones el 17.10.2026, con los meses de 2025 ordenados por distribuidora y CT con ZORDER (`experimentos/consultas_trino/compactar_dataset.py`), y el mantenimiento solo le pasa VACUUM para no deshacer ese orden. Ordenamos con ZORDER y no con liquid clustering porque el conector de Delta de Trino solo lee la característica de tabla deletion vectors: una tabla con liquid clustering, row tracking o checkpoints v2 dejaría de poder consultarse desde Trino, y `tests/03_gold/test_compatibilidad_trino.py` lo vigila. Como todo DAG nuevo, llega pausado:
 
 ```bash
 docker compose exec airflow airflow dags unpause dag_mantenimiento_delta
@@ -580,7 +600,7 @@ Los modelos quedan en MinIO (`datalake/ml/modelos/<run_id>/`) y las puntuaciones
 
 ### Riesgo de mañana cada tarde
 
-El DAG `dag_riesgo_manana` corre solo todos los días a las 20:30 (hora de Madrid): baja la previsión de ICON-EU de cada celda y los avisos de AEMET en vigor, vuelve a entrenar el modelo del día siguiente (la regresión logística de la variante `operativa`) con todos los días etiquetados y deja en `l3_gold.riesgo_dia_siguiente` el riesgo de mañana de cada distribuidora, con su nivel, sus motivos y las zonas con más racha prevista. Necesita la imagen de Airflow con las librerías del modelo y la clave de AEMET en `.env` (sin ella calcula el riesgo sin avisos):
+El DAG `dag_riesgo_manana` corre solo todos los días a las 20:30 (hora de Madrid): baja la previsión de ICON-EU de cada celda y los avisos de AEMET en vigor, vuelve a entrenar el modelo del día siguiente (la regresión logística de la variante `operativa`) con todos los días etiquetados y deja en `l3_gold.riesgo_dia_siguiente` el riesgo de mañana de cada distribuidora, con su nivel, sus motivos y las zonas con más racha prevista. Guarda también la pasada de ICON-EU que sirvió Open-Meteo, para avisar si es vieja, y la misma previsión desde la rejilla nativa de ICON-EU y desde IFS, que no puntúan (apartado 3u de [docs/investigacion-continua.md](docs/investigacion-continua.md)). Necesita la imagen de Airflow con las librerías del modelo y la clave de AEMET en `.env` (sin ella calcula el riesgo sin avisos):
 
 ```bash
 docker compose build airflow

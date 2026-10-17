@@ -77,8 +77,30 @@ def test_the_forecast_of_every_cell(fs, cfg, monkeypatch):
     assert fs.ls("/vivo/20261014/prevision", detail=False) == ["/vivo/20261014/prevision/39.50_-6.40.json"]
     saved = json.loads(fs.cat("/vivo/20261014/prevision/39.50_-6.40.json"))
     assert saved["_peticion"]["celda_id"] == "39.50_-6.40" and saved["_peticion"]["modelo"] == "icon_eu"
+    assert saved["_peticion"]["reserva"] is False
     assert saved["_peticion"]["dias_futuros"] == 3 and len(saved["hourly"]["time"]) == 72
-    assert sorted(asked) == ["Open-Meteo 38.70_-6.90", "Open-Meteo 39.50_-6.40"]
+    # The cell that fails is asked to the reserve model too before giving up.
+    assert sorted(asked) == ["Open-Meteo gfs_seamless 38.70_-6.90", "Open-Meteo icon_eu 38.70_-6.90",
+                             "Open-Meteo icon_eu 39.50_-6.40"]
+
+
+def test_the_reserve_model_when_icon_eu_does_not_answer(fs, cfg, monkeypatch):
+    asked = []
+
+    def fake_fetch(url, label=None, **kwargs):
+        asked.append(label)
+        if "models=icon_eu" in url:
+            raise RuntimeError("HTTP 503 for Open-Meteo")
+        return answer()
+
+    monkeypatch.setattr(vivo, "fetch", fake_fetch)
+    monkeypatch.setattr(vivo.time, "sleep", lambda s: None)
+    cells = {f"39.{i}0_-6.40": (39.0 + i / 10, -6.4) for i in range(6)}
+    assert vivo.land_forecast(fs, cfg, "/vivo/20261015", cells) == (6, 0)
+    saved = json.loads(fs.cat("/vivo/20261015/prevision/39.50_-6.40.json"))
+    assert saved["_peticion"]["modelo"] == "gfs_seamless" and saved["_peticion"]["reserva"] is True
+    # After three cells in a row without ICON-EU the rest go straight to the reserve.
+    assert len([a for a in asked if "icon_eu" in a]) == 3 and len([a for a in asked if "gfs_seamless" in a]) == 6
 
 
 def test_the_warnings_of_aemet(fs, cfg, monkeypatch, caplog):
@@ -325,3 +347,125 @@ def test_the_nao_index_of_noaa(fs, monkeypatch):
 def test_the_thresholds_of_the_ensemble_stop_at_the_first_one_nobody_reaches():
     assert vivo.threshold_text({"50": 0.3, "70": 0.0, "90": 0.0}, [50, 70, 90]) == "el 30 % supera 50 km/h, ninguno supera 70 km/h"
     assert vivo.threshold_text({"50": 0.0, "70": 0.0, "90": 0.0}, [50, 70, 90]) == "ninguno supera 50 km/h"
+
+
+def meta_answer(started: datetime, available_after_h: float = 3.0) -> bytes:
+    """The meta.json of a domain of Open-Meteo: unix times of the last run and of when it was available."""
+    start = int(started.timestamp())
+    return json.dumps({"last_run_initialisation_time": start,
+                       "last_run_availability_time": start + int(available_after_h * 3600),
+                       "last_run_modification_time": start + int(available_after_h * 3600) - 60,
+                       "update_interval_seconds": 10800, "temporal_resolution_seconds": 3600}).encode()
+
+
+def test_the_run_that_open_meteo_serves(fs, cfg, monkeypatch):
+    started = datetime.now(ZoneInfo("UTC")) - timedelta(hours=5)
+    asked = []
+
+    def fake_fetch(url, **kwargs):
+        asked.append(url)
+        return meta_answer(started)
+
+    monkeypatch.setattr(vivo, "fetch", fake_fetch)
+    run = vivo.model_run(cfg["prevision"])
+    assert asked == ["https://api.open-meteo.com/data/dwd_icon_eu/static/meta.json"]
+    assert run["modelo"] == "icon_eu" and run["dominio"] == "dwd_icon_eu"
+    assert run["pasada_utc"] == started.replace(microsecond=0).isoformat()
+    assert 4.9 < run["horas_desde_pasada"] < 5.2 and run["actualizacion_s"] == 10800
+    # The native grid and IFS are their own domains.
+    vivo.model_run(cfg["prevision"], "dwd_icon_eu_native")
+    assert asked[-1].endswith("/data/dwd_icon_eu_native/static/meta.json")
+    # An answer without a run is an error for model_run and only a warning when the evening saves it.
+    monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: b'{"error": true, "reason": "The service is overloaded"}')
+    with pytest.raises(RuntimeError):
+        vivo.model_run(cfg["prevision"])
+    assert vivo.land_model_run(fs, cfg["prevision"], "/vivo/20261014/prevision_modelo.json") is None
+    assert not fs.exists("/vivo/20261014/prevision_modelo.json")
+
+
+def test_the_shadow_forecasts_never_fail_the_evening(fs, cfg, monkeypatch, tmp_path):
+    config = vivo.load_config()
+    config["riesgo_manana"]["landing"] = "/vivo"
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+    cells = {f"39.{i}0_-6.40": (39.0 + i / 10, -6.4) for i in range(5)}
+    monkeypatch.setattr(vivo, "load_meteo_config", lambda: {"openmeteo": {}})
+    monkeypatch.setattr(vivo, "study_cells", lambda fs, meteo: cells)
+    monkeypatch.setattr(vivo.time, "sleep", lambda s: None)
+    started = datetime.now(ZoneInfo("UTC")) - timedelta(hours=4)
+    asked = []
+
+    def fake_fetch(url, **kwargs):
+        asked.append(url)
+        if "static/meta.json" in url:
+            return meta_answer(started)
+        if "models=ecmwf_ifs" in url:
+            raise RuntimeError("HTTP 503 The service is overloaded")
+        return answer()
+
+    monkeypatch.setattr(vivo, "fetch", fake_fetch)
+    # The forecast of the evening and its run; the shadow models are another task and are not asked here.
+    assert vivo.main(["--fuente", "prevision", "--fecha", "2026-10-14", "--config", str(path)], fs=fs) == 0
+    day = "/vivo/20261014"
+    assert len(fs.ls(f"{day}/prevision", detail=False)) == 5
+    run = json.loads(fs.cat(f"{day}/prevision_modelo.json"))
+    assert run["dominio"] == "dwd_icon_eu" and 3.9 < run["horas_desde_pasada"] < 4.2
+    assert not fs.exists(f"{day}/prevision_sombra")
+    # The shadow task: the native grid lands in its own folder with its run; IFS is overloaded, and after three
+    # cells in a row it is left for the evening instead of waiting for every cell.
+    assert vivo.main(["--fuente", "prevision_sombra", "--fecha", "2026-10-14", "--config", str(path)], fs=fs) == 1
+    native = sorted(fs.ls(f"{day}/prevision_sombra/icon_eu_nativo", detail=False))
+    assert len(native) == 5 and native[0].endswith("/39.00_-6.40.json")
+    saved = json.loads(fs.cat(native[0]))
+    assert saved["_peticion"]["modelo"] == "dwd_icon_eu_native" and saved["_peticion"]["dias_pasados"] == 0
+    assert fs.exists(f"{day}/prevision_sombra/icon_eu_nativo_modelo.json")
+    assert not fs.exists(f"{day}/prevision_sombra/ifs")
+    assert len([u for u in asked if "models=ecmwf_ifs" in u]) == 3
+    shadow_urls = [u for u in asked if "models=dwd_icon_eu_native" in u]
+    assert shadow_urls and all("past_days=0" in u and "forecast_days=3" in u for u in shadow_urls)
+
+
+def test_the_shadow_forecasts_against_the_regular_grid(fs, monkeypatch, tmp_path):
+    import job_comparar_sombra as sombra
+
+    def write(path, peak, lat, rain=0.5, start="2026-10-17 22:00"):
+        times = [int(datetime(2026, 10, 17, 22, tzinfo=ZoneInfo("UTC")).timestamp()) + 3600 * h for h in range(30)]
+        gusts = [20.0] * 30
+        gusts[10] = peak
+        fs.pipe(path, json.dumps({"latitude": lat, "longitude": -6.4, "elevation": 400.0,
+                                  "hourly": {"time": times, "wind_gusts_10m": gusts, "precipitation": [rain] * 30},
+                                  "_peticion": {"celda_id": path.split("/")[-1][:-5]}}).encode())
+
+    day = "/vivo/20261018"
+    write(f"{day}/prevision/c1.json", 80.0, 39.5)
+    write(f"{day}/prevision/c2.json", 50.0, 39.6)
+    write(f"{day}/prevision_sombra/icon_eu_nativo/c1.json", 92.0, 39.52)
+    write(f"{day}/prevision_sombra/icon_eu_nativo/c2.json", 52.0, 39.61)
+    write(f"{day}/prevision_sombra/ifs/c1.json", 70.0, 39.47)
+    fs.pipe("/meteo/municipios_celdas.json", json.dumps([
+        {"celda_id": "c1", "distribuidora_ref": "1"}, {"celda_id": "c2", "distribuidora_ref": "1"}]).encode())
+    config = vivo.load_config()
+    config["riesgo_manana"]["landing"] = "/vivo"
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+    monkeypatch.setattr(sombra, "load_meteo_config", lambda: {"openmeteo": {"landing": "/meteo"}})
+    out = tmp_path / "salida"
+    code = sombra.main(["--desde", "2026-10-18", "--hasta", "2026-10-18", "--config", str(path), "--salida", str(out)],
+                       fs=fs)
+    assert code == 0
+    import pandas as pd
+
+    summary = pd.read_csv(out / "resumen.csv").set_index("fuente")
+    # The worst cell of the network: 92 against 80 on the native grid, 70 (one cell only) against 80 for IFS.
+    assert summary.loc["icon_eu_nativo", "red"] == "Distribuidora 1"
+    assert summary.loc["icon_eu_nativo", "sesgo_racha_peor_kmh"] == pytest.approx(12.0)
+    assert summary.loc["icon_eu_nativo", "dias_dif_mas_10_kmh"] == 1
+    assert summary.loc["ifs", "sesgo_racha_peor_kmh"] == pytest.approx(-10.0)
+    # The rain of the day is the sum of the 24 local hours of 18.10 (22 UTC of 17.10 is 00:00 in Madrid).
+    cells = pd.read_csv(out / "celdas.csv")
+    assert cells.loc[(cells["fuente"] == "icon_eu") & (cells["celda_id"] == "c1"), "lluvia"].iloc[0] == pytest.approx(12.0)
+    points = pd.read_csv(out / "puntos.csv").set_index(["fuente", "celda_id"])
+    assert 2.0 < points.loc[("icon_eu_nativo", "c1"), "km_al_punto_regular"] < 2.5
+    assert "Previsión en sombra" in (out / "resumen.md").read_text(encoding="utf-8")
+    # Without shadow files there is nothing to compare.
+    assert sombra.main(["--desde", "2026-10-20", "--hasta", "2026-10-20", "--config", str(path)], fs=fs) == 1

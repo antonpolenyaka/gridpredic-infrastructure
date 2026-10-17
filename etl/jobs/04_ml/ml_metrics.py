@@ -16,6 +16,10 @@ training job collects the scores of a split and calls evaluate().
 - Lead time: for every detected episode, horas_hasta_proximo_evento of its
   earliest alerted row, i.e. how many hours before the start the first
   alert came.
+- Calibration of a probability (calibration): Brier score and its skill
+  against the observed rate, log loss, and the slope and intercept of the
+  logistic recalibration (Cox 1958). The ranking metrics say which days
+  come first; these say whether a 20 % means one day in five.
 
 Ties of the score are broken by a seeded random key, so a constant score
 (tasa_base) gives a random choice of alerts and not the first rows.
@@ -42,6 +46,88 @@ def roc_auc(y, score, weight=None) -> float:
         return float("nan")
 
     return float(roc_auc_score(y, score, sample_weight=weight))
+
+
+def calibration(y, p, weight=None) -> dict:
+    """
+    How well the probabilities p match the outcomes y (0/1), with weights
+    when the rows are a sample or a bootstrap replica:
+
+    - brier: mean of (p - y)^2. brier_referencia: the Brier of saying the
+      observed rate every day (its uncertainty term); bss = 1 - brier /
+      brier_referencia, the Brier skill score. The reference knows the rate
+      of the rows it is measured on, so the skill is a conservative one.
+    - log_loss: mean of -log of the probability given to what happened.
+    - pendiente / intercepto (Cox 1958): the logistic regression of y on
+      logit(p). A slope below 1 means probabilities too extreme (the
+      overfitting of a model with few events), above 1 too timid. The
+      intercept is the one of y on logit(p) with the slope fixed at 1, the
+      calibration in the large: below 0 the model announces more risk than
+      there is on average.
+    - prob_media: the mean of p, against prevalencia.
+
+    nan when y has no positives or no negatives (and the slope when its
+    regression does not converge).
+    """
+    y = np.asarray(y, dtype=np.float64)
+    p = np.clip(np.asarray(p, dtype=np.float64), 1e-6, 1.0 - 1e-6)
+    w = np.ones(len(y)) if weight is None else np.asarray(weight, dtype=np.float64)
+    total = float(w.sum())
+    nan = float("nan")
+    out = {"brier": nan, "brier_referencia": nan, "bss": nan, "log_loss": nan, "pendiente": nan,
+           "intercepto": nan, "prob_media": nan, "prevalencia": nan}
+
+    if total <= 0:
+        return out
+
+    rate = float(np.sum(w * y) / total)
+    out["prevalencia"] = rate
+    out["prob_media"] = float(np.sum(w * p) / total)
+    out["brier"] = float(np.sum(w * (p - y) ** 2) / total)
+    out["log_loss"] = float(-np.sum(w * (y * np.log(p) + (1.0 - y) * np.log(1.0 - p))) / total)
+
+    if rate <= 0.0 or rate >= 1.0:
+        return out
+
+    out["brier_referencia"] = rate * (1.0 - rate)
+    out["bss"] = 1.0 - out["brier"] / out["brier_referencia"]
+    logit = np.log(p / (1.0 - p))
+    out["intercepto"] = _intercept_with_offset(y, w, logit)
+    out["pendiente"] = _recalibration_slope(y, w, logit)
+    return out
+
+
+def _intercept_with_offset(y, w, offset) -> float:
+    """The intercept a of y ~ a + offset by maximum likelihood (Newton on sum w (y - p) = 0)."""
+    a = 0.0
+    target = float(np.sum(w * y))
+    for _ in range(100):
+        p = 1.0 / (1.0 + np.exp(-(a + offset)))
+        delta = float(np.clip((target - np.sum(w * p)) / max(float(np.sum(w * p * (1.0 - p))), 1e-300), -5, 5))
+        a += delta
+        if abs(delta) < 1e-10:
+            break
+    return a
+
+
+def _recalibration_slope(y, w, x) -> float:
+    """The slope b of y ~ a + b x by maximum likelihood (Newton with two parameters); nan if it does not converge."""
+    if float(np.ptp(x)) < 1e-9:
+        return float("nan")
+    beta = np.zeros(2)
+    X = np.column_stack([np.ones(len(x)), x])
+    for _ in range(100):
+        p = 1.0 / (1.0 + np.exp(-(X @ beta)))
+        hessian = X.T @ (X * (w * p * (1.0 - p))[:, None])
+        try:
+            step = np.linalg.solve(hessian, X.T @ (w * (y - p)))
+        except np.linalg.LinAlgError:
+            return float("nan")
+        step = np.clip(step, -5.0, 5.0)
+        beta += step
+        if np.abs(step).max() < 1e-10:
+            return float(beta[1]) if abs(beta[1]) < 100 else float("nan")
+    return float("nan")
 
 
 def episode_ids(df: pd.DataFrame, label: str, ct: str = "ct_key", hour: str = "hora") -> pd.Series:
@@ -342,13 +428,30 @@ def json_compact(params: dict) -> str:
 # Uncertainty
 # ---------------------------------------------------------------------------
 
-def bootstrap_pr_auc(y, weight, day, scores: dict, reps: int = 500, seed: int = 0) -> tuple:
+def day_blocks(day, block_days: int = 1) -> np.ndarray:
+    """
+    The block of every row for the bootstrap: its day, or the run of
+    block_days consecutive days it falls in (counted from the first day).
+    A storm of two or three days stays in one block of a week, so the
+    replicas do not split it.
+    """
+    day = np.asarray(day)
+
+    if block_days <= 1:
+        return day
+
+    days = pd.to_datetime(pd.Series(day)).dt.normalize()
+    return ((days - days.min()).dt.days // int(block_days)).to_numpy()
+
+
+def bootstrap_pr_auc(y, weight, day, scores: dict, reps: int = 500, seed: int = 0, block_days: int = 1) -> tuple:
     """
     Block bootstrap of the PR-AUC by days: every replica draws the days of
     the split with replacement and gives every row the weight of its row
     times the times its day was drawn. Interruptions come in storms that last
     hours, so resampling rows would understate the uncertainty; days keep a
-    storm together.
+    storm together. With block_days > 1 the blocks are runs of that many
+    consecutive days (day_blocks), for storms that last more than a day.
 
     scores: {name: score array}. The same replicas are used for every score,
     so the difference between two scores is paired.
@@ -356,7 +459,7 @@ def bootstrap_pr_auc(y, weight, day, scores: dict, reps: int = 500, seed: int = 
     """
     y = np.asarray(y)
     weight = np.asarray(weight, dtype=np.float64)
-    codes, day_index = np.unique(np.asarray(day), return_inverse=True)
+    codes, day_index = np.unique(day_blocks(day, block_days), return_inverse=True)
     n_days = len(codes)
     rng = np.random.default_rng(seed)
     replicas = {name: np.empty(reps) for name in scores}
