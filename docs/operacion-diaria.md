@@ -91,3 +91,14 @@ Al encender:
 2. `docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml ps`: todo "Up" y "healthy". Si falta alguno, `docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml up -d`. Para una revisión completa, `& "D:\GitHub\gridpredic-infrastructure\_runlogs\comprobar_disco_d.ps1"`.
 3. La cola y el vigilante arrancan solos al iniciar sesión: desde el 15.10.2026 hay dos tareas programadas de Windows del usuario ("GridPredic cola" y "GridPredic vigilar Airflow") que lanzan `_runlogs\arrancar_si_falta.ps1`, que espera a que Docker responda y arranca cada script solo si no está ya corriendo. Desde la tarde del 15.10.2026 las dos tareas se disparan también cada 30 minutos, porque una vez se pararon con el portátil encendido: si el script está corriendo, la tarea no hace nada. Para arrancarlos a mano: `Start-ScheduledTask -TaskName "GridPredic cola"` (y la otra).
 4. La ejecución de las 20:30 corre sola si Airflow está arriba antes de esa hora. Si el portátil se enciende más tarde, Airflow no recupera la hora pasada (`catchup=False`): lanzar `dag_riesgo_manana` a mano en http://localhost:8084 (Trigger) o con `docker compose -f ... exec airflow airflow dags trigger dag_riesgo_manana`. Las observaciones y los rayos se reanudan solos en su siguiente hora. Con el mantenimiento de Delta pasa lo mismo que con la tarde: si el portátil estaba apagado el domingo a las 04:10, la pasada se pierde hasta el domingo siguiente, salvo que se lance `dag_mantenimiento_delta` a mano.
+
+### Las tablas de la captura de cambios (17.10.2026)
+
+Desde el 17.10.2026 Debezium sigue 29 tablas `System*` de TedisNet: salen las de líneas y abonados de baja tensión, que guardan los datos de cada abonado y que ningún trabajo leía. En un portátil que ya las capturaba, el cambio entra al volver a crear los contenedores `sqlserver` y `kafka-connect` (`docker compose ... up -d --force-recreate sqlserver kafka-connect`), porque sus `post_start` ejecutan `enable_cdc.sql` y registran otra vez el conector. Sin parar nada:
+
+```powershell
+docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml exec sqlserver sh -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -i /sql/enable_cdc.sql'
+docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml exec kafka-connect sh /scripts/post_start.sh
+```
+
+La primera orden quita el CDC de las dos tablas, lo que borra sus tablas de cambios en SQL Server pero no las de origen; la segunda publica la lista nueva en Kafka Connect. Los mensajes que ya estaban en Kafka caducan con la retención por defecto del broker (siete días). Las copias de Landing y las tablas `l1_bronze.tedis_net_eosa_system_electric_electrical_lv_lines` y `..._lv_subscribers` se quedan donde están hasta que se borren a mano, y hay que hacerlo antes del primer piloto. Ningún trabajo las lee.
