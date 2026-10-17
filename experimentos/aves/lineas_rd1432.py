@@ -13,16 +13,24 @@ tiene cada distribuidora en cada término municipal:
     python lineas_rd1432.py lineas.txt etl\\config\\01_bronze\\avifauna_municipios.csv
 """
 
+import json
+import os
 import re
 import sys
 
 import pandas as pd
 
-# Titular en el anexo -> distribuidora_id de TedisNet (Distribuidora 1, 2 y 3).
-OWNERS = {"Eléctrica del Oeste SLU": 3, "Eléctricas Pitarch Distribución SLU": 2,
-          "Dist. Elec. Valle de Santa Ana, SL": 1366}
-ROW = re.compile(r"(?P<owner>" + "|".join(re.escape(o).replace(r",\ SL", r",?\s+SL") for o in OWNERS) + r")"
-                 r"\s+(?P<anio>(19|20)\d\d)\s+(?P<kv>[\d.,]+)\s+(?P<cat>\d)\s+(?P<muni>.+?)(\s{2,}.*)?$")
+# Titular en el anexo -> distribuidora_id de TedisNet (Distribuidora 1, 2 y 3). La razón social de cada titular no
+# se versiona: va en titulares.json, junto a este script, como {"razón social del anexo": distribuidora_id}.
+TITULARES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "titulares.json")
+
+
+def owners_and_pattern():
+    with open(TITULARES, encoding="utf-8") as handle:
+        owners = {k: int(v) for k, v in json.load(handle).items()}
+    row = re.compile(r"(?P<owner>" + "|".join(re.escape(o).replace(r",\ SL", r",?\s+SL") for o in owners) + r")"
+                     r"\s+(?P<anio>(19|20)\d\d)\s+(?P<kv>[\d.,]+)\s+(?P<cat>\d)\s+(?P<muni>.+?)(\s{2,}.*)?$")
+    return owners, row
 
 
 def municipality(name: str) -> str:
@@ -36,13 +44,14 @@ def municipality(name: str) -> str:
 
 
 def main(argv):
+    owners, row_pattern = owners_and_pattern()
     rows = []
     for line in open(argv[0], encoding="utf-8"):
-        match = ROW.search(line.rstrip("\n"))
+        match = row_pattern.search(line.rstrip("\n"))
         if not match:
             continue
-        owner = next(o for o in OWNERS if match.group("owner").replace(" ", "")[:12] == o.replace(" ", "")[:12])
-        rows.append({"distribuidora_id": OWNERS[owner], "municipio": municipality(match.group("muni")),
+        owner = next(o for o in owners if match.group("owner").replace(" ", "")[:12] == o.replace(" ", "")[:12])
+        rows.append({"distribuidora_id": owners[owner], "municipio": municipality(match.group("muni")),
                      "anio_linea": int(match.group("anio")), "kv": float(match.group("kv").replace(",", "."))})
     lines = pd.DataFrame(rows)
     out = (lines.groupby(["distribuidora_id", "municipio"])
