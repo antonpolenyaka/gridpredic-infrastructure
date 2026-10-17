@@ -9,7 +9,7 @@ El riesgo del día siguiente responde a "cuándo": qué días y en qué franja h
 | `etl/jobs/04_ml/job_ml_horas_riesgo.py --curva-aprendizaje` | Curva de aprendizaje de las horas de riesgo, potencia frente a la regla de la racha y transferencia entre distribuidoras |
 | `etl/jobs/00_landing/job_landing_datos_publicos.py` y siguientes | Padrón del INE, Wikidata, relieve de Open-Meteo, OpenStreetMap, obras públicas de PLACSP, edificios del Catastro y proyecciones de población del IEEX por Landing, Bronze, Silver y Gold |
 
-Los parámetros están en `config_ml.json` (`analisis_red`; el riesgo anual y la curva de aprendizaje usan los valores por defecto de su job, que se cambian con un bloque `riesgo_ct` o `horas_riesgo.curva`), `config_bronze_publicos.json` y `config_gold.json` (`contexto`). Las cifras de este documento son de las ejecuciones `red_20261011T215346_46427f` (análisis de red) y `rct_20261011T215018_d996ba` (riesgo anual) sobre los datos reales.
+Los parámetros están en `config_ml.json` (`analisis_red`; el riesgo anual y la curva de aprendizaje usan los valores por defecto de su job, que se cambian con un bloque `riesgo_ct` o `horas_riesgo.curva`), `config_bronze_publicos.json` y `config_gold.json` (`contexto`). Algunas claves de `analisis_red` solo están en los `DEFAULTS` de `job_analisis_red.py` y se cambian añadiéndolas al JSON: `limites_mensuales_extremadura` (los límites mensuales de TIEPI y NIEPI por tipo de zona), `tiepi_oficial_media3` (la media de tres años del TIEPI oficial de cada red, de los informes de la CNMC), `sector_ambitos` y `sector_anios_media` (los ámbitos de GECOS con los que se compara cada red y los años de la media), `incentivo_tope_bonificacion`, `tokens_min` (palabras mínimas de un texto de incidencia para clasificarlo), `min_horas_anio_cabecera`, `min_amperios_cabecera` y `min_kva_por_abonado_plausible` (los filtros de las cabeceras con medida de carga). Las cifras de este documento son de las ejecuciones `red_20261011T215346_46427f` (análisis de red) y `rct_20261011T215018_d996ba` (riesgo anual) sobre los datos reales.
 
 ## 1. Reglas comunes
 
@@ -47,7 +47,7 @@ Con su mezcla de zonas, el TIEPI imprevisto de la Distribuidora 1 (0,34 h al añ
 
 ## 3. Dónde, y cuánto se repite
 
-El TIEPI está muy concentrado en pocas líneas. Llamamos cabecera al elemento aguas arriba que más veces ha cortado cada trafo según el SCADA (en la práctica, la salida de línea de la subestación). El 10 % de las cabeceras (5 de 48) se lleva el 75 % de los kVA·h imprevistos de 2015-2025.
+El TIEPI está muy concentrado en pocas líneas. Llamamos cabecera al elemento aguas arriba que más veces ha cortado cada trafo según el SCADA (en la práctica, la salida de línea de la subestación). El 10 % de las cabeceras (5 de las 48 con kVA·h en 2015 - 2025; el modelo anual del apartado 7 ordena las 47 que tienen historia desde 2017) se lleva el 75 % de los kVA·h imprevistos de 2015 - 2025.
 
 Y se repite. Si ordenamos las cabeceras por los kVA·h de los dos años anteriores, su 10 % superior recoge el 60 % de los kVA·h del año siguiente (el máximo posible con ese tamaño es el 81 %) y su 20 % superior el 74 %. Por CT, el 10 % superior recoge el 32 % (3,2 veces lo que tocaría por azar). Esta persistencia es la base del modelo de riesgo anual del apartado 7: una lista corta de líneas concentra la mayor parte del problema del año que viene.
 
@@ -110,7 +110,7 @@ Para 2026, el modelo con todos los años pone en cabeza R89-1T1 (de la Distribui
 
 ## 8. Cuántas distribuidoras harían falta
 
-Con unas 30 incidencias al año entre las tres distribuidoras, la pregunta para el MVP es cuántos datos más harían falta para que el modelo por horas aporte algo claro sobre la regla de la racha. `job_ml_horas_riesgo.py --curva-aprendizaje` lo mide de tres formas, con la misma evaluación por años 2023-2025 del modelo por horas (ejecución `hr_20261011T180132_a6b4e6`, sin previsión).
+Con unos 35 episodios al año en la evaluación por horas (104 en 2023 - 2025) entre las tres distribuidoras, la pregunta para el MVP es cuántos datos más harían falta para que el modelo por horas aporte algo claro sobre la regla de la racha. `job_ml_horas_riesgo.py --curva-aprendizaje` lo mide de tres formas, con la misma evaluación por años 2023-2025 del modelo por horas (ejecución `hr_20261011T180132_a6b4e6`, sin previsión).
 
 **Curva de aprendizaje.** Para cada año, los modelos aprenden con una parte al azar de los días por distribuidora anteriores (25 %, 50 % y 100 %, tres repeticiones), que es lo que daría una empresa más pequeña o menos años de historia:
 
@@ -187,7 +187,7 @@ Y lo que aprendimos del resto de fuentes: la población de los 73 municipios est
 
 ## 12. Cómo lanzarlo
 
-Desde el contenedor `spark-master` (los lanzadores de `_runlogs` hacen lo mismo y copian los resultados):
+Desde el contenedor `spark-master` (los lanzadores locales de `_runlogs` del portátil, fuera del repositorio, hacen lo mismo y copian los resultados):
 
 ```
 docker compose exec spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py

@@ -194,7 +194,7 @@ El último job, `job_silver_dq_checks.py`, hace tres comprobaciones más:
 
 1. **Integridad referencial** entre las tablas ya limpias: interrupción -> CT -> municipio, salida -> CT, corte_elemento -> corte_evento y -> elemento, cambio de valor -> tag -> elemento, evento -> cambio de valor.
 2. **Cobertura de la clave Calser - TedisNet** sobre los CT con interrupciones desde 2021. En el análisis verificado era del 97,8 %; si cae por debajo del 95 % se marca para revisión.
-3. **Alineación temporal**. Empareja cada interrupción que Calser importó del SCADA (desde noviembre de 2025) con el Off más cercano del mismo trafo en TedisNet y calcula el desfase. Si la mediana sale en 60 o 120 minutos es que una fuente está en hora local y la otra en UTC, y toda la ventana de predicción de 1 a 3 horas estaría desplazada. Silver no corrige nada por su cuenta: lo mide y lo marca.
+3. **Alineación temporal**. Empareja cada interrupción de Calser desde noviembre de 2025 (la era 3, en la que sus horas coinciden con las de TedisNet) con el Off más cercano del mismo trafo en TedisNet y calcula el desfase. Si la mediana sale en 60 o 120 minutos es que una fuente está en hora local y la otra en UTC, y toda la ventana de predicción de 1 a 3 horas estaría desplazada. Silver no corrige nada por su cuenta: lo mide y lo marca.
 
 Con `"fail_on_review": true` en `config_silver.json`, el DAG falla si queda alguna métrica en `REVISAR` y Gold no se carga. Mientras ajustamos umbrales lo dejamos en `false`.
 
@@ -227,8 +227,9 @@ f_incidencia, d_periodo -> f_interrupcion
 f_incidencia -> f_incidencia_ex
 f_incidencia_ex, f_interrupcion -> f_incidencia_causa
 d_elemento, f_command_execution -> f_corte
-d_meteo_celda, f_meteo_hora, contexto_publico (sin dependencias)
-d_salida, d_tipo_generico, f_interrupcion, f_evento, f_corte, f_tag_interval_value -> dq_checks
+d_meteo_celda, f_meteo_hora (sin dependencias)
+d_meteo_celda -> contexto_publico
+todos los jobs que escriben métricas con umbral (d_salida, d_tipo_generico, f_interrupcion, f_incidencia_ex, f_incidencia_causa, f_evento, f_corte, f_tag_interval_value, d_meteo_celda, f_meteo_hora, contexto_publico) -> dq_checks
 ```
 
 Requisito: las tablas `System*` (`SystemElements`, `SystemTags`, `SystemNodes`, `SystemDevices`) llegan por el streaming CDC, así que los jobs de Landing y Bronze streaming tienen que haber corrido al menos una vez.
