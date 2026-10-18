@@ -108,7 +108,7 @@ De aquí salen dos cosas: la etiqueta alternativa `y_1_3h_scada` (episodios de m
 | `en_corte`, `en_corte_calser`, `en_corte_scada` | El CT ya está sin suministro en `hora`. Esas filas no se usan para entrenar |
 | `ct_vigente` | El CT existía en Calser en `hora` (`vigente_desde` y `vigente_hasta_excl` de `dim_ct`). Las horas con 0 tampoco se usan para entrenar |
 | `horas_hasta_proximo_evento` | Horas hasta el siguiente inicio de la variante principal, nulo si no hay ninguno en un año |
-| `era` | 1 hasta el 06.02.2018 (importación de ficheros), 2 hasta octubre de 2025, 3 desde noviembre de 2025 (Calser importa del SCADA) |
+| `era` | 1 hasta el 06.02.2018 (importación de ficheros), 2 hasta octubre de 2025, 3 desde noviembre de 2025 (las horas de Calser coinciden con las de TedisNet) |
 
 Cada evento se convierte en el conjunto de horas exactas que etiqueta: para un horizonte `(a, b]` y un inicio `e`, son las horas `h` con `e - b <= h < e - a`. Como los eventos son pocos (unos 14.000 desde 2021), las etiquetas se construyen explotando los eventos y uniéndolos una sola vez a la rejilla.
 
@@ -150,7 +150,7 @@ Unas 250 columnas en la configuración actual, en estos bloques:
 
 `job_gold_dataset_train.py` une etiquetas y features, quita las filas con `en_corte = 1`, con `scada_activo = 0` y con `ct_vigente = 0` (cada filtro tiene su parámetro `dataset.excluir_*`), y añade:
 
-- `split`: train antes de `dataset.train_hasta` (01.01.2025), valid antes de `dataset.valid_hasta` (01.01.2026) y test después. Es temporal y los CT no se separan entre conjuntos: el modelo se evalúa sobre los mismos CT en el futuro, que es el uso real. Las últimas `dataset.purga_horas` horas antes de cada frontera (6, el horizonte más largo de las etiquetas) van a `split = 'purga'`: su etiqueta mira al período siguiente, y la misma interrupción sería un positivo a los dos lados. Se guardan para poder contarlas, pero no se entrena ni se evalúa con ellas.
+- `split`: train antes de `dataset.train_hasta` (01.01.2025), valid antes de `dataset.valid_hasta` (01.01.2026) y test después. Es temporal y los CT no se separan entre conjuntos: el modelo se evalúa sobre los mismos CT en el futuro, que es el uso real. Las horas cuya ventana de etiqueta de `dataset.purga_horas` (6, el horizonte más largo de las etiquetas) cruza la frontera van a `split = 'purga'`: desde la frontera menos 5 horas hasta la frontera menos 1 (cinco filas por CT; la hora de la frontera menos 6 todavía cabe entera en su período), porque su etiqueta mira al período siguiente y la misma interrupción sería un positivo a los dos lados. Se guardan para poder contarlas, pero no se entrena ni se evalúa con ellas.
 - `en_muestra_train` y `peso_muestra`: todos los positivos de `y_1_3h` en train y una muestra determinista de los negativos (`dataset.tasa_negativos_train`, por hash de la clave y la semilla), con peso `1 / tasa` para corregir las probabilidades. Valid y test no se submuestrean. Usar la muestra es una decisión del entrenamiento; la columna solo la hace reproducible.
 - `dataset_version`: el identificador de la construcción.
 
@@ -183,8 +183,9 @@ Con el DAG `dag_gold` en Airflow, que respeta este orden:
 dim_ct -> fact_interrupciones_mt -> labels_ct_hora
 dim_ct -> fact_cortes_scada      -> labels_ct_hora
 dim_ct -> agg_medida_hora
-labels_ct_hora, agg_medida_hora -> features_ct_hora -> dataset_train -> dq_checks
+labels_ct_hora, agg_medida_hora -> features_ct_hora -> dataset_train
 dim_ct -> meteo_celda_hora -> contexto_ct
+dataset_train, meteo_celda_hora, contexto_ct -> dq_checks
 ```
 
 O un job suelto desde el contenedor de Spark (lee la configuración de `/app/config`):

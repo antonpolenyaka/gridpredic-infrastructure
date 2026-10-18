@@ -17,6 +17,8 @@ of the distribuidoras under study.
 """
 
 import logging
+import os
+import sys
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
@@ -31,6 +33,12 @@ from pyspark.sql.functions import (
     trim,
     when,
 )
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from silver_common import read_distributor_map as read_calser_distributor_map  # noqa: E402
 
 
 TARGET_TABLE = "l2_silver.d_elemento"
@@ -51,15 +59,6 @@ ELEMENTS_TABLE_CANDIDATES = [
     "l1_bronze.tedis_net_eosa_system_elements",
     "l1_bronze.tedisnet_eosa_system_elements",
 ]
-
-# Calser keeps one database per distribuidora.
-PARAMETROS_TABLES = {
-    "Calser_EOSA": "l1_bronze.calser_eosa_parametros_configuracion",
-    "Calser_Pitarch": "l1_bronze.calser_pitarch_parametros_configuracion",
-    "Calser_ValleSantaAna": "l1_bronze.calser_valle_santa_ana_parametros_configuracion",
-}
-
-DISTRIBUTOR_PARAM_CODE = "DistributorId"
 
 # SystemElements.Name holds the full hierarchical path of the element, not a
 # short name: "/<red>/CASAS DEL MONTE/.../26011:TRA". Only the last segment
@@ -259,45 +258,10 @@ def resolve_distributor(nodes: DataFrame, parents: DataFrame) -> DataFrame:
 
 def read_distributor_map(spark: SparkSession) -> DataFrame:
     """
-    Reads the DistributorId parameter of every Calser database and returns the
-    mapping between the TedisNet distribuidora element and its Calser source.
+    The DistributorId parameter of every Calser database (silver_common.read_distributor_map:
+    source_database, distribuidora_id), without the databases whose value is not a number.
     """
-    mapping = None
-
-    for source_database, table in PARAMETROS_TABLES.items():
-        if not spark.catalog.tableExists(table):
-            logger.warning(
-                "Calser parameters table not found, its distribuidora will "
-                "not be mapped: %s",
-                table,
-            )
-
-            continue
-
-        df = (
-            spark.table(table)
-            .where(
-                trim(col("PARAM_CONFIG_CODIGO")) == lit(DISTRIBUTOR_PARAM_CODE)
-            )
-            .select(
-                trim(col("PARAM_CONFIG_VALOR"))
-                .cast("bigint")
-                .alias("distribuidora_id"),
-                lit(source_database).alias("source_database"),
-            )
-            .where(col("distribuidora_id").isNotNull())
-            .distinct()
-        )
-
-        mapping = df if mapping is None else mapping.unionByName(df)
-
-    if mapping is None:
-        raise ValueError(
-            "No Calser parameters table is available in Bronze, ingest "
-            "parametros_configuracion before building the dimension"
-        )
-
-    return mapping
+    return read_calser_distributor_map(spark).where(col("distribuidora_id").isNotNull())
 
 
 spark = (

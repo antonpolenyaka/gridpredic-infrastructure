@@ -50,11 +50,16 @@ config_ml.json.
   distribuidora and hour the p10, p50 and p90 of the gust over its points,
   the peak of the day and the share of members above every threshold of
   ensemble.umbrales_kmh, with a sentence for the page.
+- nao: the daily NAO index of NOAA CPC as it is this evening (nao.csv), so
+  job_ml_riesgo_manana can extend the file of the repository up to the last
+  day published (the block nao of the day model; the production variant
+  does not use it).
 
 Everything goes to <landing>/<day to predict, YYYYMMDD>/prevision/<cell>.json,
 prevision_modelo.json, prevision_sombra/<clave>/<cell>.json, avisos/<area>.tar
-(avisos/<area>.vacio.json when AEMET has none) and ensemble/<punto>.json, so
-the scoring job reads exactly what was known that evening. A source that is already there for the day is asked again (the
+(avisos/<area>.vacio.json when AEMET has none), ensemble/<punto>.json,
+aemet/<ine>.json and nao.csv, so the scoring job reads exactly what was known
+that evening. A source that is already there for the day is asked again (the
 forecast changes during the day): the last run of the evening wins.
 
 The day to predict is tomorrow in the time zone of the configuration unless

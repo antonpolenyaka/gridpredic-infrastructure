@@ -88,7 +88,7 @@
     },
     {
       "name": "contexto_publico",
-      "depends_on": []
+      "depends_on": ["d_meteo_celda"]
     },
     {
       "name": "dq_checks",
@@ -96,9 +96,14 @@
         "d_salida",
         "d_tipo_generico",
         "f_interrupcion",
+        "f_incidencia_ex",
+        "f_incidencia_causa",
         "f_evento",
         "f_corte",
-        "f_tag_interval_value"
+        "f_tag_interval_value",
+        "d_meteo_celda",
+        "f_meteo_hora",
+        "contexto_publico"
       ]
     }
   ]

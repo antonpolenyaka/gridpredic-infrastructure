@@ -1,6 +1,6 @@
 """
 Where, when, why and how much: the risk of tomorrow below the distribuidora
-(job_ml_riesgo_manana, riesgo_manana.zonas of config_ml.json). No Spark here:
+(job_ml_riesgo_manana, riesgo_manana.riesgo_zonas of config_ml.json). No Spark here:
 the job reads the tables and passes pandas frames, so the functions can be
 tested on small synthetic data.
 
@@ -404,7 +404,8 @@ def cause_mix(starts: pd.DataFrame, ct: pd.DataFrame, cell_days: pd.DataFrame) -
     """
     (bucket, familia, parte, n): the mix of cause families of the incidents
     by the strongest gust of the day in the cell of the incident (the
-    reanalysis). Includes the causes of every kind, local or not.
+    reanalysis). Only the local causes, as local_starts leaves them (what a crew
+    is sent to): the families of LOCAL_EXCLUDED never appear.
     """
     ev = starts.merge(ct.drop_duplicates(["distribuidora_id", "zona"])[["distribuidora_id", "zona", "celda_id"]],
                       on=["distribuidora_id", "zona"], how="left")
@@ -622,7 +623,8 @@ def shift_sheets(payload: dict) -> dict:
                           "CT": z.get("n_ct"), "clientes": z.get("abonados"), "kVA": z.get("kva"),
                           "clientes esperados sin luz": z.get("clientes_esperados"), "racha prevista (km/h)": z.get("racha_max"),
                           "lluvia prevista (mm)": z.get("lluvia"), "incidencias último año": z.get("hist_365d"),
-                          "días desde la última": z.get("hist_dias_desde"), "municipios": ", ".join(z.get("municipios", []))})
+                          "días desde la última": (None if (z.get("hist_dias_desde") or 0) >= 3650 else z.get("hist_dias_desde")),
+                          "municipios": ", ".join(z.get("municipios", []))})
         for m in d.get("municipios", []):
             munis.append({"distribuidora": d.get("nombre"), "municipio": m.get("nombre"), "código INE": m.get("codigo_ine"),
                           "nivel": m.get("nivel"), "probabilidad": m.get("probabilidad"), "CT": m.get("n_ct"),

@@ -204,17 +204,17 @@ def test_the_ensemble_of_every_network(fs, cfg, monkeypatch, tmp_path):
     with open(tmp_path / "ensemble.json", encoding="utf-8") as file:
         out = json.load(file)
     assert out["fecha"] == "2026-10-15" and out["umbrales_kmh"] == [50.0, 70.0, 90.0]
-    eosa, pitarch = out["distribuidoras"]
-    assert eosa["id"] == 3 and eosa["nombre"] == "Distribuidora 1" and eosa["puntos"] == ["Hervás", "Plasencia"] and eosa["miembros"] == 5 and eosa["modelo"] == "icon_eu"
+    d1, d2 = out["distribuidoras"]
+    assert d1["id"] == 3 and d1["nombre"] == "Distribuidora 1" and d1["puntos"] == ["Hervás", "Plasencia"] and d1["miembros"] == 5 and d1["modelo"] == "icon_eu"
     # The gust over the network is the worst of the points: the peak at 12:00 local (10:00 UTC) of every member.
-    assert len(eosa["horas"]) == 24 and eosa["horas"][0]["hora"] == 0
-    noon = next(h for h in eosa["horas"] if h["hora"] == 12)
+    assert len(d1["horas"]) == 24 and d1["horas"][0]["hora"] == 0
+    noon = next(h for h in d1["horas"] if h["hora"] == 12)
     # Members over the network: max(Hervás, Plasencia) = 60, 80, 100, 50, 55.
     assert noon["p50"] == 60 and noon["p10"] == 52 and noon["p90"] == 92
-    assert eosa["pico"] == {"p10": 52, "p50": 60, "p90": 92}
-    assert eosa["supera"] == {"50": 1.0, "70": 0.4, "90": 0.2}
-    assert eosa["texto"] == "5 escenarios de ICON-EU EPS en 2 puntos de la red: el 80 % central da el pico de racha entre 52 y 92 km/h (mediana 60); el 100 % supera 50 km/h, el 40 % supera 70 km/h, el 20 % supera 90 km/h; escenarios muy repartidos; más de la mitad supera 50 km/h"
-    assert pitarch["modelo"] == "icon_seamless" and pitarch["pico"] == {"p10": 50, "p50": 50, "p90": 50} and "muy de acuerdo" in pitarch["texto"]
+    assert d1["pico"] == {"p10": 52, "p50": 60, "p90": 92}
+    assert d1["supera"] == {"50": 1.0, "70": 0.4, "90": 0.2}
+    assert d1["texto"] == "5 escenarios de ICON-EU EPS en 2 puntos de la red: el 80 % central da el pico de racha entre 52 y 92 km/h (mediana 60); el 100 % supera 50 km/h, el 40 % supera 70 km/h, el 20 % supera 90 km/h; escenarios muy repartidos; más de la mitad supera 50 km/h"
+    assert d2["modelo"] == "icon_seamless" and d2["pico"] == {"p10": 50, "p50": 50, "p90": 50} and "muy de acuerdo" in d2["texto"]
     # Without any answer the source fails with 2 and writes nothing.
     monkeypatch.setattr(vivo, "fetch", lambda url, **kwargs: (_ for _ in ()).throw(RuntimeError("HTTP 500")))
     assert vivo.main(["--fuente", "ensemble", "--fecha", "2026-10-16", "--config", str(path), "--dashboard-dir", str(tmp_path)], fs=fs) == 2
@@ -289,13 +289,13 @@ def test_the_hourly_forecast_of_aemet_by_municipality(fs, cfg, monkeypatch, tmp_
     with open(tmp_path / "aemet.json", encoding="utf-8") as file:
         out = json.load(file)
     assert out["fecha"] == "2026-10-15" and [d["id"] for d in out["distribuidoras"]] == [3]
-    eosa = out["distribuidoras"][0]
-    assert eosa["nombre"] == "Distribuidora 1" and eosa["municipios"] == 2 and len(eosa["horas"]) == 24 and eosa["elaborado"] == "2026-10-14T18:55:08"
-    assert eosa["pico"] == {"racha_kmh": 58, "hora": 13, "municipio": "Hervás"}
-    noon = next(h for h in eosa["horas"] if h["hora"] == 12)
+    d1 = out["distribuidoras"][0]
+    assert d1["nombre"] == "Distribuidora 1" and d1["municipios"] == 2 and len(d1["horas"]) == 24 and d1["elaborado"] == "2026-10-14T18:55:08"
+    assert d1["pico"] == {"racha_kmh": 58, "hora": 13, "municipio": "Hervás"}
+    noon = next(h for h in d1["horas"] if h["hora"] == 12)
     assert noon["racha_kmh"] == 46 and noon["lluvia_mm"] == 0.1 and noon["tormenta_pct"] == 40
-    assert next(h for h in eosa["horas"] if h["hora"] == 3)["tormenta_pct"] == 0
-    assert eosa["texto"] == "AEMET por municipios (2 municipios, elaborada 18:55): pico de racha 58 km/h a las 13:00 en Hervás; hasta 0,2 mm de lluvia; probabilidad de tormenta hasta el 40 %"
+    assert next(h for h in d1["horas"] if h["hora"] == 3)["tormenta_pct"] == 0
+    assert d1["texto"] == "AEMET por municipios (2 municipios, elaborada 18:55): pico de racha 58 km/h a las 13:00 en Hervás; hasta 0,2 mm de lluvia; probabilidad de tormenta hasta el 40 %"
     assert (tmp_path / "aemet_20261015.json").exists()
     assert vivo.aemet_value("Ip") == 0.1 and vivo.aemet_value("") != vivo.aemet_value("") and vivo.aemet_value("12,5") == 12.5
 

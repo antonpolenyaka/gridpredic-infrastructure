@@ -136,11 +136,11 @@ def test_the_landing_downloads_only_what_is_missing_and_the_json_tells_the_lines
         out = json.load(file)
     assert out["n_rayos"] == 5 and len(out["rayos"]) == 5
     assert out["rayos"][0]["minutos"] == 56 and out["rayos"][-1]["minutos"] == 16
-    eosa, pitarch, vsa = out["distribuidoras"]
-    assert eosa["cerca"] == {"10": 5, "20": 5} and eosa["lineas"] == ["Montánchez / Torre"]
-    assert eosa["nivel"] == "tormenta sobre la red" and eosa["texto"].startswith("5 rayos a menos de 10 km")
-    assert pitarch["cerca"] == {"10": 0, "20": 0} and pitarch["nivel"] == "sin tormenta"
-    assert vsa["cerca"] == {"10": 0, "20": 0} and vsa["lineas"] == []
+    d1, d2, d3 = out["distribuidoras"]
+    assert d1["cerca"] == {"10": 5, "20": 5} and d1["lineas"] == ["Montánchez / Torre"]
+    assert d1["nivel"] == "tormenta sobre la red" and d1["texto"].startswith("5 rayos a menos de 10 km")
+    assert d2["cerca"] == {"10": 0, "20": 0} and d2["nivel"] == "sin tormenta"
+    assert d3["cerca"] == {"10": 0, "20": 0} and d3["lineas"] == []
     assert out["generado"] == "2026-07-20T15:07Z"
 
 

@@ -6,7 +6,7 @@ Este documento explica dónde está cada cosa en `gridpredic-infrastructure`, po
 
 En junio de 2026 creamos el repositorio [GridPredict_TFM_UPC](https://github.com/antonpolenyaka/GridPredict_TFM_UPC) con la plantilla CCDS tal cual (`ccds`), con la primera versión de la dataset card y la model card y un primer ciclo de GitHub Flow. En aquel momento el proyecto se planteaba como un paquete Python clásico de ciencia de datos: `data/raw` con ficheros, un módulo con `dataset.py`, `features.py` y `modeling/`, y un `Makefile`.
 
-Durante el verano el proyecto cambió de forma. Los datos reales son cuatro bases de datos de SQL Server de 61 GB en backups (una de ellas de 220 GB restaurada), y para trabajar con ellos hace falta una plataforma: SQL Server, Kafka con Debezium, Spark con Delta Lake, MinIO, Hive Metastore, Trino y Airflow, todo en Docker Compose. El código ya no es un paquete que se importa, sino jobs de Spark que se lanzan con `spark-submit` desde DAGs de Airflow. Por eso el trabajo se movió a este repositorio, que Josep creó el 11.09.2026, y la plantilla CCDS se adaptó en lugar de copiarse. La idea de la plantilla se mantiene: cualquiera que llegue sabe dónde buscar los datos, el código, los tests y la documentación, y el pipeline se puede reproducir desde los datos crudos con lo que hay en el repositorio.
+Durante el verano el proyecto cambió de forma. Los datos reales son cuatro bases de datos de SQL Server de 66 GB (61 GiB) en backups (una de ellas de más de 200 GB restaurada; su tabla grande sola son 220 GB), y para trabajar con ellos hace falta una plataforma: SQL Server, Kafka con Debezium, Spark con Delta Lake, MinIO, Hive Metastore, Trino y Airflow, todo en Docker Compose. El código ya no es un paquete que se importa, sino jobs de Spark que se lanzan con `spark-submit` desde DAGs de Airflow. Por eso el trabajo se movió a este repositorio, que Josep creó el 11.09.2026, y la plantilla CCDS se adaptó en lugar de copiarse. La idea de la plantilla se mantiene: cualquiera que llegue sabe dónde buscar los datos, el código, los tests y la documentación, y el pipeline se puede reproducir desde los datos crudos con lo que hay en el repositorio.
 
 ## 2. Estructura actual
 
@@ -34,10 +34,10 @@ gridpredic-infrastructure/
 ├── data/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
 ├── dashboard/                   # Cuadro de mando estático: index.html (riesgo de mañana, Leaflet y OpenStreetMap), dias.html (días archivados, desde data/indice.json), historial.html y negocio.html (lo que habría dicho en 2022 - 2026); gridpredic.css es el sistema de diseño común, motion.js el movimiento (GSAP y ScrollTrigger) y vendor/ lleva Leaflet, GSAP y la tipografía (IBM Plex Sans, OFL); data/ recibe los JSON de los jobs
-├── web/                         # La página pública de GridPredic.com (index.html, gridpredic-web.css, web.js): estática, con la escena de la red ligada al scroll (GSAP y ScrollTrigger en vendor/) y tres capturas del cuadro de mando en img/
-├── docs/                        # Documentación: cards, capas Silver y Gold, modelos, operación, caso de negocio, flujo de datos, este documento
+├── web/                         # La página pública de GridPredic.com (index.html, gridpredic-web.css, web.js): estática, con la escena de la red ligada al scroll (GSAP y ScrollTrigger en vendor/) y dos capturas del cuadro de mando en img/
+├── docs/                        # Documentación: cards, capas Silver y Gold, modelos, operación, caso de negocio, el diagrama de la arquitectura, este documento
 ├── experimentos/                # El código de cada prueba del cuaderno de laboratorio (docs/investigacion-continua.md), fuera de Spark, y figuras/capturar.py, que saca las figuras de la memoria del cuadro de mando
-│   └── arbolado/  aves/  avisos_antelacion/  era5/  fenologia/  figuras/  fragilidad/  suelo_humedad/  umbral_estacion/
+│   └── arbolado/  aves/  avisos_antelacion/  consultas_trino/  era5/  evaluacion/  fenologia/  figuras/  fragilidad/  perfil_dia/  suelo_humedad/  umbral_estacion/
 ├── notebooks/                   # Exploración (convención de nombres en su README)
 ├── tests/                       # Pruebas locales de los jobs, sin Docker (01_bronze ... 04_ml)
 └── _runlogs/                    # Scripts de pruebas manuales y de la operación en el portátil; los logs que generan se ignoran
@@ -49,7 +49,7 @@ Dentro de `dags/`, `config/` y `jobs/` los ficheros se agrupan por capa (`00_lan
 
 | CCDS v2 | En este repositorio | Motivo de la adaptación |
 | --- | --- | --- |
-| `data/raw` | `infra/sqlserver/backups/*.bak` (fuera de Git) y la zona Bronze del lakehouse (`l1_bronze`) | Los datos crudos son 61 GB de backups fechados. El dato inmutable es el backup; Bronze es su copia fiel en Delta. Ninguno cabe ni debe ir en Git |
+| `data/raw` | `infra/sqlserver/backups/*.bak` (fuera de Git) y la zona Bronze del lakehouse (`l1_bronze`) | Los datos crudos son 66 GB (61 GiB) de backups fechados. El dato inmutable es el backup; Bronze es su copia fiel en Delta. Ninguno cabe ni debe ir en Git |
 | `data/interim` | Zona Silver (`l2_silver`) en MinIO | Los intermedios son tablas Delta, no ficheros del repositorio |
 | `data/processed` | Zona Gold (`l3_gold`) | El dataset final de entrenamiento se congela por versiones en Gold (`dataset_train` y `dataset_versions`) |
 | `data/external` | `data/reference_data/` y los CSV pequeños junto a `etl/config/01_bronze/` | Lo único que se versiona: el fichero de municipios del INE (28 KB) y las tablas de referencia que un script extrae una vez de una fuente pública (proyecciones del IEEX, índices oficiales de calidad de GECOS, arbolado, NDVI y dosel por celda, aves por municipio, índice NAO diario) |
@@ -57,7 +57,7 @@ Dentro de `dags/`, `config/` y `jobs/` los ficheros se agrupan por capa (`00_lan
 | `Makefile` | `Makefile` (y `_runlogs/run_silver_test.ps1` para Windows) | Mismos atajos: levantar el stack, lanzar tests, lint |
 | `requirements.txt` | `requirements.txt` en la raíz para el entorno local; `infra/spark/requirements.txt` y los `Dockerfile` para el runtime | Las versiones de Spark, Delta, Airflow, Hive y Trino están fijadas en las imágenes. El `requirements.txt` de la raíz reproduce el entorno de pruebas sin Docker |
 | `pyproject.toml` | `pyproject.toml` | Configuración de ruff y pytest y metadatos del proyecto |
-| `docs/` | `docs/` | Dataset card y model card en formato Hugging Face, diseño de las capas Silver y Gold, entrenamiento de los modelos, operación diaria, caso de negocio, diagrama de flujo, este documento |
+| `docs/` | `docs/` | Dataset card y model card en formato Hugging Face, diseño de las capas Silver y Gold, entrenamiento de los modelos, operación diaria, caso de negocio, diagrama de la arquitectura, este documento |
 | `notebooks/` | `notebooks/` | Convención de nombres de CCDS (`número-iniciales-tema`). Lo que sirva se refactoriza a `etl/jobs` |
 | `models/` | Bucket de MinIO (`datalake/ml/modelos/<run_id>/`) y `l3_gold.ml_runs`; el registro en MLflow sigue pendiente | Los artefactos de modelo no van en Git; cada ejecución guarda la versión del dataset congelado con el que se entrenó |
 | `references/` | Documentación de SITEL sobre Calser y TedisNet, fuera del repositorio | Son manuales confidenciales del fabricante. Lo que necesita el pipeline está resumido en `docs/silver-layer.md` |
