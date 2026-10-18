@@ -45,7 +45,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 ├── data/reference_data/    # Datos de referencia pequeños (municipios)
 ├── dashboard/              # Cuadro de mando estático (lo sirve el contenedor dashboard)
 ├── web/                    # Página pública de GridPredic.com, estática
-├── docs/                   # Cards, capas Silver y Gold, modelos, operación, flujo de datos
+├── docs/                   # Cards, capas Silver y Gold, modelos, operación, diagrama de la arquitectura
 ├── experimentos/           # Código de las pruebas del cuaderno de laboratorio
 ├── notebooks/              # Exploración (convención en su README)
 ├── tests/                  # Pruebas locales de los jobs
@@ -69,7 +69,7 @@ job_silver_d_salida.py
 
 ![Arquitectura de GridPredic: fuentes, ingesta por lotes y por CDC, zonas en MinIO con Delta Lake, operación diaria con Airflow y capa de servicio](docs/arquitectura.png)
 
-> El diagrama representa la arquitectura objetivo. Hoy el repositorio implementa la ingesta de SQL Server en batch y streaming hasta Bronze, la de la meteorología y las fuentes públicas, la capa Silver completa (apartado 11), la capa Gold hasta el dataset de entrenamiento versionado (apartado 12), el entrenamiento de los modelos y la operación de cada tarde con su cuadro de mando (apartado 13).
+> El diagrama es la arquitectura implementada: el repositorio cubre la ingesta de SQL Server en batch y streaming hasta Bronze, la de la meteorología y las fuentes públicas, la capa Silver completa (apartado 11), la capa Gold hasta el dataset de entrenamiento versionado (apartado 12), el entrenamiento de los modelos y la operación de cada tarde con su cuadro de mando (apartado 13).
 
 ## Stack tecnológico
 
@@ -174,7 +174,7 @@ docker compose version
 
 ## 3. Ubicar los datos de Docker fuera del disco del sistema
 
-**Motivo.** Los volúmenes declarados en `compose.yaml` (`sqlserver-data`, `minio-data`, `kafka-data`, `airflow-data`, `hive-db` y las cachés de Ivy `ivy-spark-master` e `ivy-airflow`) no son carpetas del sistema de archivos del anfitrión: viven dentro del **disco virtual de Docker**, junto con las imágenes y la caché de construcción. Ese disco se crea por defecto en la unidad del sistema, con independencia de dónde esté clonado el repositorio. Con `TedisNet_EOSA` restaurada se superan holgadamente los 250 GB, de modo que si la unidad del sistema no dispone de ese margen el arranque se interrumpe a media restauración y hay que empezar de cero.
+**Motivo.** Los volúmenes declarados en `compose.yaml` (`sqlserver-data`, `minio-data`, `kafka-data`, `airflow-data`, `hive-db` y las cachés de Ivy `ivy-spark-master` e `ivy-airflow`) no son carpetas del sistema de archivos del anfitrión: viven dentro del **disco virtual de Docker**, junto con las imágenes y la caché de construcción. Ese disco se crea por defecto en la unidad del sistema, con independencia de dónde esté clonado el repositorio. Con `TedisNet_EOSA` restaurada, el disco virtual de Docker entero supera holgadamente los 250 GB, de modo que si la unidad del sistema no dispone de ese margen el arranque se interrumpe a media restauración y hay que empezar de cero.
 
 **Windows (Docker Desktop).** Antes del primer arranque:
 
@@ -285,7 +285,7 @@ El primer arranque es largo. Como referencia, en un portátil con 4 cores y 12 G
 | Restauración de las cuatro bases en SQL Server | 60 - 70 min |
 | Resolución de dependencias de Spark en `spark-master` | 10 min |
 
-La restauración manda: el backup de `TedisNet_EOSA` son 63,5 GB y se lee desde una ruta del anfitrión montada en la máquina virtual de Docker, a unos 60 MB/s. Por eso el healthcheck de `sqlserver` tiene un `start_period` de 30 minutos.
+La restauración manda: el backup de `TedisNet_EOSA` son 63,5 GB y se lee desde una ruta del anfitrión montada en la máquina virtual de Docker, a unos 60 MB/s. Por eso el healthcheck de `sqlserver` tiene un `start_period` de 90 minutos (hasta entonces las sondas fallidas no cuentan; después, cinco seguidas marcan el contenedor como `unhealthy`).
 
 Los `start_period` de los healthchecks están dimensionados para ese primer arranque. Si se reducen, Compose da por fallidos servicios que en realidad están inicializándose y aborta la cadena de dependencias, aunque los contenedores acaben levantando solos.
 
@@ -364,14 +364,14 @@ Username: <cualquier valor>
 
 No hay autenticación por contraseña configurada para Trino en este entorno local, y `compose.yaml` publica su puerto en todas las interfaces del portátil: el cortafuegos de Windows tiene que cerrarlo a la red (o publicarlo como `127.0.0.1:8085:8080`). Antes de abrirlo a nadie más habría que activar TLS, la autenticación por contraseña (o la del directorio de la distribuidora) y el control de acceso por reglas de Trino, con un rol de solo lectura sobre `l3_gold` para el cuadro de mando y los analistas y Bronze y Silver reservados a los trabajos, que ya acceden por Spark y no por Trino.
 
-Tiempos de consulta medidos el 16.10.2026 en el portátil, con el tiempo del propio servidor (`system.runtime.queries`), la primera vez y la segunda:
+Tiempos de consulta medidos el 17.10.2026 en el portátil, con el tiempo del propio servidor (`system.runtime.queries`), en frío y en caliente (mediana de cinco), antes y después de compactar `dataset_train` (apartado 12; detalle en [docs/cifras.md](docs/cifras.md) y en `experimentos/consultas_trino/salida/`):
 
 | Consulta | Filas | Tiempo |
 | --- | --- | --- |
-| Recuento de `l3_gold.dataset_train` por conjunto (`split`) | 61,8 millones | 9,6 s y 5,6 s |
-| Un mes de una distribuidora en `l3_gold.dataset_train` (filtro por `distribuidora_id` y `hora`) | 546.066 | 3,9 s y 1,1 s |
-| Racha máxima de cada celda en `l3_gold.meteo_celda_hora` | 3,6 millones | 2,3 s y 1,0 s |
-| Las filas del riesgo de la última tarde en `l3_gold.riesgo_dia_siguiente` | 21 | 0,5 s y 0,4 s |
+| Recuento de `l3_gold.dataset_train` por conjunto (`split`) | 61,8 millones | 7,5 s y 4,8 s; 1,1 s con la tabla compactada |
+| Un mes de una distribuidora en `l3_gold.dataset_train` (filtro por `distribuidora_id` y `hora`) | 546.066 | 5,3 s y 1,1 s; 0,8 s compactada |
+| Racha máxima de cada celda en `l3_gold.meteo_celda_hora` | 3,6 millones | 4,5 s y 0,8 s |
+| Las filas del riesgo de la última tarde en `l3_gold.riesgo_dia_siguiente` | 21 | 2,1 s y 0,5 s |
 
 El cuadro de mando no pasa por Trino: lee los ficheros que deja cada tarde en `dashboard/data`.
 
@@ -631,11 +631,11 @@ Desde el 15.10.2026 la misma ejecución deja también la orientación de pasado 
 
 El cuadro de mando son cuatro páginas con el mismo menú y el mismo sistema de diseño (`dashboard/gridpredic.css`, tema claro y oscuro, de móvil a pantalla grande): `index.html` (el riesgo de mañana), `dias.html` (todos los días con riesgo guardado, de las ejecuciones de la tarde y de los días repetidos, cada uno con su enlace y su parte de guardia; lee `data/indice.json`, que el job reescribe cada vez que guarda un día), `historial.html` (día a día desde 2022) y `negocio.html` (las cifras).
 
-La página pública de GridPredic.com está en `web/` (ver [web/README.md](web/README.md)): una sola página estática con los mismos tokens de diseño que el cuadro de mando, que cuenta el producto con una escena ligada al scroll (la red se dibuja, los municipios toman su color de riesgo y la brigada va al punto medio), las cifras de 2022 - 2026 y tres capturas del cuadro de mando; se abre en local con `python -m http.server 8795 --directory D:\GitHub\gridpredic-infrastructure\web` (http://localhost:8795) y se publica copiando la carpeta a cualquier hosting estático.
+La página pública de GridPredic.com está en `web/` (ver [web/README.md](web/README.md)): una sola página estática con los mismos tokens de diseño que el cuadro de mando, que cuenta el producto con una escena ligada al scroll (la red se dibuja, los municipios toman su color de riesgo y la brigada va de su base a la base propuesta para mañana), las cifras de 2022 - 2026 y dos capturas del cuadro de mando; se abre en local con `python -m http.server 8795 --directory web` desde la raíz del repositorio (http://localhost:8795) y se publica copiando la carpeta a cualquier hosting estático.
 
 Con las credenciales del Data Store de EUMETSAT en `.env`, `dag_rayos_vivo` añade cada 15 minutos los rayos que ve el satélite MTG sobre la red (`dashboard/data/rayos.json`), que el cuadro de mando pinta sobre el mapa con una franja por distribuidora.
 
-La tarea `ensemble` de `dag_riesgo_manana` pide los 40 escenarios de ICON-EU EPS (Open-Meteo, sin clave) para las celdas de cada red y deja `dashboard/data/ensemble.json`: el cuadro de mando pinta la banda p10 - p90 de la racha sobre el perfil y dice qué parte de los escenarios supera 50, 70 y 90 km/h. La tarea `aemet_municipios` trae la predicción horaria por municipios de AEMET (segunda previsión, línea verde sobre el perfil, verificada frente a las estaciones como la de ICON-EU). La tarea `nao` guarda cada tarde el índice NAO diario de NOAA CPC, que hoy no entra en el modelo (apartado 3r de [docs/investigacion-continua.md](docs/investigacion-continua.md)); igual que `ensemble` y `aemet_municipios`, si no hay respuesta se salta y la puntuación sigue. `dag_observacion_vivo` añade cada hora lo que miden las estaciones de AEMET (`dashboard/data/observado.json`): la racha observada se pinta en rojo sobre el perfil previsto del día y, con `dashboard/data/verificacion.json`, el cuadro de mando dice lo que valió la previsión de la víspera (pico previsto frente a observado, sesgo y error medio de los últimos días). Con `AVISO_WEBHOOK_URL` en `.env` (un webhook de Slack, Teams o similar), `dag_riesgo_manana` manda además el aviso de la tarde cuando alguna distribuidora queda en alto o muy alto o con la guardia reforzada.
+La tarea `ensemble` de `dag_riesgo_manana` pide los 40 escenarios de ICON-EU EPS (Open-Meteo, sin clave) para las celdas de cada red y deja `dashboard/data/ensemble.json`: el cuadro de mando pinta la banda p10 - p90 de la racha sobre el perfil y dice qué parte de los escenarios supera 50, 70 y 90 km/h. La tarea `aemet_municipios` trae la predicción horaria por municipios de AEMET (segunda previsión, línea verde sobre el perfil, verificada frente a las estaciones como la de ICON-EU). La tarea `nao` guarda cada tarde el índice NAO diario de NOAA CPC, que hoy no entra en el modelo (apartado 3r de [docs/investigacion-continua.md](docs/investigacion-continua.md)); igual que `ensemble` y `aemet_municipios`, si no hay respuesta se salta y la puntuación sigue. `dag_observacion_vivo` añade cada hora lo que miden las estaciones de AEMET (`dashboard/data/observado.json`): la racha observada se pinta en negro (línea con puntos) sobre el perfil previsto del día y, con `dashboard/data/verificacion.json`, el cuadro de mando dice lo que valió la previsión de la víspera (pico previsto frente a observado, sesgo y error medio de los últimos días). Con `AVISO_WEBHOOK_URL` en `.env` (un webhook de Slack, Teams o similar), `dag_riesgo_manana` manda además el aviso de la tarde cuando alguna distribuidora queda en alto o muy alto o con la guardia reforzada.
 
 `job_ml_caso_negocio.py` repite la operación de cada tarde desde 2022 hasta el último día con etiqueta conocida de la copia de Calser, el 02.08.2026 (qué habría dicho el sistema cada víspera y qué pasó: incidencias, clientes, horas-cliente, brigadas) y deja `historico.json` para las páginas `historial.html` (día a día) y `negocio.html` (las cifras para una distribuidora o un inversor, con la guardia a igual presupuesto) del cuadro de mando; los resultados y lo que valen para una distribuidora están en [docs/caso-de-negocio.md](docs/caso-de-negocio.md).
 

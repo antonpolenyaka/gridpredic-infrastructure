@@ -98,16 +98,10 @@ def calibration(y, p, weight=None) -> dict:
 
 
 def _intercept_with_offset(y, w, offset) -> float:
-    """The intercept a of y ~ a + offset by maximum likelihood (Newton on sum w (y - p) = 0)."""
-    a = 0.0
-    target = float(np.sum(w * y))
-    for _ in range(100):
-        p = 1.0 / (1.0 + np.exp(-(a + offset)))
-        delta = float(np.clip((target - np.sum(w * p)) / max(float(np.sum(w * p * (1.0 - p))), 1e-300), -5, 5))
-        a += delta
-        if abs(delta) < 1e-10:
-            break
-    return a
+    """The intercept a of y ~ a + offset by maximum likelihood: the Newton of ml_models (FLIC uses the same one)."""
+    from ml_models import intercept_with_offset
+
+    return intercept_with_offset(y, w, offset)
 
 
 def _recalibration_slope(y, w, x) -> float:

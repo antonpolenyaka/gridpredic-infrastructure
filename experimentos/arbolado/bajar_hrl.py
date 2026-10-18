@@ -58,7 +58,7 @@ def call(path: str, token: str, body: dict = None, method: str = None) -> dict:
         with urllib.request.urlopen(req, timeout=120) as response:
             return json.loads(response.read() or b"{}")
     except urllib.error.HTTPError as error:
-        raise SystemExit(f"HTTP {error.code} en {path}: {error.read().decode('utf-8', 'replace')[:600]}")
+        raise SystemExit(f"HTTP {error.code} en {path}: {error.read().decode('utf-8', 'replace')[:600]}") from error
 
 
 def search(token: str, text: str):

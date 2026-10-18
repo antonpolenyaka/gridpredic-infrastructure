@@ -1153,12 +1153,10 @@ def run_learning_curve(spark, args, config: dict, cfg: dict, pdf: pd.DataFrame, 
     if not transfer.empty:
         transfer["lift"] = transfer["pr_auc"] / transfer["prevalencia"]
 
-    names = {}
-    try:
-        names = {int(r["distribuidora_id"]): r["source_database"] for r in spark.table(f"{GOLD}.fact_interrupciones_mt")
-                 .select("distribuidora_id", "source_database").distinct().collect()}
-    except Exception:  # noqa: BLE001
-        pass
+    # The networks by their id (never by the name of their database): riesgo_manana.nombres when it has them.
+    names = {int(k): str(v) for k, v in (config.get("riesgo_manana", {}).get("nombres") or {}).items()}
+    for dist in sorted(pdf["distribuidora_id"].unique()):
+        names.setdefault(int(dist), f"Distribuidora {int(dist)}")
 
     report = "\n\n".join([
         f"# Curva de aprendizaje de las horas de riesgo: {args.run_id}",

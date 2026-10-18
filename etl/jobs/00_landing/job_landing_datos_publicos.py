@@ -314,29 +314,6 @@ def cell_bbox(lat: float, lon: float, size: float) -> tuple:
     return (round(lat - half, 5), round(lon - half, 5), round(lat + half, 5), round(lon + half, 5))
 
 
-def overpass_query(bbox: tuple, timeout: int) -> str:
-    south, west, north, east = bbox
-    return (
-        f"[out:json][timeout:{timeout}][bbox:{south},{west},{north},{east}];\n"
-        "(\n"
-        '  way["power"~"^(line|minor_line|cable)$"];\n'
-        '  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|track)$"];\n'
-        '  way["landuse"~"^(forest|construction)$"];\n'
-        '  way["natural"~"^(wood|scrub)$"];\n'
-        '  relation["landuse"="forest"];\n'
-        '  relation["natural"~"^(wood|scrub)$"];\n'
-        ");\n"
-        "out tags geom;\n"
-        "(\n"
-        '  node["power"~"^(pole|tower|transformer|substation|switch)$"];\n'
-        '  way["power"="substation"];\n'
-        ");\n"
-        "out tags center;\n"
-        'way["building"];\n'
-        "out count;\n"
-    )
-
-
 def overpass_parts(bbox: tuple, timeout: int) -> dict:
     """The query of a cell in three lighter parts: the busy servers time out less with each one alone."""
     south, west, north, east = bbox
@@ -897,7 +874,7 @@ def land_warnings(fs, cfg: dict, landing: str, cells: dict, force: bool) -> tupl
               [{"celda_id": c, "latitud": lat, "longitud": lon} for c, (lat, lon) in sorted(cells.items())])
     headers = {"api_key": key, "Accept": "application/json"}
     done = failed = 0
-    for lo, hi in warning_chunks(warnings["desde"], warnings["hasta"], int(warnings.get("dias_por_peticion", 31))):
+    for lo, hi in warning_chunks(warnings["desde"], warnings["hasta"], int(warnings.get("dias_por_peticion", 2))):
         target = f"{landing}/avisos/{lo:%Y%m%d}_{hi:%Y%m%d}.tar"
         empty = f"{landing}/avisos/{lo:%Y%m%d}_{hi:%Y%m%d}.vacio.json"
         if (fs.exists(target) or fs.exists(empty)) and not force:

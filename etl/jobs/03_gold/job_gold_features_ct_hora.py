@@ -53,6 +53,7 @@ from pyspark.sql import functions as F
 
 from gold_common import (
     DQCollector,
+    FORBIDDEN_FEATURES,
     FeatureRegistry,
     arrival_delay_s,
     batches,
@@ -89,12 +90,8 @@ UPSTREAM_MEASURES = ["intensidad", "intensidad_neutro", "tension", "potencia_act
 LOCAL_STATS = ["media", "max", "min", "std", "n_muestras", "frac_rancio"]
 UPSTREAM_STATS = ["media", "max", "std", "n_muestras"]
 
-# Columns that must never be features (leakage or keys of the label).
-# n_posiciones_aguas_arriba counts the bays of the whole history, future cuts
-# included: aa_n_posiciones is its version known at hora.
-FORBIDDEN = {"fecha_alta", "ts", "conocido_ts", "conocido_fin_ts", "inicio_ts", "fin_ts",
-             "inicio_conocido_ts", "fin_conocido_ts", "primer_conocido_ts", "en_corte", "ct_vigente",
-             "n_posiciones_aguas_arriba"}
+# Columns that must never be features: the single list of gold_common.
+FORBIDDEN = FORBIDDEN_FEATURES
 
 # Delay of arrival accepted by default for a change to count as a signal.
 DEFAULT_MAX_DELAY_H = 24

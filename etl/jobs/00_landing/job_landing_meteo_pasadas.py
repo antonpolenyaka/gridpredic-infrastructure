@@ -29,7 +29,7 @@ rebuilt run by run:
   again. A run that the archive does not have is noted in _sin_pasada.json
   and not asked again.
 - Budget: a request counts one call of the free plan per location (three
-  days of a run, fewer than ten variables), so a run of the 44 cells costs 44
+  days of a run, fewer than ten variables), so a run of the 43 cells costs 43
   of the 10.000 calls of a day. The calls of every day (UTC) are kept in
   _llamadas.json and the job stops at max_llamadas_dia, below the limit, so
   the forecast of the evening (dag_riesgo_manana) and the night chain still

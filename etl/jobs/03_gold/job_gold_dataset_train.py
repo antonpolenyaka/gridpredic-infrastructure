@@ -12,9 +12,11 @@ as a version.
 - split: train before dataset.train_hasta, valid before
   dataset.valid_hasta, test after. Never random: the model is evaluated on
   the same CTs in the future, which is the real use. The CTs are not split.
-  The last dataset.purga_horas hours before each boundary (by default the
-  longest horizon of the labels, 6 h) are split purga: their labels look
-  into the next period, so the same interruption would be a positive on
+  The hours whose label window of dataset.purga_horas (by default the
+  longest horizon of the labels, 6 h) crosses a boundary are split purga:
+  from the boundary minus 5 h to the boundary minus 1 h, five rows per CT
+  (the hour at boundary minus 6 h still fits in its period). Their labels
+  look into the next period, so the same interruption would be a positive on
   both sides. They are kept to be counted, never to train or evaluate.
 - en_muestra_train / peso_muestra: all the positives of y_1_3h in train and
   a deterministic sample of the negatives (dataset.tasa_negativos_train, by a

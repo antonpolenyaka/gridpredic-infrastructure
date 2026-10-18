@@ -7,8 +7,8 @@ El código está en `etl/jobs/04_ml/` y los parámetros en `etl/config/04_ml/con
 | Fichero | Qué hace |
 | --- | --- |
 | `job_ml_train.py` | Lee la versión del dataset, entrena, puntúa valid y test, calcula las métricas y escribe las tablas de resultados |
-| `ml_models.py` | Los cinco modelos de este documento (dos referencias y tres entrenados), los submodelos por grupo, la logística equilibrada y el modelo de Poisson que prueba el riesgo del día, la corrección de la probabilidad por el muestreo y las importancias |
-| `ml_metrics.py` | PR-AUC, ROC-AUC, alertas con presupuesto, episodios, antelación y PR-AUC de cada feature sola |
+| `ml_models.py` | Los cinco modelos de este documento (dos referencias y tres entrenados), los submodelos por grupo, la logística equilibrada, el modelo de Poisson y las logísticas de Firth y de Cauchy que prueba el riesgo del día, la corrección de la probabilidad por el muestreo, las importancias y los coeficientes de los modelos lineales (`linear_terms`) |
+| `ml_metrics.py` | PR-AUC, ROC-AUC, alertas con presupuesto, episodios, antelación, PR-AUC de cada feature sola, la calibración (Brier, BSS, pendiente e intercepto) y el bootstrap por fechas o por bloques de días con las diferencias emparejadas |
 | `train.sh` | Lanza el job con `spark-submit` desde el contenedor `spark-master` |
 
 ## 1. Qué aprende el modelo

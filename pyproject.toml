@@ -27,8 +27,6 @@ ignore = ["E501"]
 # Los tests insertan la carpeta de jobs en sys.path antes de importar (E402) y
 # cargan las fixtures con nombres que ruff considera no usados.
 "tests/**" = ["E402", "F401", "F811"]
-# Variable calculada y no usada en el parseo del esquema de Debezium; pendiente de limpieza.
-"etl/jobs/01_bronze/job_bronze_sqlserver_streaming.py" = ["F841"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

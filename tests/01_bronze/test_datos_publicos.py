@@ -31,15 +31,11 @@ def test_grid_points_inside_the_cell():
 
 
 def test_queries():
-    query = landing.overpass_query(landing.cell_bbox(40.3, -6.0, 0.1), 120)
-    assert "[bbox:40.25,-6.05,40.35,-5.95]" in query
-    assert 'way["power"~"^(line|minor_line|cable)$"]' in query
-    assert query.strip().endswith("out count;")
-
     parts = landing.overpass_parts(landing.cell_bbox(40.3, -6.0, 0.1), 120)
     assert set(parts) == {"red", "viario", "cubierta"}
     assert all(q.startswith("[out:json][timeout:120][bbox:40.25,-6.05,40.35,-5.95];") for q in parts.values())
-    assert "out count;" in parts["red"] and "highway" in parts["viario"] and "forest" in parts["cubierta"]
+    assert 'way["power"~"^(line|minor_line|cable)$"]' in parts["red"] and parts["red"].strip().endswith("out count;")
+    assert "highway" in parts["viario"] and "forest" in parts["cubierta"]
 
     sparql = landing.wikidata_query(["06", "10"])
     assert 'STRSTARTS(?ine, "06") || STRSTARTS(?ine, "10")' in sparql

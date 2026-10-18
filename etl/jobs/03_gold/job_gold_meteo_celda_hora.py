@@ -104,7 +104,7 @@ PARTIAL_FEATURES = ("met_cape_", "met_li_", "met_dir_viento_", "met_viento_100m_
                     "met_aviso_", "met_focos_", "met_fwi_", "met_ffmc_", "met_dmc_", "met_dc_", "met_isi_",
                     "met_bui_", "metp1_", "metp2_", "metp3_")
 
-# Forecasts of ICON-EU in Silver -> hourly column of Gold (one and two days before).
+# Forecasts of ICON-EU in Silver -> hourly column of Gold (one, two and three days before).
 FORECAST_COLUMNS = {
     "racha_prev1_kmh": "metp1_racha_1h", "viento_prev1_kmh": "metp1_viento_1h",
     "precipitacion_prev1_mm": "metp1_lluvia_1h", "nieve_prev1_cm": "metp1_nieve_1h",
