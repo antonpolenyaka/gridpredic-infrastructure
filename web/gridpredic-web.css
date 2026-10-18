@@ -107,6 +107,8 @@ figure.captura figcaption { color: var(--muted); font-size: 14px; max-width: 80c
 .contacto { display: grid; gap: 18px; justify-items: start; }
 .contacto .nota { color: var(--muted-ink); max-width: 70ch; font-size: 14px; }
 footer { padding: 28px var(--gutter); background: var(--ink); color: var(--muted-ink); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+footer a { color: var(--accent-on-ink); text-decoration: underline; margin-left: 10px; }
+figure.captura figcaption a { text-decoration: underline; }
 
 /* reveals: without the script the content is simply visible */
 [data-reveal] { will-change: transform, opacity; }
