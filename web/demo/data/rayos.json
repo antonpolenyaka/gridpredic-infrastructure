@@ -1,0 +1,70 @@
+{
+ "generado": "2026-10-18T09:30Z",
+ "ventana_min": 60.0,
+ "fuente": "EUMETSAT, Lightning Imager de MTG (LI-2-LFL, cada 10 minutos)",
+ "caja": [
+  38.1,
+  -7.3,
+  40.6,
+  -5.4
+ ],
+ "ultimo_producto": {
+  "encontrados": 9,
+  "descargados": 1,
+  "fallidos": 0,
+  "flashes": 0
+ },
+ "n_rayos": 0,
+ "rayos": [],
+ "distribuidoras": [
+  {
+   "id": 2,
+   "nombre": "Distribuidora 2",
+   "radios_km": [
+    10.0,
+    20.0
+   ],
+   "cerca": {
+    "10": 0,
+    "20": 0
+   },
+   "lineas": [],
+   "municipios": [],
+   "texto": "sin rayos cerca de la red en la última hora",
+   "nivel": "sin tormenta"
+  },
+  {
+   "id": 3,
+   "nombre": "Distribuidora 1",
+   "radios_km": [
+    10.0,
+    20.0
+   ],
+   "cerca": {
+    "10": 0,
+    "20": 0
+   },
+   "lineas": [],
+   "municipios": [],
+   "texto": "sin rayos cerca de la red en la última hora",
+   "nivel": "sin tormenta"
+  },
+  {
+   "id": 1366,
+   "nombre": "Distribuidora 3",
+   "radios_km": [
+    10.0,
+    20.0
+   ],
+   "cerca": {
+    "10": 0,
+    "20": 0
+   },
+   "lineas": [],
+   "municipios": [],
+   "texto": "sin rayos cerca de la red en la última hora",
+   "nivel": "sin tormenta"
+  }
+ ],
+ "regla": "Antes del 17 % de las incidencias de 2024 - 2025 hubo rayos a menos de 10 km de la red en la hora anterior, frente al 1,1 % de las ventanas sin incidencias."
+}

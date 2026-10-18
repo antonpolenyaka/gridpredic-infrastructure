@@ -25,13 +25,14 @@ job_landing_vivo left in <riesgo_manana.landing>/<D as YYYYMMDD>:
 - The calendar of D and the incidents known in Calser before D. When the
   copy of Calser in the lakehouse ends more than historia_margen_dias (7)
   before D (historia_al_dia false), zero incidents in the last days would
-  read as a calm network, so the model of the evening is fitted without
-  the history of incidents (riesgo_manana.historia_desfasada
-  "sin_historia"). With "mediana" the history stays in the model and
-  tomorrow takes the median of the training days, as the evening did until
-  17.10.2026: a model that learned to lean on the history then scores a day
-  without it, which job_ml_riesgo_dia measures with the variants
-  operativa_sin_historia and operativa_historia_mediana.
+  read as a calm network, so tomorrow is scored with the median of the
+  training days in the history of incidents, the model fitted with it
+  (riesgo_manana.historia_desfasada "mediana"). With "sin_historia" the
+  model of the evening is fitted without the history block. The notebook 3v
+  of investigacion-continua.md measured the two with the variants
+  operativa_historia_mediana and operativa_sin_historia of
+  job_ml_riesgo_dia: the median loses nothing against the real history and
+  fitting without the block costs about 0.01 of PR-AUC, hence the default.
 
 Training days: from the first day of the variant to the last day with
 labels (the last incident of Calser minus margen_etiquetas_dias, 45 since
@@ -1604,7 +1605,7 @@ def main(argv=None):
     # Tomorrow's history is only known when the copy of Calser reaches D minus the margin. Without it the model
     # is fitted without the history, so tomorrow is never scored with the median of the training days.
     up_to_date = bool(pd.notna(calser) and calser >= day - pd.Timedelta(days=int(rcfg.get("historia_margen_dias", 7))))
-    history_in_model = up_to_date or rcfg.get("historia_desfasada", "sin_historia") == "mediana"
+    history_in_model = up_to_date or rcfg.get("historia_desfasada", "mediana") == "mediana"
     if not history_in_model:
         dropped = [f for f in features if f.startswith("hist_")]
         features = [f for f in features if not f.startswith("hist_")]
