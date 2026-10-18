@@ -495,11 +495,11 @@ def test_incidencia_causa(silver):
     rows = {r["source_database"]: r for r in table(silver, "f_incidencia_causa").collect()}
     assert set(rows) == {"Calser_EOSA", "Calser_Pitarch"}
     row = rows["Calser_EOSA"]
-    # "Averia" names no agent, so the official code would give agente_externo, but the same unplanned incident
-    # starts in the same second in both databases: a cut of the common supply upstream (common_supply).
-    assert (row["causa"], row["subcausa"], row["fuente_causa"], row["casuistica_nombre"]) == (
-        "aguas_arriba", "proveedor_comun", "otra_red", "agente_externo")
-    assert rows["Calser_Pitarch"]["subcausa"] == "proveedor_comun"
+    # "Averia" names no agent: the cause comes from the official code. The same unplanned incident starts in the
+    # same second in both databases, which only sets the flag (shared_start); the cause does not change.
+    assert (row["causa"], row["fuente_causa"], row["casuistica_nombre"]) == (
+        "agente_externo", "codigo_oficial", "agente_externo")
+    assert row["simultanea_otra_red"] and rows["Calser_Pitarch"]["simultanea_otra_red"]
     assert row["nivel_afectacion"] == "ct"
     assert row["n_int_ct"] >= 1 and row["anio"] == 2026
     # The technical descriptions of the import ("INCOMPLETA. SCADA") are left out of the text.

@@ -147,8 +147,8 @@ def test_normalize():
     assert ci.normalize(None) == "" and ci.normalize(float("nan")) == ""
 
 
-def test_the_same_second_in_two_networks_is_the_common_supply_upstream():
-    """job_silver_f_incidencia_causa.common_supply: needs every distribuidora at once, so it runs after classify."""
+def test_the_same_second_in_two_networks_is_only_flagged():
+    """job_silver_f_incidencia_causa.shared_start: needs every distribuidora at once, so it runs after classify."""
     import pandas as pd
 
     import job_silver_f_incidencia_causa as job
@@ -167,10 +167,11 @@ def test_the_same_second_in_two_networks_is_the_common_supply_upstream():
         "regla": ["texto", "sin_texto", "clasificacion", "clasificacion", "texto", "texto", "clasificacion"],
         "fuente_causa": ["texto", "ninguna", "clasificacion", "clasificacion", "texto", "texto", "clasificacion"],
     })
-    result = job.common_supply(pdf, out)
-    # The storm of 28.01.2026 started in the same second in the Distribuidora 1 and the 2: the provider upstream.
-    assert result.loc[:1, "causa"].tolist() == ["aguas_arriba", "aguas_arriba"]
-    assert set(result.loc[:1, "subcausa"]) == {"proveedor_comun"} and set(result.loc[:1, "fuente_causa"]) == {"otra_red"}
-    # Planned works at the same hour and the blackout keep their cause; a planned one of a third network does not count.
-    assert result.loc[2:, "causa"].tolist() == ["programada", "programada", "apagon", "apagon", "programada"]
-    assert out.loc[0, "causa"] == "meteorologia"
+    result = job.shared_start(pdf, out)
+    # The storm of 28.01.2026 started in the same second in the Distribuidora 1 and the 2, and so did the blackout:
+    # both are flagged. Planned works at the same hour are not, nor a planned one of a third network.
+    assert result["simultanea_otra_red"].tolist() == [True, True, False, False, True, True, False]
+    # The cause of Calser stands: the flag is information, not a verdict (the common-provider reading of 17.10.2026
+    # was withdrawn on 18.10.2026).
+    assert result["causa"].tolist() == out["causa"].tolist() and result["subcausa"].tolist() == out["subcausa"].tolist()
+    assert "simultanea_otra_red" not in out.columns
