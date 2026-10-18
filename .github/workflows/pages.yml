@@ -1,0 +1,91 @@
+# La web pública (gridpredic.com): la página de web/ en la raíz y el cuadro de mando de dashboard/ en
+# /demo/ con la copia congelada de web/demo/data. Se publica en GitHub Pages en cada push a main que toque
+# la web, la demo o este fichero, y después comprueba que gridpredic.com sirve el commit publicado: si el
+# dominio sigue sirviendo otra cosa (DNS sin cambiar, caché, despliegue a medias), el último job falla y se
+# ve en la pestaña Actions y en el commit de main.
+#
+# Lo que hay que tener en el repositorio una sola vez (Settings > Pages): "Build and deployment > Source:
+# GitHub Actions", el dominio gridpredic.com en "Custom domain" y, cuando el certificado esté emitido,
+# "Enforce HTTPS". En DonDominio, el dominio apunta a GitHub Pages (los registros están en web/README.md).
+name: Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "dashboard/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  montar:
+    name: Montar el sitio
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: web/ en la raíz, dashboard/ en /demo/, version.json con el commit
+        run: python web/montar_sitio.py _site --commit "$GITHUB_SHA"
+      - name: Nada del portátil en el sitio
+        run: |
+          # Las direcciones locales y los nombres de las bases de datos no tienen que salir en la web pública.
+          if grep -rIl "localhost:808\|D:\\\\GitHub\|Calser_\|TedisNet_" _site/index.html _site/demo/data; then
+            echo "El sitio lleva direcciones locales o nombres de bases de datos"; exit 1
+          fi
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  publicar:
+    name: Publicar en GitHub Pages
+    needs: montar
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  comprobar:
+    name: gridpredic.com sirve este commit
+    needs: publicar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Esperar a que el dominio sirva el commit publicado
+        run: |
+          esperado="$GITHUB_SHA"
+          servido=""
+          for intento in $(seq 1 24); do
+            servido=$(curl -fsS -m 20 "https://gridpredic.com/version.json?v=$intento" | python3 -c 'import json,sys; print(json.load(sys.stdin)["commit"])' 2>/dev/null || true)
+            if [ "$servido" = "$esperado" ]; then
+              echo "gridpredic.com sirve el commit $servido"
+              break
+            fi
+            echo "intento $intento: gridpredic.com sirve '${servido:-nada}' y main es $esperado; espero 20 s"
+            sleep 20
+          done
+          if [ "$servido" != "$esperado" ]; then
+            echo "::error::La web no se ha actualizado: gridpredic.com sirve '${servido:-nada}' y main es $esperado."
+            echo "Lo que sirve la dirección de GitHub Pages (por si el fallo es del dominio):"
+            curl -sS -m 20 "https://antonpolenyaka.github.io/gridpredic-infrastructure/version.json" || true
+            exit 1
+          fi
+      - name: La página y la demo responden con su contenido
+        run: |
+          curl -fsS -m 20 "https://gridpredic.com/" | grep -q "El riesgo de avería de mañana" || { echo "::error::La página principal no es la de GridPredic"; exit 1; }
+          curl -fsS -m 20 "https://gridpredic.com/demo/" | grep -q "Riesgo de mañana" || { echo "::error::La demo no responde"; exit 1; }
+          curl -fsS -m 20 "https://gridpredic.com/demo/data/riesgo.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("Demo con el riesgo del", d["fecha_texto"], "generado el", d["generado"])'
+          curl -fsS -m 20 "https://gridpredic.com/demo/index.html?dia=20260128" | grep -q "Riesgo de mañana" || { echo "::error::El día repetido del temporal no responde"; exit 1; }
