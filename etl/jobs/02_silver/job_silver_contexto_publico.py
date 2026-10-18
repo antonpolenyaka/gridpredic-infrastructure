@@ -1,6 +1,7 @@
 """
-Silver of the public data (INE, Wikidata, Open-Meteo Elevation and
-OpenStreetMap), cleaned and taken to the units Gold uses.
+Silver of the public data (INE, Wikidata, Open-Meteo Elevation, OpenStreetMap,
+PLACSP, Catastro, IEEX, GBIF, EFFIS, AEMET, FIRMS and CEMS), cleaned and
+taken to the units Gold uses.
 
 - f_poblacion_municipio: population of every municipality and year (Padron
   continuo at 1 January, both sexes). The rows of the province totals have no
@@ -29,7 +30,7 @@ OpenStreetMap), cleaned and taken to the units Gold uses.
   the ones without works type or CPV 45 (NOT_WORKS). Planned execution:
   start (planned, contract, award plus one month, deadline of the offers
   plus two months or publication plus three) and months (duration in
-  months, days or years; obras.meses_por_defecto when there is none).
+  months, days or years; WORKS["meses_por_defecto"], 6, when there is none).
   mov_tierras marks the works that dig or open the street: CPV of earth
   works, civil engineering, pipelines, roads and water, or words of the
   title (calle, pavimentacion, abastecimiento, saneamiento, zanja...).

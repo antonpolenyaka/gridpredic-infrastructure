@@ -6,7 +6,7 @@ the batch can move on to Gold.
    its own orphans; this check catches what a later job could have left
    hanging (for example a CT rejected after its interruptions were built).
 2. Coverage of the Calser to TedisNet key on the CTs that carry the label
-   (unplanned interruptions since 2021; 97,8 % in the verified analysis).
+   (interruptions of CT level since 2021, planned ones included; 97,8 % in the verified analysis).
 3. Time alignment between Calser and TedisNet. Calser records local time
    and the SCADA may store UTC. If the offset between an interruption that
    Calser imported from the SCADA and the Off event of the same transformer

@@ -15,7 +15,6 @@ import sys
 import tarfile
 from datetime import datetime, timezone
 
-import pytest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 ML_DIR = os.path.join(ROOT, "etl", "jobs", "04_ml")

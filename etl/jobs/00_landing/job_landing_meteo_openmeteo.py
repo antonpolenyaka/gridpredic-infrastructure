@@ -8,11 +8,12 @@ plan for non commercial use).
 - Places: the municipalities of data/reference_data/municipios.xlsx (sheet
   Municipios, already in Landing for the Bronze job of the reference), grouped
   in cells of celda_grados (0.1 degrees, about 11 km, close to the 9 km grid
-  of the model). The 73 municipalities fall in 44 cells, so the whole window
+  of the model). The 73 municipalities fall in 43 cells, so the whole window
   fits in the daily limit of the free plan.
-- Window: config desde / hasta. The dataset of Gold covers 01.01.2021 -
-  14.08.2026 and the features look back up to 7 days, so the default asks
-  from 01.12.2020 to 31.08.2026.
+- Window: config desde / hasta. The dataset of Gold covers 08.01.2021 -
+  14.08.2026 and the models of the day train from 2017, so the configuration
+  asks from 01.01.2017 (the first download started on 01.12.2020) to
+  31.08.2026.
 - One request per cell and year, saved as it comes (JSON) in
   s3://datalake/00_landing/meteo/openmeteo/<cell>/<year>.json. A file that
   lacks a variable of the configuration (one added later) is asked again
@@ -37,7 +38,7 @@ plan for non commercial use).
   not open. CAPE is smooth, so its cells are of 0.25 degrees (the GFS grid)
   and the whole window fits in the daily limit together with the history.
 - --fuente openmeteo_previo asks the Previous Runs API for the forecasts of
-  ICON-EU made one and two days before every hour (archived from January
+  ICON-EU made one, two and three days before every hour (archived from January
   2024): what the operator could know the day before. The same request,
   only the API and the suffixed variables change.
 
@@ -216,6 +217,29 @@ def filesystem():
     return s3fs.S3FileSystem(client_kwargs={"endpoint_url": endpoint})
 
 
+class LocalFiles:
+    """The calls of s3fs that the live jobs make, on a local folder (the tests, a run outside the lakehouse)."""
+
+    def glob(self, pattern: str) -> list:
+        import glob
+
+        return sorted(glob.glob(pattern))
+
+    def open(self, path: str, mode: str = "r"):
+        return open(path, mode) if "b" in mode else open(path, mode, encoding="utf-8")
+
+    def exists(self, path: str) -> bool:
+        return os.path.exists(path)
+
+    def makedirs(self, path: str, exist_ok: bool = True):
+        os.makedirs(path, exist_ok=exist_ok)
+
+
+def live_filesystem(path: str):
+    """s3fs for an s3:// path, LocalFiles for a folder."""
+    return filesystem() if str(path).startswith("s3://") else LocalFiles()
+
+
 def read_reference(fs, path: str) -> list:
     import pandas as pd
 
@@ -231,7 +255,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
     parser.add_argument("--fuente", default="openmeteo",
-                        help="Block of the configuration: openmeteo (reanalysis) or openmeteo_convectivo (CAPE)")
+                        help="Block of config_bronze_meteo.json: openmeteo (reanalysis), openmeteo_convectivo (CAPE), "
+                             "openmeteo_extra, openmeteo_previo* (Previous Runs API) or openmeteo_pasadas_ifs")
     parser.add_argument("--max-peticiones", type=int, default=None, help="Stop after this many requests")
     args = parser.parse_args(argv)
 

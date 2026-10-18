@@ -24,8 +24,8 @@ Bronze of the hourly weather downloaded by job_landing_meteo_openmeteo.py.
   code and radiation) by cell of 0.25 degrees: they change slowly in space,
   and with the coarser grid the whole history fits in the free plan.
 - With --fuente openmeteo_previo, meteo_openmeteo_previo_hora: the forecasts
-  that ICON-EU gave for every hour one and two days before
-  (<variable>_previous_day1 and _previous_day2 of the Previous Runs API,
+  that ICON-EU gave for every hour one, two and three days before
+  (<variable>_previous_day1, _previous_day2 and _previous_day3 of the Previous Runs API,
   archived from January 2024) and the run of the same day, by cell of 0.1
   degrees. It is the weather the operator could know the day before, to
   measure how much of what the reanalysis gives survives with a real

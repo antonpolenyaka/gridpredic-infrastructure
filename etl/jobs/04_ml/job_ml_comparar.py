@@ -73,8 +73,9 @@ def main(argv=None):
     if args.runs:
         runs = runs[runs["run_id"].isin(args.runs.split(","))]
     else:
-        # The risk hours (hr_*) are another unit, distribuidora and hour.
-        runs = runs[~runs["run_id"].str.startswith("hr_")]
+        # Only the runs of this job (ml_*) have rows in ml_predicciones by CT and hour: the risk hours (hr_*,
+        # mh_*), the days (dia_*, caso_*), the network (red_*, rct_*) and the evenings of Airflow are other units.
+        runs = runs[runs["run_id"].str.startswith("ml_")]
     runs["etiqueta"] = [f"{i + 1}_{run_label(c)}" for i, c in enumerate(runs["config_json"])]
     logger.info("Runs to compare: %s", dict(zip(runs["run_id"], runs["etiqueta"])))
 

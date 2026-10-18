@@ -51,10 +51,11 @@ the level of riesgo_manana.niveles (muy alto, alto, medio, and bajo below),
 the reasons (the GROUPS of features that raise the probability most against
 an average day, with the factor they multiply its odds by; none below the
 base rate), the municipalities with the strongest forecast gust against the
-climate of their cell, and the main inputs. Also a row in ml_runs and
-resumen.md, prediccion.csv, the coefficients of the model when it is linear
-(coeficientes.csv, ml_models.linear_terms) and the model as fitted
-(modelo.pkl) in exportar_dir/<run_id>/.
+climate of their cell, and the main inputs. Also a row in ml_runs and, in
+exportar_dir/<run_id>/: resumen.md, prediccion.csv, zonas.csv, the
+coefficients of the model when it is linear (coeficientes.csv,
+ml_models.linear_terms), the model as fitted (modelo.pkl), riesgo.json and
+parte_guardia.xlsx (the two the dashboard gets too).
 
     docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g \\
         /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json --fecha 2026-10-14
@@ -69,11 +70,16 @@ of the live day and only gets the dated copies (riesgo_<day>.json), which
 index.html shows with ?dia=YYYYMMDD. For a demo of a storm (the forecast of
 the evening of 27.01.2026):
 
-    ... job_ml_riesgo_manana.py --config ... --fecha 2026-01-28 --desde-gold --solo-archivo --run-id demo_20260128
+    docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 4g \
+        /app/jobs/04_ml/job_ml_riesgo_manana.py --config /app/config/04_ml/config_ml.json \
+        --fecha 2026-01-28 --desde-gold --solo-archivo --run-id demo_20260128
+
+No --py-files: the job puts its folder and the Landing, Bronze and Silver
+folders in sys.path, the arithmetic is pandas in the driver and Spark only
+reads and writes Delta.
 """
 
 import argparse
-import glob
 import hashlib
 import json
 import tempfile
@@ -99,7 +105,7 @@ import ml_metrics  # noqa: E402
 import ml_models  # noqa: E402
 from job_bronze_datos_publicos import parse_aemet_archive, polygon_points  # noqa: E402
 from job_bronze_meteo_openmeteo import merge_local_hours, payload_frame  # noqa: E402
-from job_landing_meteo_openmeteo import filesystem  # noqa: E402
+from job_landing_meteo_openmeteo import LocalFiles, live_filesystem  # noqa: E402, F401 (LocalFiles: the tests)
 from job_landing_vivo import day_folder, target_day  # noqa: E402
 from job_ml_horas_riesgo import export, refit, to_arrays, train  # noqa: E402
 from job_ml_meteo_historia import FACTS_TABLE, add_history, read_events  # noqa: E402
@@ -220,8 +226,9 @@ OUTLOOK_COLUMNS = [
     ("fecha", "date"), ("distribuidora_id", "bigint"), ("distribuidora", "string"), ("probabilidad", "double"),
     ("tasa_base", "double"), ("veces_tasa_base", "double"), ("percentil", "double"), ("nivel", "string"),
     ("racha_max_kmh", "double"), ("racha_clima_max", "double"), ("lluvia_mm", "double"), ("aviso_max_nivel", "double"),
-    ("cobertura_prevision", "double"), ("entrenado_hasta", "date"), ("dias_entreno", "bigint"), ("variante", "string"),
-    ("modelo", "string"), ("prevision_pedida_utc", "string"), ("run_id", "string"), ("creado_ts", "timestamp"),
+    ("hoy_racha_max_kmh", "double"), ("cobertura_prevision", "double"), ("entrenado_hasta", "date"),
+    ("dias_entreno", "bigint"), ("variante", "string"), ("modelo", "string"), ("prevision_pedida_utc", "string"),
+    ("run_id", "string"), ("creado_ts", "timestamp"),
 ]
 # Output column -> live feature.
 INPUTS = {"racha_max_kmh": "dia_racha_max", "racha_clima_max": "ext_racha_clima_max", "lluvia_mm": "dia_lluvia_max",
@@ -275,26 +282,6 @@ def moment(stamp: str) -> str:
 # ---------------------------------------------------------------------------
 # The live Landing
 # ---------------------------------------------------------------------------
-
-class LocalFiles:
-    """The calls of s3fs that the job makes, on a local folder (the tests, a run outside the lakehouse)."""
-
-    def glob(self, pattern: str) -> list:
-        return sorted(glob.glob(pattern))
-
-    def open(self, path: str, mode: str = "r"):
-        return open(path, mode) if "b" in mode else open(path, mode, encoding="utf-8")
-
-    def exists(self, path: str) -> bool:
-        return os.path.exists(path)
-
-    def makedirs(self, path: str, exist_ok: bool = True):
-        os.makedirs(path, exist_ok=exist_ok)
-
-
-def live_filesystem(path: str):
-    return filesystem() if path.startswith("s3://") else LocalFiles()
-
 
 def read_json(fs, path: str) -> dict:
     with fs.open(path, "r") as file:
@@ -625,13 +612,31 @@ def warnings_until(spark) -> pd.Timestamp:
     return pd.Timestamp(found) if found is not None else pd.NaT
 
 
+def labelled_until(spark, pdf: pd.DataFrame, calser: pd.Timestamp, day: pd.Timestamp, variant: dict,
+                   margin_days: int) -> pd.Timestamp:
+    """
+    The last day whose label, weather and warnings are known: the last
+    incident of the copy of Calser (calser) minus margin_days, the day before
+    D, the last day with weather in the table and, when the variant has the
+    warnings block, the last warning of the archive. The evening (45 days)
+    and the business case (its own margin) share it.
+    """
+    ends = [calser.floor("D") - pd.Timedelta(days=int(margin_days)), day - pd.Timedelta(days=1)]
+    if "dia_racha_max" in pdf.columns:
+        ends.append(pdf.loc[pdf["dia_racha_max"].notna(), "fecha"].max())
+    if "avisos" in variant["bloques"]:
+        ends.append(warnings_until(spark).floor("D"))
+    return min(e for e in ends if pd.notna(e))
+
+
 def distributor_names(spark) -> dict:
-    """{distribuidora_id: name}: the Calser database of its interruptions without the prefix."""
+    """
+    {distribuidora_id: "Distribuidora <id>"} for every distribuidora with interruptions: the fallback of
+    riesgo_manana.nombres, so a network without a name there never shows the name of its database.
+    """
     facts = spark.table(FACTS_TABLE)
-    if "source_database" not in facts.columns:
-        return {}
-    rows = facts.select(F.col("distribuidora_id").cast("long").alias("d"), "source_database").distinct().collect()
-    return {int(r["d"]): str(r["source_database"]).replace("Calser_", "") for r in rows if r["source_database"]}
+    rows = facts.select(F.col("distribuidora_id").cast("long").alias("d")).distinct().collect()
+    return {int(r["d"]): f"Distribuidora {int(r['d'])}" for r in rows if r["d"] is not None}
 
 
 def save_prediction(spark, pdf: pd.DataFrame, table: str, day: pd.Timestamp, columns: list = None):
@@ -651,11 +656,11 @@ def save_prediction(spark, pdf: pd.DataFrame, table: str, day: pd.Timestamp, col
 # Zones and crews (riesgo_zonas)
 # ---------------------------------------------------------------------------
 
-def gold_cell_days(spark) -> pd.DataFrame:
+def gold_cell_days(spark, min_hours: int) -> pd.DataFrame:
     """
     (celda_id, fecha, racha_max, clima_max, lluvia, temp_max, hora_pico) of
-    the reanalysis of every cell and day in Gold; days with fewer than 20
-    hours are left null.
+    the reanalysis of every cell and day in Gold; days with fewer than
+    min_hours hours (meteo_dia.horas_minimas_dia) are left null.
     """
     weather = spark.table(WEATHER_TABLE)
     clima = F.col("met_racha_clima_1h") if "met_racha_clima_1h" in weather.columns else F.lit(None).cast("double")
@@ -666,17 +671,17 @@ def gold_cell_days(spark) -> pd.DataFrame:
              .toPandas())
     daily["fecha"] = pd.to_datetime(daily["fecha"])
     daily["hora_pico"] = pd.to_datetime(daily["hora_pico"])
-    short = daily["horas"] < 20
+    short = daily["horas"] < min_hours
     daily.loc[short, ["racha_max", "clima_max", "lluvia", "temp_max"]] = np.nan
     return daily.drop(columns="horas")
 
 
-def live_cell_days(cells_hours: pd.DataFrame, climate: pd.Series, day: pd.Timestamp) -> pd.DataFrame:
+def live_cell_days(cells_hours: pd.DataFrame, climate: pd.Series, day: pd.Timestamp, min_hours: int) -> pd.DataFrame:
     """The same daily weather of every cell for D from the live forecast (racha_1h, lluvia_1h, temp_1h)."""
     part = cells_hours[cells_hours["hora"].dt.floor("D") == day]
     out = part.groupby("celda_id").agg(racha_max=("racha_1h", "max"), lluvia=("lluvia_1h", "sum"),
                                        temp_max=("temp_1h", "max"), horas=("racha_1h", "count")).reset_index()
-    out = out[out["horas"] >= 20].drop(columns="horas")
+    out = out[out["horas"] >= min_hours].drop(columns="horas")
     p98 = out["celda_id"].map(climate).astype("float64")
     out["clima_max"] = out["racha_max"] / p98.where(p98 > 0)
     out["fecha"] = day
@@ -684,20 +689,9 @@ def live_cell_days(cells_hours: pd.DataFrame, climate: pd.Series, day: pd.Timest
 
 
 def fit_zone_model(rows: pd.DataFrame, features: list, config: dict, cfg: dict):
-    """The logistic regression of the zone days: the regularisation chosen on the last quarter of the days."""
-    seed = int(config.get("semilla", 0))
-    n_jobs = int(config.get("n_jobs", -1))
+    """The logistic regression of the zone days (label y), fitted like the model of the day with its own grid."""
     grid = cfg.get("busqueda", {}).get("logistica") or [{"C": 0.003}, {"C": 0.01}, {"C": 0.03}, {"C": 0.1}]
-    days = np.sort(rows["fecha"].unique())
-    cut = days[int(len(days) * (1 - float(cfg.get("fraccion_validacion_interna", 0.25))))]
-    X, y = to_arrays(rows[rows["fecha"] < cut], features, "y")
-    Xv, yv = to_arrays(rows[rows["fecha"] >= cut], features, "y")
-    inner = {"X": X, "y": y, "w": np.ones(len(y)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)), "feature_names": features}
-    scorers, search = train(["logistica"], {**config, "busqueda": {"logistica": grid}}, {"busqueda": {}}, inner,
-                            float(y.mean()), False, references=False)
-    Xa, ya = to_arrays(rows, features, "y")
-    full = {"X": Xa, "y": ya, "w": np.ones(len(ya)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)), "feature_names": features}
-    return refit("logistica", scorers["logistica"], full, seed, n_jobs), search, Xa
+    return fit(rows, features, "logistica", config, cfg, label="y", grid=grid)
 
 
 def road_minutes(fs, zcfg: dict, municipalities: pd.DataFrame, dist: int):
@@ -746,13 +740,15 @@ def road_minutes(fs, zcfg: dict, municipalities: pd.DataFrame, dist: int):
 def zone_outputs(spark, config: dict, rcfg: dict, cfg: dict, variant: dict, pdf: pd.DataFrame, events: pd.DataFrame,
                  live: pd.DataFrame, probability: np.ndarray, cells_hours: pd.DataFrame, climate: pd.Series,
                  hourly: pd.DataFrame, day: pd.Timestamp, end: pd.Timestamp, names: dict, levels: dict,
-                 fs=None) -> dict:
+                 fs=None, history_in_model: bool = True) -> dict:
     """
     {distribuidora_id: {...}} with the risk of tomorrow below the
     distribuidora: zones (lines), municipalities, CTs, the window of the day,
     the mix of causes, the expected impact and the crews, from riesgo_zonas.
     pdf is the daily table of the training, live the row of tomorrow of every
-    distribuidora and probability its probability of the day.
+    distribuidora and probability its probability of the day. Without
+    history_in_model the hist_* of the distribuidora stay out of the zone
+    model too (the copy of Calser is stale), as in the model of the day.
     """
     zcfg = {**DEFAULTS["riesgo_zonas"], **rcfg.get("riesgo_zonas", {})}
     dim = spark.table(DIM_TABLE)
@@ -774,10 +770,12 @@ def zone_outputs(spark, config: dict, rcfg: dict, cfg: dict, variant: dict, pdf:
         ev = events
     zones = rz.zones_of(ct)
     starts = rz.local_starts(ev, ct)
-    cell_days = gold_cell_days(spark)
+    min_hours = int(cfg["horas_minimas_dia"])
+    cell_days = gold_cell_days(spark, min_hours)
     weather = rz.zone_weather(ct, cell_days)
-    day_features = [c for c in pdf.columns if c.startswith(("cal_", "hist_", "aviso_", "dia_", "ext_", "ayer_"))
-                    and c in live.columns and c != "hist_horas_desde_ultima"]
+    prefixes = ("cal_", "hist_", "aviso_", "dia_", "ext_", "ayer_") if history_in_model else ("cal_", "aviso_", "dia_", "ext_", "ayer_")
+    day_features = [c for c in pdf.columns if c.startswith(prefixes) and c in live.columns
+                    and c != "hist_horas_desde_ultima"]
     table = rz.zone_days(zones, starts, weather, pdf, day_features, variant["desde"], f"{end:%Y-%m-%d}")
     table = table[table["fecha"] <= end]
     features = rz.zone_features(zones, day_features)
@@ -788,7 +786,7 @@ def zone_outputs(spark, config: dict, rcfg: dict, cfg: dict, variant: dict, pdf:
 
     # Tomorrow: the zones with their history at D and the forecast of their cells.
     today = zones[["distribuidora_id", "zona"] + rz.ZONE_FEATURES_SIZE].assign(fecha=day)
-    today = today.merge(rz.zone_weather(ct, live_cell_days(cells_hours, climate, day)), on=["distribuidora_id", "zona", "fecha"], how="left")
+    today = today.merge(rz.zone_weather(ct, live_cell_days(cells_hours, climate, day, min_hours)), on=["distribuidora_id", "zona", "fecha"], how="left")
     today = rz.zone_history(today, starts)
     today = today.merge(live[["distribuidora_id"] + day_features], on="distribuidora_id", how="left")
     for dist in sorted(zones["distribuidora_id"].unique()):
@@ -845,7 +843,7 @@ def zone_outputs(spark, config: dict, rcfg: dict, cfg: dict, variant: dict, pdf:
         # The municipality with the strongest forecast gust against its climate names the zones' weather.
         racha_m = {}
         if "celda_id" in ct.columns:
-            cell_day = live_cell_days(cells_hours, climate, day).set_index("celda_id")["racha_max"]
+            cell_day = live_cell_days(cells_hours, climate, day, min_hours).set_index("celda_id")["racha_max"]
             racha_m = (ct[ct["distribuidora_id"] == dist].assign(r=lambda t: t["celda_id"].map(cell_day))
                        .groupby("municipio")["r"].max().to_dict())
         municipalities["racha_max"] = municipalities["municipio"].map(racha_m)
@@ -973,6 +971,7 @@ def dashboard_payload(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out
                    "dias": info["dias"], "positivos": info["positivos"], "entrenado_hasta": f"{info['entrenado_hasta']:%d.%m.%Y}",
                    "zonas": {k: v for k, v in common.items() if k in ("n_zonas", "dias", "positivos", "params")}},
         "fuentes": {"prevision_pedida": moment(info["prevision_pedida_utc"]),
+                    "repetido": info["prevision_pedida_utc"] == "gold",
                     "pasada_prevision": moment((info.get("pasada_prevision") or {}).get("pasada_utc")),
                     "avisos_texto": info["avisos_texto"],
                     "calser_hasta": f"{info['calser_hasta']:%d.%m.%Y}" if pd.notna(info["calser_hasta"]) else None,
@@ -988,25 +987,31 @@ def dashboard_payload(day: pd.Timestamp, out: pd.DataFrame, info: dict, zone_out
 # Model
 # ---------------------------------------------------------------------------
 
-def fit(rows: pd.DataFrame, features: list, name: str, config: dict, cfg: dict) -> tuple:
+def fit(rows: pd.DataFrame, features: list, name: str, config: dict, cfg: dict, label: str = MAIN_LABEL,
+        grid: list = None) -> tuple:
     """
     (scorer, search rows, matrix of the training days): the configurations of
     the model compared on the last share of the days, the best one fitted
-    again on all of them.
+    again on all of them. The grid is the one of the configuration
+    (busqueda) unless grid gives another, as the zone model does.
     """
     seed = int(config.get("semilla", 0))
     n_jobs = int(config.get("n_jobs", -1))
     days = np.sort(rows["fecha"].unique())
     cut = days[int(len(days) * (1 - float(cfg.get("fraccion_validacion_interna", 0.25))))]
-    X, y = to_arrays(rows[rows["fecha"] < cut], features, MAIN_LABEL)
-    Xv, yv = to_arrays(rows[rows["fecha"] >= cut], features, MAIN_LABEL)
+    X, y = to_arrays(rows[rows["fecha"] < cut], features, label)
+    Xv, yv = to_arrays(rows[rows["fecha"] >= cut], features, label)
     inner = {"X": X, "y": y, "w": np.ones(len(y)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)),
              "feature_names": features}
     logger.info("Choosing %s on %s days (%s with interruptions) and %s days from %s (%s)", name, len(y), int(y.sum()),
                 len(yv), pd.Timestamp(cut).date(), int(yv.sum()))
-    scorers, search = train([name], config, cfg, inner, float(y.mean()), False, references=False)
+    if grid is None:
+        scorers, search = train([name], config, cfg, inner, float(y.mean()), False, references=False)
+    else:
+        scorers, search = train([name], {**config, "busqueda": {name: grid}}, {"busqueda": {}}, inner, float(y.mean()),
+                                False, references=False)
 
-    Xa, ya = to_arrays(rows, features, MAIN_LABEL)
+    Xa, ya = to_arrays(rows, features, label)
     full = {"X": Xa, "y": ya, "w": np.ones(len(ya)), "Xv": Xv, "yv": yv, "wv": np.ones(len(yv)),
             "feature_names": features}
     return refit(name, scorers[name], full, seed, n_jobs), search, Xa
@@ -1160,8 +1165,9 @@ def report_notes(out: pd.DataFrame, info: dict) -> list:
     if not info["historia_al_dia"]:
         how = ("el modelo toma la mediana de los días de entrenamiento" if info.get("historia_en_modelo")
                else "el modelo de esta tarde se entrena sin ella")
-        notes.append(f"La copia de Calser llega hasta el {info['calser_hasta']:%d.%m.%Y}: la historia de incidencias "
-                     f"no está al día y {how}.")
+        until = (f"llega hasta el {info['calser_hasta']:%d.%m.%Y}" if pd.notna(info.get("calser_hasta"))
+                 else "no tiene incidencias")
+        notes.append(f"La copia de Calser {until}: la historia de incidencias no está al día y {how}.")
     for row in out[out["cobertura_prevision"] < 0.999].itertuples():
         notes.append(f"{row.distribuidora}: solo el {number(100 * row.cobertura_prevision, 0)} % de sus CT está en "
                      "celdas con previsión.")
@@ -1177,6 +1183,9 @@ def report_notes(out: pd.DataFrame, info: dict) -> list:
         notes.append(f"La previsión es de la pasada de {moment(run.get('pasada_utc'))}, que tenía "
                      f"{number(float(hours), 0)} horas cuando se pidió: Open-Meteo no ha publicado pasadas nuevas de "
                      "ICON-EU y el día se puntúa con una previsión vieja.")
+    if info.get("pasado_manana_error"):
+        notes.append(f"La orientación de pasado mañana no se ha calculado ({info['pasado_manana_error']}); el riesgo "
+                     "de mañana no cambia.")
     return notes
 
 
@@ -1342,10 +1351,11 @@ def two_day_outlook(spark, config: dict, rcfg: dict, cfg: dict, pdf: pd.DataFram
 
     live = pd.DataFrame({"distribuidora_id": dists})
     live = live.merge(weather_features(hourly, day2, cfg), on="distribuidora_id", how="left")
-    # The last day known the evening of D is D itself (hace2_* of D + 2).
+    # The last day of weather known this evening is today (day - 1): the hace2_* of D + 2, as the training builds
+    # them (HORIZONS[2], the weather of the scored day minus two). Tomorrow is still a forecast.
     daily = daily_weather(hourly, int(cfg["horas_minimas_dia"]))
-    before = daily[daily["fecha"] == day].rename(columns={c: f"hace2_{c}" for c in daily.columns
-                                                          if c not in ("distribuidora_id", "fecha")})
+    before = daily[daily["fecha"] == day - pd.Timedelta(days=1)].rename(
+        columns={c: f"hace2_{c}" for c in daily.columns if c not in ("distribuidora_id", "fecha")})
     live = live.merge(before.drop(columns="fecha"), on="distribuidora_id", how="left")
     warned = warning_features(warnings, weights, day2, dists)
     warned = warned.rename(columns={c: c.replace("aviso_", "aviso48_", 1) for c in warned.columns if c.startswith("aviso_")})
@@ -1384,6 +1394,8 @@ def two_day_outlook(spark, config: dict, rcfg: dict, cfg: dict, pdf: pd.DataFram
             "percentil": percentile, "nivel": level_of(percentile, rcfg["niveles"]),
             "racha_max_kmh": value("dia_racha_max"), "racha_clima_max": value("ext_racha_clima_max"),
             "lluvia_mm": value("dia_lluvia_max"), "aviso_max_nivel": value("aviso48_max_nivel"),
+            # The strongest gust of today, the last day known this evening (hace2_* of D + 2).
+            "hoy_racha_max_kmh": value("hace2_racha_max"),
             "cobertura_prevision": float(coverage.get(dist, 0.0)), "entrenado_hasta": end.date(),
             "dias_entreno": int(mask.sum()), "variante": variant["nombre"], "modelo": name,
             "prevision_pedida_utc": forecast_asked, "run_id": run_id, "creado_ts": created,
@@ -1448,7 +1460,9 @@ def day_summary(payload: dict, name: str, dashboard: str) -> dict:
         "fecha": payload.get("fecha") or f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}",
         "fecha_texto": payload.get("fecha_texto") or f"{stamp[6:]}.{stamp[4:6]}.{stamp[:4]}",
         "dia": stamp, "fichero": name, "generado": payload.get("generado"), "run_id": payload.get("run_id"),
-        "repetido": "repetido" in forecast or "Gold" in forecast, "prevision": forecast,
+        # fuentes.repetido since the 0.16.0; the days archived before only have the words of moment("gold").
+        "repetido": bool(sources["repetido"]) if "repetido" in sources else ("repetido" in forecast or "Gold" in forecast),
+        "prevision": forecast,
         "modelo": (payload.get("modelo") or {}).get("descripcion"),
         "distribuidoras": dists,
         "pasado_manana": {"fecha": outlook.get("fecha"), "fecha_texto": outlook.get("fecha_texto"),
@@ -1583,13 +1597,7 @@ def main(argv=None):
     # The last day whose label, weather and warnings are known.
     events, known = read_events(spark, cfg)
     calser = calser_until(spark, events, day)
-    margin = pd.Timedelta(days=int(rcfg["margen_etiquetas_dias"]))
-    ends = [calser.floor("D") - margin, day - pd.Timedelta(days=1)]
-    if "dia_racha_max" in pdf.columns:
-        ends.append(pdf.loc[pdf["dia_racha_max"].notna(), "fecha"].max())
-    if "avisos" in variant["bloques"]:
-        ends.append(warnings_until(spark).floor("D"))
-    end = min(e for e in ends if pd.notna(e))
+    end = labelled_until(spark, pdf, calser, day, variant, int(rcfg["margen_etiquetas_dias"]))
     rows = pdf[(pdf["fecha"] >= pd.Timestamp(variant["desde"])) & (pdf["fecha"] <= end)].reset_index(drop=True)
     logger.info("Training days of %s up to %s: %s (%s with interruptions); Calser up to %s", variant["nombre"],
                 end.date(), len(rows), int(rows[MAIN_LABEL].sum()), calser)
@@ -1663,7 +1671,7 @@ def main(argv=None):
     zone_out = {}
     if spark.catalog.tableExists(DIM_TABLE):
         zone_out = zone_outputs(spark, config, rcfg, cfg, variant, pdf, events, live, probability, cells_hours, climate,
-                                hourly, day, end, names, rcfg["niveles"], fs)
+                                hourly, day, end, names, rcfg["niveles"], fs, history_in_model)
     else:
         logger.warning("%s not found: no risk by zones", DIM_TABLE)
 
@@ -1724,6 +1732,7 @@ def main(argv=None):
         save_prediction(spark, zone_rows, rcfg["tabla_zonas"], day, ZONE_COLUMNS)
 
     outlook = pd.DataFrame()
+    outlook_error = None
     if not args.desde_gold:
         try:
             outlook = two_day_outlook(spark, config, rcfg, cfg, pdf, blocks, end, hourly, cells_hours, weights, warnings,
@@ -1731,6 +1740,7 @@ def main(argv=None):
                                       history_in_model)
         except Exception as error:  # noqa: BLE001
             logger.error("Outlook of D + 2 not computed: %s", error)
+            outlook_error = f"{type(error).__name__}: {str(error)[:200]}"
 
     in_force = warnings_of_day(warnings, day)
     count = len(in_force[["fenomeno_codigo", "inicio_ts", "fin_ts"]].drop_duplicates())
@@ -1751,6 +1761,7 @@ def main(argv=None):
         "prevision_modelos": {} if args.desde_gold else forecast_models(fs, folder),
         "prevision_modelo_principal": rcfg.get("prevision", {}).get("modelo", "icon_eu"),
         "pasada_max_horas": float(rcfg.get("pasada_max_horas", STALE_RUN_H)),
+        "pasado_manana_error": outlook_error,
     }
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
     seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"], names)

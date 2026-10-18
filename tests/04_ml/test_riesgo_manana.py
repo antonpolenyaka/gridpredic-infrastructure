@@ -431,7 +431,6 @@ def config_path(workdir):
     config["exportar_dir"] = os.path.join(workdir, "resultados")
     config["spark_conf"] = {}
     config["riesgo_manana"]["dashboard_dir"] = os.path.join(workdir, "dashboard")
-    # The outlook of pasado manana is off in production until the 72 h backtest is in; the tests keep it on.
     config["riesgo_manana"]["variante_pasado_manana"] = "operativa_48h"
     config["riesgo_manana"]["riesgo_zonas"] = {"brigadas": {"1": 1, "2": 1}, "bases_fijas": {"1": ["Torre de Santa María"]}}
     # The names shown (the fixture has the distribuidoras 1 and 2, with Calser_EOSA and Calser_Pitarch as databases).
@@ -525,8 +524,8 @@ def test_the_storm_with_a_warning_is_the_riskiest_day(first):
     assert rows["avisos_disponibles"].all() and rows["historia_al_dia"].all()
     assert (rows["cobertura_prevision"] == 1.0).all()
     assert str(storm["calser_hasta"]) == "2026-01-13"
-    # Labels, weather and warnings: the archive of warnings ends first.
-    assert str(storm["entrenado_hasta"]) <= "2025-12-29"
+    # Labels, weather and warnings: the last incident of Calser (13.01.2026) minus the margin of 45 days ends first.
+    assert str(storm["entrenado_hasta"]) == "2025-11-29"
     assert storm["dias_entreno"] > 1500 and storm["modelo"] == "logistica" and storm["variante"] == "operativa"
 
 
@@ -595,6 +594,8 @@ def test_the_outlook_of_two_days_ahead_is_scored_the_same_evening(first, spark, 
     assert outlook.loc[2, "nivel"] in ("bajo", "medio")
     # The warning of the test is for the 15th only: nothing for the 16th.
     assert outlook.loc[1, "aviso_max_nivel"] == 0.0 and outlook.loc[1, "cobertura_prevision"] == 1.0
+    # The last day known this evening is today, the 14th (calm, 25 km/h): never the forecast of the 15th (105).
+    assert outlook.loc[1, "hoy_racha_max_kmh"] == pytest.approx(25.0, abs=0.5)
     # In riesgo.json, after the day of tomorrow, as an orientation.
     payload = json.load(open(os.path.join(workdir, "dashboard", "riesgo.json"), encoding="utf-8"))
     block = payload["pasado_manana"]
@@ -634,6 +635,32 @@ def test_an_old_copy_of_calser_leaves_the_history_out_of_the_model(first, spark,
     assert "el modelo de esta tarde se entrena sin ella" in text
     payload = json.load(open(os.path.join(workdir, "dashboard", "riesgo.json"), encoding="utf-8"))
     assert payload["fuentes"]["historia_al_dia"] is False and payload["fuentes"]["historia_en_modelo"] is False
+    # The model is the same without the history: the coefficients of the evening carry no hist_* variable.
+    terms = pd.read_csv(os.path.join(workdir, "resultados", RUN_ID + "_3", "coeficientes.csv"))
+    assert not terms["variable"].str.startswith("hist_").any()
+    # The zone model goes without the history of the distribuidora too, and its notes say nothing of a median.
+    assert "mediana" not in text
+
+
+def test_the_old_copy_of_calser_with_the_history_kept_and_the_median(first, spark, config_path, workdir):
+    """historia_desfasada "mediana": the model keeps the history, tomorrow takes the median of the training days."""
+    later = DAY + pd.Timedelta(days=40)
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    config["riesgo_manana"]["historia_desfasada"] = "mediana"
+    path = os.path.join(workdir, "config_mediana.json")
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(config, file)
+    landing = land(workdir, later, storm=False, warned=False)
+    assert rm.main(["--run-id", RUN_ID + "_4", "--config", path, "--fecha", f"{later:%Y-%m-%d}", "--landing", landing,
+                    "--solo-archivo"]) == 0
+    text = open(os.path.join(workdir, "resultados", RUN_ID + "_4", "resumen.md"), encoding="utf-8").read()
+    assert "el modelo toma la mediana de los días de entrenamiento" in text
+    terms = pd.read_csv(os.path.join(workdir, "resultados", RUN_ID + "_4", "coeficientes.csv"))
+    assert terms["variable"].str.startswith("hist_").any()
+    rows = spark.table("l3_gold.riesgo_dia_siguiente").toPandas()
+    new = rows[rows["run_id"] == RUN_ID + "_4"]
+    assert len(new) == 2 and not new["historia_al_dia"].any()
 
 
 def test_a_past_day_is_played_again_from_gold_without_touching_the_live_day(first, spark, config_path, workdir):
