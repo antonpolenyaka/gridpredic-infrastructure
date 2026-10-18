@@ -463,7 +463,7 @@
       <li>No dice qué centro de transformación se quedará sin luz: da el día, la franja horaria, la zona y las líneas de más riesgo, y un ranking histórico de CT.</li>
       <li>No ve el estado de los equipos: las averías de equipos y de causa desconocida en días de calma caen en días "bajos", que se llevan el ${pct(stats.total ? stats.by.bajo.h / stats.total : 0)} de las horas-cliente.</li>
       <li>Con ${num(totalInc / yearsOfData, 0)} incidencias al año por distribuidora, la parte de las horas-cliente que cae en días de alerta suele quedar entre el 30 % y el 70 % según el año, y en estas redes ha ido del 3 % al 88 %; por eso el valor se mide con varios años juntos.</li>
-      <li>Mover las brigadas de base según el riesgo del día gana menos de un minuto de TIEPI al año: el valor está en tener gente y material preparados los días y en la franja que toca.</li>
+      <li>No sustituye la logística: la decisión de quién está de guardia, desde qué base salen las brigadas, con qué material y si hace falta reforzar con gente de fuera sigue siendo de la distribuidora; el sistema da la víspera el día, la franja y la zona para tomarla a tiempo.</li>
     </ul></section>`;
 
     root.innerHTML = html;
