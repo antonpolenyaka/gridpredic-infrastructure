@@ -200,6 +200,14 @@ details.meta-detalles[open] > summary { margin-bottom: var(--s-3); }
    the levels are only for levels. */
 .strip.aviso { border-color: var(--accent); border-left-width: 4px; background: var(--accent-soft); color: var(--accent-ink); }
 .strip.aviso a { color: inherit; text-decoration: underline; }
+/* The notice of the public demo (demo.js, only outside the laptop): the accent of the notices, under the menu and
+   above the page header, so every page says what it is before anything else. */
+.demo-aviso {
+  padding: 10px var(--gutter); border-bottom: 1px solid var(--accent); border-left: 4px solid var(--accent);
+  background: var(--accent-soft); color: var(--accent-ink); font-size: var(--fs-2); line-height: 1.45;
+}
+.demo-aviso b { font-weight: 600; }
+.demo-aviso a { color: inherit; text-decoration: underline; white-space: nowrap; }
 .strip.guardia-si { border-color: var(--guardia); background: var(--accent-soft); color: var(--accent-ink); }
 .strip.suave { color: var(--muted); }
 .strip .nivel { font-size: 12px; }

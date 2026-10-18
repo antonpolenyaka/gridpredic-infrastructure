@@ -620,9 +620,16 @@ def test_a_new_run_of_the_same_day_replaces_it_and_says_when_aemet_is_missing(fi
 
 
 def test_an_old_copy_of_calser_leaves_the_history_out_of_the_model(first, spark, config_path, workdir):
+    """historia_desfasada "sin_historia": the model of the evening is fitted without the history block."""
     later = DAY + pd.Timedelta(days=40)
+    with open(config_path, encoding="utf-8") as file:
+        config = json.load(file)
+    config["riesgo_manana"]["historia_desfasada"] = "sin_historia"
+    path = os.path.join(workdir, "config_sin_historia.json")
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(config, file)
     landing = land(workdir, later, storm=False, warned=False)
-    assert rm.main(["--run-id", RUN_ID + "_3", "--config", config_path, "--fecha", f"{later:%Y-%m-%d}",
+    assert rm.main(["--run-id", RUN_ID + "_3", "--config", path, "--fecha", f"{later:%Y-%m-%d}",
                     "--landing", landing]) == 0
     rows = spark.table("l3_gold.riesgo_dia_siguiente").toPandas()
     assert len(rows) == 4
@@ -643,16 +650,13 @@ def test_an_old_copy_of_calser_leaves_the_history_out_of_the_model(first, spark,
 
 
 def test_the_old_copy_of_calser_with_the_history_kept_and_the_median(first, spark, config_path, workdir):
-    """historia_desfasada "mediana": the model keeps the history, tomorrow takes the median of the training days."""
+    """The default (historia_desfasada "mediana"): the model keeps the history, tomorrow takes the median of the training days."""
     later = DAY + pd.Timedelta(days=40)
     with open(config_path, encoding="utf-8") as file:
         config = json.load(file)
-    config["riesgo_manana"]["historia_desfasada"] = "mediana"
-    path = os.path.join(workdir, "config_mediana.json")
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(config, file)
+    assert config["riesgo_manana"].get("historia_desfasada", "mediana") == "mediana"
     landing = land(workdir, later, storm=False, warned=False)
-    assert rm.main(["--run-id", RUN_ID + "_4", "--config", path, "--fecha", f"{later:%Y-%m-%d}", "--landing", landing,
+    assert rm.main(["--run-id", RUN_ID + "_4", "--config", config_path, "--fecha", f"{later:%Y-%m-%d}", "--landing", landing,
                     "--solo-archivo"]) == 0
     text = open(os.path.join(workdir, "resultados", RUN_ID + "_4", "resumen.md"), encoding="utf-8").read()
     assert "el modelo toma la mediana de los días de entrenamiento" in text
