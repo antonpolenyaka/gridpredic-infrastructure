@@ -21,7 +21,7 @@ gridpredic-infrastructure/
 ├── CONTRIBUTING.md              # Cómo trabajamos con Git y GitHub Flow
 ├── CHANGELOG.md                 # Historial de versiones
 ├── CITATION.cff                 # Cómo citar el repositorio
-├── .github/                     # Plantillas de PR e issues, CODEOWNERS y CI
+├── .github/                     # Plantillas de PR e issues, CODEOWNERS, la CI (ci.yml) y la publicación de gridpredic.com (pages.yml, con la comprobación de que el dominio sirve el commit)
 ├── infra/                       # Un directorio por servicio: Dockerfile, conf, healthcheck, post_start
 │   ├── airflow/  hive/  kafka/  kafka-connect/  minio/  postgres/  spark/  trino/
 │   └── sqlserver/
@@ -33,8 +33,8 @@ gridpredic-infrastructure/
 │   └── jobs/                    # Transformaciones con Spark (00_landing ... 03_gold) y modelos, análisis y operación (04_ml)
 ├── data/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
-├── dashboard/                   # Cuadro de mando estático: index.html (riesgo de mañana, Leaflet y OpenStreetMap), dias.html (días archivados, desde data/indice.json), historial.html y negocio.html (lo que habría dicho en 2022 - 2026); gridpredic.css es el sistema de diseño común, motion.js el movimiento (GSAP y ScrollTrigger) y vendor/ lleva Leaflet, GSAP y la tipografía (IBM Plex Sans, OFL); data/ recibe los JSON de los jobs
-├── web/                         # La página pública de GridPredic.com (index.html, gridpredic-web.css, web.js): estática, con la escena de la red ligada al scroll (GSAP y ScrollTrigger en vendor/) y dos capturas del cuadro de mando en img/
+├── dashboard/                   # Cuadro de mando estático (en el portátil, puerto 8086, y como demo pública en gridpredic.com/demo/ con demo.js): index.html (riesgo de mañana, Leaflet y OpenStreetMap), dias.html (días archivados, desde data/indice.json), historial.html y negocio.html (lo que habría dicho en 2022 - 2026); gridpredic.css es el sistema de diseño común, motion.js el movimiento (GSAP y ScrollTrigger) y vendor/ lleva Leaflet, GSAP y la tipografía (IBM Plex Sans, OFL); data/ recibe los JSON de los jobs
+├── web/                         # La página pública de GridPredic.com (index.html, gridpredic-web.css, web.js): estática, con la escena de la red ligada al scroll (GSAP y ScrollTrigger en vendor/) y dos capturas del cuadro de mando en img/; montar_sitio.py monta el sitio que publica GitHub Pages (la página en la raíz, dashboard/ en /demo/ con la copia congelada de datos de web/demo/data, que renueva congelar_demo.ps1)
 ├── docs/                        # Documentación: cards, capas Silver y Gold, modelos, operación, caso de negocio, el diagrama de la arquitectura, este documento
 ├── experimentos/                # El código de cada prueba del cuaderno de laboratorio (docs/investigacion-continua.md), fuera de Spark, y figuras/capturar.py, que saca las figuras de la memoria del cuadro de mando
 │   └── arbolado/  aves/  avisos_antelacion/  consultas_trino/  era5/  evaluacion/  fenologia/  figuras/  fragilidad/  perfil_dia/  suelo_humedad/  umbral_estacion/
