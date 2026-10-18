@@ -1,0 +1,615 @@
+{
+ "generado": "2026-10-18T09:20Z",
+ "fuente": "previsión de la víspera (riesgo_<día>.json) frente a la racha máxima de las estaciones de AEMET a menos de 25 km de la red",
+ "radio_km": 25.0,
+ "hoy": {
+  "fecha": "2026-10-18",
+  "distribuidoras": [
+   {
+    "id": 2,
+    "nombre": "Distribuidora 2",
+    "nivel": "alto",
+    "probabilidad": 0.056898247450590134,
+    "estaciones": 10,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 56,
+    "hora_prevista": 15,
+    "racha_observada_max": 46,
+    "hora_observada": 7,
+    "error_kmh": -10,
+    "pico_en_franja": true,
+    "racha_aemet_max": 51,
+    "hora_aemet": 15,
+    "error_aemet_kmh": -5,
+    "banda_p10": 47,
+    "banda_p50": 52,
+    "banda_p90": 57,
+    "pico_en_banda": false,
+    "nivel_dos_dias": "medio",
+    "probabilidad_dos_dias": 0.04918821156024933,
+    "supera": {
+     "50": 0.72,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 3,
+    "nombre": "Distribuidora 1",
+    "nivel": "medio",
+    "probabilidad": 0.056589119136333466,
+    "estaciones": 17,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 72,
+    "hora_prevista": 21,
+    "racha_observada_max": 55,
+    "hora_observada": 1,
+    "error_kmh": -17,
+    "pico_en_franja": false,
+    "racha_aemet_max": 63,
+    "hora_aemet": 12,
+    "error_aemet_kmh": -8,
+    "banda_p10": 45,
+    "banda_p50": 49,
+    "banda_p90": 54,
+    "pico_en_banda": false,
+    "nivel_dos_dias": "medio",
+    "probabilidad_dos_dias": 0.04529285058379173,
+    "supera": {
+     "50": 0.35,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": true,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 1366,
+    "nombre": "Distribuidora 3",
+    "nivel": "alto",
+    "probabilidad": 0.034624405205249786,
+    "estaciones": 3,
+    "horas_observadas": 11,
+    "aviso_aemet": 1,
+    "racha_prevista_max": 28,
+    "hora_prevista": 18,
+    "racha_observada_max": 44,
+    "hora_observada": 1,
+    "error_kmh": 16,
+    "racha_aemet_max": 34,
+    "hora_aemet": 17,
+    "error_aemet_kmh": 10,
+    "banda_p10": 24,
+    "banda_p50": 33,
+    "banda_p90": 38,
+    "pico_en_banda": false,
+    "nivel_dos_dias": "bajo",
+    "probabilidad_dos_dias": 0.015311027877032757,
+    "supera": {
+     "50": 0.03,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   }
+  ]
+ },
+ "ayer": {
+  "fecha": "2026-10-17",
+  "distribuidoras": [
+   {
+    "id": 2,
+    "nombre": "Distribuidora 2",
+    "nivel": "muy alto",
+    "probabilidad": 0.07517150789499283,
+    "estaciones": 10,
+    "horas_observadas": 11,
+    "aviso_aemet": 1,
+    "racha_prevista_max": 44,
+    "hora_prevista": 14,
+    "racha_observada_max": 55,
+    "hora_observada": 21,
+    "error_kmh": 11,
+    "pico_en_franja": true,
+    "racha_aemet_max": 43,
+    "hora_aemet": 13,
+    "error_aemet_kmh": 12,
+    "banda_p10": 31,
+    "banda_p50": 38,
+    "banda_p90": 46,
+    "pico_en_banda": false,
+    "nivel_dos_dias": "bajo",
+    "probabilidad_dos_dias": 0.024926206097006798,
+    "supera": {
+     "50": 0.05,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": true,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 3,
+    "nombre": "Distribuidora 1",
+    "nivel": "alto",
+    "probabilidad": 0.08503478765487671,
+    "estaciones": 17,
+    "horas_observadas": 11,
+    "aviso_aemet": 1,
+    "racha_prevista_max": 48,
+    "hora_prevista": 20,
+    "racha_observada_max": 56,
+    "hora_observada": 16,
+    "error_kmh": 8,
+    "pico_en_franja": true,
+    "racha_aemet_max": 57,
+    "hora_aemet": 23,
+    "error_aemet_kmh": -1,
+    "banda_p10": 32,
+    "banda_p50": 38,
+    "banda_p90": 44,
+    "pico_en_banda": false,
+    "nivel_dos_dias": "bajo",
+    "probabilidad_dos_dias": 0.03491109982132912,
+    "supera": {
+     "50": 0.03,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": true,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 1366,
+    "nombre": "Distribuidora 3",
+    "nivel": "muy alto",
+    "probabilidad": 0.04686170071363449,
+    "estaciones": 3,
+    "horas_observadas": 11,
+    "aviso_aemet": 1,
+    "racha_prevista_max": 53,
+    "hora_prevista": 22,
+    "racha_observada_max": 32,
+    "hora_observada": 18,
+    "error_kmh": -21,
+    "pico_en_franja": false,
+    "racha_aemet_max": 38,
+    "hora_aemet": 19,
+    "error_aemet_kmh": -6,
+    "banda_p10": 22,
+    "banda_p50": 29,
+    "banda_p90": 35,
+    "pico_en_banda": true,
+    "nivel_dos_dias": "bajo",
+    "probabilidad_dos_dias": 0.012270119041204453,
+    "supera": {
+     "50": 0.0,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   }
+  ]
+ },
+ "dias": {
+  "2026-10-14": [
+   {
+    "id": 2,
+    "nombre": "Distribuidora 2",
+    "nivel": "bajo",
+    "probabilidad": 0.03066488355398178,
+    "estaciones": 10,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 60,
+    "hora_prevista": 11,
+    "racha_observada_max": 35,
+    "hora_observada": 13,
+    "error_kmh": -25,
+    "pico_en_franja": true,
+    "racha_aemet_max": 43,
+    "hora_aemet": 11,
+    "error_aemet_kmh": -8,
+    "banda_p10": 40,
+    "banda_p50": 49,
+    "banda_p90": 60,
+    "pico_en_banda": false,
+    "supera": {
+     "50": 0.45,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 3,
+    "nombre": "Distribuidora 1",
+    "nivel": "bajo",
+    "probabilidad": 0.02584545500576496,
+    "estaciones": 17,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 45,
+    "hora_prevista": 13,
+    "racha_observada_max": 35,
+    "hora_observada": 13,
+    "error_kmh": -10,
+    "pico_en_franja": true,
+    "racha_aemet_max": 46,
+    "hora_aemet": 12,
+    "error_aemet_kmh": -11,
+    "banda_p10": 35,
+    "banda_p50": 40,
+    "banda_p90": 46,
+    "pico_en_banda": true,
+    "supera": {
+     "50": 0.0,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 1366,
+    "nombre": "Distribuidora 3",
+    "nivel": "bajo",
+    "probabilidad": 0.011121840216219425,
+    "estaciones": 3,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 22,
+    "hora_prevista": 13,
+    "racha_observada_max": 27,
+    "hora_observada": 21,
+    "error_kmh": 5,
+    "racha_aemet_max": 21,
+    "hora_aemet": 15,
+    "error_aemet_kmh": 6,
+    "banda_p10": 17,
+    "banda_p50": 21,
+    "banda_p90": 27,
+    "pico_en_banda": true,
+    "supera": {
+     "50": 0.0,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   }
+  ],
+  "2026-10-15": [
+   {
+    "id": 2,
+    "nombre": "Distribuidora 2",
+    "nivel": "bajo",
+    "probabilidad": 0.027108928188681602,
+    "estaciones": 10,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 54,
+    "hora_prevista": 12,
+    "racha_observada_max": 34,
+    "hora_observada": 17,
+    "error_kmh": -20,
+    "pico_en_franja": false,
+    "racha_aemet_max": 31,
+    "hora_aemet": 9,
+    "error_aemet_kmh": 3,
+    "banda_p10": 43,
+    "banda_p50": 48,
+    "banda_p90": 53,
+    "pico_en_banda": false,
+    "supera": {
+     "50": 0.3,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 3,
+    "nombre": "Distribuidora 1",
+    "nivel": "bajo",
+    "probabilidad": 0.027645232155919075,
+    "estaciones": 17,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 45,
+    "hora_prevista": 15,
+    "racha_observada_max": 40,
+    "hora_observada": 19,
+    "error_kmh": -5,
+    "pico_en_franja": true,
+    "racha_aemet_max": 45,
+    "hora_aemet": 10,
+    "error_aemet_kmh": -5,
+    "banda_p10": 42,
+    "banda_p50": 46,
+    "banda_p90": 52,
+    "pico_en_banda": false,
+    "supera": {
+     "50": 0.2,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 1366,
+    "nombre": "Distribuidora 3",
+    "nivel": "bajo",
+    "probabilidad": 0.012721015140414238,
+    "estaciones": 3,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 31,
+    "hora_prevista": 1,
+    "racha_observada_max": 23,
+    "hora_observada": 14,
+    "error_kmh": -8,
+    "racha_aemet_max": 24,
+    "hora_aemet": 14,
+    "error_aemet_kmh": -1,
+    "banda_p10": 17,
+    "banda_p50": 20,
+    "banda_p90": 24,
+    "pico_en_banda": true,
+    "supera": {
+     "50": 0.0,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   }
+  ],
+  "2026-10-16": [
+   {
+    "id": 2,
+    "nombre": "Distribuidora 2",
+    "nivel": "bajo",
+    "probabilidad": 0.021363461390137672,
+    "estaciones": 10,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 43,
+    "hora_prevista": 12,
+    "racha_observada_max": 33,
+    "hora_observada": 13,
+    "error_kmh": -10,
+    "pico_en_franja": true,
+    "racha_aemet_max": 44,
+    "hora_aemet": 19,
+    "error_aemet_kmh": -11,
+    "banda_p10": 22,
+    "banda_p50": 28,
+    "banda_p90": 35,
+    "pico_en_banda": true,
+    "supera": {
+     "50": 0.0,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 3,
+    "nombre": "Distribuidora 1",
+    "nivel": "medio",
+    "probabilidad": 0.046140629798173904,
+    "estaciones": 17,
+    "horas_observadas": 11,
+    "aviso_aemet": 1,
+    "racha_prevista_max": 27,
+    "hora_prevista": 23,
+    "racha_observada_max": 34,
+    "hora_observada": 19,
+    "error_kmh": 7,
+    "racha_aemet_max": 53,
+    "hora_aemet": 16,
+    "error_aemet_kmh": -19,
+    "banda_p10": 25,
+    "banda_p50": 29,
+    "banda_p90": 36,
+    "pico_en_banda": true,
+    "supera": {
+     "50": 0.0,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 1366,
+    "nombre": "Distribuidora 3",
+    "nivel": "bajo",
+    "probabilidad": 0.0132884681224823,
+    "estaciones": 3,
+    "horas_observadas": 11,
+    "aviso_aemet": 0,
+    "racha_prevista_max": 31,
+    "hora_prevista": 18,
+    "racha_observada_max": 32,
+    "hora_observada": 16,
+    "error_kmh": 1,
+    "racha_aemet_max": 29,
+    "hora_aemet": 16,
+    "error_aemet_kmh": 3,
+    "banda_p10": 21,
+    "banda_p50": 24,
+    "banda_p90": 29,
+    "pico_en_banda": false,
+    "supera": {
+     "50": 0.0,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   }
+  ],
+  "2026-10-17": [
+   {
+    "id": 2,
+    "nombre": "Distribuidora 2",
+    "nivel": "muy alto",
+    "probabilidad": 0.07517150789499283,
+    "estaciones": 10,
+    "horas_observadas": 11,
+    "aviso_aemet": 1,
+    "racha_prevista_max": 44,
+    "hora_prevista": 14,
+    "racha_observada_max": 55,
+    "hora_observada": 21,
+    "error_kmh": 11,
+    "pico_en_franja": true,
+    "racha_aemet_max": 43,
+    "hora_aemet": 13,
+    "error_aemet_kmh": 12,
+    "banda_p10": 31,
+    "banda_p50": 38,
+    "banda_p90": 46,
+    "pico_en_banda": false,
+    "nivel_dos_dias": "bajo",
+    "probabilidad_dos_dias": 0.024926206097006798,
+    "supera": {
+     "50": 0.05,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": true,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 3,
+    "nombre": "Distribuidora 1",
+    "nivel": "alto",
+    "probabilidad": 0.08503478765487671,
+    "estaciones": 17,
+    "horas_observadas": 11,
+    "aviso_aemet": 1,
+    "racha_prevista_max": 48,
+    "hora_prevista": 20,
+    "racha_observada_max": 56,
+    "hora_observada": 16,
+    "error_kmh": 8,
+    "pico_en_franja": true,
+    "racha_aemet_max": 57,
+    "hora_aemet": 23,
+    "error_aemet_kmh": -1,
+    "banda_p10": 32,
+    "banda_p50": 38,
+    "banda_p90": 44,
+    "pico_en_banda": false,
+    "nivel_dos_dias": "bajo",
+    "probabilidad_dos_dias": 0.03491109982132912,
+    "supera": {
+     "50": 0.03,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": true,
+     "70": false,
+     "90": false
+    }
+   },
+   {
+    "id": 1366,
+    "nombre": "Distribuidora 3",
+    "nivel": "muy alto",
+    "probabilidad": 0.04686170071363449,
+    "estaciones": 3,
+    "horas_observadas": 11,
+    "aviso_aemet": 1,
+    "racha_prevista_max": 53,
+    "hora_prevista": 22,
+    "racha_observada_max": 32,
+    "hora_observada": 18,
+    "error_kmh": -21,
+    "pico_en_franja": false,
+    "racha_aemet_max": 38,
+    "hora_aemet": 19,
+    "error_aemet_kmh": -6,
+    "banda_p10": 22,
+    "banda_p50": 29,
+    "banda_p90": 35,
+    "pico_en_banda": true,
+    "nivel_dos_dias": "bajo",
+    "probabilidad_dos_dias": 0.012270119041204453,
+    "supera": {
+     "50": 0.0,
+     "70": 0.0,
+     "90": 0.0
+    },
+    "supero": {
+     "50": false,
+     "70": false,
+     "90": false
+    }
+   }
+  ]
+ },
+ "resumen": []
+}
