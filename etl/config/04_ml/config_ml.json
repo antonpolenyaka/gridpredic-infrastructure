@@ -582,7 +582,7 @@
     "tabla": "l3_gold.riesgo_dia_siguiente",
     "margen_etiquetas_dias": 45,
     "historia_margen_dias": 7,
-    "historia_desfasada": "sin_historia",
+    "historia_desfasada": "mediana",
     "niveles": {"muy alto": 0.95, "alto": 0.9, "medio": 0.75},
     "motivos": 3,
     "zonas": 3,
