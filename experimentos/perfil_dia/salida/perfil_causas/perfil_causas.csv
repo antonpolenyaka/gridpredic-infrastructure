@@ -1,0 +1,36 @@
+causa,dias_con_causa,variable,nombre,v_test,factor_semanas,v_test_semanas,media_clase,media_resto,se_cita
+meteorologia,40,racha_max_kmh,Racha máxima (km/h),10.8731,1.1157,9.7454,82.2,47.0209,True
+meteorologia,40,lluvia_max_mm,"Lluvia del día, peor celda (mm)",18.1729,1.2619,14.4017,28.7475,3.3196,True
+meteorologia,40,lluvia_media_mm,"Lluvia del día, media de la red (mm)",17.4439,1.2717,13.7165,16.849,1.9072,True
+meteorologia,40,tmin_c,Temperatura mínima (°C),-1.6609,1.175,-1.4136,6.7225,8.5936,False
+meteorologia,40,tmax_c,Temperatura máxima (°C),-1.7798,1.213,-1.4672,20.69,23.0711,False
+meteorologia,40,cape_max_jkg,CAPE máximo (J/kg),6.164,1.2257,5.029,449.1667,133.8971,True
+meteorologia,40,dias_secos_antes,Días secos antes,-2.4372,1.0587,-2.3019,4.6,10.0154,False
+equipo,99,racha_max_kmh,Racha máxima (km/h),8.7656,0.9597,9.1336,65.0626,46.9845,True
+equipo,99,lluvia_max_mm,"Lluvia del día, peor celda (mm)",9.7552,1.0005,9.7503,12.0354,3.3345,True
+equipo,99,lluvia_media_mm,"Lluvia del día, media de la red (mm)",7.9545,1.0179,7.8144,6.2664,1.9231,True
+equipo,99,tmin_c,Temperatura mínima (°C),-3.991,0.9686,-4.1203,5.7475,8.6135,True
+equipo,99,tmax_c,Temperatura máxima (°C),-1.7402,0.9665,-1.8006,21.5919,23.0761,False
+equipo,99,cape_max_jkg,CAPE máximo (J/kg),3.4668,0.9505,3.6473,248.4483,134.0557,True
+equipo,99,dias_secos_antes,Días secos antes,-0.0755,1.071,-0.0705,9.8889,9.9958,False
+desconocida,93,racha_max_kmh,Racha máxima (km/h),6.2733,1.0894,5.7587,60.3817,47.0367,True
+desconocida,93,lluvia_max_mm,"Lluvia del día, peor celda (mm)",4.9041,1.1748,4.1743,7.8882,3.3765,True
+desconocida,93,lluvia_media_mm,"Lluvia del día, media de la red (mm)",2.9102,1.1305,2.5742,3.5885,1.9495,False
+desconocida,93,tmin_c,Temperatura mínima (°C),-2.0365,1.013,-2.0104,7.0914,8.5998,False
+desconocida,93,tmax_c,Temperatura máxima (°C),0.5393,0.9685,0.5568,23.5323,23.0579,False
+desconocida,93,cape_max_jkg,CAPE máximo (J/kg),1.6749,0.9363,1.7887,192.4528,134.6635,False
+desconocida,93,dias_secos_antes,Días secos antes,-2.0608,0.9504,-2.1684,7.0108,10.0214,False
+fauna,49,racha_max_kmh,Racha máxima (km/h),7.6043,1.0108,7.5231,69.2898,47.0511,True
+fauna,49,lluvia_max_mm,"Lluvia del día, peor celda (mm)",7.3163,1.0072,7.2639,12.6265,3.3733,True
+fauna,49,lluvia_media_mm,"Lluvia del día, media de la red (mm)",5.4608,1.0148,5.3811,6.1723,1.9443,True
+fauna,49,tmin_c,Temperatura mínima (°C),-4.0077,1.091,-3.6732,4.5245,8.6055,True
+fauna,49,tmax_c,Temperatura máxima (°C),-1.8725,1.0964,-1.7079,20.8082,23.0726,False
+fauna,49,cape_max_jkg,CAPE máximo (J/kg),1.4657,1.0837,1.3525,217.0,134.9052,False
+fauna,49,dias_secos_antes,Días secos antes,-1.692,1.0347,-1.6353,6.6122,10.0106,False
+aguas_arriba,50,racha_max_kmh,Racha máxima (km/h),3.1821,1.0256,3.1028,56.324,47.111,False
+aguas_arriba,50,lluvia_max_mm,"Lluvia del día, peor celda (mm)",3.9703,1.0113,3.9261,8.364,3.3928,True
+aguas_arriba,50,lluvia_media_mm,"Lluvia del día, media de la red (mm)",7.8408,1.0212,7.6781,7.9454,1.9355,True
+aguas_arriba,50,tmin_c,Temperatura mínima (°C),1.5205,1.0662,1.426,10.112,8.5792,False
+aguas_arriba,50,tmax_c,Temperatura máxima (°C),-3.1271,1.0168,-3.0756,19.336,23.0799,False
+aguas_arriba,50,cape_max_jkg,CAPE máximo (J/kg),3.428,1.0209,3.358,321.9048,134.515,True
+aguas_arriba,50,dias_secos_antes,Días secos antes,-1.0181,1.0342,-0.9845,7.98,10.0044,False
