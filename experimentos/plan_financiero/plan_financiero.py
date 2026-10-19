@@ -950,7 +950,8 @@ def texto_comparacion(c10, c11, ap_min):
                f"(art. 363) queden en positivo todos los meses con ENISA en el mes {MES_ENISA_V11}: {fmt(ap_min)} euros, "
                f"es decir, {fmt(40000 + ap_min)} en total; el plan pone {fmt(APORTACION_FUNDADORES_V11)}.")
     lin.append("")
-    lin.append("Tarifa: " + ", ".join(f"{k} {v}" for k, v in TARIFA.items()))
+    lin.append(f"Tarifa: {fmt(TARIFA['fijo'])} euros fijos, {fmt(TARIFA['por_ct'])} por CT y {fmt1(TARIFA['por_senal'])} por señal, "
+               f"con un mínimo de {fmt(TARIFA['minimo'])} y sin máximo")
     for nombre, red in list(REDES_CALIBRACION.items()) + [("Red tipo del plan", RED_TIPO_PLAN)]:
         lin.append(f"  {nombre}: {red['ct']} CT, {fmt(red['senales'])} señales -> {fmt(licencia(**red))} euros al año")
     if SENALES_PROVISIONALES:
