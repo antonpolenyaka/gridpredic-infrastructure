@@ -3,7 +3,9 @@
 #   1. lint: ruff sobre todo el código Python.
 #   2. compose: compose.yaml se resuelve sin avisos con las variables de .env.example.
 #   3. silver-smoke, gold-smoke y ml-smoke: los tests de extremo a extremo de Silver, de Gold
-#      y del entrenamiento en un Spark local, los mismos que se ejecutan con `make test`.
+#      y del entrenamiento en un Spark local, los mismos que se ejecutan con `make test`;
+#      silver-smoke pasa antes los de la Landing y Bronze (tests/01_bronze, sin Spark).
+# Python 3.10, el de la imagen de Airflow (infra/airflow/Dockerfile) donde se ajusta la tarde.
 name: CI
 
 on:
@@ -19,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.10"
       - run: pip install ruff==0.15.11
       - run: ruff check .
 
@@ -35,7 +37,7 @@ jobs:
           docker compose config --quiet
 
   silver-smoke:
-    name: Test Silver (Spark local)
+    name: Test Landing, Bronze y Silver (Spark local)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -46,7 +48,7 @@ jobs:
           java-version: "17"
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.10"
           cache: pip
       - run: pip install -r requirements.txt
       - name: Cache de los jars de Delta que descarga el test
@@ -54,7 +56,7 @@ jobs:
         with:
           path: ~/.ivy2.5.2
           key: ivy-delta-4.4.0
-      - run: python -m pytest tests/02_silver -q
+      - run: python -m pytest tests/01_bronze tests/02_silver -q
 
   gold-smoke:
     name: Test Gold (Spark local)
@@ -68,7 +70,7 @@ jobs:
           java-version: "17"
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.10"
           cache: pip
       - run: pip install -r requirements.txt
       - name: Cache de los jars de Delta que descarga el test
@@ -90,7 +92,7 @@ jobs:
           java-version: "17"
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.10"
           cache: pip
       - run: pip install -r requirements.txt
       - name: Cache de los jars de Delta que descarga el test
