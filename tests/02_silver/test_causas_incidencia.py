@@ -175,3 +175,23 @@ def test_the_same_second_in_two_networks_is_only_flagged():
     # was withdrawn on 18.10.2026).
     assert result["causa"].tolist() == out["causa"].tolist() and result["subcausa"].tolist() == out["subcausa"].tolist()
     assert "simultanea_otra_red" not in out.columns
+
+
+# Errores de las reglas que encontró la lectura de los desacuerdos con el clasificador de texto en los que el código
+# oficial no respalda a la regla (experimentos/causas_texto/salida/desacuerdos.csv, 19.10.2026): de los 8, 2 son
+# errores y 6 decisiones de prioridad (tormenta con causa desconocida, corte aguas arriba por un incendio, maniobra
+# para localizar una avería, maniobra para retirar un ave, caída de árbol por un temporal y disparo de un
+# transformador con la reparación del apoyo). Los textos son sintéticos con el mismo patrón que el parte real. Se
+# marcan como fallo esperado estricto: la prueba avisa cuando se corrija la regla, sin cambiar hoy las etiquetas.
+@pytest.mark.xfail(strict=True, reason="VEGETACION busca 'alamo' sin límite de palabra y lo encuentra dentro del "
+                                       "nombre de una línea")
+def test_nombre_de_linea_con_alamo_no_es_vegetacion():
+    out = incident("Bloqueo de la línea Calamoxa por las fuertes rachas de viento de la borrasca.")
+    assert out["causa"] == "meteorologia"
+
+
+@pytest.mark.xfail(strict=True, reason="un corte para poner sistemas antinidificación sale como fauna; es una "
+                                       "maniobra para hacer trabajos, como cualquier otro corte de ese tipo")
+def test_corte_para_poner_antinidificacion_no_es_fauna():
+    out = incident("Corte del servicio realizado para poder poner sistemas antinidificación en una torre.")
+    assert out["causa"] == incident("Corte del servicio realizado para poder sustituir un apoyo de la línea.")["causa"]
