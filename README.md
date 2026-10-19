@@ -499,6 +499,8 @@ La serie grande de medidas se procesa por meses y solo sobrescribe los meses ind
 ```bash
 docker compose exec spark-master \
   spark-submit \
+  --conf spark.cores.max=4 --conf spark.executor.memory=8g --conf spark.executor.memoryOverhead=1g \
+  --conf spark.sql.shuffle.partitions=256 \
   /app/jobs/02_silver/job_silver_f_tag_interval_value.py --desde 2026-01 --hasta 2026-03
 ```
 
@@ -541,8 +543,12 @@ Un job suelto desde el contenedor de Spark, que lee la configuración de `/app/c
 ```bash
 docker compose exec spark-master \
   spark-submit --py-files /app/jobs/03_gold/gold_common.py \
+  --conf spark.cores.max=4 --conf spark.executor.memory=8g --conf spark.executor.memoryOverhead=1g \
+  --conf spark.sql.shuffle.partitions=256 \
   /app/jobs/03_gold/job_gold_features_ct_hora.py --desde 2026-01 --hasta 2026-03
 ```
+
+La `--conf` es la del job en `config_silver.json` o `config_gold.json`: sin ella, el job corre con los valores de seguridad de `spark-defaults.conf` (2 núcleos y 3 GB por ejecutor), que bastan para los jobs pequeños pero no para la serie de medidas ni para las features.
 
 Resultado desde Trino/DBeaver:
 
