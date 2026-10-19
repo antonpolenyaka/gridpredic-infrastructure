@@ -1,0 +1,17 @@
+Filas 8880 desde 2018-06-25, 276 días con avería, 35 variables
+[1] Por años 2022-2025: PR-AUC 0.1514, ROC 0.7386, tasa 0.0313, positivos 137, C elegidas {2022: 0.003, 2023: 0.003, 2024: 0.003, 2025: 0.003}, PR-AUC por año {2022: 0.1391, 2023: 0.152, 2024: 0.2351, 2025: 0.1889}
+[4] Un pliegue por año (foldCol), 2022-2025: PR-AUC 0.1547, ROC 0.7385, C {2022: 0.003, 2023: 0.01, 2024: 0.01, 2025: 0.003}, por año {2022: 0.1232, 2023: 0.1687, 2024: 0.2448, 2025: 0.1889}
+[3] CV aleatoria 5 pliegues (20 semillas), filas de 2022-2025: PR-AUC media 0.1484 [0.1251 - 0.1606]; sobre 2018-2025 entero 0.1127
+    CV aleatoria - por años: +0.0074 [-0.0093, +0.0250], P(>0) 0.80
+    Pliegue por año - por años: +0.0039 [-0.0109, +0.0211], P(>0) 0.68
+[2] randomSplit 70/30 + CV 5 pliegues eligiendo con roc (50 semillas): PR-AUC test media 0.1194, p5 0.0866, p95 0.1558; ROC 0.7273; C elegidas {0.003: 24, 0.01: 23, 0.03: 2, 0.1: 1}; positivos en test 59-92
+[2] randomSplit 70/30 + CV 5 pliegues eligiendo con ap (50 semillas): PR-AUC test media 0.1198, p5 0.0883, p95 0.1561; ROC 0.7289; C elegidas {0.003: 33, 0.03: 9, 0.01: 6, 0.1: 2}; positivos en test 59-92
+[5] Umbral 0,5: matriz [[tn 4243, fp 0], [fn 137, tp 0]], accuracy 0.9687 (siempre 0: 0.9687), recall clase 1 0.0000, recall clase 0 1.0000, días con p >= 0,5: 0, p máxima 0.3385
+    'Área ROC' con la predicción 0/1: 0.5000 (= recall medio de las dos clases 0.5000); con la probabilidad: 0.7386
+    Umbral 0.1: 130 días en alerta, precision 0.192, recall 0.182
+    Umbral 0.05: 547 días en alerta, precision 0.112, recall 0.445
+    Área PR: average precision (repositorio) 0.1514; trapecios de BinaryClassificationMetrics 0.1491; con numBins=1000 0.1431
+    Brier 0.0289, referencia 0.0303, BSS 0.0475; días con avería en el 10 % y el 20 % de días de más riesgo de cada año: 0.372 y 0.540
+[6] Ajuste de la logística con 2018-2025 (8238 filas x 35): 467 ms, 15 iteraciones de L-BFGS; matriz en float64 2.31 MB
+    Muestra por CT y hora: 884.971 x 246 en float32 = 0.871 GB
+Tiempo total 1429 s
