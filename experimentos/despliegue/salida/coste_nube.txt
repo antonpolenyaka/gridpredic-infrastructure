@@ -1,0 +1,39 @@
+Listas: OCI 08.10.2026 (EUR), AWS eu-south-2 11.09.2026 a 18.10.2026 (USD). Cambio implícito de la lista de Oracle: 0,930 € por dólar.
+
+## Coste por distribuidora y mes
+
+B1 IaaS ajustada (2 OCPU, 16 GB): 75 € al mes
+   VM 24/7 62,5 €; disco 200 GB 7,9 €; objetos 110 GB 2,6 €; copias del disco (100 GB a precio de objetos) 2,4 €; VPN sitio a sitio 0,0 €; salida de menos de 10 TB 0,0 €
+
+B1 IaaS holgada (4 OCPU, 32 GB): 138 € al mes
+   VM 24/7 124,9 €; disco 200 GB 7,9 €; objetos 110 GB 2,6 €; copias del disco (100 GB a precio de objetos) 2,4 €; VPN sitio a sitio 0,0 €; salida de menos de 10 TB 0,0 €
+
+B2 PaaS baja (CDC por lotes, Kafka de un broker, ADB 60 h): 274 € al mes
+   objetos 110 GB 2,6 €; Data Flow tarde 1,0 €; Data Flow mes 0,6 €; Data Flow CDC por lotes 1,3 €; Kafka gestionado un broker 101,1 €; VM pequeña 31,2 €; PostgreSQL gestionado 69,9 €; ADB 60 h 66,0 €
+
+B2 PaaS alta (CDC continuo, Kafka de tres brokers, ADB 24/7): 987 € al mes
+   objetos 110 GB 2,6 €; Data Flow tarde 1,0 €; Data Flow mes 0,6 €; Data Flow CDC continuo 93,7 €; Kafka gestionado de tres brokers 303,3 €; VM pequeña 31,2 €; PostgreSQL gestionado 69,9 €; ADB 24/7 484,7 €
+
+GoldenGate de 1 OCPU 24/7: 913 € al mes; Data Integration 24/7: 109 €; FastConnect de 1 Gbps: 144 €
+
+A SaaS sobre IaaS: plataforma común 515 € al mes más 5,5 € por cliente y mes
+   con 3 clientes: 177 € por cliente y mes
+   con 8 clientes: 70 € por cliente y mes
+   con 15 clientes: 40 € por cliente y mes
+
+## La partida de nube del plan
+B1 IaaS ajustada (2 OCPU, 16 GB), con los meses-cliente del plan (18, 68, 133): año 1 1.356 €; año 2 5.123 €; año 3 10.021 €
+B1 IaaS holgada (4 OCPU, 32 GB), con los meses-cliente del plan (18, 68, 133): año 1 2.480 €; año 2 9.371 €; año 3 18.328 €
+B2 PaaS baja (CDC por lotes, Kafka de un broker, ADB 60 h), con los meses-cliente del plan (18, 68, 133): año 1 4.926 €; año 2 18.610 €; año 3 36.399 €
+B2 PaaS alta (CDC continuo, Kafka de tres brokers, ADB 24/7), con los meses-cliente del plan (18, 68, 133): año 1 17.766 €; año 2 67.116 €; año 3 131.270 €
+Con la instalación en el cliente la nube paga las demos (VM de demo 145 € al mes, dos meses cada una) y el plan de la previsión (92 € al mes):
+   año 1: 1.697 € - 2.565 € frente a 7.200 € de la partida (36 % como mucho)
+   año 2: 2.841 € - 4.577 € frente a 9.600 € de la partida (48 % como mucho)
+   año 3: 3.420 € - 5.735 € frente a 12.000 € de la partida (48 % como mucho)
+
+## AWS Europe (Spain), en dólares
+MWAA micro 0.29/h (211.7$ al mes); pequeño 0.49/h (357.7$); MWAA Serverless 0.088$ por hora de tarea
+S3 0.023$ el GB al mes (2.53$ los 110 GB); PUT 0.0053$ por 1.000; Athena 5.65$ por TB
+EMR Serverless, la tarde (4 vCPU, 16 GB, 15 min al día): 2.61$ al mes; en continuo: 254$
+
+Licencia: 1.500 € por cliente y mes
