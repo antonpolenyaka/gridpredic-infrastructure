@@ -6,8 +6,12 @@
 #   C  ANALYZE de las tablas del join y las consultas otra vez
 #   DE compactacion por particiones y orden Z de 2025 en dataset_train (Spark) y las consultas otra vez
 # Solo cambian los datos de sitio (OPTIMIZE no cambia su contenido) y ANALYZE deja estadisticas junto al log.
+# Trino usa esas estadisticas en todas las consultas y no las actualiza cuando Spark reescribe la tabla: el
+# lanzador las borra (system.drop_extended_stats) antes de la fase A y al acabar.
+# Con -SoloEstadisticas solo las borra y mide c2a y c5b sin ellas (unos 10 minutos).
 # Deja todo en _runlogs\planes_trino_<fecha>\ (un JSON por consulta y fase); lo resume resumir_planes.py.
-param([string]$Repo = "D:\GitHub\gridpredic-infrastructure", [int]$PararA = 18, [switch]$SinCompactar)
+param([string]$Repo = "D:\GitHub\gridpredic-infrastructure", [int]$PararA = 18, [switch]$SinCompactar,
+      [switch]$SoloEstadisticas)
 
 $Compose = "$Repo\compose.yaml"
 $Stamp = Get-Date -Format "yyyyMMdd_HHmm"
@@ -45,6 +49,20 @@ function Reiniciar() {
     Start-Sleep -Seconds 5
 }
 
+function BorrarEstadisticas() {
+    Say "--- Estadisticas extendidas de Trino: se borran (dataset_train, map_ct_celda, meteo_celda_hora)"
+    docker compose -f $Compose exec -T spark-master python3 /tmp/gp/planes.py --fase B --borrar-estadisticas --salida /tmp/gp_planes 2>&1 |
+        ForEach-Object { Say ("    " + $_) }
+    if ($LASTEXITCODE -ne 0) { $Script:Fallos++ }
+}
+
+function Copiar() {
+    New-Item -ItemType Directory -Force -Path "$Dir\json" | Out-Null
+    docker compose -f $Compose cp "spark-master:/tmp/gp_planes/." "$Dir\json" 2>&1 | ForEach-Object { Say "  $_" }
+    $n = (Get-ChildItem -Path "$Dir\json" -Filter "*.json" -File -ErrorAction SilentlyContinue).Count
+    Say "Ficheros de resultados: $n"
+}
+
 function Planes([string]$Fase, [string[]]$Consultas, [string[]]$Sesion = @(), [switch]$SinReinicio) {
     foreach ($c in $Consultas) {
         FueraDeLaTarde
@@ -79,6 +97,17 @@ Say "--- Tamano de cada zona y de las tablas mas grandes en MinIO"
 docker compose -f $Compose exec -T minio sh -c "du -sm /data/datalake/*/ 2>/dev/null; du -sm /data/datalake/*/* 2>/dev/null | sort -n | tail -12" 2>&1 |
     ForEach-Object { Say ("    " + $_) }
 
+BorrarEstadisticas
+if ($SoloEstadisticas) {
+    Say "--- Sin estadisticas: c2a y c5b"
+    Planes "A" @("c2a", "c5b")
+    Copiar
+    if (-not $TrinoAntes) { docker compose -f $Compose stop trino 2>&1 | ForEach-Object { Say "  $_" } }
+    if ($Script:Fallos -eq 0) { Say "Terminado sin errores."; exit 0 }
+    Say "Terminado con $($Script:Fallos) pasos con errores (ver el log)."
+    exit 1
+}
+
 Say "--- Fase A: linea base y filtro de particion"
 Planes "A" @("ficheros_dataset", "ficheros_meteo", "c1c") -SinReinicio
 Planes "A" @("c1a", "c2a", "c2b", "c2c", "c2d", "c3a", "c3b", "c3c", "c4a", "c5a", "c5b", "c5c")
@@ -108,10 +137,8 @@ if (-not $SinCompactar) {
     Planes "DE" @("c1a", "c2a", "c2b", "c2c", "c2d", "c5b", "c5c")
 }
 
-New-Item -ItemType Directory -Force -Path "$Dir\json" | Out-Null
-docker compose -f $Compose cp "spark-master:/tmp/gp_planes/." "$Dir\json" 2>&1 | ForEach-Object { Say "  $_" }
-$n = (Get-ChildItem -Path "$Dir\json" -Filter "*.json" -File -ErrorAction SilentlyContinue).Count
-Say "Ficheros de resultados: $n"
+BorrarEstadisticas
+Copiar
 
 if (-not $TrinoAntes) {
     Say "Trino no estaba arrancado: lo paro otra vez."
