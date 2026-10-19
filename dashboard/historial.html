@@ -64,8 +64,9 @@
       <span>Tiempo del día que ve el modelo:</span>
       <label><input type="radio" name="modo" value="prevision" checked> <span>previsión real de ICON-EU de la víspera (<span id="anios-prevision">2024 - 2026</span>)</span></label>
       <label><input type="radio" name="modo" value="reanalisis"> <span>reanálisis, como previsión perfecta (<span id="anios-reanalisis">2022 - 2026</span>)</span></label>
-      <label><input type="checkbox" id="winsor"> recortar los cortes de más de 110 minutos (el incendio del 13.08.2025 pesa él solo tanto como un año entero)</label>
+      <label title="El incendio del 13.08.2025 pesa él solo tanto como un año entero"><input type="checkbox" id="winsor" checked> cortes recortados a 110 minutos</label>
     </div>
+    <p class="notas" id="estado-controles"></p>
   </section>
   <div id="bloques"></div>
 </main>
@@ -117,7 +118,7 @@
     return { by, total, alert, alertDays, worst, dias: days.length };
   }
 
-  function calendar(days, year, winsor) {
+  function calendar(days, year, winsor, maxComun) {
     const W = 14, G = 2, L = 30, T = 22;
     const first = new Date(year + "-01-01T00:00:00Z"), last = new Date(year + "-12-31T00:00:00Z");
     const offset = (first.getUTCDay() + 6) % 7;
@@ -128,7 +129,8 @@
     const meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
     const dias = ["L", "", "X", "", "V", "", "D"];
     dias.forEach((t, i) => { if (t) out += `<text x="${L - 6}" y="${T + i * (W + G) + W - 3}" text-anchor="end" fill="var(--muted)">${t}</text>`; });
-    let maxH = 1;
+    // The rings of every network of the page share the largest day of the year, so the same customer-hours give the same ring.
+    let maxH = Math.max(1, maxComun || 0);
     for (const d of days) maxH = Math.max(maxH, hours(d, winsor));
     for (let t = new Date(first); t <= last; t.setUTCDate(t.getUTCDate() + 1)) {
       const f = t.toISOString().slice(0, 10);
@@ -168,8 +170,17 @@
     if (!DATA) return;
     const mode = document.querySelector('input[name="modo"]:checked').value;
     const winsor = document.getElementById("winsor").checked;
+    // The state of the controls, the same words as Negocio, so two captures say what they show.
+    document.getElementById("estado-controles").textContent = `Con ${mode === "prevision" ? "la previsión real de la víspera" : "el reanálisis como previsión perfecta"} y ${winsor ? "los cortes recortados a 110 minutos" : "los cortes sin recortar"}.`;
     const root = document.getElementById("bloques");
     root.innerHTML = "";
+    const maxYear = {};
+    for (const dist of DATA.distribuidoras) {
+      for (const d of dist.dias[mode] || []) {
+        const y = d.f.slice(0, 4);
+        maxYear[y] = Math.max(maxYear[y] || 0, hours(d, winsor));
+      }
+    }
     for (const dist of DATA.distribuidoras) {
       const days = dist.dias[mode] || [];
       if (!days.length) continue;
@@ -190,7 +201,7 @@
           <div class="cifra"><div class="v">${ratio && isFinite(ratio) ? num(ratio, 1) : "-"}</div><div class="l">veces más probable una avería en un día muy alto que en uno bajo</div></div>
           <div class="cifra"><div class="v">${num(incidents)}</div><div class="l">incidencias de causa local del ${fecha(firstDay)} al ${fecha(lastDay)} (${num(incidents / (days.length / 365), 1)} al año)</div></div>
         </div>
-        ${years.map((y) => `<div class="anio">${y}</div><div class="cal-caja">` + calendar(days.filter((d) => d.f.startsWith(y)), Number(y), winsor) + "</div>").join("")}
+        ${years.map((y) => `<div class="anio">${y}</div><div class="cal-caja">` + calendar(days.filter((d) => d.f.startsWith(y)), Number(y), winsor, maxYear[y]) + "</div>").join("")}
         <div class="leyenda"><span><b class="que">Color:</b> nivel que habría dado el sistema la tarde anterior</span><span><i style="background:var(--cal-bajo)"></i>bajo</span><span><i style="background:var(--cal-medio)"></i>medio</span><span><i style="background:var(--cal-alto)"></i>alto</span><span><i style="background:var(--cal-muy-alto)"></i>muy alto</span><span><i class="sindatos"></i>sin datos</span></div>
         <div class="leyenda" style="margin-top:4px"><span><b class="dot"></b>avería ese día (tamaño: horas-cliente)</span><span><i style="background:transparent;border:1px solid var(--fg)"></i>aviso amarillo de AEMET</span><span><i style="background:transparent;border:2px solid var(--fg)"></i>aviso naranja o rojo</span></div>
         <h3>Por nivel previsto</h3>

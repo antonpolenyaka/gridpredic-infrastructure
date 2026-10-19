@@ -288,7 +288,7 @@
     if (pol.conAvisos) points.push({ label: "aviso amarillo o más", p: pol.aviso }, { label: "aviso de viento", p: pol.avisoViento },
                                    { label: "aviso de viento o tormenta", p: pol.avisoVientoTormenta }, { label: "aviso naranja o rojo", p: pol.avisoNaranja });
     points.push({ label: "GridPredic en alerta", p: pol.sistema, sistema: true });
-    if (pol.conAvisos) points.push({ label: "GridPredic + aviso de viento o tormenta", p: pol.unionVientoTormenta, sistema: true });
+    if (pol.conAvisos) points.push({ label: "GridPredic + aviso de viento o tormenta (la que recomendamos)", p: pol.unionVientoTormenta, sistema: true });
     const W = 680, H = 380, L = 62, R = 14, T = 14, B = 54, maxX = 150, FS = 12;
     const x = (v) => L + (W - L - R) * Math.min(v, maxX) / maxX, y = (v) => T + (H - T - B) * (1 - v);
     let out = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="Horas-cliente cubiertas según los días de guardia reforzada al año: ${points.map((q) => `${q.label}, ${num(q.p.dias / years)} días y ${pct(q.p.h / total)}`).join("; ")}">`;
@@ -400,7 +400,7 @@
     let html = "";
 
     html += `<section><h2>Lo que vería un director de distribución</h2>
-      <p>${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}, con ${modeText}: ${num(days.length)} días de distribuidora, ${num(totalInc)} incidencias de causa local y ${num(stats.total)} horas-cliente sin suministro${winsor ? " (cortes recortados a 110 min)" : ""}. Cada día lleva el nivel que el sistema habría dado la tarde anterior, con un modelo entrenado solo con los años previos.</p>
+      <p>${esc(names.join(" y "))}, ${ys[0]} - ${ys[ys.length - 1]}, con ${modeText}: ${num(days.length)} días de distribuidora, ${num(totalInc)} incidencias de causa local y ${num(stats.total)} horas-cliente sin suministro (${winsor ? "cortes recortados a 110 minutos" : "cortes sin recortar"}). Cada día lleva el nivel que el sistema habría dado la tarde anterior, con un modelo entrenado solo con los años previos.</p>
       <div class="cifras">
         <div class="cifra"><div class="v">${ratio && isFinite(ratio) ? num(ratio, 0) : "-"}</div><div class="l">veces más averías un día "muy alto" que un día "bajo" (${pct(rate("muy alto"), 1)} frente a ${pct(rate("bajo"), 1)})</div></div>
         <div class="cifra"><div class="v">${pct(stats.total ? alertH / stats.total : 0)}</div><div class="l">de las horas-cliente perdidas caen en los días en alerta (alto o muy alto), que son el ${pct(alertDays / days.length, 1)} de los días</div></div>
@@ -488,40 +488,62 @@
       const [s0, s1] = j.anios_sector, [n0, n1] = j.anios_nuestros;
       const sectorYear = document.getElementById("anio-sector");
       if (sectorYear && s1) sectorYear.textContent = String(s1);
+      // One dot plot for every network shown: a row per zone type on a common axis of hours, the references of the
+      // sector (the same for every network) as grey ticks with their name, and each network as a blue dot with its
+      // name and value. Before, five bars per network and zone repeated the four references in every block.
       const scopes = j.ambitos || [];
-      // The network in the accent; the provinces and the region in one grey, Spain in a darker one (every bar has its name).
-      const colorOf = (scope) => (scope === "España" ? "var(--sector-espana)" : "var(--sector-ref)");
-      // One scale for all the networks shown, so the same hours are the same length in every block.
       const useful = (d) => d.zonas.filter((z) => z.abonados > 0);
-      const top = Math.max(0.5, ...shown.flatMap((d) => useful(d).flatMap((z) => [z.imprevista || 0, ...scopes.map((sc) => (z.sector[sc] || {}).imprevista || 0)])));
-      let html = "";
+      const ZONES = ["urbana", "semiurbana", "rural_concentrada", "rural_dispersa"];
+      const rows = ZONES.filter((zn) => shown.some((d) => useful(d).some((z) => z.zona === zn)));
+      const refOf = (zn) => {
+        const z = shown.flatMap((d) => useful(d)).find((q) => q.zona === zn) || { sector: {} };
+        return scopes.map((sc) => [sc, (z.sector[sc] || {}).imprevista]).filter(([, v]) => v != null);
+      };
+      const top = Math.max(0.5, ...rows.flatMap((zn) => [...refOf(zn).map(([, v]) => v),
+        ...shown.flatMap((d) => useful(d).filter((z) => z.zona === zn).map((z) => z.imprevista || 0))])) * 1.05;
+      const nets = shown.map((d) => ({ name: names[String(d.id)] || d.nombre, d }));
+      const rowH = 48 + 16 * nets.length, W = 640, L = 132, R = 24, T = 8, B = 34;
+      const H = T + rows.length * rowH + B;
+      const x = (v) => L + (W - L - R) * (v / top);
+      let svg = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="TIEPI imprevisto por tipo de zona de cada red frente al sector">`;
+      for (const t of [0, 0.5, 1, 1.5, 2, 2.5, 3]) {
+        if (t > top) break;
+        svg += `<line x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${T}" y2="${H - B}" stroke="${t === 0 ? "var(--line-strong)" : "var(--grid)"}"/><text x="${x(t).toFixed(1)}" y="${H - B + 14}" font-size="11" text-anchor="middle" fill="var(--muted)">${num(t, 1)}</text>`;
+      }
+      rows.forEach((zn, i) => {
+        const y0 = T + i * rowH;
+        if (i) svg += `<line x1="4" x2="${W - R}" y1="${y0}" y2="${y0}" stroke="var(--grid)"/>`;
+        svg += `<text x="${L - 10}" y="${y0 + 16}" font-size="12" text-anchor="end" fill="var(--fg)">${esc(zn.replace("_", " "))}</text>`;
+        // The references: a grey tick each and its name at the top or the bottom of the row, in the first place where it
+        // does not touch the name of a nearer reference.
+        const used = [];
+        refOf(zn).sort((a, b) => a[1] - b[1]).forEach(([sc, v]) => {
+          const color = sc === "España" ? "var(--sector-espana)" : "var(--sector-ref)";
+          svg += `<line x1="${x(v).toFixed(1)}" x2="${x(v).toFixed(1)}" y1="${y0 + 4}" y2="${y0 + rowH - 4}" stroke="${color}" stroke-width="2"><title>${esc(sc)}: ${num(v, 2)} h</title></line>`;
+          const width = 6 * sc.length + 6;
+          const slot = [12, rowH - 6, 24, rowH - 18].find((dy) => !used.some((u) => u.dy === dy && x(v) < u.x1)) ?? 12;
+          used.push({ dy: slot, x1: x(v) + 3 + width });
+          svg += `<text x="${(x(v) + 3).toFixed(1)}" y="${y0 + slot}" font-size="10" fill="var(--muted)" paint-order="stroke" stroke="var(--panel)" stroke-width="3">${esc(sc)}</text>`;
+        });
+        nets.forEach(({ name, d }, k) => {
+          const z = useful(d).find((q) => q.zona === zn);
+          if (!z || z.imprevista == null) return;
+          const y = y0 + 34 + k * 16;
+          svg += `<circle cx="${x(z.imprevista).toFixed(1)}" cy="${y}" r="5" fill="var(--accent)" stroke="var(--panel)" stroke-width="1.5"><title>${esc(name)}, ${esc(zn.replace("_", " "))}: ${num(z.imprevista, 2)} h (${num(z.abonados)} clientes)</title></circle>`;
+          svg += `<text x="${(x(z.imprevista) + 9).toFixed(1)}" y="${y + 4}" font-size="11" font-weight="600" fill="var(--accent-ink)">${esc(name)} ${num(z.imprevista, 2)}</text>`;
+        });
+      });
+      svg += `<text x="4" y="${H - 5}" font-size="11" fill="var(--muted)">TIEPI imprevisto en horas al año: redes ${n0} - ${n1} (puntos); sector ${s0} - ${s1} (marcas grises)</text></svg>`;
+      let html = `<div>${svg}</div>`;
       for (const d of shown) {
         const name = names[String(d.id)] || d.nombre;
         const zones = useful(d);
-        // Grouped bars: ours and every scope, by zone, unplanned TIEPI.
-        const bh = 10, gap = 2, block = (1 + scopes.length) * (bh + gap) + 4;
-        const W = 560, H = 34 + zones.length * block, L = 150, R = 118;
-        const x = (v) => L + (W - L - R) * (v / top);
-        let svg = `<svg class="graf" viewBox="0 0 ${W} ${H}" role="img" aria-label="TIEPI imprevisto por zona de ${esc(name)} frente al sector">`;
-        zones.forEach((z, i) => {
-          const y0 = 10 + i * block;
-          svg += `<text x="${L - 8}" y="${y0 + 11}" font-size="12" text-anchor="end" fill="var(--fg)">${esc(z.zona.replace("_", " "))}</text>`;
-          svg += `<text x="${L - 8}" y="${y0 + 26}" font-size="11" text-anchor="end" fill="var(--muted)">${num(z.abonados)} clientes</text>`;
-          const bars = [[name, z.imprevista, "var(--accent)"], ...scopes.map((sc) => [sc, (z.sector[sc] || {}).imprevista, colorOf(sc)])];
-          bars.forEach(([label, v, color], k) => {
-            if (v == null) return;
-            const y = y0 + k * (bh + gap);
-            svg += `<rect x="${L}" y="${y}" width="${(x(v) - L).toFixed(1)}" height="${bh}" fill="${color}"><title>${esc(label)}: ${num(v, 2)} h</title></rect>`;
-            svg += `<text x="${(x(v) + 4).toFixed(1)}" y="${y + bh - 1}" font-size="10" fill="${k === 0 ? "var(--fg)" : "var(--muted)"}"${k === 0 ? ' font-weight="600"' : ""}>${num(v, 2)}${k === 0 ? " h " + esc(label) : " " + esc(label)}</text>`;
-          });
-        });
-        svg += `<text x="4" y="${H - 6}" font-size="11" fill="var(--muted)">TIEPI imprevisto en horas al año: ${esc(name)} ${n0} - ${n1}; sector ${s0} - ${s1}</text></svg>`;
         const mix = d.mezcla || {};
         const parts = scopes.filter((sc) => mix[sc] != null).map((sc) => `${esc(sc)} ${num(mix[sc], 2)} h`);
-        html += `<h3>${esc(name)}</h3><div class="dos"><div>${svg}</div><div>
+        html += `<h3>${esc(name)}</h3><div>
           <p>Con la mezcla de zonas de ${esc(name)}, el TIEPI imprevisto de ${n0} - ${n1} es de <b>${num(mix.nuestra || 0, 2)} h</b> al año (horas equivalentes de interrupción por potencia instalada); el sector con esa misma mezcla de zonas: ${parts.join(", ")}.</p>
           ${zones.some((z) => z.imprevista_mismos_anios != null) ? `<p class="notas">En los mismos años que el sector (${s0} - ${s1}): ${zones.filter((z) => z.imprevista_mismos_anios != null).map((z) => `${esc(z.zona.replace("_", " "))} ${num(z.imprevista_mismos_anios, 2)} h`).join(", ")}.</p>` : ""}
-          </div></div>`;
+          </div>`;
       }
       // The national series: the storm years show up in the official statistics.
       const spain = ((j.serie || {})["España"] || {}).TOTAL || [];
@@ -545,7 +567,9 @@
           const prev = peaks[k - 1], next = peaks[k + 1];
           const anchor = next && next.i === p.i + 1 ? "end" : prev && prev.i === p.i - 1 ? "start" : "middle";
           const dx = anchor === "end" ? 2 : anchor === "start" ? -2 : 0;
-          svg += `<text x="${(x(p.i) + dx).toFixed(1)}" y="${(y(p.r.fuerza_mayor) - 6).toFixed(1)}" font-size="11" text-anchor="${anchor}" fill="var(--serie-fuerza-mayor)" stroke="var(--panel)" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${p.r.anio}</text>`;
+          // The storms the text names, on their peak (the other years keep only the year: their cause is not checked).
+          const storm = { 2009: " Klaus", 2010: " Xynthia" }[p.r.anio] || "";
+          svg += `<text x="${(x(p.i) + dx).toFixed(1)}" y="${(y(p.r.fuerza_mayor) - 6).toFixed(1)}" font-size="11" text-anchor="${anchor}" fill="var(--serie-fuerza-mayor)" stroke="var(--panel)" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${p.r.anio}${storm}</text>`;
         });
         svg += `<text x="4" y="${H - 5}" font-size="11" fill="var(--muted)">España, todas las zonas: TIEPI imprevisto (azul) y su parte por fuerza mayor (gris oscuro)</text></svg>`;
         html += `<h3>El tiempo manda también en la estadística oficial</h3><div class="dos"><div>${svg}</div><div><p>A escala nacional, el TIEPI por fuerza mayor se multiplica por 20 en los años de grandes temporales (Klaus en enero de 2009, Xynthia en febrero de 2010, Ana en diciembre de 2017) y en los años sin temporal se queda casi en cero. Una red no puede evitar esa parte del TIEPI, aunque sí puede prepararse si sabe la víspera qué días van a ser malos.</p></div></div>`;
