@@ -163,6 +163,18 @@
   "resultado_a2": -56486.7083,
   "resultado_a3": -24020.1667
  },
+ "esc: ENISA deniega el préstamo": {
+  "caja_36": 413693.9404,
+  "caja_min": 12301.4667,
+  "holgura_363": 617.9167,
+  "ingresos_a3": 377787.5,
+  "mes_caja_min": 4,
+  "mes_holgura": 11,
+  "pn363_min": 2117.9167,
+  "primer_mes_negativo": null,
+  "resultado_a2": -8524.4583,
+  "resultado_a3": 56977.5615
+ },
  "esc: ENISA llega dos meses más tarde (mes 8)": {
   "caja_36": 442043.9404,
   "caja_min": 12301.4667,

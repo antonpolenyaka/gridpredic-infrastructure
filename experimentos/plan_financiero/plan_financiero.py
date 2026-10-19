@@ -78,8 +78,9 @@ REDES_CALIBRACION = {
 }
 SENALES_PROVISIONALES = True
 
-# Red tipo de los clientes del plan: una red pequeña con telecontrol, más pequeña que la
-# mitad de las 52 mayores del mercado. Su licencia es la de cada cliente del plan.
+# Red tipo de los clientes del plan: una red pequeña con telecontrol, cerca del centro de
+# las 89 distribuidoras más grandes (38 de ellas tienen 150 CT o más y 60 pasan de 100 CT,
+# estimados por su retribución). Su licencia es la de cada cliente del plan.
 RED_TIPO_PLAN = {"ct": 150, "senales": 9000}
 
 # Redes de referencia para la página de precios y para la sensibilidad
@@ -186,10 +187,11 @@ MES_ENISA_V11 = 6
 IMPORTE_ENISA_V11 = 35000.0
 
 # Capital y aportaciones (decisión 11, sin Neotec). El capital se queda en 3.000 euros:
-# con menos se aplica el régimen de las sociedades de menos de 3.000 euros (art. 4.2 y
-# 4.3 LSC, redacción de la Ley 18/2022) y con más sube el umbral de disolución, la mitad
-# del capital (art. 363.1.e). Los fundadores ponemos 40.000 euros (3.000 de capital y
-# 37.000 de prima de asunción) y cobramos medio sueldo hasta que llega ENISA: es una
+# con menos se aplica el régimen de las sociedades limitadas de menos de 3.000 euros
+# (art. 4.1 LSC, redacción de la Ley 18/2022) y con más sube el umbral de disolución, la
+# mitad del capital (art. 363.1.e). Los fundadores ponemos 40.000 euros (3.000 de capital y
+# 37.000 de prima de asunción) y cobramos medio sueldo de enero a mayo de 2027 (meses 1 a
+# 5), hasta que llega ENISA en junio: es una
 # rebaja de verdad, no un aplazamiento, porque un sueldo aplazado se devenga igual y no
 # mejora el patrimonio. calcular() comprueba que la rebaja basta.
 APORTACION_FUNDADORES_V11 = 40000.0
@@ -554,10 +556,7 @@ def simular(S):
     # ENISA presta como mucho los fondos propios; la solicitud se estudia con las cuentas
     # de 2026, es decir, con el balance del momento 0
     assert balances[0]["total_pn"] >= E["importe"], "ENISA: fondos propios por debajo del préstamo"
-    # prueba de cuadre: activo = patrimonio neto + pasivo en todos los cierres
-    for m in range(0, N + 1):
-        dif = balances[m]["total_activo"] - balances[m]["total_pn_pasivo"]
-        assert abs(dif) < 0.01, f"El balance no cuadra en el mes {m}: diferencia {dif:.4f}"
+    comprobar_cuadre(balances)
 
     res = {
         "S": S, "N": N, "P": P, "caja": caja, "balances": balances, "clientes": clientes,
@@ -568,6 +567,18 @@ def simular(S):
     }
     comprobar_encadenado(res)
     return res
+
+
+def comprobar_cuadre(balances):
+    """Prueba de cuadre: en cada cierre, el activo es igual al patrimonio neto más el pasivo, sumando
+    otra vez las partidas una a una. Falla si no cuadra."""
+    for m, b in balances.items():
+        activo = b["intangible"] + b["material"] + b["fianza"] + b["clientes"] + b["hp_deudora_iva"] + b["tesoreria"]
+        pn = b["capital"] + b["prima"] + b["reservas"] + b["anteriores"] + b["resultado"]
+        pasivo = (b["enisa_lp"] + b["banco_lp"] + b["deuda_cp"] + b["anticipos"] + b["periodificacion"]
+                  + b["hp_acreedora"] + b["ss_acreedora"])
+        dif = activo - pn - pasivo
+        assert abs(dif) < 0.01, f"El balance no cuadra en el mes {m}: diferencia {dif:.4f}"
 
 
 def comprobar_encadenado(res):
@@ -775,6 +786,12 @@ def escenario_enisa_importe(S, importe):
     return S2
 
 
+def escenario_enisa_denegado(S):
+    S2 = copy.deepcopy(S)
+    S2["enisa"]["importe"] = 0.0
+    return S2
+
+
 def escenario_red(S, ct, senales):
     S2 = copy.deepcopy(S)
     S2["precio_licencia"] = licencia(ct, senales)
@@ -801,6 +818,7 @@ def lista_escenarios(S):
         lista += [
             ("ENISA llega dos meses más tarde (mes 8)", escenario_enisa(S, MES_ENISA_V11 + 2)),
             ("ENISA presta solo el mínimo de la línea (25.000 €)", escenario_enisa_importe(S, 25000.0)),
+            ("ENISA deniega el préstamo", escenario_enisa_denegado(S)),
             ("Clientes más pequeños: redes de 100 CT y 6.000 señales", escenario_red(S, 100, 6000)),
         ]
     return lista
@@ -1437,13 +1455,25 @@ def calcular():
     return {"r10": r10, "r11": r11, "r10_60": r10_60, "r11_60": r11_60, "c10": c10, "c11": c11, "extra": extra}
 
 
-def main():
-    R = calcular()
+def generar(R=None):
+    """Las salidas de texto (tablas y comparación) tal como las escribe main(). Las pruebas las
+    comparan con los ficheros de salida/ para saber si están al día con el código."""
+    R = R or calcular()
     e11 = escenarios(V11)
     e10 = escenarios(V10)
     t11, _, _ = construir_tablas(R["r11"], e11)
     t10, _, _ = construir_tablas(R["r10"], e10)
-    comp = texto_comparacion(R["c10"], R["c11"], R["extra"])
+    textos = {
+        "tablas_v11.txt": "\n\n".join(t11.values()) + "\n",
+        "tablas_v10.txt": "\n\n".join(t10.values()) + "\n",
+        "comparacion.txt": texto_comparacion(R["c10"], R["c11"], R["extra"]),
+    }
+    return R, e11, t11, textos
+
+
+def main():
+    R, e11, t11, textos = generar()
+    comp = textos["comparacion.txt"]
     if "--sin-salida" in sys.argv:
         print(comp)
         for v in t11.values():
@@ -1451,12 +1481,9 @@ def main():
             print(v)
         return
     os.makedirs(SALIDA, exist_ok=True)
-    with open(os.path.join(SALIDA, "tablas_v11.txt"), "w", encoding="utf-8") as f:
-        f.write("\n\n".join(t11.values()) + "\n")
-    with open(os.path.join(SALIDA, "tablas_v10.txt"), "w", encoding="utf-8") as f:
-        f.write("\n\n".join(t10.values()) + "\n")
-    with open(os.path.join(SALIDA, "comparacion.txt"), "w", encoding="utf-8") as f:
-        f.write(comp)
+    for nombre, texto in textos.items():
+        with open(os.path.join(SALIDA, nombre), "w", encoding="utf-8", newline="\n") as f:
+            f.write(texto)
 
     def redondear(v):
         if isinstance(v, float):

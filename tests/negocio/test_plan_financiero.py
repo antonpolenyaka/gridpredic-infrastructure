@@ -48,6 +48,35 @@ def test_la_prueba_de_cuadre_falla_si_no_cuadra(calculo):
         pf.comprobar_encadenado(r)
 
 
+def test_salta_si_activo_no_es_patrimonio_neto_mas_pasivo(calculo):
+    balances = copy.deepcopy(calculo["r11"]["balances"])
+    pf.comprobar_cuadre(balances)
+    balances[7]["tesoreria"] += 1.0
+    with pytest.raises(AssertionError):
+        pf.comprobar_cuadre(balances)
+    balances = copy.deepcopy(calculo["r11"]["balances"])
+    balances[30]["periodificacion"] -= 1.0
+    with pytest.raises(AssertionError):
+        pf.comprobar_cuadre(balances)
+
+
+def test_salidas_de_texto_al_dia_con_el_codigo(calculo):
+    # solo las tablas y la comparación: el Excel, el JSON y el CSV cambian en el cuarto decimal entre
+    # versiones de Python
+    _, _, _, textos = pf.generar(calculo)
+    for nombre in ("tablas_v11.txt", "comparacion.txt"):
+        with open(os.path.join(pf.SALIDA, nombre), encoding="utf-8") as f:
+            assert f.read() == textos[nombre], f"salida/{nombre} no está al día: vuelve a ejecutar plan_financiero.py"
+
+
+def test_enisa_denegado_sigue_cumpliendo():
+    r = pf.simular(pf.escenario_enisa_denegado(pf.V11))
+    h, _ = pf.holgura_363(r)
+    c, _ = pf.caja_minima(r)
+    assert h >= 0 and c >= 0
+    assert sum(r["P"]["entrada_prestamo"]) == 0
+
+
 def test_v11_cumple_todos_los_meses(calculo):
     S = pf.V11
     pf.comprobar_v11(calculo["r11"], calculo["r11_60"], S)
@@ -55,7 +84,10 @@ def test_v11_cumple_todos_los_meses(calculo):
     assert r["balances"][0]["total_pn"] >= S["enisa"]["importe"]
     assert r["P"]["entrada_prestamo"][pf.MES_ENISA_V11] == pf.IMPORTE_ENISA_V11
     assert sum(r["P"]["entrada_prestamo"][:pf.MES_ENISA_V11]) == 0
-    assert pf.sueldo_renunciado(S) == pytest.approx(90000 / 12 * 0.5 * (pf.MES_ENISA_V11 - 1))
+    desde, hasta, parte = pf.RECORTE_FUNDADORES_V11
+    bruto_fundadores = sum(b for (_, b, mes) in S["plantilla"] if mes == 1)
+    assert hasta == pf.MES_ENISA_V11 - 1
+    assert pf.sueldo_renunciado(S) == pytest.approx(bruto_fundadores / 12 * parte * (hasta - desde + 1))
 
 
 def test_sin_medio_sueldo_algun_mes_incumple():
@@ -66,8 +98,9 @@ def test_sin_medio_sueldo_algun_mes_incumple():
         pf.comprobar_v11(r36, r60, S)
 
 
-def test_un_sueldo_aplazado_no_arregla_el_patrimonio():
-    # el patrimonio no depende de cuándo se paga el sueldo: sin rebaja, el mes 4 queda por debajo del umbral
+def test_sin_rebaja_el_mes_4_queda_por_debajo_del_umbral():
+    # sin la rebaja, el mes 4 queda por debajo de la mitad del capital; un sueldo que solo se aplaza se
+    # devenga igual, así que su patrimonio es este mismo
     S = copy.deepcopy(pf.V11)
     S["recortes_fundadores"] = []
     b = pf.simular(S)["balances"][4]
