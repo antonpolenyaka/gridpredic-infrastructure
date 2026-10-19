@@ -1,0 +1,36 @@
+variable,modalidad,dias,dias_averia,cla_mod,mod_cla,global,lift,v_test,p_valor,causa
+red,Distribuidora 1,3501,20,0.5713,50.0,33.3333,1.5,2.1613,0.0307,meteorologia
+red,Distribuidora 2,3501,20,0.5713,50.0,33.3333,1.5,2.1613,0.0307,meteorologia
+estacion,invierno,2613,14,0.5358,35.0,24.8786,1.4068,1.4339,0.1516,meteorologia
+estacion,otoño,2457,10,0.407,25.0,23.3933,1.0687,0.2658,0.7904,meteorologia
+estacion,verano,2673,9,0.3367,22.5,25.4499,0.8841,-0.3978,0.6908,meteorologia
+estacion,primavera,2760,7,0.2536,17.5,26.2782,0.666,-1.263,0.2066,meteorologia
+red,Distribuidora 3,3501,0,0.0,0.0,33.3333,0.0,-5.3517,0.0,meteorologia
+red,Distribuidora 1,3501,56,1.5995,56.5657,33.3333,1.697,4.7391,0.0,equipo
+red,Distribuidora 2,3501,43,1.2282,43.4343,33.3333,1.303,2.0974,0.036,equipo
+estacion,otoño,2457,26,1.0582,26.2626,23.3933,1.1227,0.6838,0.4941,equipo
+estacion,invierno,2613,26,0.995,26.2626,24.8786,1.0556,0.3346,0.7379,equipo
+estacion,primavera,2760,26,0.942,26.2626,26.2782,0.9994,-0.014,0.9888,equipo
+estacion,verano,2673,21,0.7856,21.2121,25.4499,0.8335,-0.9653,0.3344,equipo
+red,Distribuidora 3,3501,0,0.0,0.0,33.3333,0.0,-8.7144,0.0,equipo
+red,Distribuidora 1,3501,53,1.5139,56.9892,33.3333,1.7097,4.673,0.0,desconocida
+red,Distribuidora 2,3501,38,1.0854,40.8602,33.3333,1.2258,1.5238,0.1276,desconocida
+estacion,verano,2673,28,1.0475,30.1075,25.4499,1.183,1.0281,0.3039,desconocida
+estacion,otoño,2457,25,1.0175,26.8817,23.3933,1.1491,0.8001,0.4237,desconocida
+estacion,primavera,2760,27,0.9783,29.0323,26.2782,1.1048,0.6131,0.5398,desconocida
+estacion,invierno,2613,13,0.4975,13.9785,24.8786,0.5619,-2.5496,0.0108,desconocida
+red,Distribuidora 3,3501,2,0.0571,2.1505,33.3333,0.0645,-7.5582,0.0,desconocida
+red,Distribuidora 1,3501,34,0.9712,69.3878,33.3333,2.0816,5.1181,0.0,fauna
+estacion,primavera,2760,23,0.8333,46.9388,26.2782,1.7862,3.0906,0.002,fauna
+red,Distribuidora 2,3501,15,0.4284,30.6122,33.3333,0.9184,-0.386,0.6995,fauna
+estacion,otoño,2457,9,0.3663,18.3673,23.3933,0.7852,-0.8118,0.4169,fauna
+estacion,invierno,2613,9,0.3444,18.3673,24.8786,0.7383,-1.0462,0.2955,fauna
+estacion,verano,2673,8,0.2993,16.3265,25.4499,0.6415,-1.4864,0.1372,fauna
+red,Distribuidora 3,3501,0,0.0,0.0,33.3333,0.0,-5.9805,0.0,fauna
+red,Distribuidora 3,3501,42,1.1997,84.0,33.3333,2.52,7.3482,0.0,aguas_arriba
+estacion,invierno,2613,18,0.6889,36.0,24.8786,1.447,1.7535,0.0795,aguas_arriba
+estacion,otoño,2457,12,0.4884,24.0,23.3933,1.0259,0.1282,0.898,aguas_arriba
+estacion,primavera,2760,12,0.4348,24.0,26.2782,0.9133,-0.3402,0.7337,aguas_arriba
+estacion,verano,2673,8,0.2993,16.0,25.4499,0.6287,-1.5604,0.1187,aguas_arriba
+red,Distribuidora 2,3501,6,0.1714,12.0,33.3333,0.36,-3.4163,0.0006,aguas_arriba
+red,Distribuidora 1,3501,2,0.0571,4.0,33.3333,0.12,-5.0127,0.0,aguas_arriba
