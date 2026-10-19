@@ -141,6 +141,7 @@ R Dos clientes nuevos menos en los años 2 y 3 | 12.301 (mes 4) | 5.688 (mes 4) 
 R Sin la ronda | 12.301 (mes 4) | 1.480 (mes 19) | -10.624 | 377.788 | 55.550 | 192.795 | 15
 R ENISA llega dos meses más tarde (mes 8) | 12.301 (mes 4) | 5.688 (mes 4) | -10.624 | 377.788 | 55.533 | 442.044 | 15
 R ENISA presta solo el mínimo de la línea (25.000 €) | 12.301 (mes 4) | 5.688 (mes 4) | -10.024 | 377.788 | 56.075 | 432.338 | 15
+R ENISA deniega el préstamo | 12.301 (mes 4) | 2.118 (mes 11) | -8.524 | 377.788 | 56.978 | 413.694 | 15
 R Clientes más pequeños: redes de 100 CT y 6.000 señales | 12.301 (mes 4) | 5.688 (mes 4) | -15.950 | 366.150 | 45.134 | 416.082 | 15
 
 T Licencia anual con la tarifa por tamaño de red (3.000 € fijos, 150 € por CT del 1 al 100, 15 € del 101 al 300 y 10 € desde el 301, y 0,10 € por señal, con un mínimo de 6.000 € y sin máximo), en euros

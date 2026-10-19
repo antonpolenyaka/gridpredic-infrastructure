@@ -1,5 +1,5 @@
 # Integración continua: se ejecuta en cada pull request y en cada push a main.
-# Tres comprobaciones independientes, de más rápida a más lenta:
+# Cuatro comprobaciones independientes:
 #   1. lint: ruff sobre todo el código Python.
 #   2. compose: compose.yaml se resuelve sin avisos con las variables de .env.example.
 #   3. silver-smoke, gold-smoke y ml-smoke: los tests de extremo a extremo de Silver, de Gold
