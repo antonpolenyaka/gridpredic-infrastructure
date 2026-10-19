@@ -35,7 +35,8 @@ never works on the whole table at once:
   half way (on a laptop an executor can be lost after an hour of I/O) the
   retry continues from the first month that was not finished instead of
   starting again from 2021. --rehacer forces every month of the range.
-- Rejected rows are not copied one by one (around 22 % of 2.150 million):
+- Rejected rows are not copied one by one (they are a real share of the
+  2.150 million; dq_metrics keeps it per month in rechazo_total):
   f_tag_interval_value_rechazo_diario keeps the count per tag, day and
   reason. The number of hours without a good reading of a tag is itself a
   useful health feature.

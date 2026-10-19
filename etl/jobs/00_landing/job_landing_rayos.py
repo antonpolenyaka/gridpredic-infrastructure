@@ -7,8 +7,9 @@ The Lightning Imager of MTG publishes the flashes it sees every 10 minutes
 with a NetCDF of flashes with position, time, duration and radiance). Before
 17 % of the incidents of 2024 - 2025 there were flashes within 10 km of the
 network in the previous hour, against 1.1 % of the control windows, so a
-storm over a line is the most direct sign of the next hour we have
-(causas-incidencias.md, apartado 8).
+storm over the network is the most direct sign of the next hour we have
+(causas-incidencias.md, apartado 8). The figure is of the network of each
+distribuidora; for a single line it is only an indication.
 
 Every run asks the Data Store for the products of the last ventana_min +
 retraso_min minutes, downloads the ones that are not yet in the Landing,
