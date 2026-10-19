@@ -1,0 +1,120 @@
+T Cuenta de explotación a tres años, en euros
+H Concepto | Año 1 | Año 2 | Año 3
+W 6 | 2 | 2 | 2
+R Clientes nuevos en el año | 3 | 6 | 8
+R Clientes activos al final del año | 3 | 8 | 15
+R Licencias anuales en cartera al final del año | 58.500 | 156.000 | 292.500
+R Ingresos por implantación | 60.000 | 120.000 | 160.000
+R Ingresos por licencias | 29.250 | 110.500 | 216.125
+R Total ingresos | 89.250 | 230.500 | 376.125
+R Sueldos y salarios | -90.000 | -120.000 | -156.000
+R Cargas sociales | -27.000 | -36.000 | -46.800
+R Nube (cómputo, almacenamiento y demos) | -7.200 | -9.600 | -12.000
+R Herramientas de desarrollo | -2.400 | -3.600 | -4.800
+R Asesoría jurídica | -4.000 | -8.000 | -6.000
+R Gestoría | -2.400 | -3.600 | -4.800
+R Actividad comercial y ferias | -5.000 | -15.000 | -25.000
+R Equipos menores, viajes y otros | -3.000 | -6.000 | -9.000
+R Coworking | -6.000 | -9.000 | -12.000
+R Seguro de responsabilidad civil | -1.200 | -2.000 | -2.000
+R Comisión del socio (10 % de las licencias) | 0 | -11.050 | -21.613
+R Imprevistos (5 %) | -7.410 | -11.193 | -15.001
+R Total gastos de explotación | -155.610 | -235.043 | -315.013
+R Resultado bruto de explotación | -66.360 | -4.543 | 61.112
+R Amortizaciones | -2.950 | -3.592 | -4.150
+R Resultado de explotación | -69.310 | -8.134 | 56.962
+R Gastos financieros | -2.630 | -3.431 | -3.078
+R Resultado antes de impuestos | -71.940 | -11.565 | 53.884
+R Impuesto sobre Sociedades | 0 | 0 | 0
+R Resultado del ejercicio | -71.940 | -11.565 | 53.884
+R Cash flow (resultado más amortizaciones) | -68.990 | -7.974 | 58.034
+
+T Balances de situación de los momentos 0 a 3, en euros
+H Partida | Momento 0 | Momento 1 | Momento 2 | Momento 3
+W 6 | 2 | 2 | 2 | 2
+R Inmovilizado intangible (marca y aplicaciones) | 5.500 | 4.200 | 3.808 | 2.408
+R Inmovilizado material (equipos y mobiliario) | 7.500 | 5.850 | 6.150 | 5.900
+R Total activo no corriente | 13.000 | 10.050 | 9.958 | 8.308
+R Fianza del coworking | 1.000 | 1.000 | 1.000 | 1.000
+R Clientes | 0 | 0 | 35.695 | 59.290
+R Hacienda Pública deudora por IVA | 0 | 2.594 | 0 | 0
+R Tesorería | 64.500 | 313.953 | 322.408 | 433.051
+R Total activo corriente | 65.500 | 317.548 | 359.103 | 493.341
+R Total activo | 78.500 | 327.598 | 369.061 | 501.649
+R Capital social | 3.000 | 4.000 | 4.000 | 4.000
+R Prima de asunción | 57.000 | 306.000 | 306.000 | 306.000
+R Reservas (gastos de constitución y de la ronda) | -1.500 | -4.500 | -4.500 | -4.500
+R Resultados de ejercicios anteriores | 0 | 0 | -71.940 | -83.505
+R Resultado del ejercicio | 0 | -71.940 | -11.565 | 53.884
+R Total patrimonio neto | 58.500 | 233.560 | 221.995 | 275.879
+R Préstamo de ENISA a largo plazo | 0 | 38.000 | 34.200 | 26.600
+R Préstamo bancario a largo plazo | 20.000 | 15.000 | 10.000 | 5.000
+R Total pasivo no corriente | 20.000 | 53.000 | 44.200 | 31.600
+R Cuotas de los préstamos que vencen en el año siguiente | 0 | 5.000 | 8.800 | 12.600
+R Ingresos anticipados (licencias y anticipos facturados) | 0 | 29.250 | 74.750 | 151.125
+R Hacienda Pública y Seguridad Social acreedoras | 0 | 6.788 | 19.316 | 30.445
+R Total pasivo corriente | 0 | 41.038 | 102.866 | 194.170
+R Total patrimonio neto y pasivo | 78.500 | 327.598 | 369.061 | 501.649
+
+T Tesorería del año 1 mes a mes, en euros (cobros y pagos con IVA), y patrimonio neto con el préstamo participativo (art. 363 LSC)
+H Mes | Cobros | Personal y Seguridad Social | Proveedores | IVA | Financiación | Saldo del mes | Tesorería final | Patrimonio neto (art. 363)
+W 1 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2
+R 1 | 0 | -5.663 | -3.872 | 0 | -108 | -9.643 | 54.857 | 45.178
+R 2 | 0 | -8.400 | -3.872 | 0 | -108 | -12.381 | 42.476 | 31.857
+R 3 | 0 | -8.400 | -3.872 | 0 | -108 | -12.381 | 30.096 | 18.535
+R 4 | 0 | -12.450 | -3.872 | 0 | -108 | -16.431 | 13.665 | 5.213
+R 5 | 12.100 | -8.400 | -3.872 | 0 | -108 | -281 | 13.385 | 13.517
+R 6 | 35.695 | -8.400 | -3.872 | 0 | 37.702 | 61.124 | 74.509 | 39.630
+R 7 | 12.100 | -12.450 | -3.872 | -6.467 | -108 | -10.797 | 63.712 | 49.368
+R 8 | 35.695 | -8.400 | -3.872 | 0 | -108 | 23.314 | 87.026 | 39.107
+R 9 | 12.100 | -8.400 | -3.872 | 0 | -678 | -851 | 86.176 | 50.470
+R 10 | 35.695 | -12.450 | -3.872 | -12.526 | -108 | 6.739 | 92.914 | 41.833
+R 11 | 0 | -8.400 | -3.872 | 0 | -108 | -12.381 | 80.534 | 33.197
+R 12 | 0 | -8.400 | -3.872 | 0 | 245.692 | 233.419 | 313.953 | 271.560
+
+T Tesorería de los tres años, en euros
+H Concepto | Año 1 | Año 2 | Año 3
+W 6 | 2 | 2 | 2
+R Tesorería inicial | 64.500 | 313.953 | 322.408
+R Cobros de clientes | 143.385 | 298.265 | 523.930
+R Pagos de personal y Seguridad Social | -110.213 | -153.738 | -200.085
+R Pagos a proveedores | -46.466 | -95.221 | -135.358
+R IVA e Impuesto sobre Sociedades | -18.993 | -28.186 | -62.941
+R Flujo de caja de la explotación | -32.287 | 21.120 | 125.546
+R Inversiones | 0 | -4.235 | -3.025
+R Ronda de capital, neta de gastos | 246.370 | 0 | 0
+R Préstamo de ENISA cobrado | 38.000 | 0 | 0
+R Intereses pagados | -2.630 | -3.431 | -3.078
+R Devolución de préstamos | 0 | -5.000 | -8.800
+R Tesorería final | 313.953 | 322.408 | 433.051
+
+T Fondos propios frente a deuda financiera, en euros
+H Momento | Patrimonio neto | Préstamos (ENISA y banco) | Propio / ajeno | Patrimonio neto con el participativo (art. 363)
+W 3 | 2 | 2 | 2 | 3
+R Momento 0 | 58.500 | 20.000 | 75 % / 25 % | 58.500
+R Mes 5, antes de ENISA | 13.517 | 20.000 | 40 % / 60 % | 13.517
+R Mes 11, antes de la ronda | -4.803 | 58.000 | Patrimonio neto negativo | 33.197
+R Momento 1 | 233.560 | 58.000 | 80 % / 20 % | 271.560
+R Momento 2 | 221.995 | 53.000 | 81 % / 19 % | 259.995
+R Momento 3 | 275.879 | 44.200 | 86 % / 14 % | 310.079
+
+T Sensibilidad del plan, en euros
+H Escenario | Caja más baja (mes) | Patrimonio neto más bajo con el participativo (mes) | Resultado del año 2 | Ingresos del año 3 | Resultado del año 3 | Tesorería al final del año 3 | Clientes al final
+W 5 | 2 | 2 | 2 | 2 | 2 | 2 | 1
+R Base: el plan | 13.385 (mes 5) | 5.213 (mes 4) | -11.565 | 376.125 | 53.884 | 433.051 | 15
+R Los contratos llegan seis meses más tarde | -31.758 (mes 11) | -37.667 (mes 10) | -67.925 | 296.000 | -19.928 | 212.155 | 11
+R Lo mismo, con los sueldos de los fundadores a la mitad de los meses 4 a 11 | 2.668 (mes 10) | -1.835 (mes 10) | -67.925 | 296.000 | -19.928 | 253.105 | 11
+R Los contratos llegan un año más tarde | -43.858 (mes 11) | -51.216 (mes 35) | -144.284 | 230.500 | -80.650 | 14.195 | 8
+R Dos clientes nuevos menos en los años 2 y 3 | 13.385 (mes 5) | 5.213 (mes 4) | -57.383 | 292.250 | -25.384 | 276.173 | 11
+R Sin la ronda | 13.385 (mes 5) | -1.918 (mes 19) | -11.565 | 376.125 | 53.884 | 186.051 | 15
+R ENISA llega dos meses más tarde (mes 8) | 13.385 (mes 5) | 1.820 (mes 6) | -11.565 | 376.125 | 53.865 | 435.493 | 15
+R ENISA presta solo el mínimo de la línea (25.000 €) en el mes 6 | 13.385 (mes 5) | 5.213 (mes 4) | -10.785 | 376.125 | 54.655 | 423.356 | 15
+R Clientes más pequeños: red media de 100 CT y 6.000 señales | 13.385 (mes 5) | 5.213 (mes 4) | -39.459 | 315.167 | -673 | 308.839 | 15
+
+T Licencia anual con la tarifa por tamaño de red (3.000 € fijos, 50 € por CT y 1,0 € por señal, con un mínimo de 6.000 € y sin máximo), en euros
+H Red | CT | Señales | Fijo + CT + señales | Licencia | Qué se aplica
+W 3 | 1 | 2 | 2 | 2 | 3
+R Distribuidora 1 | 760 | 44.400 (provisional) | 85.400 | 85.400 | Fijo + CT + señales
+R Distribuidora 2 | 570 | 33.300 (provisional) | 64.800 | 64.800 | Fijo + CT + señales
+R Distribuidora 3 | 10 | 600 (provisional) | 4.100 | 6.000 | Mínimo
+R Red tipo del plan | 150 | 9.000 | 19.500 | 19.500 | La licencia de cada cliente del plan
