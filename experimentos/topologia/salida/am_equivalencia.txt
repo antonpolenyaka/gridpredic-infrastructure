@@ -1,0 +1,2 @@
+aggregateMessages emulado: 1,281 trafos con mensaje (24 ms); coincide con dim_ct.n_posiciones_aguas_arriba en el 100.0% de los 1,323 CT con trafo
+CT con trafo sin ningun mensaje (no aparecen en el resultado de aggregateMessages): 42

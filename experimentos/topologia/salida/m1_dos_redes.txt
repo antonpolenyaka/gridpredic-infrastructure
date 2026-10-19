@@ -1,0 +1,20 @@
+grafo: 9,838 vertices {'evento': 7373, 'trafo': 1281, 'incidencia': 799, 'elemento': 385}, 473,034 aristas {'DEJA_SIN_TENSION': 397119, 'AFECTA': 46519, 'AGUAS_ARRIBA': 28959, 'DESPEJADA_POR': 437} (0.7 s)
+A. Motivo sobre el grafo entero, filas tras cada join (orden en que se escribe el motivo):
+  (ev)-[d1]->(t1) con t1 en D1: 275,257
+  + (ev)-[d2]->(t2), antes de unir t2: 69,977,926; con t2 en D2: 1,496,989
+  + (t1)-[a1]->(x): 45,642,994; con a1.ts < ev.ts como condicion del join: 26,922,537
+  + (t2)-[a2]->(x): 12,535,250 sin la condicion temporal; con a1.ts y a2.ts < ev.ts: 7,094,934 instancias
+  (recuento sin materializar, 0.90 s)
+  sin filtros de red, el segundo join daria 84,284,951 filas (pares ordenados por evento)
+  en el otro orden, empezando por (t1)-[a1]->(x): 18,156; + (t2)-[a2]->(x): 620,985; + (ev)-[d1]->(t1): 218,254,229; + (ev)-[d2]->(t2): 12,535,250
+
+B. Subgrafo filtrado antes: 270 eventos con trafos de D1 y D2 y 23 elementos con trafos de las dos redes; 34,441 aristas
+  filas tras cada join: 17,829, 4,406,972, 1,496,989, 13,884,459, 7,094,934; instancias 7,094,934 (filtrado 0.24 s, total 16.97 s)
+
+C. Por conjuntos (join y groupBy): 431,507 filas intermedias; 0.387 s
+
+Resultado (igual en A, B y C): de 270 eventos con trafos de las dos redes, 268 tienen algun par D1 - D2 con un elemento comun conocido antes del evento (99.3%)
+  pares (evento, t1, t2) con elemento comun: 1,395,087 de 1,496,989 (93.2%)
+  instancias por par: mediana 5; elementos comunes por evento: mediana 11, maximo 20
+  instancias del motivo frente a eventos de la respuesta: 7,094,934 filas para 268 eventos
+tiempo total 23.8 s

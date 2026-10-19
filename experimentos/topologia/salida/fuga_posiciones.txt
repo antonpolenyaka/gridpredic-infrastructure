@@ -1,0 +1,9 @@
+n_posiciones de dim_ct igual a la cuenta de toda la historia: 100.0% de 1323 CT con trafo
+primer_conocido_ts: de 2021-01-06 10:23:03.897000 a 2026-08-11 18:58:57.573000
+ anio   ct  ct_con_kvah spearman_toda spearman_antes captura10_toda captura10_antes  captura10_azar  ct_con_posicion_nueva_en_Y kvah_Y_en_CT_con_posicion_nueva media_pos_toda media_pos_antes
+ 2021 1323          732         0.197            nan          35.8%            9.6%             0.1                        1247                          100.0%           17.5             0.0
+ 2022 1323          896         0.103          0.214           7.4%           27.3%             0.1                        1218                           97.5%           17.5             7.4
+ 2023 1323          871         0.173          0.344          20.8%           15.3%             0.1                        1126                           91.1%           17.5            10.4
+ 2024 1323         1003         0.020          0.047          10.1%           13.3%             0.1                        1201                           98.1%           17.5            12.3
+ 2025 1323          486         0.298          0.288           5.1%            0.9%             0.1                         950                           91.4%           17.5            14.5
+media 2022 - 2025: spearman 0.149 (toda) frente a 0.223 (antes de Y); captura del 10 % 10.9% frente a 14.2%
