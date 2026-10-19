@@ -10,12 +10,15 @@ cuadra, el guion se para con un AssertionError.
 
 Hay dos juegos de supuestos:
 
-- V10: el plan de la memoria v10 (licencia de 18.000 euros, ENISA cobrada en el
-  momento 0, 40.000 euros de los fundadores). Lo reproducimos al euro como referencia.
-- V11: las tres decisiones del 19.10.2026: tarifa por tamaño de red (fijo + CT +
-  señales, con un mínimo y sin máximo), ENISA cobrada en el mes 6 y el capital y las
-  aportaciones que hacen falta para que el patrimonio neto no baje de la mitad del
-  capital (art. 363.1.e LSC) en ningún mes.
+- V10: el plan de la memoria v10 (licencia de 18.000 euros, ENISA de 38.000 euros
+  cobrada en el momento 0, 40.000 euros de los fundadores). Lo reproducimos al euro
+  como referencia.
+- V11: las decisiones del 19 y del 20.10.2026. Licencia por tamaño de red, con el
+  precio por CT en tramos (descuento por volumen), un mínimo y sin máximo; ENISA de
+  35.000 euros cobrada en el mes 6; 40.000 euros de los fundadores con 3.000 de
+  capital, y medio sueldo de los fundadores hasta que llega ENISA. Con eso la caja no
+  baja de cero y el patrimonio neto no baja de la mitad del capital (art. 363.1.e LSC)
+  en ningún mes, y el guion lo comprueba.
 
 Para comparar los dos planes más allá del año 3 alargamos los dos a 60 meses con los
 mismos supuestos de los años 4 y 5 (ANIOS_4_5). Esa extensión es solo de contraste:
@@ -29,7 +32,7 @@ Salidas (salida/):
     tablas_v11.txt       tablas de 3.9 en el formato de la memoria (T, H, W, R)
     tablas_v10.txt       las mismas tablas con los supuestos de la v10
     cifras_v11.json      cifras sueltas que cita el texto
-    comparacion.txt      antes y después de las cifras clave, con el cálculo de la tarifa
+    comparacion.txt      antes y después de las cifras clave, con la licencia de cada red
     mensual_v11.csv      tesorería, resultado y patrimonio de cada mes
     detalle_v11.xlsx     el detalle mes a mes y los balances (si está openpyxl)
 
@@ -40,6 +43,7 @@ biblioteca estándar (openpyxl es opcional).
 import copy
 import csv
 import json
+import math
 import os
 import sys
 
@@ -47,16 +51,26 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 SALIDA = os.path.join(AQUI, "salida")
 
 # ---------------------------------------------------------------------------
-# Tarifa por tamaño de red (decisión 9 del 19.10.2026)
+# Tarifa por tamaño de red (decisión 9 del 19.10.2026; forma elegida el 20.10.2026)
 # ---------------------------------------------------------------------------
-# Como un SCADA: una parte fija, una por CT y otra por señal, con un mínimo y sin
-# máximo. Señales = tags del SCADA que cuelgan de la distribuidora (medidas, estados
-# y alarmas). La calibración está en calibrar_tarifa().
-TARIFA = {"fijo": 3000.0, "por_ct": 50.0, "por_senal": 1.0, "minimo": 6000.0}
+# Como se licencia un SCADA: una parte fija, una por CT y otra por señal (los tags del
+# SCADA que cuelgan de la distribuidora). Cada CT paga el precio de su tramo, como en el
+# IRPF, así que la licencia no da saltos al pasar de un tramo a otro. El precio por CT
+# baja a partir de 100 CT porque el coste de servir a una red apenas crece con los CT:
+# el modelo, la previsión y el cuadro de mando son los mismos. Mínimo para las redes muy
+# pequeñas y sin máximo.
+TARIFA = {
+    "fijo": 3000.0,
+    "tramos_ct": [(100, 150.0), (300, 15.0), (None, 10.0)],   # (hasta el CT, euros por CT)
+    "por_senal": 0.10,
+    "minimo": 6000.0,
+}
 
-# Las tres redes del TFM. Los CT son los de la red actual (docs/cifras.md, apartado 1).
-# Las señales son PROVISIONALES: los 78.301 tags de TedisNet repartidos por CT
-# (unos 58 por CT), a la espera del recuento por distribuidora (consulta en el README).
+# ÚNICO SITIO con los CT y las señales de las tres redes del TFM. Los CT son los de la
+# red actual (docs/cifras.md, apartado 1). Las señales son PROVISIONALES: los 78.301 tags
+# de TedisNet repartidos por CT (unos 58 por CT). Cuando llegue el recuento de
+# senales_por_distribuidora.sql, se cambian aquí, se pone SENALES_PROVISIONALES = False y
+# se vuelve a ejecutar el guion (y se copian las licencias nuevas de salida/comparacion.txt).
 REDES_CALIBRACION = {
     "Distribuidora 1": {"ct": 760, "senales": 44400},
     "Distribuidora 2": {"ct": 570, "senales": 33300},
@@ -64,14 +78,40 @@ REDES_CALIBRACION = {
 }
 SENALES_PROVISIONALES = True
 
-# Red tipo de los clientes del plan: una red pequeña con telecontrol, más pequeña que
-# la mitad de las 52 mayores del mercado. Es la que fija la licencia media del plan.
+# Red tipo de los clientes del plan: una red pequeña con telecontrol, más pequeña que la
+# mitad de las 52 mayores del mercado. Su licencia es la de cada cliente del plan.
 RED_TIPO_PLAN = {"ct": 150, "senales": 9000}
+
+# Redes de referencia para la página de precios y para la sensibilidad
+REDES_REFERENCIA = {"Red de 50 CT": {"ct": 50, "senales": 2900},
+                    "Red de 100 CT": {"ct": 100, "senales": 6000},
+                    "Red de 300 CT": {"ct": 300, "senales": 17500}}
+
+
+def partes_licencia(ct, senales, t=TARIFA):
+    """Fijo, parte de los CT (por tramos) y parte de las señales, antes del mínimo."""
+    parte_ct = 0.0
+    desde = 0
+    for hasta, precio in t["tramos_ct"]:
+        tope = ct if hasta is None else min(ct, hasta)
+        if tope > desde:
+            parte_ct += (tope - desde) * precio
+        if hasta is None or ct <= hasta:
+            break
+        desde = hasta
+    return t["fijo"], parte_ct, t["por_senal"] * senales
 
 
 def licencia(ct, senales, t=TARIFA):
-    """Licencia anual en euros: fijo + CT + señales, con el mínimo y sin techo."""
-    return max(t["minimo"], t["fijo"] + t["por_ct"] * ct + t["por_senal"] * senales)
+    """Licencia anual en euros: fijo + CT por tramos + señales, con el mínimo y sin techo."""
+    return max(t["minimo"], sum(partes_licencia(ct, senales, t)))
+
+
+def texto_tarifa(t=TARIFA, moneda="€"):
+    (h1, p1), (h2, p2), (_, p3) = t["tramos_ct"]
+    return (f"{fmt(t['fijo'])} {moneda} fijos, {fmt(p1)} {moneda} por CT del 1 al {h1}, {fmt(p2)} {moneda} del "
+            f"{h1 + 1} al {h2} y {fmt(p3)} {moneda} desde el {h2 + 1}, y {fmt2(t['por_senal'])} {moneda} por señal, "
+            f"con un mínimo de {fmt(t['minimo'])} {moneda} y sin máximo")
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +134,9 @@ V10 = {
                   ("Fundador (datos y plataforma)", 40000.0, 1),
                   ("Ingeniero de implantación y soporte", 30000.0, 13),
                   ("Responsable comercial del sector", 36000.0, 25)],
+    # (desde, hasta, parte del sueldo de los fundadores a la que renuncian); si dos
+    # periodos se solapan, cuenta la rebaja mayor
+    "recortes_fundadores": [],
     "cargas_sociales": 0.30,
     "ss_trabajador": 0.065,
     "retencion_irpf": 0.18,
@@ -131,29 +174,36 @@ V10 = {
     "mes_pago_is": 7,
 }
 
-# Mes de cobro de ENISA en la v11 y por qué (decisión 10): constituimos en diciembre de
-# 2026; el primer ejercicio cierra el 31.12.2026; formulamos, aprobamos en junta universal
-# y depositamos las cuentas de 2026 en enero (arts. 253.1, 164.1, 178 y 279.1 LSC); la
-# solicitud va en febrero (mes 2), cuando el Registro ha despachado el depósito; ENISA
-# abre el estudio con el expediente completo (30 días para subir los documentos) y la
-# resolución suele llegar de uno a tres meses después; con la póliza ante notario y el
-# desembolso, el dinero está en el mes 6.
+# ENISA (decisión 10). Constituimos en diciembre de 2026 y el primer ejercicio cierra el
+# 31.12.2026. En enero formulamos, aprobamos en junta universal y depositamos las cuentas
+# de 2026 (arts. 253.1, 164.1, 178 y 279.1 LSC); la solicitud va en febrero (mes 2); ENISA
+# da 30 días para completar el expediente y no publica un plazo de resolución (las
+# asesorías hablan de uno a tres meses con el expediente completo); con la póliza y el
+# desembolso, el dinero está en el mes 6. Pedimos 35.000 euros y no 38.000 para tener
+# margen en la condición de fondos propios (al menos iguales al préstamo), que se mide
+# con las cuentas de 2026: 38.500 euros.
 MES_ENISA_V11 = 6
+IMPORTE_ENISA_V11 = 35000.0
+
+# Capital y aportaciones (decisión 11, sin Neotec). El capital se queda en 3.000 euros:
+# con menos se aplica el régimen de las sociedades de menos de 3.000 euros (art. 4.2 y
+# 4.3 LSC, redacción de la Ley 18/2022) y con más sube el umbral de disolución, la mitad
+# del capital (art. 363.1.e). Los fundadores ponemos 40.000 euros (3.000 de capital y
+# 37.000 de prima de asunción) y cobramos medio sueldo hasta que llega ENISA: es una
+# rebaja de verdad, no un aplazamiento, porque un sueldo aplazado se devenga igual y no
+# mejora el patrimonio. calcular() comprueba que la rebaja basta.
+APORTACION_FUNDADORES_V11 = 40000.0
+RECORTE_FUNDADORES_V11 = (1, MES_ENISA_V11 - 1, 0.5)
 
 V11 = copy.deepcopy(V10)
 V11.update({
     "nombre": "v11",
     "precio_licencia": licencia(**RED_TIPO_PLAN),
+    "prima_fundadores": APORTACION_FUNDADORES_V11 - V10["capital_fundadores"],
+    "recortes_fundadores": [RECORTE_FUNDADORES_V11],
 })
 V11["enisa"]["mes_cobro"] = MES_ENISA_V11
-# Capital social y aportaciones (decisión 11): el capital se queda en 3.000 euros, el
-# mínimo con el que no se aplica el régimen de las sociedades de menos de 3.000 euros
-# (art. 4.2 y 4.3 LSC, redacción de la Ley 18/2022), y la mitad del capital, el umbral
-# del art. 363.1.e, en 1.500 euros. Lo que hace falta de más entra como prima de
-# asunción en la constitución. La cifra sale de aportacion_minima() y la redondeamos a
-# miles por fundador; main() comprueba que sigue siendo suficiente.
-APORTACION_FUNDADORES_V11 = 60000.0
-V11["prima_fundadores"] = APORTACION_FUNDADORES_V11 - V11["capital_fundadores"]
+V11["enisa"]["importe"] = IMPORTE_ENISA_V11
 
 # Años 4 y 5, solo para comparar los dos planes (los mismos para los dos): ocho clientes
 # nuevos al año al ritmo del año 3, dos bajas al año, la misma plantilla y los gastos del
@@ -165,6 +215,8 @@ ANIOS_4_5 = {
 }
 TASA_VAN = 0.10   # tasa de contraste; la misma para los dos planes
 
+# Hipótesis de venta para la cuenta del inversor (3.9.6): un múltiplo de las licencias
+# anuales y el plazo desde la entrada de la ronda (mes 12) hasta la venta a finales de 2031.
 MULTIPLO_VENTA = 4.0
 ANIOS_HASTA_VENTA = 4
 SIN_IVA = {"Seguros (responsabilidad civil)"}
@@ -196,6 +248,11 @@ def fmt(x, cero="0"):
 def fmt1(x):
     """Un decimal con coma: 18,6."""
     return f"{x:.1f}".replace(".", ",")
+
+
+def fmt2(x):
+    """Dos decimales con coma: 0,10."""
+    return f"{x:.2f}".replace(".", ",")
 
 
 def fmt_pct(x, dec=1):
@@ -255,12 +312,15 @@ def simular(S):
         for m in range(desde, N + 1):
             P["sueldos"][m] += bruto / 12.0
             personas_mes[m] += 1
-    recorte = S.get("recorte_fundadores")
-    if recorte:
-        d, h, parte = recorte
-        bruto_fund = sum(b for (_, b, desde) in S["plantilla"] if desde == 1)
-        for m in range(d, h + 1):
-            P["sueldos"][m] -= bruto_fund / 12.0 * parte
+    # rebaja del sueldo de los fundadores (renuncia, no aplazamiento); si dos periodos se
+    # solapan, cuenta la rebaja mayor
+    parte_mes = [0.0] * (N + 2)
+    for (d, h, parte) in S.get("recortes_fundadores", []):
+        for m in range(d, min(h, N) + 1):
+            parte_mes[m] = max(parte_mes[m], parte)
+    bruto_fund = sum(b for (_, b, desde) in S["plantilla"] if desde == 1)
+    for m in range(1, N + 1):
+        P["sueldos"][m] -= bruto_fund / 12.0 * parte_mes[m]
     for m in range(1, N + 1):
         P["cargas"][m] = P["sueldos"][m] * S["cargas_sociales"]
 
@@ -618,13 +678,60 @@ def van(res, tasa=TASA_VAN):
     return sum(f / (1 + tasa) ** (i + 1) for i, f in enumerate(flujos)), flujos
 
 
-def aportacion_minima(S):
-    """Aportación extra de los fundadores (prima) que deja la caja y el patrimonio del art. 363 en
-    positivo todos los meses. Las dos crecen euro a euro con la aportación, que no cambia el resultado."""
+def sueldo_renunciado(S):
+    """Sueldo bruto de los fundadores al que renuncian, en euros (año 1)."""
+    bruto_fund = sum(b for (_, b, desde) in S["plantilla"] if desde == 1)
+    parte = [0.0] * (S["meses"] + 2)
+    for (d, h, p) in S.get("recortes_fundadores", []):
+        for m in range(d, min(h, S["meses"]) + 1):
+            parte[m] = max(parte[m], p)
+    return sum(bruto_fund / 12.0 * p for p in parte)
+
+
+def cumple(r):
+    """Caja y patrimonio del art. 363 en positivo todos los meses del horizonte."""
+    h, mh = holgura_363(r)
+    c, mc = caja_minima(r)
+    return h >= -1e-6 and c >= -1e-6
+
+
+def rebaja_minima(S, hasta_mes):
+    """Parte mínima del sueldo de los fundadores a la que hay que renunciar en los meses 1 a
+    hasta_mes para que caja y patrimonio cumplan en los 36 y en los 60 meses."""
+    def prueba(p):
+        s = copy.deepcopy(S)
+        s["recortes_fundadores"] = [(1, hasta_mes, p)]
+        return cumple(simular(s)) and cumple(simular(a_60_meses(s)))
+    if not prueba(1.0):
+        return None
+    lo, hi = 0.0, 1.0
+    if prueba(0.0):
+        return 0.0
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        if prueba(mid):
+            hi = mid
+        else:
+            lo = mid
+    return hi
+
+
+def enisa_maximo(S, paso=500.0):
+    """Importe redondo más alto de ENISA (en múltiplos de paso) que no pasa de los fondos propios
+    del momento 0 y con el que caja y patrimonio siguen cumpliendo."""
     r = simular(S)
-    h, _ = holgura_363(r)
-    c, _ = caja_minima(r, 1)
-    return max(0.0, -h, -c)
+    tope = math.floor(r["balances"][0]["total_pn"] / paso) * paso
+    imp = tope
+    while imp >= 25000.0:
+        s = copy.deepcopy(S)
+        s["enisa"]["importe"] = imp
+        try:
+            if cumple(simular(s)) and cumple(simular(a_60_meses(s))):
+                return imp
+        except AssertionError:
+            pass
+        imp -= paso
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -635,7 +742,7 @@ def escenario_retraso(S, meses=6, recorte=None):
     S2["puestas_en_marcha"] = [g + meses for g in S["puestas_en_marcha"]]
     S2["bajas"] = [(g + meses, f + meses) for (g, f) in S["bajas"]]
     if recorte:
-        S2["recorte_fundadores"] = recorte
+        S2["recortes_fundadores"] = list(S.get("recortes_fundadores", [])) + [recorte]
     return S2
 
 
@@ -656,6 +763,7 @@ def escenario_sin_ronda(S):
 
 
 def escenario_enisa(S, mes):
+    """ENISA llega en otro mes; el medio sueldo de los fundadores se queda en los meses 1 a 5."""
     S2 = copy.deepcopy(S)
     S2["enisa"]["mes_cobro"] = mes
     return S2
@@ -673,12 +781,18 @@ def escenario_red(S, ct, senales):
     return S2
 
 
-def escenarios(S):
+def lista_escenarios(S):
     lista = [
         ("Base: el plan", S),
         ("Los contratos llegan seis meses más tarde", escenario_retraso(S, 6)),
-        ("Lo mismo, con los sueldos de los fundadores a la mitad de los meses 4 a 11",
-         escenario_retraso(S, 6, recorte=(4, 11, 0.5))),
+    ]
+    if S["nombre"] == "v11":
+        lista.append(("Lo mismo, con medio sueldo de los fundadores hasta el mes 11",
+                      escenario_retraso(S, 6, recorte=(1, 11, 0.5))))
+    else:
+        lista.append(("Lo mismo, con los sueldos de los fundadores a la mitad de los meses 4 a 11",
+                      escenario_retraso(S, 6, recorte=(4, 11, 0.5))))
+    lista += [
         ("Los contratos llegan un año más tarde", escenario_retraso(S, 12)),
         ("Dos clientes nuevos menos en los años 2 y 3", escenario_menos_clientes(S, 2)),
         ("Sin la ronda", escenario_sin_ronda(S)),
@@ -686,11 +800,15 @@ def escenarios(S):
     if S["nombre"] == "v11":
         lista += [
             ("ENISA llega dos meses más tarde (mes 8)", escenario_enisa(S, MES_ENISA_V11 + 2)),
-            ("ENISA presta solo el mínimo de la línea (25.000 €) en el mes 6", escenario_enisa_importe(S, 25000.0)),
-            ("Clientes más pequeños: red media de 100 CT y 6.000 señales", escenario_red(S, 100, 6000)),
+            ("ENISA presta solo el mínimo de la línea (25.000 €)", escenario_enisa_importe(S, 25000.0)),
+            ("Clientes más pequeños: redes de 100 CT y 6.000 señales", escenario_red(S, 100, 6000)),
         ]
+    return lista
+
+
+def escenarios(S):
     # en los escenarios el art. 363 y la caja se miden, no se exigen
-    return [(nombre, simular(s)) for nombre, s in lista]
+    return [(nombre, simular(s)) for nombre, s in lista_escenarios(S)]
 
 
 # ---------------------------------------------------------------------------
@@ -708,13 +826,73 @@ def tabla(titulo, cabecera, filas, anchos=None):
     return "\n".join(out)
 
 
+PALABRAS = {1: "uno", 2: "dos", 3: "tres", 4: "cuatro", 5: "cinco", 6: "seis", 7: "siete", 8: "ocho", 9: "nueve"}
+
+
 def construir_tablas(res, escen):
     S = res["S"]
     tablas = {}
     y = {a: pyg_anual(res, a) for a in (1, 2, 3)}
     t = {a: tesoreria_anual(res, a) for a in (1, 2, 3)}
     B = res["balances"]
+    v11 = S["nombre"] == "v11"
 
+    # --- presupuesto del primer año
+    e1 = y[1]["ext"]
+    fund = [p for p in S["plantilla"] if p[2] == 1]
+    meses_lic_a1 = sum(13 - g for g in S["puestas_en_marcha"] if g <= 12)
+    pilotos_a1 = sum(1 for g in S["puestas_en_marcha"] if g <= 12)
+    assert abs(y[1]["lic"] - meses_lic_a1 * S["precio_licencia"] / 12) < 0.01
+    personal_a1 = y[1]["sueldos"] + y[1]["cargas"]
+    rec = S.get("recortes_fundadores", [])
+    nota_sueldos = f"Los dos fundadores, con {fmt(fund[0][1])} y {fmt(fund[1][1])} € brutos al año"
+    if rec:
+        d, h, p = rec[0]
+        nota_sueldos += (f", a medio sueldo los meses {d} a {h}, hasta que llega ENISA" if p == 0.5
+                         else f", con un {fmt_pct(p, 0)} menos los meses {d} a {h}")
+    if v11:
+        nota_fin = (f"Intereses del banco ({fmt_pct(S['banco']['interes'], 1)}) todo el año y de ENISA "
+                    f"({fmt_pct(S['enisa']['interes'], 0)}) desde el mes {S['enisa']['mes_cobro']}, y la comisión de "
+                    "apertura de ENISA")
+    else:
+        nota_fin = (f"Intereses de ENISA ({fmt_pct(S['enisa']['interes'], 0)}) y del banco "
+                    f"({fmt_pct(S['banco']['interes'], 1)}) y comisión de apertura de ENISA")
+    filas = [
+        ["Implantaciones", fmt(y[1]["impl"]), f"{PALABRAS[pilotos_a1].capitalize()} pilotos a "
+         f"{fmt(S['precio_implantacion'])} €"],
+        ["Licencias", fmt(y[1]["lic"]), f"{PALABRAS[pilotos_a1].capitalize()} licencias de {fmt(S['precio_licencia'])} € "
+         f"al año, con {PALABRAS[meses_lic_a1 // pilotos_a1]} meses de servicio de media en 2027"],
+        ["Total ingresos", fmt(y[1]["ingresos"]), "Implantaciones y licencias del año"],
+        ["Sueldos y salarios", fmt(y[1]["sueldos"]), nota_sueldos],
+        ["Cargas sociales", fmt(y[1]["cargas"]), f"{fmt_pct(S['cargas_sociales'], 0)} de los sueldos"],
+        ["Nube", fmt(e1["Nube (cómputo, almacenamiento, demos)"]), "Cómputo, almacenamiento, demos y el plan "
+         f"comercial de la previsión, {fmt(e1['Nube (cómputo, almacenamiento, demos)'] / 12)} € al mes"],
+        ["Herramientas de desarrollo", fmt(e1["Herramientas de desarrollo"]),
+         f"{fmt(S['herramientas_persona_mes'])} € por persona y mes"],
+        ["Asesoría jurídica", fmt(e1["Asesoría jurídica"]), "Contratos con el socio y con los clientes, encargo de "
+         "tratamiento y análisis del AI Act"],
+        ["Gestoría", fmt(e1["Gestoría"]), f"{fmt(e1['Gestoría'] / 12)} € al mes"],
+        ["Actividad comercial con el socio", fmt(e1["Actividad comercial y ferias"]),
+         "Viajes y material de las demos con el socio; lo que le paguemos el año 1 sale de aquí"],
+        ["Equipos menores, viajes y otros", fmt(e1["Equipos menores, viajes y otros"]),
+         "Material de oficina y desplazamientos"],
+        ["Coworking", fmt(e1["Coworking"]), f"{fmt(S['coworking_persona_mes'])} € por persona y mes"],
+        ["Seguro de responsabilidad civil", fmt(e1["Seguros (responsabilidad civil)"]),
+         "El que pedirá cualquier distribuidora en el contrato"],
+        ["Imprevistos", fmt(y[1]["imprevistos"]), f"{fmt_pct(S['imprevistos'], 0)} de los gastos anteriores"],
+        ["Total gastos de explotación", fmt(y[1]["gastos_expl"]),
+         f"El {fmt_pct(personal_a1 / y[1]['gastos_expl'], 0)} es personal"],
+        ["Resultado bruto de explotación", fmt(y[1]["ebitda"]), "Ingresos menos gastos de explotación"],
+        ["Amortizaciones", fmt(-y[1]["amort"]), "Equipos y aplicaciones en cuatro años; marca y mobiliario en diez"],
+        ["Gastos financieros", fmt(-y[1]["financieros"]), nota_fin],
+        ["Impuesto sobre Sociedades", fmt(-y[1]["is"]), "Año con pérdidas"],
+        ["Resultado neto del año 1", fmt(y[1]["resultado"]),
+         "Se compensa en el Impuesto sobre Sociedades con los beneficios de los años siguientes"],
+    ]
+    tablas["presupuesto_a1"] = tabla("Presupuesto del primer año (2027), en euros",
+                                     ["Concepto", "Importe", "Cómo lo calculamos"], filas, [4, 2, 6])
+
+    # --- cuenta de explotación
     def fila(nombre, clave=None, f=None, signo=1):
         return [nombre] + [fmt(signo * (f(y[a]) if f else y[a][clave])) for a in (1, 2, 3)]
 
@@ -753,6 +931,7 @@ def construir_tablas(res, escen):
     tablas["pyg"] = tabla("Cuenta de explotación a tres años, en euros",
                           ["Concepto", "Año 1", "Año 2", "Año 3"], filas, [6, 2, 2, 2])
 
+    # --- balances
     def bfila(nombre, clave, momentos=(0, 12, 24, 36)):
         return [nombre] + [fmt(B[m][clave]) for m in momentos]
     filas = [
@@ -786,6 +965,7 @@ def construir_tablas(res, escen):
                                ["Partida", "Momento 0", "Momento 1", "Momento 2", "Momento 3"],
                                filas, [6, 2, 2, 2, 2])
 
+    # --- tesorería del año 1, mes a mes
     P = res["P"]
     filas = []
     for m in range(1, 13):
@@ -797,15 +977,15 @@ def construir_tablas(res, escen):
                  - P["pago_intereses"][m] - P["pago_principal"][m])
         neto = cobros - personal - prov - iva_is + finan
         assert abs(res["caja"][m - 1] + neto - res["caja"][m]) < 0.01
-        b = B[m]
         filas.append([str(m), fmt(cobros), fmt(-personal), fmt(-prov), fmt(-iva_is), fmt(finan), fmt(neto),
-                      fmt(res["caja"][m]), fmt(b["pn_mercantil"])])
+                      fmt(res["caja"][m]), fmt(B[m]["pn_mercantil"])])
     tablas["tesoreria_mensual"] = tabla(
         "Tesorería del año 1 mes a mes, en euros (cobros y pagos con IVA), y patrimonio neto con el préstamo "
         "participativo (art. 363 LSC)",
         ["Mes", "Cobros", "Personal y Seguridad Social", "Proveedores", "IVA", "Financiación",
          "Saldo del mes", "Tesorería final", "Patrimonio neto (art. 363)"], filas, [1, 2, 2, 2, 2, 2, 2, 2, 2])
 
+    # --- tesorería de los tres años
     def tfila(nombre, clave, signo=1):
         return [nombre] + [fmt(signo * t[a][clave]) for a in (1, 2, 3)]
     filas = [
@@ -817,7 +997,10 @@ def construir_tablas(res, escen):
         tfila("Flujo de caja de la explotación", "explotacion"),
         tfila("Inversiones", "inversion"),
         tfila("Ronda de capital, neta de gastos", "capital"),
-        tfila("Préstamo de ENISA cobrado", "prestamos"),
+    ]
+    if any(t[a]["prestamos"] for a in (1, 2, 3)):
+        filas.append(tfila("Préstamo de ENISA cobrado", "prestamos"))
+    filas += [
         tfila("Intereses pagados", "intereses"),
         tfila("Devolución de préstamos", "principal"),
         tfila("Tesorería final", "final"),
@@ -825,6 +1008,7 @@ def construir_tablas(res, escen):
     tablas["tesoreria_anual"] = tabla("Tesorería de los tres años, en euros",
                                       ["Concepto", "Año 1", "Año 2", "Año 3"], filas, [6, 2, 2, 2])
 
+    # --- estructura de financiación
     filas = []
     mc = S["enisa"]["mes_cobro"]
     momentos = [("Momento 0", 0)]
@@ -834,12 +1018,42 @@ def construir_tablas(res, escen):
     for etiqueta, m in momentos:
         pr = B[m]["total_pn"]
         aj = res["enisa_pend"][m] + res["banco_pend"][m]
-        reparto = "Patrimonio neto negativo" if pr < 0 else fmt_pct(pr / (pr + aj), 0) + " / " + fmt_pct(aj / (pr + aj), 0)
+        reparto = ("Patrimonio neto negativo" if pr < 0
+                   else fmt_pct(pr / (pr + aj), 0) + " / " + fmt_pct(aj / (pr + aj), 0))
         filas.append([etiqueta, fmt(pr), fmt(aj), reparto, fmt(B[m]["pn_mercantil"])])
     tablas["estructura"] = tabla("Fondos propios frente a deuda financiera, en euros",
                                  ["Momento", "Patrimonio neto", "Préstamos (ENISA y banco)", "Propio / ajeno",
                                   "Patrimonio neto con el participativo (art. 363)"], filas, [3, 2, 2, 2, 3])
 
+    # --- uso de la ronda
+    a2, a3 = y[2], y[3]
+    equipo_nuevo = 0.0
+    for (_, bruto, desde) in S["plantilla"]:
+        if desde > 12:
+            meses_a2 = max(0, 24 - max(desde, 13) + 1)
+            meses_a3 = max(0, 36 - max(desde, 25) + 1)
+            equipo_nuevo += bruto / 12.0 * (meses_a2 + meses_a3) * (1 + S["cargas_sociales"])
+    equipo_nuevo += sum(imp for (mes, _, imp, tipo) in S["inversiones"] if tipo == "equipo" and mes > 12)
+    comercial = a2["ext"]["Actividad comercial y ferias"] + a3["ext"]["Actividad comercial y ferias"]
+    legal = (a2["ext"]["Asesoría jurídica"] + a3["ext"]["Asesoría jurídica"] + S["ronda"]["gastos"]
+             + sum(imp for (mes, _, imp, tipo) in S["inversiones"] if tipo == "marca"))
+    imprev = a2["imprevistos"] + a3["imprevistos"]
+    filas = [
+        ["Equipo", "150.000", fmt(equipo_nuevo),
+         "Sueldo, cargas y puesto del ingeniero desde el mes 13 y del responsable comercial desde el mes 25"],
+        ["Comercial y ferias", "60.000", fmt(comercial),
+         "Ferias y jornadas del sector, cuotas de asociaciones y viajes de demo de los años 2 y 3"],
+        ["Legal y contingencia", "40.000", fmt(legal + imprev),
+         f"Asesoría jurídica, marca en la EUIPO y gastos de la ronda ({fmt(legal)} €) e imprevistos del 5 % "
+         f"({fmt(imprev)} €)"],
+        ["Total", "250.000", fmt(equipo_nuevo + comercial + legal + imprev),
+         "Lo que no cubren los ingresos queda en caja como colchón"],
+    ]
+    tablas["uso_ronda"] = tabla("Uso de la ronda: destino previsto y lo que gasta el plan en los años 2 y 3, más los "
+                                "gastos de la ronda, en euros",
+                                ["Partida", "Destino previsto", "Gasto del plan", "Qué incluye"], filas, [2, 2, 2, 6])
+
+    # --- sensibilidad
     filas = []
     for nombre, r in escen:
         cm, mm = caja_minima(r, 1, 36)
@@ -853,25 +1067,115 @@ def construir_tablas(res, escen):
          "Resultado del año 2", "Ingresos del año 3", "Resultado del año 3", "Tesorería al final del año 3",
          "Clientes al final"], filas, [5, 2, 2, 2, 2, 2, 2, 1])
 
+    # --- tarifa
     filas = []
-    for nombre, red in REDES_CALIBRACION.items():
-        bruto = TARIFA["fijo"] + TARIFA["por_ct"] * red["ct"] + TARIFA["por_senal"] * red["senales"]
+    redes = list(REDES_CALIBRACION.items()) + [("Red tipo del plan", RED_TIPO_PLAN)] + list(REDES_REFERENCIA.items())
+    for nombre, red in redes:
+        fijo, pct, psen = partes_licencia(red["ct"], red["senales"])
         lic = licencia(**red)
-        nota = "Mínimo" if lic > bruto else "Fijo + CT + señales"
-        filas.append([nombre, str(red["ct"]), fmt(red["senales"]) + (" (provisional)" if SENALES_PROVISIONALES else ""),
-                      fmt(bruto), fmt(lic), nota])
-    filas.append(["Red tipo del plan", str(RED_TIPO_PLAN["ct"]), fmt(RED_TIPO_PLAN["senales"]),
-                  fmt(TARIFA["fijo"] + TARIFA["por_ct"] * RED_TIPO_PLAN["ct"] + TARIFA["por_senal"] * RED_TIPO_PLAN["senales"]),
-                  fmt(licencia(**RED_TIPO_PLAN)), "La licencia de cada cliente del plan"])
+        sen = fmt(red["senales"])
+        if nombre in REDES_CALIBRACION and SENALES_PROVISIONALES:
+            sen = "unas " + sen + " (provisional)"
+        nota = "Mínimo" if lic > fijo + pct + psen else ("Licencia de cada cliente del plan"
+                                                          if nombre == "Red tipo del plan" else "Fijo + CT + señales")
+        filas.append([nombre, fmt(red["ct"]), sen, fmt(pct), fmt(psen), fmt(lic), nota])
     tablas["tarifa"] = tabla(
-        f"Licencia anual con la tarifa por tamaño de red ({fmt(TARIFA['fijo'])} € fijos, {fmt(TARIFA['por_ct'])} € por CT "
-        f"y {fmt1(TARIFA['por_senal'])} € por señal, con un mínimo de {fmt(TARIFA['minimo'])} € y sin máximo), en euros",
-        ["Red", "CT", "Señales", "Fijo + CT + señales", "Licencia", "Qué se aplica"], filas, [3, 1, 2, 2, 2, 3])
+        f"Licencia anual con la tarifa por tamaño de red ({texto_tarifa()}), en euros",
+        ["Red", "CT", "Señales", "Parte de los CT", "Parte de las señales", "Licencia al año", "Qué se aplica"],
+        filas, [3, 1, 2, 2, 2, 2, 3])
+
+    # --- supuestos
+    gm = S["puestas_en_marcha"]
+    a1l = [g for g in gm if g <= 12]
+    a2l = [g for g in gm if 12 < g <= 24]
+    a3l = [g for g in gm if g > 24]
+    pl = S["plantilla"]
+    E, Bk, R = S["enisa"], S["banco"], S["ronda"]
+
+    def lista_meses(v):
+        v = [str(x) for x in v]
+        return ", ".join(v[:-1]) + " y " + v[-1]
+    if v11:
+        precio = (f"{fmt(S['precio_implantacion'])} € de implantación. La licencia, por el tamaño de la red: "
+                  f"{texto_tarifa()}. Cada cliente del plan es una red de {RED_TIPO_PLAN['ct']} CT y "
+                  f"{fmt(RED_TIPO_PLAN['senales'])} señales, que paga {fmt(S['precio_licencia'])} € al año, sin subida "
+                  "con el IPC.")
+        precio_fuente = "M2 y Pitch v3 para la implantación; la tarifa, decisión nuestra calibrada con las tres redes del TFM (3.7.1)"
+        plantilla = (f"Los dos fundadores ({fmt(pl[0][1])} y {fmt(pl[1][1])} € brutos al año), a medio sueldo los meses "
+                     f"{RECORTE_FUNDADORES_V11[0]} a {RECORTE_FUNDADORES_V11[1]}, hasta que llega ENISA. Un ingeniero de "
+                     f"implantación y soporte desde el mes {pl[2][2]} ({fmt(pl[2][1])} €) y un responsable comercial del "
+                     f"sector desde el mes {pl[3][2]} ({fmt(pl[3][1])} €).")
+        financiacion = (f"{fmt(S['capital_fundadores'] + S['prima_fundadores'])} € de los fundadores, la mitad cada uno "
+                        f"({fmt(S['capital_fundadores'])} de capital y {fmt(S['prima_fundadores'])} de prima de asunción). "
+                        f"Préstamo bancario de la línea del ICO de {fmt(Bk['importe'])} € a {Bk['plazo_meses'] // 12} años "
+                        f"con {Bk['carencia_meses'] // 12} de carencia, en el momento 0. Préstamo participativo de ENISA de "
+                        f"{fmt(E['importe'])} € a {E['plazo_meses'] // 12} años con {E['carencia_meses'] // 12} de carencia, "
+                        f"cobrado en el mes {E['mes_cobro']}. Ronda de {fmt(R['importe'])} € por el 25 % en el mes "
+                        f"{R['mes']}, con {fmt(R['gastos'])} € de gastos.")
+        fin_fuente = ("Decisión nuestra; ENISA pide fondos propios al menos iguales al préstamo y las cuentas del último "
+                      "ejercicio depositadas; la ronda, del Pitch v3")
+    else:
+        precio = (f"{fmt(S['precio_implantacion'])} € de implantación y {fmt(S['precio_licencia'])} € al año de "
+                  "licencia, sin subida con el IPC.")
+        precio_fuente = "M2 y Pitch v3"
+        plantilla = (f"Los dos fundadores ({fmt(pl[0][1])} y {fmt(pl[1][1])} € brutos al año). Un ingeniero de "
+                     f"implantación y soporte desde el mes {pl[2][2]} ({fmt(pl[2][1])} €) y un responsable comercial del "
+                     f"sector desde el mes {pl[3][2]} ({fmt(pl[3][1])} €).")
+        financiacion = (f"{fmt(S['capital_fundadores'] + S['prima_fundadores'])} € de los fundadores, la mitad cada uno "
+                        f"({fmt(S['capital_fundadores'])} de capital y {fmt(S['prima_fundadores'])} de prima de asunción). "
+                        f"Préstamo participativo de ENISA de {fmt(E['importe'])} € a {E['plazo_meses'] // 12} años con "
+                        f"{E['carencia_meses'] // 12} de carencia. Préstamo bancario de la línea del ICO de "
+                        f"{fmt(Bk['importe'])} € a {Bk['plazo_meses'] // 12} años con {Bk['carencia_meses'] // 12} de "
+                        f"carencia. Ronda de {fmt(R['importe'])} € por el 25 % en el mes {R['mes']}, con "
+                        f"{fmt(R['gastos'])} € de gastos.")
+        fin_fuente = "Decisión nuestra; ENISA pide fondos propios al menos iguales al préstamo; la ronda, del Pitch v3"
+    filas = [
+        ["Calendario", "Constituimos la sociedad en diciembre de 2026 (momento 0); el año 1 es 2027, el 2 es 2028 "
+         "y el 3 es 2029. El mes 1 es enero de 2027.", "Decisión nuestra"],
+        ["Clientes nuevos", f"{len(a1l)} el año 1, {len(a2l)} el año 2 y {len(a3l)} el año 3.",
+         "Pitch v3 para los años 1 y 2 (tres pilotos; de 6 a 8 clientes); el año 3, decisión nuestra para llegar "
+         "al suelo de ingresos del Pitch"],
+        ["Ritmo de las firmas", f"Puesta en marcha en los meses {lista_meses(a1l)} del año 1; en los meses "
+         f"{lista_meses(a2l)} del año 2, y en los meses {lista_meses(a3l)} del año 3. Antes, un mes de demo gratuita; "
+         "la firma, el mes anterior a la puesta en marcha.",
+         f"Decisión nuestra; los pilotos suman {meses_lic_a1} meses de licencia el año 1, los mismos que el M2 "
+         "(seis meses de media)"],
+        ["Bajas", "Uno de los tres pilotos no renueva al cumplir el año (mes 21) y otro cliente se va al cumplir el "
+         "suyo (mes 26): dos bajas entre los 17 clientes del plan.", "Decisión nuestra, prudente"],
+        ["Precio", precio, precio_fuente],
+        ["Facturación y cobro", "La implantación, mitad a la firma y mitad en la puesta en marcha; la licencia, por "
+         "años adelantados. Todo se cobra a 30 días.", "Decisión nuestra"],
+        ["Plantilla", plantilla, "M2 para los fundadores; las contrataciones, decisión nuestra"],
+        ["Cargas sociales", f"{fmt_pct(S['cargas_sociales'], 0)} de los salarios brutos.", "M2"],
+        ["Otros gastos", "El año 1, 24.000 € de nube, herramientas, asesoría, gestoría, actividad comercial y otros, "
+         "más el coworking (250 € por persona y mes) y un seguro de responsabilidad civil; las herramientas, a 100 € por "
+         "persona y mes. En los años 2 y 3 crecen con la plantilla y con la actividad comercial.",
+         "M2; la fianza de dos meses del balance de momento 0; decisión nuestra"],
+        ["Comisión del socio", f"{fmt_pct(S['comision_socio'], 0)} de las licencias desde el año 2, por instalar y dar "
+         "el primer soporte. El año 1 va dentro de la partida de actividad comercial.",
+         "Decisión nuestra, por negociar con SITEL"],
+        ["Imprevistos", f"{fmt_pct(S['imprevistos'], 0)} de los gastos de explotación.", "Decisión nuestra"],
+        ["Inversiones y amortización", "El activo del momento 0 (13.000 €), 2.500 € de puesto de trabajo por cada "
+         "contratación y 1.000 € para la marca en la EUIPO. Amortización lineal: marca y mobiliario en diez años; "
+         "aplicaciones y equipos informáticos en cuatro.",
+         "Balance de momento 0 y su plantilla del año 1; las aplicaciones, decisión nuestra"],
+        ["Financiación", financiacion, fin_fuente],
+        ["Intereses", f"{fmt_pct(E['interes'], 0)} el de ENISA (tramo fijo y variable juntos) y "
+         f"{fmt_pct(Bk['interes'], 1)} el bancario; comisión de apertura de ENISA del "
+         f"{fmt_pct(E['comision_apertura'], 1)}.", "Decisión nuestra, prudente"],
+        ["Impuestos", f"IVA del {fmt_pct(S['iva'], 0)} y retenciones de IRPF del {fmt_pct(S['retencion_irpf'], 0)}, que "
+         "se liquidan cada trimestre; la Seguridad Social, el mes siguiente. Impuesto sobre Sociedades del "
+         f"{fmt_pct(S['tipo_is'], 0)} (entidad de nueva creación), compensando las pérdidas anteriores y pagado en "
+         "julio del año siguiente; el crédito fiscal no se lleva al balance.", "Ley 27/2014 y decisión nuestra"],
+        ["Proveedores", "Se pagan al contado.", "Decisión nuestra, prudente"],
+    ]
+    tablas["supuestos"] = tabla("Supuestos del plan financiero", ["Concepto", "Supuesto", "De dónde sale"],
+                                filas, [2, 6, 3])
     return tablas, y, t
 
 
 # ---------------------------------------------------------------------------
-# Cifras clave y comparación
+# Cifras clave, cifras del texto y comparación
 # ---------------------------------------------------------------------------
 def cifras_clave(r36, r60):
     c = {}
@@ -879,6 +1183,7 @@ def cifras_clave(r36, r60):
         y = pyg_anual(r36, a)
         c[f"ingresos_a{a}"] = y["ingresos"]
         c[f"resultado_a{a}"] = y["resultado"]
+        c[f"bai_a{a}"] = y["bai"]
         c[f"caja_fin_a{a}"] = r36["caja"][a * 12]
         c[f"pn_a{a}"] = r36["balances"][a * 12]["total_pn"]
     for a in (4, 5):
@@ -900,22 +1205,84 @@ def cifras_clave(r36, r60):
     c["van5"], c["flujos5"] = van(r60)
     c["caja_m0"] = r36["caja"][0]
     c["pn_m0"] = r36["balances"][0]["total_pn"]
+    c["importe_enisa"] = r36["S"]["enisa"]["importe"]
+    c["margen_fp_enisa"] = c["pn_m0"] - c["importe_enisa"]
     c["aportacion_fundadores"] = r36["S"]["capital_fundadores"] + r36["S"]["prima_fundadores"]
     c["capital"] = r36["S"]["capital_fundadores"]
     c["mes_enisa"] = r36["S"]["enisa"]["mes_cobro"]
     c["licencia"] = r36["S"]["precio_licencia"]
+    c["sueldo_renunciado"] = sueldo_renunciado(r36["S"])
     return c
 
 
-def texto_comparacion(c10, c11, ap_min):
-    lin = []
-    lin.append("Antes (v10) y después (v11) de las cifras clave del plan financiero, en euros")
-    lin.append("")
+def cifras_texto(res, escen, extra):
+    """Cifras sueltas que cita el texto de 3.9 (cifras_v11.json)."""
+    S, B, P = res["S"], res["balances"], res["P"]
+    y = {a: pyg_anual(res, a) for a in (1, 2, 3)}
+    t = {a: tesoreria_anual(res, a) for a in (1, 2, 3)}
+    c = {}
+    for a in (1, 2, 3):
+        for k in ("ingresos", "impl", "lic", "gastos_expl", "ebitda", "resultado", "bai", "is", "amort", "financieros"):
+            c[f"{k}_a{a}"] = y[a][k]
+        c[f"cash_flow_a{a}"] = y[a]["resultado"] + y[a]["amort"]
+        c[f"caja_fin_a{a}"] = t[a]["final"]
+        c[f"flujo_expl_a{a}"] = t[a]["explotacion"]
+        c[f"activos_a{a}"] = activos_al_final(res, a * 12)
+        c[f"anticipados_a{a}"] = B[a * 12]["periodificacion"] + B[a * 12]["anticipos"]
+        c[f"pn_a{a}"] = B[a * 12]["total_pn"]
+    c["caja_m0"] = B[0]["tesoreria"]
+    c["pn_m0"] = B[0]["total_pn"]
+    c["salidas_mes2"] = res["caja"][1] - res["caja"][2]
+    c["salidas_mes4"] = res["caja"][3] - res["caja"][4]
+    c["iva_mes7"] = P["pago_iva"][7]
+    c["iva_mes10"] = P["pago_iva"][10]
+    c["bin_final"] = res["bin_final"]
+    c["perdidas_a1_a2"] = -(y[1]["resultado"] + y[2]["resultado"])
+    c["licencias_cartera_a3"] = activos_al_final(res, 36) * S["precio_licencia"]
+    pm, lic_eq = punto_muerto(res, 3)
+    c["punto_muerto_licencias"] = pm
+    c["clientes_equilibrio"] = math.ceil(pm)
+    c["margen_a3"] = y[3]["resultado"] / y[3]["ingresos"]
+    c["peso_impl_a3"] = y[3]["impl"] / y[3]["ingresos"]
+    c["personal_a1_peso"] = (y[1]["sueldos"] + y[1]["cargas"]) / y[1]["gastos_expl"]
+    cm, mm = caja_minima(res)
+    c["caja_min"], c["mes_caja_min"] = cm, mm
+    pn, mp = pn_minimo(res)
+    c["pn363_min"], c["mes_pn363_min"] = pn, mp
+    c["pn_mes"] = {m: B[m]["total_pn"] for m in range(0, 13)}
+    c["pn363_mes"] = {m: B[m]["pn_mercantil"] for m in range(0, 13)}
+    c["caja_mes"] = {m: res["caja"][m] for m in range(0, 13)}
+    c["multiplo_licencias"] = 1000000.0 / c["licencias_cartera_a3"]
+    c["multiplo_ingresos"] = 1000000.0 / y[3]["ingresos"]
+    for n in (20, 30, 45):
+        veces = n * S["precio_licencia"] * MULTIPLO_VENTA * S["ronda"]["participacion"] / S["ronda"]["importe"]
+        c[f"inversor_veces_{n}"] = veces
+        c[f"inversor_tir_{n}"] = veces ** (1 / ANIOS_HASTA_VENTA) - 1
+    for nombre, r in escen:
+        cmn, mmn = caja_minima(r, 1, 36)
+        h, mh = holgura_363(r, 36)
+        neg = [m for m in range(1, 37) if r["caja"][m] < 0]
+        c["esc: " + nombre] = {
+            "caja_min": cmn, "mes_caja_min": mmn, "holgura_363": h, "mes_holgura": mh,
+            "pn363_min": h + r["balances"][mh]["umbral_363"], "primer_mes_negativo": neg[0] if neg else None,
+            "resultado_a2": pyg_anual(r, 2)["resultado"], "resultado_a3": pyg_anual(r, 3)["resultado"],
+            "ingresos_a3": pyg_anual(r, 3)["ingresos"], "caja_36": r["caja"][36],
+        }
+    c.update(extra)
+    return c
+
+
+def texto_comparacion(c10, c11, extra):
+    lin = ["Antes (v10) y después (v11) de las cifras clave del plan financiero, en euros", ""]
     filas = [
         ("Licencia anual por cliente del plan", "licencia"),
         ("Aportación de los fundadores en la constitución", "aportacion_fundadores"),
         ("Capital social", "capital"),
+        ("Sueldo de los fundadores al que renuncian (año 1)", "sueldo_renunciado"),
+        ("Préstamo de ENISA", "importe_enisa"),
         ("Mes de cobro de ENISA (0 = momento 0)", "mes_enisa"),
+        ("Fondos propios del momento 0 (cuentas de 2026)", "pn_m0"),
+        ("Margen de los fondos propios sobre el préstamo de ENISA", "margen_fp_enisa"),
         ("Tesorería del momento 0", "caja_m0"),
         ("Ingresos del año 1", "ingresos_a1"), ("Ingresos del año 2", "ingresos_a2"),
         ("Ingresos del año 3", "ingresos_a3"), ("Ingresos del año 4 (contraste)", "ingresos_a4"),
@@ -935,27 +1302,33 @@ def texto_comparacion(c10, c11, ap_min):
     lin.append("| --- | --- | --- |")
     for nombre, k in filas:
         lin.append(f"| {nombre} | {fmt(c10[k])} | {fmt(c11[k])} |")
-    lin.append(f"| Punto muerto en licencias | {fmt1(c10['punto_muerto_licencias'])} | {fmt1(c11['punto_muerto_licencias'])} |")
+    lin.append(f"| Punto muerto en licencias | {fmt1(c10['punto_muerto_licencias'])} | "
+               f"{fmt1(c11['punto_muerto_licencias'])} |")
     lin.append(f"| Caja más baja (mes) | {fmt(c10['caja_min'])} (mes {c10['mes_caja_min']}) | "
                f"{fmt(c11['caja_min'])} (mes {c11['mes_caja_min']}) |")
-    lin.append(f"| Patrimonio neto más bajo con el participativo (mes) | {fmt(c10['pn363_min'])} (mes {c10['mes_pn363_min']}) | "
-               f"{fmt(c11['pn363_min'])} (mes {c11['mes_pn363_min']}) |")
-    lin.append(f"| Margen sobre la mitad del capital en el peor mes | {fmt(c10['holgura_363'])} (mes {c10['mes_holgura_363']}) | "
-               f"{fmt(c11['holgura_363'])} (mes {c11['mes_holgura_363']}) |")
+    lin.append(f"| Patrimonio neto más bajo con el participativo (mes) | {fmt(c10['pn363_min'])} (mes "
+               f"{c10['mes_pn363_min']}) | {fmt(c11['pn363_min'])} (mes {c11['mes_pn363_min']}) |")
+    lin.append(f"| Margen sobre la mitad del capital en el peor mes | {fmt(c10['holgura_363'])} (mes "
+               f"{c10['mes_holgura_363']}) | {fmt(c11['holgura_363'])} (mes {c11['mes_holgura_363']}) |")
     lin.append("")
     lin.append(f"Flujos libres de los años 1 a 5, v10: {', '.join(fmt(f) for f in c10['flujos5'])}")
     lin.append(f"Flujos libres de los años 1 a 5, v11: {', '.join(fmt(f) for f in c11['flujos5'])}")
     lin.append("")
-    lin.append(f"Aportación mínima de los fundadores sobre los 40.000 euros de la v10 para que caja y patrimonio "
-               f"(art. 363) queden en positivo todos los meses con ENISA en el mes {MES_ENISA_V11}: {fmt(ap_min)} euros, "
-               f"es decir, {fmt(40000 + ap_min)} en total; el plan pone {fmt(APORTACION_FUNDADORES_V11)}.")
+    lin.append(f"Con 40.000 euros y ENISA en el mes {MES_ENISA_V11}, los fundadores tienen que renunciar como mínimo a un "
+               f"{fmt_pct(extra['rebaja_minima'], 1)} de su sueldo en los meses 1 a {MES_ENISA_V11 - 1}; el plan pone "
+               f"un {fmt_pct(RECORTE_FUNDADORES_V11[2], 0)}.")
+    lin.append(f"Importe redondo más alto de ENISA que cumple la condición de fondos propios y deja caja y patrimonio en "
+               f"positivo todos los meses: {fmt(extra['enisa_maximo'])} euros; el plan pide "
+               f"{fmt(IMPORTE_ENISA_V11)}.")
     lin.append("")
-    lin.append(f"Tarifa: {fmt(TARIFA['fijo'])} euros fijos, {fmt(TARIFA['por_ct'])} por CT y {fmt1(TARIFA['por_senal'])} por señal, "
-               f"con un mínimo de {fmt(TARIFA['minimo'])} y sin máximo")
-    for nombre, red in list(REDES_CALIBRACION.items()) + [("Red tipo del plan", RED_TIPO_PLAN)]:
-        lin.append(f"  {nombre}: {red['ct']} CT, {fmt(red['senales'])} señales -> {fmt(licencia(**red))} euros al año")
+    lin.append("Tarifa: " + texto_tarifa(moneda="euros"))
+    for nombre, red in (list(REDES_CALIBRACION.items()) + [("Red tipo del plan", RED_TIPO_PLAN)]
+                        + list(REDES_REFERENCIA.items())):
+        lin.append(f"  {nombre}: {fmt(red['ct'])} CT, {fmt(red['senales'])} señales -> "
+                   f"{fmt(licencia(**red))} euros al año")
     if SENALES_PROVISIONALES:
-        lin.append("  Las señales de las tres distribuidoras son provisionales (78.301 tags de TedisNet repartidos por CT).")
+        lin.append("  Las señales de las tres distribuidoras son provisionales (78.301 tags de TedisNet repartidos "
+                   "por CT).")
     return "\n".join(lin) + "\n"
 
 
@@ -992,7 +1365,7 @@ def escribir_xlsx(res, ruta):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Mensual"
-    cols = [k for k in P.keys()]
+    cols = list(P.keys())
     ws.append(["mes"] + cols + ["tesoreria_final"])
     for m in range(1, res["N"] + 1):
         ws.append([m] + [round(P[k][m], 2) for k in cols] + [round(res["caja"][m], 2)])
@@ -1011,32 +1384,57 @@ def escribir_xlsx(res, ruta):
     return True
 
 
+# ---------------------------------------------------------------------------
+# Cálculo y comprobaciones
+# ---------------------------------------------------------------------------
+CLAVES_IGUAL_O_MEJOR = ["ingresos_a1", "ingresos_a2", "ingresos_a3", "ingresos_a4", "ingresos_a5",
+                        "resultado_a1", "resultado_a2", "resultado_a3", "resultado_a4", "resultado_a5",
+                        "van5", "caja_fin_a3", "caja_fin_a5"]
+
+
+def comprobar_v11(r36, r60, S):
+    """La v11 cumple todos los meses: caja en positivo, patrimonio por encima de la mitad del capital
+    (art. 363.1.e LSC, con el participativo) y ENISA no pasa de los fondos propios de las cuentas de 2026."""
+    for r in (r36, r60):
+        h, mh = holgura_363(r)
+        assert h >= 0, f"v11: patrimonio por debajo de la mitad del capital en el mes {mh} ({h:.2f})"
+        cm, mm = caja_minima(r)
+        assert cm >= 0, f"v11: caja negativa en el mes {mm} ({cm:.2f})"
+    assert r36["balances"][0]["total_pn"] >= S["enisa"]["importe"], "ENISA por encima de los fondos propios de 2026"
+    assert sum(r36["P"]["entrada_prestamo"][:S["enisa"]["mes_cobro"]]) == 0, "dinero de ENISA antes del mes de cobro"
+
+
+def comprobar_igual_o_mejor(c10, c11):
+    for k in CLAVES_IGUAL_O_MEJOR:
+        assert c11[k] >= c10[k] - 0.01, f"la v11 empeora {k}: {c11[k]:.0f} frente a {c10[k]:.0f}"
+    assert c11["punto_muerto_licencias"] <= c10["punto_muerto_licencias"] + 1e-9, \
+        "la v11 necesita más clientes para el punto muerto"
+
+
 def calcular():
     """Todo el cálculo, con sus comprobaciones. Lo usan main() y las pruebas."""
     r10 = simular(V10)
     r11 = simular(V11)
     r10_60 = simular(a_60_meses(V10))
     r11_60 = simular(a_60_meses(V11))
-    # la v11 cumple el art. 363 y tiene caja positiva todos los meses de los 36 y de los 60
-    for r in (r11, r11_60):
-        h, mh = holgura_363(r)
-        assert h >= 0, f"v11: patrimonio por debajo de la mitad del capital en el mes {mh} ({h:.2f})"
-        cm, mm = caja_minima(r)
-        assert cm >= 0, f"v11: caja negativa en el mes {mm} ({cm:.2f})"
-    # aportación mínima con el resto de supuestos de la v11, partiendo de los 40.000 euros de la v10
-    s_min = copy.deepcopy(V11)
-    s_min["prima_fundadores"] = V10["prima_fundadores"]
-    ap_min = aportacion_minima(s_min)
-    assert APORTACION_FUNDADORES_V11 >= 40000 + ap_min, "la aportación de la v11 ya no basta"
+    comprobar_v11(r11, r11_60, V11)
     c10 = cifras_clave(r10, r10_60)
     c11 = cifras_clave(r11, r11_60)
-    # la v11 queda igual o mejor que la v10 en ingresos, resultados, punto muerto y VAN
-    for k in ["ingresos_a1", "ingresos_a2", "ingresos_a3", "ingresos_a4", "ingresos_a5",
-              "resultado_a1", "resultado_a2", "resultado_a3", "resultado_a4", "resultado_a5", "van5",
-              "caja_fin_a3", "caja_fin_a5"]:
-        assert c11[k] >= c10[k] - 0.01, f"la v11 empeora {k}: {c11[k]:.0f} frente a {c10[k]:.0f}"
-    assert c11["punto_muerto_licencias"] <= c10["punto_muerto_licencias"] + 1e-9, "la v11 necesita más clientes para el punto muerto"
-    return {"r10": r10, "r11": r11, "r10_60": r10_60, "r11_60": r11_60, "c10": c10, "c11": c11, "ap_min": ap_min}
+    comprobar_igual_o_mejor(c10, c11)
+    rebaja = rebaja_minima(V11, MES_ENISA_V11 - 1)
+    assert rebaja is not None and RECORTE_FUNDADORES_V11[2] >= rebaja, "el medio sueldo ya no basta"
+    sin_rebaja = copy.deepcopy(V11)
+    sin_rebaja["recortes_fundadores"] = []
+    r_sin = simular(sin_rebaja)
+    extra = {
+        "rebaja_minima": rebaja,
+        "enisa_maximo": enisa_maximo(V11),
+        "pn_sin_rebaja_mes": {m: r_sin["balances"][m]["pn_mercantil"] for m in range(1, MES_ENISA_V11)},
+        "caja_sin_rebaja_min": caja_minima(r_sin)[0],
+        "mes_caja_sin_rebaja_min": caja_minima(r_sin)[1],
+    }
+    assert extra["enisa_maximo"] is not None and extra["enisa_maximo"] >= IMPORTE_ENISA_V11
+    return {"r10": r10, "r11": r11, "r10_60": r10_60, "r11_60": r11_60, "c10": c10, "c11": c11, "extra": extra}
 
 
 def main():
@@ -1045,7 +1443,7 @@ def main():
     e10 = escenarios(V10)
     t11, _, _ = construir_tablas(R["r11"], e11)
     t10, _, _ = construir_tablas(R["r10"], e10)
-    comp = texto_comparacion(R["c10"], R["c11"], R["ap_min"])
+    comp = texto_comparacion(R["c10"], R["c11"], R["extra"])
     if "--sin-salida" in sys.argv:
         print(comp)
         for v in t11.values():
@@ -1059,16 +1457,26 @@ def main():
         f.write("\n\n".join(t10.values()) + "\n")
     with open(os.path.join(SALIDA, "comparacion.txt"), "w", encoding="utf-8") as f:
         f.write(comp)
-    cif = {k: (round(v, 2) if isinstance(v, float) else v) for k, v in R["c11"].items() if k != "flujos5"}
-    cif["flujos5"] = [round(x, 2) for x in R["c11"]["flujos5"]]
-    cif["aportacion_minima_extra"] = round(R["ap_min"], 2)
+
+    def redondear(v):
+        if isinstance(v, float):
+            return round(v, 4)
+        if isinstance(v, dict):
+            return {str(k): redondear(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [redondear(x) for x in v]
+        return v
+    cif = cifras_texto(R["r11"], e11, R["extra"])
+    cif["clave"] = {k: v for k, v in R["c11"].items() if k != "flujos5"}
+    cif["clave_v10"] = {k: v for k, v in R["c10"].items() if k != "flujos5"}
     with open(os.path.join(SALIDA, "cifras_v11.json"), "w", encoding="utf-8") as f:
-        json.dump(cif, f, ensure_ascii=False, indent=1, sort_keys=True)
+        json.dump(redondear(cif), f, ensure_ascii=False, indent=1, sort_keys=True)
     mensual_csv(R["r11"], os.path.join(SALIDA, "mensual_v11.csv"))
     escribir_xlsx(R["r11"], os.path.join(SALIDA, "detalle_v11.xlsx"))
     print(comp)
     print("Comprobaciones superadas: balances cuadrados en los 37 cierres (y en los 61 de la extensión), "
-          "tesorería y resultados encadenados, art. 363 LSC y caja en positivo todos los meses en la v11.")
+          "tesorería y resultados encadenados; en la v11, caja y patrimonio (art. 363 LSC) en positivo todos los "
+          "meses, ENISA por debajo de los fondos propios de 2026 y el plan igual o mejor que el de la v10.")
 
 
 if __name__ == "__main__":

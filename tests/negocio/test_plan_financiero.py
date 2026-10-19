@@ -2,7 +2,9 @@
 
 Sin Spark: solo la biblioteca estándar. Comprueban que el modelo reproduce al euro las
 cifras de la v10, que el balance cuadra en todos los cierres, que la prueba de cuadre
-falla cuando algo no cuadra y que la v11 cumple las tres decisiones del 19.10.2026.
+falla cuando algo no cuadra y que la v11 cumple las decisiones del 19 y del 20.10.2026:
+caja y patrimonio del art. 363 en positivo todos los meses, ENISA por debajo de los
+fondos propios de 2026 y un plan igual o mejor que el de la v10.
 """
 
 import copy
@@ -46,15 +48,30 @@ def test_la_prueba_de_cuadre_falla_si_no_cuadra(calculo):
         pf.comprobar_encadenado(r)
 
 
-def test_v11_cumple_art_363_y_caja_positiva(calculo):
-    for clave in ("r11", "r11_60"):
-        h, _ = pf.holgura_363(calculo[clave])
-        cm, _ = pf.caja_minima(calculo[clave])
-        assert h >= 0 and cm >= 0
-    # sin ENISA en el momento 0, los fondos propios de las cuentas de 2026 cubren el préstamo
-    assert calculo["r11"]["balances"][0]["total_pn"] >= pf.V11["enisa"]["importe"]
-    assert calculo["r11"]["P"]["entrada_prestamo"][pf.MES_ENISA_V11] == pf.V11["enisa"]["importe"]
-    assert sum(calculo["r11"]["P"]["entrada_prestamo"][:pf.MES_ENISA_V11]) == 0
+def test_v11_cumple_todos_los_meses(calculo):
+    S = pf.V11
+    pf.comprobar_v11(calculo["r11"], calculo["r11_60"], S)
+    r = calculo["r11"]
+    assert r["balances"][0]["total_pn"] >= S["enisa"]["importe"]
+    assert r["P"]["entrada_prestamo"][pf.MES_ENISA_V11] == pf.IMPORTE_ENISA_V11
+    assert sum(r["P"]["entrada_prestamo"][:pf.MES_ENISA_V11]) == 0
+    assert pf.sueldo_renunciado(S) == pytest.approx(90000 / 12 * 0.5 * (pf.MES_ENISA_V11 - 1))
+
+
+def test_sin_medio_sueldo_algun_mes_incumple():
+    S = copy.deepcopy(pf.V11)
+    S["recortes_fundadores"] = []
+    r36, r60 = pf.simular(S), pf.simular(pf.a_60_meses(S))
+    with pytest.raises(AssertionError):
+        pf.comprobar_v11(r36, r60, S)
+
+
+def test_un_sueldo_aplazado_no_arregla_el_patrimonio():
+    # el patrimonio no depende de cuándo se paga el sueldo: sin rebaja, el mes 4 queda por debajo del umbral
+    S = copy.deepcopy(pf.V11)
+    S["recortes_fundadores"] = []
+    b = pf.simular(S)["balances"][4]
+    assert b["pn_mercantil"] < b["umbral_363"]
 
 
 def test_v11_igual_o_mejor_que_v10(calculo):
@@ -64,11 +81,28 @@ def test_v11_igual_o_mejor_que_v10(calculo):
         assert c11[f"resultado_a{a}"] >= c10[f"resultado_a{a}"]
     assert c11["van5"] >= c10["van5"]
     assert c11["punto_muerto_licencias"] <= c10["punto_muerto_licencias"]
+    peor = dict(c11, resultado_a3=c10["resultado_a3"] - 1)
+    with pytest.raises(AssertionError):
+        pf.comprobar_igual_o_mejor(c10, peor)
+    peor = dict(c11, punto_muerto_licencias=c10["punto_muerto_licencias"] + 0.1)
+    with pytest.raises(AssertionError):
+        pf.comprobar_igual_o_mejor(c10, peor)
 
 
-def test_tarifa_minimo_y_sin_techo():
-    assert pf.licencia(0, 0) == pf.TARIFA["minimo"]
-    assert pf.licencia(10, 600) == pf.TARIFA["minimo"]
+def test_tarifa_por_tramos_minimo_y_sin_techo():
+    t = pf.TARIFA
+    assert pf.licencia(0, 0) == t["minimo"]
+    assert pf.licencia(10, 600) == t["minimo"]
+    assert pf.licencia(100, 0) == 3000 + 100 * 150
+    assert pf.licencia(101, 0) == 3000 + 100 * 150 + 15
+    assert pf.licencia(301, 0) == 3000 + 100 * 150 + 200 * 15 + 10
     grande = pf.licencia(5000, 300000)
-    assert grande == pf.TARIFA["fijo"] + 5000 * pf.TARIFA["por_ct"] + 300000 * pf.TARIFA["por_senal"]
+    assert grande == 3000 + 100 * 150 + 200 * 15 + 4700 * 10 + 0.10 * 300000
+    # cada CT paga el precio de su tramo: la licencia crece sin saltos
+    previo = pf.licencia(1, 0)
+    for ct in range(2, 1000):
+        actual = pf.licencia(ct, 0)
+        assert 0 <= actual - previo <= 150
+        previo = actual
     assert pf.V11["precio_licencia"] == pf.licencia(**pf.RED_TIPO_PLAN)
+    assert pf.licencia(**pf.REDES_CALIBRACION["Distribuidora 3"]) == t["minimo"]
