@@ -360,6 +360,10 @@ def test_saved_models(workdir, run):
     files = set(os.listdir(folder))
 
     assert {"xgboost.pkl", "random_forest.pkl", "logistica.pkl", "run.json", "xgboost_booster.json"} <= files
+    # The environment the models were fitted with: a pickle is only safe with the same scikit-learn.
+    meta = json.load(open(os.path.join(folder, "run.json"), encoding="utf-8"))
+    assert meta["entorno"]["python"] == sys.version.split()[0]
+    assert {"numpy", "scipy", "scikit-learn", "pandas"} <= set(meta["entorno"]["versiones"])
 
     with open(os.path.join(folder, "xgboost.pkl"), "rb") as file:
         scorer = pickle.load(file)

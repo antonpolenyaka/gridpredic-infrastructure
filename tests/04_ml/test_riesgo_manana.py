@@ -429,6 +429,7 @@ def config_path(workdir):
     with open(CONFIG, encoding="utf-8") as file:
         config = json.load(file)
     config["exportar_dir"] = os.path.join(workdir, "resultados")
+    config["artefactos_uri"] = os.path.join(workdir, "modelos")
     config["spark_conf"] = {}
     config["riesgo_manana"]["dashboard_dir"] = os.path.join(workdir, "dashboard")
     config["riesgo_manana"]["variante_pasado_manana"] = "operativa_48h"
@@ -582,6 +583,19 @@ def test_the_summary_and_the_run(first, spark, workdir):
     runs = spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}'").toPandas()
     assert len(runs) == 1 and runs.loc[0, "etiqueta"] == "riesgo_manana:y_dia"
     assert "operativa" in runs.loc[0, "modelos_json"]
+    # The model of the evening is in the store of models, and the row says where, with what it was fitted.
+    stored = runs.loc[0, "artefactos_uri"]
+    assert stored == os.path.join(workdir, "modelos", RUN_ID)
+    assert {"logistica.pkl", "run.json"} <= set(os.listdir(stored))
+    meta = json.load(open(os.path.join(stored, "run.json"), encoding="utf-8"))
+    used = json.loads(runs.loc[0, "config_json"])
+    assert len(used["versiones_delta"]) == 7 and used["versiones_delta"] == meta["versiones_delta"]
+    for table in ("l3_gold.meteo_celda_hora", "l3_gold.map_ct_celda", "l2_silver.f_incidencia", "l3_gold.dim_ct"):
+        assert used["versiones_delta"][table] is not None, table
+    # The first evening of the test: its own table does not exist yet when the model is fitted.
+    assert "l3_gold.riesgo_dia_siguiente" in used["versiones_delta"]
+    assert used["entorno"]["python"].count(".") == 2 and "scikit-learn" in used["entorno"]["versiones"]
+    assert meta["entorno"] == used["entorno"] and "artefactos_error" not in json.loads(runs.loc[0, "resumen_json"])
 
 
 def test_the_outlook_of_two_days_ahead_is_scored_the_same_evening(first, spark, workdir):
@@ -625,6 +639,10 @@ def test_an_old_copy_of_calser_leaves_the_history_out_of_the_model(first, spark,
     with open(config_path, encoding="utf-8") as file:
         config = json.load(file)
     config["riesgo_manana"]["historia_desfasada"] = "sin_historia"
+    # A store of models that cannot be written (a file where the folder should be, like MinIO stopped).
+    blocked = os.path.join(workdir, "no_es_carpeta")
+    open(blocked, "w").close()
+    config["artefactos_uri"] = blocked
     path = os.path.join(workdir, "config_sin_historia.json")
     with open(path, "w", encoding="utf-8") as file:
         json.dump(config, file)
@@ -647,6 +665,16 @@ def test_an_old_copy_of_calser_leaves_the_history_out_of_the_model(first, spark,
     assert not terms["variable"].str.startswith("hist_").any()
     # The zone model goes without the history of the distribuidora too, and its notes say nothing of a median.
     assert "mediana" not in text
+    # The model could not be stored: the risk is published all the same and the summary, the row and the message say it.
+    assert "El modelo de esta tarde no se ha guardado en el almacén de modelos" in text
+    assert payload["artefactos_error"] and any("almacén de modelos" in n for n in payload["notas"])
+    run = spark.table("l3_gold.ml_runs").where(f"run_id = '{RUN_ID}_3'").toPandas()
+    assert run.loc[0, "artefactos_uri"] == "" and json.loads(run.loc[0, "resumen_json"])["artefactos_error"]
+    import aviso_riesgo
+
+    blocks = [{"nombre": "Distribuidora 1", "nivel": "alto", "probabilidad": 0.2}]
+    message = aviso_riesgo.message_from({"distribuidoras": blocks, "artefactos_error": payload["artefactos_error"]})
+    assert "no se ha guardado en el almacén de modelos" in message
 
 
 def test_the_old_copy_of_calser_with_the_history_kept_and_the_median(first, spark, config_path, workdir):
