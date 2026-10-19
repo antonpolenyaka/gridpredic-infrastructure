@@ -32,3 +32,6 @@ _runlogs/*.csv
 # Correspondencias con los nombres reales de las distribuidoras (solo en el portatil)
 _runlogs/anonimizar_nombres.json
 experimentos/aves/titulares.json
+
+# Volcados del grafo RDF de experimentos/semantica (unos 35 MB, se regeneran)
+experimentos/semantica/salida/gridpredic_grafo.*

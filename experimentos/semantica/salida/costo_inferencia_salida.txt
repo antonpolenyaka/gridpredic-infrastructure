@@ -1,0 +1,37 @@
+Grafo de grafo_rdf.py: 170273 tripletas en 6.9 s
+
+rdfs: 170273 -> 298744 tripletas (+128471, 75 %) en 72.7 s
+   x rdf:type rdfs:Resource                                      58101
+   tipo propio gpo: (lo útil)                                    48844
+   literal repetido con otro tipo de dato (ruido de owlrl)       11512
+   tipo de vocabulario externo (sosa, geo, time, prov, skos)      4893
+   otras: sfWithin                                                2828
+   tipo de un literal                                             2119
+   otras: hasSimpleResult                                          122
+   esquema (subClassOf, subPropertyOf, equivalencias)               52
+
+rdfs_axiomas: 170273 -> 298993 tripletas (+128720, 76 %) en 65.8 s
+   x rdf:type rdfs:Resource                                      58147
+   tipo propio gpo: (lo útil)                                    48844
+   literal repetido con otro tipo de dato (ruido de owlrl)       11512
+   tipo de vocabulario externo (sosa, geo, time, prov, skos)      4949
+   otras: sfWithin                                                2828
+   tipo de un literal                                             2129
+   esquema (subClassOf, subPropertyOf, equivalencias)              157
+   otras: hasSimpleResult                                          122
+   otras: domain                                                    16
+   otras: range                                                     16
+
+owlrl: 170273 -> 580195 tripletas (+409922, 241 %) en 437.0 s
+   propiedad propia gpo:                                        107064
+   otras: sfWithin                                              104636
+   x owl:sameAs x (reflexiva)                                    58173
+   tipo de vocabulario externo (sosa, geo, time, prov, skos)     55410
+   tipo propio gpo: (lo útil)                                    48844
+   literal repetido con otro tipo de dato (ruido de owlrl)       20075
+   otras: hasGeometry                                             5256
+   otras: sameAs                                                  5256
+   tipo de un literal                                             5055
+   esquema (subClassOf, subPropertyOf, equivalencias)               93
+   otras: domain                                                    40
+   otras: range                                                     17
