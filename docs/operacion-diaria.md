@@ -84,6 +84,8 @@ Es el mismo comando que enseña `dias.html` y la cabecera del job. El job añade
 
 Todo el sistema vive en Docker sobre el disco D: y sobrevive a un apagado normal de Windows. Lo que va aparte son dos scripts de PowerShell, la cola (`cola.ps1`) y el vigilante de Airflow (`vigilar_airflow.ps1`), y desde el 15.10.2026 también arrancan solos al iniciar sesión (punto 3 de "Al encender"). La cola, `comprobar_disco_d.ps1` y los lanzadores de cada trabajo son scripts locales del portátil, en `_runlogs`, que no se versionan (sus registros tampoco); en el repositorio van `vigilar_airflow.ps1`, `arrancar_si_falta.ps1` y `run_silver_test.ps1`.
 
+Tampoco lanzamos dos baterías de pruebas a la vez: cada una arranca un Spark local con 3 GB de memoria junto a la máquina virtual de Docker. Desde el 19.10.2026 lo impide un candado en `tests/conftest.py`: la segunda batería sale enseguida con un mensaje (`GRIDPREDIC_SIN_CANDADO=1` lo apaga).
+
 Antes de apagar:
 
 1. Mirar `_runlogs\cola\historial.log`: si un trabajo de la cola sigue en marcha (línea "INICIO" sin su "FIN"), esperar a que acabe o crear el fichero `_runlogs\cola\parar` (la cola termina el trabajo en curso y se para). Cortarla a medias no rompe nada: cada tabla Delta se escribe entera o no se escribe, y el trabajo se vuelve a encolar.
