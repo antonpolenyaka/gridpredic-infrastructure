@@ -93,8 +93,8 @@ def main(argv) -> int:
         lists[seed] = weekly
         lines += [f"## Semilla {seed}", "",
                   f"Pasan el umbral con catdes {len(passing)} variables; con bloques de siete días {len(weekly)}. "
-                  f"El error crece con las semanas entre {table['factor_semanas'].min():.2f} y "
-                  f"{table['factor_semanas'].max():.2f} veces. Dejan de pasar con las semanas: "
+                  f"Con las semanas el error es de {table['factor_semanas'].min():.2f} a "
+                  f"{table['factor_semanas'].max():.2f} veces el de días sueltos. Dejan de pasar con las semanas: "
                   f"{', '.join(NAMES[v] for v in sorted(passing - weekly)) or 'ninguna'}.", "",
                   "| Variable | v-test | factor fechas | factor semanas | v-test semanas |", "| --- | --- | --- | --- | --- |"]
         lines += [f"| {r.nombre} | {r.v_test:.2f} | {r.factor_fechas:.2f} | {r.factor_semanas:.2f} | "

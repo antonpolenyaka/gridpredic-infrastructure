@@ -4,7 +4,7 @@
 
 ## Semilla 20261018
 
-Pasan el umbral con catdes 19 variables; con bloques de siete días 18. El error crece con las semanas entre 0.92 y 1.29 veces. Dejan de pasar con las semanas: Días desde la última incidencia.
+Pasan el umbral con catdes 19 variables; con bloques de siete días 18. Con las semanas el error es de 0.92 a 1.29 veces el de días sueltos. Dejan de pasar con las semanas: Días desde la última incidencia.
 
 | Variable | v-test | factor fechas | factor semanas | v-test semanas |
 | --- | --- | --- | --- | --- |
@@ -38,7 +38,7 @@ Pasan el umbral con catdes 19 variables; con bloques de siete días 18. El error
 
 ## Semilla 20261019
 
-Pasan el umbral con catdes 19 variables; con bloques de siete días 17. El error crece con las semanas entre 0.90 y 1.30 veces. Dejan de pasar con las semanas: Días desde la última incidencia, Incidencias de los 30 días anteriores.
+Pasan el umbral con catdes 19 variables; con bloques de siete días 17. Con las semanas el error es de 0.90 a 1.30 veces el de días sueltos. Dejan de pasar con las semanas: Días desde la última incidencia, Incidencias de los 30 días anteriores.
 
 | Variable | v-test | factor fechas | factor semanas | v-test semanas |
 | --- | --- | --- | --- | --- |
