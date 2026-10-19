@@ -13,6 +13,9 @@
   .perfil-leyenda i.linea { width: 16px; height: 0; border-radius: 0; border-top: 2px solid currentColor; vertical-align: 3px; }
   .perfil-leyenda i.linea.discontinua { border-top-style: dashed; }
   .perfil-leyenda i.linea.punteada { border-top-style: dotted; opacity: 0.7; }
+  /* The same hatch and the same dotted stroke as the band and the median of the profile. */
+  .perfil-leyenda i.trama-banda { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--serie-banda) 60%, transparent) 0 2px, color-mix(in srgb, var(--serie-banda) 10%, transparent) 2px 4.2px); }
+  .perfil-leyenda i.linea.mediana { border-top: 2px dotted currentColor; margin-left: var(--s-1); }
   /* The causes of an incident on days like this one: sorted bars with their share, in one neutral colour (they
      are categories, not levels). */
   .causas { display: grid; grid-template-columns: max-content minmax(80px, 1fr) max-content; gap: 6px 10px; align-items: center; font-size: var(--fs-1); }
@@ -203,7 +206,7 @@
     // The rule of the evening counts the incidents of meteorology (causas-incidencias.md, 62 % of 240), not only the wind.
     const rule = data.reglas && data.reglas.texto ? data.reglas.texto.replace("averías por viento", "averías por meteorología") : "";
     document.getElementById("pie").textContent = "Generado el " + (data.generado || "") + ". Mapa: OpenStreetMap (ODbL). " + rule
-      + (DIA ? "" : " Próximas 3 h por línea: una regla sobre la probabilidad del día con la franja (el 84 % de las averías de los días de alerta de 2024 - 2026 empiezan dentro de ella), la racha medida en el pico previsto y los rayos a menos de 10 km en la hora previa (15 veces más averías). Sirve para ordenar las líneas de las próximas horas; no es una probabilidad calibrada.");
+      + (DIA ? "" : " Próximas 3 h por línea: una regla sobre la probabilidad del día con la franja (el 84 % de las averías de los días de alerta de 2024 - 2026 empiezan dentro de ella), la racha medida en el pico previsto y los rayos a menos de 10 km en la hora previa (15 veces más averías, medido sobre la red de cada distribuidora; por línea es solo una indicación). Sirve para ordenar las líneas de las próximas horas; no es una probabilidad calibrada.");
   }
 
   // Round steps for an axis: the smallest step of the list that leaves five intervals or fewer.
@@ -213,7 +216,20 @@
     return { top: Math.ceil(max / s) * s, step: s };
   }
 
-  function perfilSvg(perfil, franja, observado, banda, aemet, ancho) {
+  // One scale for the profiles of every network of the page: the gust and the rain of the highest of them, so two
+  // profiles side by side compare at a glance (a calm network does not look as tall as the one in the storm).
+  function escalaComun() {
+    let gust = 0, rain = 0;
+    for (const d of (DATOS && DATOS.distribuidoras) || []) {
+      for (const p of d.perfil || []) { gust = Math.max(gust, p.racha_max || 0); rain = Math.max(rain, p.lluvia || 0); }
+      for (const o of d._observado || []) if (o.racha_kmh != null) gust = Math.max(gust, o.racha_kmh);
+      for (const e of d._banda || []) if (e.p90 != null) gust = Math.max(gust, e.p90);
+      for (const a of d._aemet || []) if (a.racha_kmh != null) gust = Math.max(gust, a.racha_kmh);
+    }
+    return { gust, rain };
+  }
+
+  function perfilSvg(perfil, franja, observado, banda, aemet, ancho, comun) {
     if (!perfil || !perfil.length) return '<div class="vacio">Sin perfil horario</div>';
     // Drawn at the width of its box (one unit, one pixel), so the text keeps its size and is never stretched. The
     // gust has its axis in km/h; the rain goes in a strip of its own underneath, with its own axis in mm.
@@ -222,10 +238,10 @@
     const obs = (observado || []).filter((o) => o.racha_kmh != null);
     const ens = (banda || []).filter((e) => e.p10 != null && e.p90 != null);
     const aem = (aemet || []).filter((a) => a.racha_kmh != null);
-    const maxGust = Math.max(0, ...perfil.map((p) => p.racha_max || 0), ...obs.map((o) => o.racha_kmh), ...ens.map((e) => e.p90), ...aem.map((a) => a.racha_kmh));
+    const maxGust = Math.max(0, (comun && comun.gust) || 0, ...perfil.map((p) => p.racha_max || 0), ...obs.map((o) => o.racha_kmh), ...ens.map((e) => e.p90), ...aem.map((a) => a.racha_kmh));
     // At least 50 km/h on the axis: a calm day looks calm instead of as tall as a storm.
     const g = escala(Math.max(50, maxGust), [10, 20, 25, 50, 100]);
-    const maxRain = Math.max(0, ...perfil.map((p) => p.lluvia || 0));
+    const maxRain = Math.max(0, (comun && comun.rain) || 0, ...perfil.map((p) => p.lluvia || 0));
     const rainTop = [1, 2, 5, 10, 20, 50, 100].find((v) => v >= maxRain) || Math.ceil(maxRain);
     const x = (h) => L + (h / 24) * (W - L - R);
     const y = (v) => T + (1 - v / g.top) * HG;
@@ -260,8 +276,17 @@
       // The band of the ensemble: between the p10 and the p90 of the runs, with the median as a dashed line.
       const up = ens.map((e) => `${cx(e.hora)},${y(e.p90).toFixed(1)}`);
       const down = ens.slice().reverse().map((e) => `${cx(e.hora)},${y(e.p10).toFixed(1)}`);
-      out += `<polygon points="${up.concat(down).join(" ")}" fill="var(--serie-banda)" opacity="0.22"><title>escenarios de ICON-EU EPS: entre el p10 y el p90 de la racha</title></polygon>`;
-      out += `<polyline points="${ens.map((e) => `${cx(e.hora)},${y(e.p50).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--serie-banda)" stroke-width="1.5" stroke-dasharray="2 3"/>`;
+      // The band has a diagonal hatch over a light fill, so it is told apart from the plain grey window without colour;
+      // the median goes in short dots over a halo of the panel colour, readable on top of the bars, with its label.
+      const trama = `trama-banda-${++TRAMAS}`;
+      out += `<defs><pattern id="${trama}" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">`
+        + `<rect width="6" height="6" fill="var(--serie-banda)" fill-opacity="0.10"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--serie-banda)" stroke-width="2" stroke-opacity="0.6"/></pattern></defs>`;
+      out += `<polygon points="${up.concat(down).join(" ")}" fill="url(#${trama})"><title>escenarios de ICON-EU EPS: entre el p10 y el p90 de la racha</title></polygon>`;
+      const median = ens.map((e) => `${cx(e.hora)},${y(e.p50).toFixed(1)}`).join(" ");
+      out += `<polyline points="${median}" fill="none" stroke="var(--panel)" stroke-width="4" stroke-linejoin="round"/>`;
+      out += `<polyline points="${median}" fill="none" stroke="var(--serie-banda)" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"><title>mediana de los escenarios</title></polyline>`;
+      const lastE = ens[ens.length - 1];
+      out += `<text x="${Math.min(W - R - 2, Number(cx(lastE.hora)) + 4).toFixed(1)}" y="${(y(lastE.p50) - 4).toFixed(1)}" font-size="11" text-anchor="end" fill="var(--serie-banda)" paint-order="stroke" stroke="var(--panel)" stroke-width="3">mediana</text>`;
     }
     if (aem.length) {
       // The forecast of AEMET by municipality (its own model): a dashed green line, the strongest gust of the municipalities of the network.
@@ -303,10 +328,11 @@
   // The risk of the next three hours of a line: a rule over the probability of the day. Inside the window of the
   // day the incidents concentrate (84 % of the incidents of the alert days of 2024 - 2026 start inside it); at the peak of the
   // gust, 62 % of the weather incidents start within 3 hours of it (0.31 is half of that 62 %: the three hours
-  // after the peak, out of the six around it); flashes within 10 km in the previous hour
-  // precede 17 % of the incidents against 1.1 % of the control windows (15 times). The constants are the ones
-  // measured in causas-incidencias.md; the result ranks the lines for the next hours, it is not a calibrated
-  // probability.
+  // after the peak, out of the six around it); flashes within 10 km of the network of the distribuidora in the
+  // previous hour precede 17 % of its incidents against 1.1 % of the control windows (15 times). That factor was
+  // measured on the whole network, not line by line: applied to the lines near the flashes it is an indication,
+  // not a measured multiplier of each line. The constants are the ones measured in causas-incidencias.md; the
+  // result ranks the lines for the next hours, it is not a calibrated probability.
   const RULE = { enFranja: 0.84, enPico: 0.31, rayos: 15, tope: 0.95 };
   function nextHoursRisk(z, franja, hour, storm, atPeak) {
     const p = z.probabilidad || 0;
@@ -359,7 +385,7 @@
         const next = document.querySelector(`td.prox3[data-dist="${idx}"][data-zona="${i}"]`);
         if (next) {
           const risk = nextHoursRisk(z, d.franja, new Date().getHours(), lines.has(z.nombre), atPeak);
-          const why = [lines.has(z.nombre) ? "rayos a menos de 10 km en la última hora (x15)" : "", atPeak ? "racha medida en el pico previsto" : ""].filter(Boolean).join(", ");
+          const why = [lines.has(z.nombre) ? "rayos a menos de 10 km en la última hora (x15, medido sobre la red)" : "", atPeak ? "racha medida en el pico previsto" : ""].filter(Boolean).join(", ");
           next.innerHTML = `<span${risk >= 0.05 ? ' class="pico"' : ""} title="${esc(why || "sin señal en vivo: solo el reparto del riesgo del día por horas")}">${pct(risk, 1)}</span>`;
         }
       });
@@ -402,7 +428,7 @@
   }
 
   // The profiles are drawn at the width of their box: when the window changes width they are drawn again.
-  let DATOS = null, redibujo = null;
+  let DATOS = null, redibujo = null, TRAMAS = 0;
   window.addEventListener("resize", () => {
     clearTimeout(redibujo);
     redibujo = setTimeout(() => { if (DATOS) (DATOS.distribuidoras || []).forEach((d, idx) => redibujarPerfil(d, idx)); }, 200);
@@ -486,7 +512,7 @@
       if (!sec || !block) return;
       if (block.horas && block.horas.length) {
         d._observado = block.horas;
-        redibujarPerfil(d, idx);
+        redibujarTodos();
         const title = sec.querySelector(".perfil-titulo");
         if (title) title.textContent = `Cuándo: racha prevista por horas (km/h) y observada por las estaciones de AEMET hasta las ${horaLocal(o.generado)}`;
       }
@@ -504,10 +530,15 @@
     });
   }
 
+  // A series that arrives later (stations, ensemble, AEMET) can raise the common scale: every profile is drawn again.
+  function redibujarTodos() {
+    if (DATOS) (DATOS.distribuidoras || []).forEach((d, idx) => redibujarPerfil(d, idx));
+  }
+
   function redibujarPerfil(d, idx) {
     const sec = document.getElementById("dist-" + idx);
     const holder = sec && sec.querySelector(".perfil-holder");
-    if (holder) holder.innerHTML = perfilSvg(d.perfil, d.franja || {}, d._observado, d._banda, d._aemet, holder.clientWidth);
+    if (holder) holder.innerHTML = perfilSvg(d.perfil, d.franja || {}, d._observado, d._banda, d._aemet, holder.clientWidth, escalaComun());
     // The legend names only the series that are drawn (an archived day has no stations, and the ensemble or AEMET may be missing).
     for (const [key, series] of [["banda", d._banda], ["aemet", d._aemet], ["observado", d._observado]]) {
       const item = sec && sec.querySelector(`.perfil-leyenda [data-serie="${key}"]`);
@@ -524,7 +555,7 @@
       const sec = document.getElementById("dist-" + idx);
       if (!sec || !block || !block.horas || !block.horas.length) return;
       d._aemet = block.horas;
-      redibujarPerfil(d, idx);
+      redibujarTodos();
       let p = sec.querySelector(".aemet");
       if (!p) {
         p = document.createElement("p");
@@ -582,7 +613,7 @@
       const sec = document.getElementById("dist-" + idx);
       if (!sec || !block || !block.horas || !block.horas.length) return;
       d._banda = block.horas;
-      redibujarPerfil(d, idx);
+      redibujarTodos();
       let p = sec.querySelector(".ensemble");
       if (!p) {
         p = document.createElement("p");
@@ -757,7 +788,7 @@
           <div class="panel sub perfil-panel">
             <div class="panel-h"><h3 class="perfil-titulo">Cuándo: racha máxima prevista por horas (km/h)</h3></div>
             <div class="panel-b"><div class="perfil-holder"></div>
-              <div class="leyenda perfil-leyenda"><span><i class="sq" style="background:var(--serie-prevista)"></i>racha prevista (ICON-EU)</span><span><i class="sq" style="background:var(--serie-lluvia)"></i>lluvia (mm, en la franja de abajo)</span><span data-serie="franja"${fr.inicio != null ? "" : " hidden"}><i class="sq" style="background:var(--franja);opacity:.45"></i>franja de más riesgo</span><span data-serie="banda" hidden><i class="sq" style="background:var(--serie-banda);opacity:.45"></i>escenarios (p10 - p90)</span><span data-serie="aemet" hidden><i class="linea discontinua" style="color:var(--serie-aemet)"></i>AEMET por municipios</span><span data-serie="observado" hidden><i class="linea" style="color:var(--serie-observada)"></i>observado en las estaciones</span><span><i class="linea punteada" style="color:var(--fg)"></i>40 km/h: sin franja si el pico no llega</span></div>
+              <div class="leyenda perfil-leyenda"><span><i class="sq" style="background:var(--serie-prevista)"></i>racha prevista (ICON-EU)</span><span><i class="sq" style="background:var(--serie-lluvia)"></i>lluvia (mm, en la franja de abajo)</span><span data-serie="franja"${fr.inicio != null ? "" : " hidden"}><i class="sq" style="background:var(--franja);opacity:.45"></i>franja de más riesgo</span><span data-serie="banda" hidden><i class="sq trama-banda"></i>escenarios (p10 - p90) <i class="linea mediana" style="color:var(--serie-banda)"></i>mediana</span><span data-serie="aemet" hidden><i class="linea discontinua" style="color:var(--serie-aemet)"></i>AEMET por municipios</span><span data-serie="observado" hidden><i class="linea" style="color:var(--serie-observada)"></i>observado en las estaciones</span><span><i class="linea punteada" style="color:var(--fg)"></i>40 km/h: sin franja si el pico no llega</span></div>
             </div>
           </div>
         </div>
@@ -790,6 +821,8 @@
       }));
     });
     DATOS = data;
+    // With every network on the page, the profiles again on the common scale.
+    redibujarTodos();
     const seg = seguimiento(data.seguimiento);
     if (seg) main.insertAdjacentHTML("beforeend", seg);
     if (data.notas && data.notas.length) main.insertAdjacentHTML("beforeend", `<section class="dist panel notas-seccion"><h2>Notas</h2><ul class="notas">${data.notas.map((n) => "<li>" + esc(n) + "</li>").join("")}</ul></section>`);
