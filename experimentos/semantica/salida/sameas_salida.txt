@@ -1,0 +1,23 @@
+Dos vistas y la alineacion: 14955 tripletas en 1.15 s; alineacion de esquema 7 tripletas
+CT de Calser 1414, trafos de TedisNet 1323, centros de TedisNet 1263
+CT con interrupciones desde 2021 en la exportacion: 1346; con trafo enlazado: 1317 (97.8 %)
+
+A) Enlaces por nombre compartido (CT_ID = ShortName, misma distribuidora)
+   1323 owl:sameAs generados en 231015 ms (regla CONSTRUCT, equivalente a owl:hasKey)
+   La misma regla empezando por la clave: 1323 enlaces en 316755 ms; mismos enlaces: True
+   El mismo enlace como join de pandas por (distribuidora, codigo): 1323 pares en 75.5 ms
+   Cruce con owl:sameAs en el patron (CT con 20 posiciones aguas arriba o mas): [('d1', 459, 60345.0), ('d2', 94, 10341.0)]  (964 ms)
+   Lo mismo con el mapa del repositorio (una fila por CT en dim_ct, pandas): [('d1', 459, 60345.0), ('d2', 94, 10341.0)]  (90.0 ms); iguales: True
+   Sin owl:sameAs en el patron y sin cierre: 0 filas (205 ms)
+   Cierre de owl:sameAs: 1323 clases, 14553 tripletas nuevas en 1.83 s
+   Sin owl:sameAs en el patron, despues del cierre: [('d1', 918, 120690.0), ('d2', 188, 20682.0)]  (1338 ms)
+   (cada CT aparece con sus dos URIs: hace falta un representante canonico para contar)
+   Violaciones tras el cierre: {'clases_con_varios_ct_calser': 0, 'conflictos_funcionales': {rdflib.term.URIRef('https://gridpredic.com/fuente/calser#potenciaKVA'): 0, rdflib.term.URIRef('https://gridpredic.com/fuente/calser#abonados'): 0}, 'disjointWith': 0}
+
+B) Error de granularidad: ademas se enlaza cada CT con su centro (tipo 144)
+   1323 enlaces CT - centro; 1263 clases de equivalencia (tamano: numero de clases) {3: 1203, 5: 60}
+   38179 tripletas nuevas en 1.82 s
+   Clases que juntan dos CT distintos de Calser: 60
+   Conflictos de propiedad funcional (dos valores distintos en un individuo): {rdflib.term.URIRef('https://gridpredic.com/fuente/calser#potenciaKVA'): 21, rdflib.term.URIRef('https://gridpredic.com/fuente/calser#abonados'): 57}
+   Individuos que son a la vez ted:Centro y ted:TrafoCT (disjuntos): 1263
+   Comprobacion en pandas: centros con 2 CT 60; de ellos con kVA distintos 21 y con abonados distintos 57

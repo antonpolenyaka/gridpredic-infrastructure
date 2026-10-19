@@ -1,0 +1,10 @@
+# Consulta que envia hoy job_landing_datos_publicos.py (wikidata_query, lineas 229 - 239) para las provincias
+# 06 y 10, copiada tal cual. No declara prefijos: el servicio de consultas de Wikidata los trae predefinidos.
+# SERVICE wikibase:label es una extension de ese servicio, no SPARQL 1.1 estandar.
+SELECT ?item ?ine ?itemLabel ?area ?elev WHERE {
+  ?item wdt:P772 ?ine .
+  FILTER(STRLEN(?ine) = 5 && (STRSTARTS(?ine, "06") || STRSTARTS(?ine, "10")))
+  OPTIONAL { ?item p:P2046/psn:P2046/wikibase:quantityAmount ?area . }
+  OPTIONAL { ?item wdt:P2044 ?elev . }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "es". }
+}
