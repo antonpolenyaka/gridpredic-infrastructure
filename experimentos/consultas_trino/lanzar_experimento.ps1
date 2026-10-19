@@ -89,6 +89,8 @@ if (-not $TrinoAntes) { docker compose -f $Compose up -d trino 2>&1 | ForEach-Ob
 if (-not (EsperarTrino)) { Say "ERROR: Trino no responde"; exit 1 }
 
 docker compose -f $Compose exec -T spark-master mkdir -p /tmp/gp /tmp/gp_planes 2>&1 | Out-Null
+# Cada ejecucion empieza sin los JSON de la anterior, para que resumir_planes.py no los mezcle.
+docker compose -f $Compose exec -T spark-master sh -c "rm -f /tmp/gp_planes/*.json" 2>&1 | Out-Null
 foreach ($f in @("planes.py", "compactar_dataset.py")) {
     docker compose -f $Compose cp "$Repo\experimentos\consultas_trino\$f" "spark-master:/tmp/gp/$f" 2>&1 | ForEach-Object { Say "  $_" }
 }

@@ -14,7 +14,8 @@ Etapas:
 - familias: la tabla de familias (LDA, QDA, Naive Bayes, k vecinos, SVM, perceptrón y variantes de la logística),
   con las diferencias emparejadas frente a la L2 por bloques de siete días; se pueden pasar los modelos separados por
   comas y una etiqueta para el nombre del fichero.
-- curva: la curva de aprendizaje del modelo del día (25, 50, 75 y 100 % de las fechas anteriores, cinco sorteos).
+- curva: la curva de aprendizaje del modelo del día (25, 50, 75 y 100 % de las fechas anteriores, cinco sorteos);
+  salida/familias/curva_resumen.csv sale de la etapa con los modelos tasa_base,logistica,xgboost.
 - brecha: mejora de log loss dentro y fuera de muestra con la C de producción.
 - coeficientes, tarde y unidades: estabilidad de los coeficientes, la C que elegiría la tarde y razones de odds en
   unidades naturales.
