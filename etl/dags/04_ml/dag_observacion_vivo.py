@@ -2,7 +2,7 @@
 What the stations of AEMET are measuring, every hour (riesgo_manana.observacion.horario).
 
 Two tasks. observar runs job_landing_observacion in the airflow
-container: the last 24 hours of the conventional stations of AEMET inside
+container: the last 12 hours of the conventional stations of AEMET inside
 the study box to the Landing (<landing>/observacion/<day>/) and
 observado.json for the dashboard, with the strongest gust and the rain of
 every hour of the day near the network of every distribuidora (what the

@@ -663,14 +663,38 @@ def land_nao(fs, cfg: dict, folder: str) -> bool:
     return True
 
 
+def write_json_atomic(path: str, payload, **dump_args) -> None:
+    """
+    json.dump to a temporary file in the same folder and os.replace over the
+    target, so the dashboard (or a copy) never reads a half written file. If
+    the replace is refused (a file held open on Windows), the file is written
+    in place as before and the refusal is logged.
+    """
+    folder = os.path.dirname(os.path.abspath(path))
+    temporary = os.path.join(folder, f".{os.path.basename(path)}.{os.getpid()}.tmp")
+    try:
+        with open(temporary, "w", encoding="utf-8") as file:
+            json.dump(payload, file, **dump_args)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, path)
+    except OSError as error:
+        logging.getLogger(__name__).warning("%s not replaced atomically (%s): written in place", path, error)
+        try:
+            os.remove(temporary)
+        except OSError:
+            pass
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(payload, file, **dump_args)
+
+
 def write_json_pair(payload: dict, folder: str, name: str) -> bool:
     """<name>.json for the page and <name>_<day>.json for the verification, in the dashboard folder."""
     if not folder or not os.path.isdir(folder):
         logger.warning("Dashboard folder %s not found: %s.json not written", folder, name)
         return False
     for file_name in (f"{name}.json", f"{name}_{payload['fecha'].replace('-', '')}.json"):
-        with open(os.path.join(folder, file_name), "w", encoding="utf-8") as file:
-            json.dump(payload, file, ensure_ascii=False, indent=1)
+        write_json_atomic(os.path.join(folder, file_name), payload, ensure_ascii=False, indent=1)
     logger.info("%s.json written in %s", name, folder)
     return True
 
@@ -681,9 +705,7 @@ def write_ensemble(payload: dict, folder: str) -> bool:
         return False
     # ensemble.json for the page and ensemble_<day>.json for the verification of the band against the stations.
     for name in ("ensemble.json", f"ensemble_{payload['fecha'].replace('-', '')}.json"):
-        path = os.path.join(folder, name)
-        with open(path, "w", encoding="utf-8") as file:
-            json.dump(payload, file, ensure_ascii=False, indent=1)
+        write_json_atomic(os.path.join(folder, name), payload, ensure_ascii=False, indent=1)
     logger.info("ensemble.json written in %s", folder)
     return True
 

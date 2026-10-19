@@ -24,7 +24,7 @@ NOW = datetime(2026, 7, 20, 13, 25, tzinfo=timezone.utc)  # 15:25 in Madrid
 
 
 def records():
-    """What AEMET gives: the last 24 hours of three stations, one of them outside the box."""
+    """Three stations, one of them outside the box, over 24 hours (AEMET gives 12: see answer_at for the real shape)."""
     out = []
     for h in range(14, 38):  # 19.07 14:00 UTC to 20.07 13:00 UTC
         ts = datetime(2026, 7, 19, 0, 0) if h < 24 else datetime(2026, 7, 20, 0, 0)
@@ -176,3 +176,116 @@ def test_the_forecast_of_the_evening_before_is_verified_against_the_stations(fs,
     with open(tmp_path / "verificacion.json", encoding="utf-8") as file:
         again = json.load(file)
     assert list(again["dias"]) == ["2026-07-19"] and again["resumen"][0]["dias"] == 1
+
+
+def answer_at(asked: datetime, gust_of) -> list:
+    """What AEMET really gives when asked at `asked`: the last 12 hours of the station near the Distribuidora 2."""
+    out = []
+    last = asked.replace(minute=0, second=0, microsecond=0, tzinfo=None)
+    for back in range(12):
+        ts = last - timedelta(hours=back)
+        out.append({"idema": "3469A", "ubi": "CÁCERES", "lat": 39.47, "lon": -6.34, "fint": ts.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "vmax": gust_of(ts) / 3.6, "vv": 5.0, "prec": 0.0, "ta": 25.0, "hr": 50})
+    return out
+
+
+def morning_storm(ts: datetime) -> float:
+    """A gust of 72 km/h at 07:00 UTC (09:00 in Madrid) of every day, 29 km/h the rest."""
+    return 72.0 if ts.hour == 7 else 29.0
+
+
+def landed_runs(fs, cfg: dict, start: datetime, end: datetime, every_h: int = 1):
+    """The hourly runs of the DAG between start and end, every one landing the 12 hours AEMET gave it."""
+    asked = start
+    while asked <= end:
+        obs.land(fs, cfg, obs.inside(answer_at(asked, morning_storm), cfg["caja"]), asked)
+        asked += timedelta(hours=every_h)
+
+
+def settings_for(tmp_path) -> dict:
+    cfg = obs.observation_settings(obs.load_config())
+    cfg["landing"] = "memory://datalake/00_landing/vivo"
+    cfg["dashboard_dir"] = str(tmp_path)
+    return cfg
+
+
+def test_answers_of_12_hours_still_give_yesterday_its_24_hours_and_the_morning_peak(fs, tmp_path, monkeypatch):
+    cfg = settings_for(tmp_path)
+    for day, hour, peak, window in (("2026-07-19", 9, 70.0, (8, 11)), ("2026-07-20", 9, 70.0, (8, 11))):
+        with open(tmp_path / f"riesgo_{day.replace('-', '')}.json", "w", encoding="utf-8") as file:
+            json.dump(forecast(day, hour, peak, window), file)
+    with open(tmp_path / "riesgo.json", "w", encoding="utf-8") as file:
+        json.dump(forecast("2026-07-20", 9, 70.0, (8, 11)), file)
+    # Hourly runs from the evening of 18.07 up to the run in course (20.07 13:25 UTC).
+    landed_runs(fs, cfg, datetime(2026, 7, 18, 20, 25, tzinfo=timezone.utc), NOW - timedelta(hours=1))
+    monkeypatch.setenv("AEMET_API_KEY", "k")
+    assert obs.main(["--dashboard-dir", str(tmp_path), "--landing", cfg["landing"]], fs=fs, now=NOW,
+                    records=answer_at(NOW, morning_storm)) == 0
+    with open(tmp_path / "verificacion.json", encoding="utf-8") as file:
+        out = json.load(file)
+    d2 = out["ayer"]["distribuidoras"][0]
+    # The last run of 19.07 UTC alone holds 12 hours, from 12:00 to 23:00 UTC, and misses the peak of the morning.
+    assert d2["horas_observadas"] == 24 and d2["racha_observada_max"] == 72 and d2["hora_observada"] == 9
+    assert d2["pico_en_franja"] is True and d2["error_kmh"] == 2
+    assert [s["id"] for s in out["resumen"]] == [2] and out["resumen"][0]["dias"] == 1
+    # Today has its hours from midnight in observado.json, not only the 12 of the run in course.
+    with open(tmp_path / "observado.json", encoding="utf-8") as file:
+        seen = json.load(file)
+    hours = [h["hora"] for h in seen["distribuidoras"][0]["horas"]]
+    assert hours[0] == 0 and len(hours) == 16 and seen["distribuidoras"][0]["racha_max_kmh"] == 72
+    # Nothing half written is left behind in the dashboard folder.
+    assert not [name for name in os.listdir(tmp_path) if name.endswith(".tmp")]
+
+
+def test_an_unreadable_verification_is_rebuilt_from_the_landing_and_the_old_days_can_be_redone(fs, tmp_path, monkeypatch):
+    cfg = settings_for(tmp_path)
+    for day in ("2026-07-17", "2026-07-18", "2026-07-19", "2026-07-20"):
+        with open(tmp_path / f"riesgo_{day.replace('-', '')}.json", "w", encoding="utf-8") as file:
+            json.dump(forecast(day, 9, 70.0, (8, 11)), file)
+    landed_runs(fs, cfg, datetime(2026, 7, 16, 20, 25, tzinfo=timezone.utc), NOW - timedelta(hours=1))
+    # A file cut in half (a copy restored half way, say): it is not written over with yesterday alone.
+    (tmp_path / "verificacion.json").write_text('{"dias": {"2026-07-17": [', encoding="utf-8")
+    monkeypatch.setenv("AEMET_API_KEY", "k")
+    assert obs.main(["--dashboard-dir", str(tmp_path), "--landing", cfg["landing"]], fs=fs, now=NOW,
+                    records=answer_at(NOW, morning_storm)) == 0
+    with open(tmp_path / "verificacion.json", encoding="utf-8") as file:
+        out = json.load(file)
+    assert list(out["dias"]) == ["2026-07-17", "2026-07-18", "2026-07-19"]
+    assert all(r[0]["horas_observadas"] == 24 for r in out["dias"].values())
+    assert out["resumen"][0]["dias"] == 3
+    # The days kept before the change were verified with the last run of the UTC day only (12 hours here):
+    # --rehacer-verificacion recomputes them from every run, and a day without its archived forecast keeps its record.
+    out["dias"]["2026-07-17"][0]["horas_observadas"] = 12
+    out["dias"]["2026-07-10"] = [{"id": 2, "nombre": "Distribuidora 2", "horas_observadas": 11}]
+    (tmp_path / "verificacion.json").write_text(json.dumps(out), encoding="utf-8")
+    assert obs.main(["--dashboard-dir", str(tmp_path), "--landing", cfg["landing"], "--rehacer-verificacion"], fs=fs,
+                    now=NOW, records=answer_at(NOW, morning_storm)) == 0
+    with open(tmp_path / "verificacion.json", encoding="utf-8") as file:
+        again = json.load(file)
+    assert again["dias"]["2026-07-17"][0]["horas_observadas"] == 24
+    assert again["dias"]["2026-07-10"][0]["horas_observadas"] == 11
+
+
+def test_the_dashboard_json_is_replaced_atomically(tmp_path, monkeypatch):
+    from job_landing_vivo import write_json_atomic
+
+    target = tmp_path / "rayos.json"
+    target.write_text('{"viejo": 1}', encoding="utf-8")
+    seen = []
+    real_replace = os.replace
+
+    def replace(source, destination):
+        # When the target is replaced, the new content is already complete in the temporary file.
+        with open(source, encoding="utf-8") as file:
+            seen.append(json.load(file))
+        assert json.loads(target.read_text(encoding="utf-8")) == {"viejo": 1}
+        real_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", replace)
+    write_json_atomic(str(target), {"nuevo": 2}, ensure_ascii=False)
+    assert seen == [{"nuevo": 2}] and json.loads(target.read_text(encoding="utf-8")) == {"nuevo": 2}
+    # A replace refused by the system (a file held open on Windows) still writes the file, in place.
+    monkeypatch.setattr(os, "replace", lambda a, b: (_ for _ in ()).throw(PermissionError("in use")))
+    write_json_atomic(str(target), {"nuevo": 3})
+    assert json.loads(target.read_text(encoding="utf-8")) == {"nuevo": 3}
+    assert sorted(os.listdir(tmp_path)) == ["rayos.json"]
