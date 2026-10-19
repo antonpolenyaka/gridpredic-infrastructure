@@ -53,7 +53,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from job_landing_meteo_openmeteo import filesystem  # noqa: E402
-from job_landing_vivo import load_config  # noqa: E402
+from job_landing_vivo import load_config, write_json_atomic  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("rayos")
@@ -363,8 +363,7 @@ def write_dashboard(payload: dict, folder: str) -> bool:
         logger.warning("Dashboard folder %s not found: rayos.json not written", folder)
         return False
     path = os.path.join(folder, "rayos.json")
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(payload, file, ensure_ascii=False, indent=1)
+    write_json_atomic(path, payload, ensure_ascii=False, indent=1)
     logger.info("rayos.json written in %s (%s flashes in the last %s minutes)", path, payload["n_rayos"],
                 int(payload["ventana_min"]))
     return True

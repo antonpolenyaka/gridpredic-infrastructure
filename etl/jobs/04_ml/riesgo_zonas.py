@@ -44,7 +44,9 @@ tested on small synthetic data.
 """
 
 import json
+import logging
 import math
+import os
 import urllib.request
 from datetime import datetime, timezone
 
@@ -584,9 +586,33 @@ def clean(value):
     return value
 
 
+def write_json_atomic(path: str, payload, **dump_args) -> None:
+    """
+    json.dump to a temporary file in the same folder and os.replace over the
+    target, so the dashboard (or a copy) never reads a half written file. If
+    the replace is refused (a file held open on Windows), the file is written
+    in place as before and the refusal is logged.
+    """
+    folder = os.path.dirname(os.path.abspath(path))
+    temporary = os.path.join(folder, f".{os.path.basename(path)}.{os.getpid()}.tmp")
+    try:
+        with open(temporary, "w", encoding="utf-8") as file:
+            json.dump(payload, file, **dump_args)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, path)
+    except OSError as error:
+        logging.getLogger(__name__).warning("%s not replaced atomically (%s): written in place", path, error)
+        try:
+            os.remove(temporary)
+        except OSError:
+            pass
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(payload, file, **dump_args)
+
+
 def write_json(payload: dict, path: str):
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(clean(payload), file, ensure_ascii=False, indent=1)
+    write_json_atomic(path, clean(payload), ensure_ascii=False, indent=1)
 
 
 def now_text() -> str:
@@ -683,5 +709,12 @@ def write_shift_sheet(payload: dict, path: str) -> bool:
                 for i in range(2, len(frame) + 2):
                     sheet.cell(row=i, column=j).number_format = "0.0%"
         sheet.freeze_panes = "A2"
-    book.save(path)
+    temporary = os.path.join(os.path.dirname(os.path.abspath(path)), f".{os.path.basename(path)}.{os.getpid()}.tmp")
+    book.save(temporary)
+    try:
+        os.replace(temporary, path)
+    except OSError as error:
+        logging.getLogger(__name__).warning("%s not replaced atomically (%s): written in place", path, error)
+        os.remove(temporary)
+        book.save(path)
     return True
