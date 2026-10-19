@@ -38,7 +38,7 @@ Estado a 17.10.2026 (la versión 0.16.0 cierra el desarrollo el 19.10.2026): pip
 - **Developed by:** Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka (TFM, UPC School, Máster en Data Science and Engineering 2025-2026)
 - **Funded by [optional]:** proyecto académico; SITEL Sistemas Electrónicos SA aporta los datos y el conocimiento del dominio
 - **Shared by [optional]:** no se publica
-- **Model type:** clasificación binaria supervisada sobre datos tabulares derivados de series temporales. XGBoost (gradient boosting sobre árboles), Random Forest y regresión logística, comparados con referencias sin modelo: tasa base, histórico de interrupciones y la racha máxima de viento en la zona. Explicabilidad post hoc con SHAP
+- **Model type:** clasificación binaria supervisada sobre datos tabulares derivados de series temporales. XGBoost (gradient boosting sobre árboles), Random Forest y regresión logística, comparados con referencias sin modelo: tasa base, histórico de interrupciones y la racha máxima de viento en la zona. Explicabilidad post hoc con SHAP. En el modelo del día se comparó además la logística L2 de producción con LDA, QDA, Naive Bayes, k vecinos, SVM, el perceptrón y variantes de la logística (`experimentos/perfil_dia/familias_dia.py`, cuaderno 3w): ninguna la supera
 - **Language(s) (NLP):** no aplica (datos numéricos y categóricos; documentación en castellano)
 - **License:** propietaria
 - **Finetuned from model [optional]:** no aplica; se entrena desde cero
