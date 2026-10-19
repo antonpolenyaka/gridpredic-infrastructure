@@ -108,6 +108,8 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
     rule = (payload.get("reglas") or {}).get("texto")
     if rule:
         lines.append(rule)
+    if payload.get("artefactos_error"):
+        lines.append(f"El modelo de esta tarde no se ha guardado en el almacén de modelos ({payload['artefactos_error']}).")
     lines.append(f"Cuadro de mando: {DASHBOARD_URL}")
     return "\n".join(lines)
 

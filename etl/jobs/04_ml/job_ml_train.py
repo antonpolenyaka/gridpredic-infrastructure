@@ -33,7 +33,10 @@ Steps:
    checked before trusting the model. Table l3_gold.ml_importancia.
 8. Run: one row in l3_gold.ml_runs with the dataset version, the parameters
    and results of the search and where the models were saved
-   (artefactos_uri/<run_id>/).
+   (artefactos_uri/<run_id>/), or why they could not be saved (artefactos_error
+   in resumen_json). run.json and config_json carry the environment the models
+   were fitted with (entorno: Python, machine, host and library versions): a
+   pickle is only safe to load with the same scikit-learn.
 
 The test split is scored only with --evaluar-test. It is meant to be used
 once, with the configuration already chosen on valid; a second look at test
@@ -52,6 +55,8 @@ import json
 import logging
 import os
 import pickle
+import platform
+import socket
 import sys
 import time
 import uuid
@@ -621,14 +626,36 @@ def examine(scorers: dict, data: dict, config: dict) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["modelo", "feature", "metrica", "valor", "alerta_leakage"])
 
 
+def environment() -> dict:
+    """Python, machine, host and the versions of the libraries a model depends on."""
+    from importlib import metadata
+
+    versions = {}
+    for package in ("numpy", "scipy", "scikit-learn", "xgboost", "xgboost-cpu", "pandas", "pyspark"):
+        try:
+            versions[package] = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            continue
+    return {"python": sys.version.split()[0], "maquina": platform.machine(), "host": socket.gethostname(),
+            "versiones": versions}
+
+
 def save_artifacts(scorers: dict, uri: str, run_id: str, meta: dict, spark) -> str:
+    """store_artifacts without the error: the folder where the models went, or None."""
+    return store_artifacts(scorers, uri, run_id, meta, spark)[0]
+
+
+def store_artifacts(scorers: dict, uri: str, run_id: str, meta: dict, spark) -> tuple:
     """
     Pickle of every scorer and, for XGBoost, the booster in its own JSON
     format, in uri/run_id/. s3:// goes to MinIO with the endpoint and the
     credentials of the Spark session; anything else is a local folder.
+    Returns (folder, None) or (None, error text): a failure never stops the
+    run, but the caller says it instead of leaving artefactos_uri empty as if
+    nothing had been asked.
     """
     if not uri:
-        return None
+        return None, None
 
     target = f"{uri.rstrip('/')}/{run_id}"
     files = {f"{name}.pkl": pickle.dumps(scorer) for name, scorer in scorers.items()}
@@ -655,10 +682,10 @@ def save_artifacts(scorers: dict, uri: str, run_id: str, meta: dict, spark) -> s
                     file.write(payload)
     except Exception as error:  # the metrics are worth keeping without the files
         logger.error("Models not saved in %s: %s", target, error)
-        return None
+        return None, f"{type(error).__name__}: {str(error)[:200]}"
 
     logger.info("Models saved in %s", target)
-    return target
+    return target, None
 
 
 # ---------------------------------------------------------------------------
@@ -900,8 +927,9 @@ def main(argv=None):
         "tasa_negativos_muestra": rate,
         "grupos_ct": clusters_info,
         "modelos": {name: {"params": s.params, **s.info} for name, s in scorers.items()},
+        "entorno": environment(),
     }
-    artifacts = save_artifacts(scorers, config.get("artefactos_uri"), args.run_id, meta, spark)
+    artifacts, artifacts_error = store_artifacts(scorers, config.get("artefactos_uri"), args.run_id, meta, spark)
 
     # Free the matrices before scoring: the driver now only collects scores.
     data.clear()
@@ -936,6 +964,8 @@ def main(argv=None):
     resumen = {
         f"{row.split}:{row.modelo}:{row.metrica}": row.valor for row in total.itertuples()
     }
+    if artifacts_error:
+        resumen["artefactos_error"] = artifacts_error
 
     export_run(config, args.run_id, metrics, importance, search, label, labels, budgets, profile)
 
@@ -947,7 +977,7 @@ def main(argv=None):
         "n_features": len(features),
         "modelos_json": json.dumps(meta["modelos"], ensure_ascii=False, default=str),
         "busqueda_json": json.dumps(search, ensure_ascii=False, default=str),
-        "config_json": json.dumps(config, ensure_ascii=False),
+        "config_json": json.dumps({**config, "entorno": meta["entorno"]}, ensure_ascii=False),
         "resumen_json": json.dumps(resumen, ensure_ascii=False),
         "splits_evaluados": ",".join(splits),
         "artefactos_uri": artifacts or "",

@@ -128,7 +128,7 @@ from job_ml_riesgo_dia import (  # noqa: E402
     variant_features,
     warning_days,
 )
-from job_ml_train import RUNS_TABLE, get_spark, load_config, logger, save_frame  # noqa: E402
+from job_ml_train import RUNS_TABLE, environment, get_spark, load_config, logger, save_frame, store_artifacts  # noqa: E402
 import aviso_riesgo  # noqa: E402
 import riesgo_zonas as rz  # noqa: E402
 from job_silver_contexto_publico import WARNING_LEVELS, inside, local_wall_clock  # noqa: E402
@@ -1045,6 +1045,27 @@ def contributions(scorer, X: np.ndarray):
     return None
 
 
+def delta_versions(spark, tables: list) -> dict:
+    """
+    {table: current Delta version or None} of the tables the evening reads,
+    for config_json of ml_runs: with time travel the evening can be repeated
+    on the same data. The same as gold_common.delta_version, which the
+    evening cannot import (03_gold is not on its path).
+    """
+    out = {}
+    for table in tables:
+        try:
+            if not spark.catalog.tableExists(table):
+                out[table] = None
+                continue
+            row = spark.sql(f"DESCRIBE HISTORY {table} LIMIT 1").first()
+            out[table] = None if row is None else int(row["version"])
+        except Exception as error:  # noqa: BLE001 - a missing history is not fatal
+            logger.warning("No Delta history for %s: %s", table, error)
+            out[table] = None
+    return out
+
+
 def save_model(config: dict, folder_id: str, scorer) -> None:
     """The model of the evening as fitted, modelo.pkl next to resumen.md: to look at it or score again later."""
     folder = config.get("exportar_dir")
@@ -1187,6 +1208,9 @@ def report_notes(out: pd.DataFrame, info: dict) -> list:
     if info.get("pasado_manana_error"):
         notes.append(f"La orientación de pasado mañana no se ha calculado ({info['pasado_manana_error']}); el riesgo "
                      "de mañana no cambia.")
+    if info.get("artefactos_error"):
+        notes.append(f"El modelo de esta tarde no se ha guardado en el almacén de modelos ({info['artefactos_error']}); "
+                     "el riesgo se publica igual y el modelo queda en la carpeta de resultados.")
     return notes
 
 
@@ -1615,6 +1639,10 @@ def main(argv=None):
     name = rcfg["modelo"]
     scorer, search, X_train = fit(rows, features, name, config, cfg)
     train_scores = scorer.score(X_train)
+    # What the model was fitted with: the versions of the tables it read and the environment.
+    read_versions = delta_versions(spark, [WEATHER_TABLE, CELLS_TABLE, WARNINGS_TABLE, INCIDENTS_TABLE, FACTS_TABLE,
+                                           DIM_TABLE, rcfg["tabla"]])
+    fitted_in = environment()
 
     # Tomorrow, from the live Landing.
     dists = sorted(rows["distribuidora_id"].unique().tolist())
@@ -1764,11 +1792,20 @@ def main(argv=None):
         "pasada_max_horas": float(rcfg.get("pasada_max_horas", STALE_RUN_H)),
         "pasado_manana_error": outlook_error,
     }
+    # The model in the store of models (artefactos_uri/<run_id>/, as job_ml_train): a failure is said, never fatal.
+    artifacts, artifacts_error = store_artifacts(
+        {name: scorer}, config.get("artefactos_uri"), args.run_id,
+        {"run_id": args.run_id, "dataset_version": f"riesgo_manana_{day:%Y-%m-%d}", "etiqueta": f"riesgo_manana:{MAIN_LABEL}",
+         "variante": variant["nombre"], "features": features, "modelos": {name: {"params": scorer.params, **scorer.info}},
+         "entorno": fitted_in, "versiones_delta": read_versions}, spark)
+    info["artefactos_error"] = artifacts_error
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
     seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"], names)
     notes = report_notes(out, info)
     payload = attach_second_opinions(dashboard_payload(day, out, info, zone_out, seguimiento, args.run_id, notes), rcfg.get("dashboard_dir"))
     payload["pasado_manana"] = outlook_payload(outlook, day)
+    if artifacts_error:
+        payload["artefactos_error"] = artifacts_error
     export(config, folder_id, report_text(day, out, info, zone_out),
            {"prediccion": out, "zonas": zone_rows, "coeficientes": pd.DataFrame(ml_models.linear_terms(scorer))})
     save_model(config, folder_id, scorer)
@@ -1782,12 +1819,14 @@ def main(argv=None):
         "n_features": len(features),
         "modelos_json": json.dumps({variant["nombre"]: {name: {"params": scorer.params, **scorer.info}}}, default=str),
         "busqueda_json": json.dumps(search, ensure_ascii=False, default=str),
-        "config_json": json.dumps({"riesgo_manana": rcfg, "variante": variant, "features": features},
+        "config_json": json.dumps({"riesgo_manana": rcfg, "variante": variant, "features": features,
+                                   "versiones_delta": read_versions, "entorno": fitted_in},
                                   ensure_ascii=False, default=str),
-        "resumen_json": json.dumps({str(r.distribuidora_id): {"probabilidad": r.probabilidad, "nivel": r.nivel}
-                                    for r in out.itertuples()}, ensure_ascii=False),
+        "resumen_json": json.dumps({**{str(r.distribuidora_id): {"probabilidad": r.probabilidad, "nivel": r.nivel}
+                                       for r in out.itertuples()},
+                                    **({"artefactos_error": artifacts_error} if artifacts_error else {})}, ensure_ascii=False),
         "splits_evaluados": "",
-        "artefactos_uri": "",
+        "artefactos_uri": artifacts or "",
     }])
     save_frame(spark, run, RUNS_TABLE, args.run_id)
     logger.info("Risk of %s saved in %s:\n%s", day.date(), rcfg["tabla"],
