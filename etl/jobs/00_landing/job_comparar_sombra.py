@@ -15,6 +15,14 @@ absolute difference, the largest one, the correlation and the days with more
 than umbral_kmh of difference. Nothing here scores: it says whether the
 gusts of the model of production will jump when the grid changes.
 
+Each shadow source is compared with the regular grid only on the cells that
+both have that evening and where the regular answer came from ICON-EU and not
+from the reserve model (_peticion.reserva): a shadow model is dropped after
+three failed cells in a row and keeps the ones it saved, so the two sets of
+cells are not always the same, and comparing their aggregates would move
+the very figure being measured. resumen.csv says how many cells were
+compared and how many evenings were incomplete.
+
     docker compose exec spark-master python3 /app/jobs/00_landing/job_comparar_sombra.py --desde 2026-10-18
     docker compose cp spark-master:/tmp/ml_resultados/sombra_<fecha> _runlogs/ml_resultados
 """
@@ -81,8 +89,10 @@ def cell_rows(fs, landing: str, days: list, keys: list, zone: str) -> pd.DataFra
             for file_path in sorted(fs.glob(f"{path}/*.json")):
                 with fs.open(file_path, "r") as file:
                     payload = json.load(file)
-                cell = (payload.get("_peticion") or {}).get("celda_id") or os.path.basename(file_path)[:-5]
-                rows.append({"fecha": day, "celda_id": cell, "fuente": source, **day_values(payload, day, zone)})
+                asked = payload.get("_peticion") or {}
+                cell = asked.get("celda_id") or os.path.basename(file_path)[:-5]
+                rows.append({"fecha": day, "celda_id": cell, "fuente": source, "modelo": asked.get("modelo"),
+                             "reserva": bool(asked.get("reserva", False)), **day_values(payload, day, zone)})
     return pd.DataFrame(rows)
 
 
@@ -94,18 +104,49 @@ def network_rows(cells: pd.DataFrame, places: pd.DataFrame) -> pd.DataFrame:
         lluvia_max=("lluvia", "max"))
 
 
-def compare(networks: pd.DataFrame, threshold: float) -> pd.DataFrame:
-    """Every shadow source against the regular grid of ICON-EU, by network."""
-    regular = networks[networks["fuente"] == REGULAR].set_index(["fecha", "red"])
-    rows = []
-    for (source, network), g in networks[networks["fuente"] != REGULAR].groupby(["fuente", "red"]):
-        g = g.set_index(["fecha", "red"]).join(regular, rsuffix="_regular", how="inner")
-        if g.empty:
+def paired_rows(cells: pd.DataFrame, places: pd.DataFrame) -> pd.DataFrame:
+    """
+    By shadow source, day and network: the worst cell, the mean and the rain of
+    the shadow source and of the regular grid on the same cells, those that
+    both have that evening with the regular answer from ICON-EU (not from the
+    reserve), with the cells compared and whether the evening was incomplete.
+    """
+    if "reserva" not in cells.columns:
+        cells = cells.assign(reserva=False)
+    nets = places[["celda_id", "red"]].drop_duplicates()
+    regular_all = cells[cells["fuente"] == REGULAR].merge(nets, on="celda_id", how="inner")
+    regular = regular_all[~regular_all["reserva"].fillna(False).astype(bool)]
+    out = []
+    for source in sorted(set(cells["fuente"]) - {REGULAR}):
+        shadow = cells[cells["fuente"] == source].merge(nets, on="celda_id", how="inner")
+        both = shadow.merge(regular[["fecha", "celda_id", "red", "racha_max", "lluvia"]], on=["fecha", "celda_id", "red"],
+                            suffixes=("", "_regular"), how="inner")
+        if both.empty:
             continue
+        g = both.groupby(["fecha", "red"], as_index=False).agg(
+            celdas=("celda_id", "nunique"), racha_peor_celda=("racha_max", "max"),
+            racha_peor_celda_regular=("racha_max_regular", "max"), racha_media=("racha_max", "mean"),
+            racha_media_regular=("racha_max_regular", "mean"), lluvia_max=("lluvia", "max"),
+            lluvia_max_regular=("lluvia_regular", "max"))
+        expected = pd.concat([regular_all[["fecha", "red", "celda_id"]], shadow[["fecha", "red", "celda_id"]]])
+        expected = expected.groupby(["fecha", "red"], as_index=False)["celda_id"].nunique().rename(columns={"celda_id": "celdas_total"})
+        g = g.merge(expected, on=["fecha", "red"], how="left")
+        g["incompleta"] = g["celdas"] < g["celdas_total"]
+        out.append(g.assign(fuente=source))
+    return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+
+
+def compare(paired: pd.DataFrame, threshold: float) -> pd.DataFrame:
+    """Every shadow source against the regular grid of ICON-EU, by network, on the cells both have (paired_rows)."""
+    rows = []
+    if paired.empty:
+        return pd.DataFrame()
+    for (source, network), g in paired.groupby(["fuente", "red"]):
         diff = g["racha_peor_celda"] - g["racha_peor_celda_regular"]
         mean_diff = g["racha_media"] - g["racha_media_regular"]
         both = g[["racha_peor_celda", "racha_peor_celda_regular"]].dropna()
-        rows.append({"fuente": source, "red": network, "dias": len(g), "sesgo_racha_peor_kmh": float(diff.mean()),
+        rows.append({"fuente": source, "red": network, "dias": len(g), "celdas_comparadas": int(g["celdas"].sum()),
+                     "tardes_incompletas": int(g["incompleta"].sum()), "sesgo_racha_peor_kmh": float(diff.mean()),
                      "dif_media_abs_peor_kmh": float(diff.abs().mean()), "dif_max_abs_peor_kmh": float(diff.abs().max()),
                      "sesgo_racha_media_kmh": float(mean_diff.mean()),
                      "correlacion_peor": float(both.corr().iloc[0, 1]) if len(both) > 2 else np.nan,
@@ -169,8 +210,9 @@ def main(argv=None, fs=None) -> int:
     if cells.empty or not (cells["fuente"] != REGULAR).any():
         logger.error("No shadow forecasts between %s and %s in %s", first, last, cfg["landing"])
         return 1
-    networks = network_rows(cells, places_of(fs, load_meteo_config()["openmeteo"], cfg))
-    summary = compare(networks, args.umbral_kmh)
+    places = places_of(fs, load_meteo_config()["openmeteo"], cfg)
+    networks = network_rows(cells, places)
+    summary = compare(paired_rows(cells, places), args.umbral_kmh)
     shift = grid_shift(cells)
 
     out = args.salida or os.path.join(config.get("exportar_dir", "/tmp/ml_resultados"),
@@ -184,8 +226,8 @@ def main(argv=None, fs=None) -> int:
     text = "\n\n".join([
         f"# Previsión en sombra frente a la rejilla regular de ICON-EU ({first:%d.%m.%Y} - {last:%d.%m.%Y})",
         f"{cells['fecha'].nunique()} tardes. Racha del día en la peor celda de cada red y media de sus celdas, con la "
-        f"diferencia de cada fuente menos la rejilla regular (km/h); días con más de {args.umbral_kmh:g} km/h de "
-        "diferencia en la peor celda.",
+        f"diferencia de cada fuente menos la rejilla regular (km/h), solo en las celdas que tienen las dos esa tarde y "
+        f"en las que la regular vino de ICON-EU; días con más de {args.umbral_kmh:g} km/h de diferencia en la peor celda.",
         markdown(summary),
         "## Distancia del punto de cada fuente al de la rejilla regular (km)",
         markdown(shifts),
