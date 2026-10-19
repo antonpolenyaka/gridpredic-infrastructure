@@ -128,8 +128,10 @@ DURATION_TOLERANCE_SECONDS = 60
 CALSER_REQUIRED_VOCABULARY = ["CL_IMPRE", "CL_PROGR", "FA_CLIEN", "TI_DETEC", "TI_MANDO"]
 
 # Maximum share of rejected rows before a metric is marked for review.
-# TagIntervalValuesBig loses around 22 % on the real database, the other
-# entities should lose almost nothing.
+# The series of measures (TagIntervalValues*) rejects a real share of its
+# samples (bad quality flags, out of range); every month its rejected share
+# goes to dq_metrics (rechazo_total), and the figure of the whole window is
+# the one of docs/cifras.md. The other entities should lose almost nothing.
 DEFAULT_MAX_REJECTED_PCT = 5.0
 MAX_REJECTED_PCT = {
     "f_tag_interval_value": 30.0,
