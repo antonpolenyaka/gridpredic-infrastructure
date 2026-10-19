@@ -4,8 +4,10 @@ services:
 
     restart: unless-stopped
 
+    # The administration ports (MinIO, Spark, Trino and Kafka UI) only listen on the laptop
+    # (127.0.0.1), not on the network of the university; tests/01_bronze/test_compose_puertos.py.
     ports:
-      - "9001:9001"  # MinIO Console
+      - "127.0.0.1:9001:9001"  # MinIO Console
 
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -124,8 +126,8 @@ services:
         condition: service_healthy
 
     ports:
-      - "${SPARK_MASTER_UI_PORT:-8080}:8080"  # Spark Master UI
-      - "4041:4040"  # Spark Application UI for streaming jobs
+      - "127.0.0.1:${SPARK_MASTER_UI_PORT:-8080}:8080"  # Spark Master UI
+      - "127.0.0.1:4041:4040"  # Spark Application UI for streaming jobs
 
     environment:
       SPARK_CONF_DIR: "/app/conf"
@@ -171,7 +173,7 @@ services:
         condition: service_healthy
 
     ports:
-      - "8081:8081"  # Spark Worker UI
+      - "127.0.0.1:8081:8081"  # Spark Worker UI
 
     environment:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
@@ -198,7 +200,7 @@ services:
         condition: service_healthy
 
     ports:
-      - "18080:18080"  # Spark History Server UI
+      - "127.0.0.1:18080:18080"  # Spark History Server UI
 
     environment:
       SPARK_CONF_DIR: "/app/conf"
@@ -228,7 +230,7 @@ services:
         condition: service_healthy
 
     ports:
-      - "8085:8080"  # Trino UI / API
+      - "127.0.0.1:8085:8080"  # Trino UI / API
 
     environment:
       AWS_ACCESS_KEY: ${MINIO_ROOT_USER}
@@ -387,7 +389,7 @@ services:
         condition: service_healthy
 
     ports:
-      - "8082:8080"  # Kafka UI
+      - "127.0.0.1:8082:8080"  # Kafka UI
 
     environment:
       KAFKA_CLUSTERS_0_NAME: "gridpredic"
