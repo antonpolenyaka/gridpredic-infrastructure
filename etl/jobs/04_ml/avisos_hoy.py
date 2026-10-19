@@ -34,7 +34,7 @@ for folder in (HERE, os.path.join(HERE, "..", "00_landing"), os.path.join(HERE, 
 
 from job_bronze_datos_publicos import parse_aemet_archive, polygon_points  # noqa: E402
 from job_landing_meteo_openmeteo import live_filesystem  # noqa: E402
-from job_landing_vivo import ask_warnings, day_folder  # noqa: E402
+from job_landing_vivo import ask_warnings, day_folder, write_json_atomic  # noqa: E402
 from job_silver_contexto_publico import WARNING_LEVELS, inside  # noqa: E402
 import aviso_riesgo  # noqa: E402
 from aviso_riesgo import LEVEL_NAMES, guard_advice  # noqa: E402
@@ -202,8 +202,7 @@ def send_raised(payload: dict, rcfg: dict, state_path: str) -> str:
         state[str(d.get("id"))] = day
     if state_path:
         try:
-            with open(state_path, "w", encoding="utf-8") as file:
-                json.dump(state, file)
+            write_json_atomic(state_path, state)
         except OSError as error:
             logger.warning("State not written in %s: %s", state_path, error)
     logger.info("Raised guard sent\n%s", message)
@@ -229,8 +228,7 @@ def refresh(rcfg: dict, dashboard: str, landing: str, now: datetime = None, fs=N
     payload = today_payload(risk, rows, now, zone)
     payload["areas_sin_respuesta"] = failed
     target = os.path.join(dashboard, "avisos_hoy.json")
-    with open(target, "w", encoding="utf-8") as file:
-        json.dump(payload, file, ensure_ascii=False)
+    write_json_atomic(target, payload, ensure_ascii=False)
     logger.info("avisos_hoy.json written in %s (%s CAP rows): %s", target, len(rows),
                 "; ".join(d["texto"] for d in payload["distribuidoras"]))
     payload["envio"] = send_raised(payload, rcfg, os.path.join(dashboard, "avisos_hoy_aviso.json"))

@@ -91,6 +91,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from job_ml_train import GOLD, get_spark, load_config, logger, save_frame  # noqa: E402
+import riesgo_zonas as rz  # noqa: E402
 
 
 FACT_TABLE = f"{GOLD}.fact_interrupciones_mt"
@@ -2418,8 +2419,8 @@ def main(argv=None):
     save_tables(spark, args.run_id, state)
     if args.dashboard_dir and state.get("sector_json"):
         if os.path.isdir(args.dashboard_dir):
-            with open(os.path.join(args.dashboard_dir, "sector.json"), "w", encoding="utf-8") as file:
-                json.dump(state["sector_json"], file, ensure_ascii=False, indent=1)
+            rz.write_json_atomic(os.path.join(args.dashboard_dir, "sector.json"), state["sector_json"], ensure_ascii=False,
+                                 indent=1)
             logger.info("sector.json left in %s", args.dashboard_dir)
         else:
             logger.warning("Dashboard folder %s not found: sector.json only in the export folder", args.dashboard_dir)

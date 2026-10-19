@@ -3,15 +3,18 @@ What the stations of AEMET are measuring now, for the dashboard
 (dag_observacion_vivo, every hour). Configuration: riesgo_manana.observacion
 of config_ml.json.
 
-AEMET OpenData gives the last 24 hours of every conventional station of
+AEMET OpenData gives the last 12 hours of every conventional station of
 Spain (observacion/convencional/todas: gust, wind, rain, temperature every
 hour). Every run saves the records of the stations inside the study box in
 <landing>/observacion/<YYYYMMDD>/obs_<HHMM>.json (as AEMET gives them, with
-the time of the request) and writes observado.json for the dashboard: per
+the time of the request; the folder is the UTC day of the request, the name
+says when it was asked and not which hours it holds) and writes
+observado.json for the dashboard: per
 distribuidora, the strongest gust and the rain of every hour of the day
 measured by the stations within radio_km of its municipalities (what the
 forecast of the day said against what is happening), and the stations with
-their last values for the map. The free key of opendata.aemet.es goes in a
+their last values for the map. As one answer is half a day, a local day is
+read from every run landed on the UTC days that cover it (landed_days). The free key of opendata.aemet.es goes in a
 header and is never written in the log.
 
 Every run also verifies the forecast: for yesterday and today, the peak gust
@@ -21,9 +24,14 @@ near it measured, with the hour of both and whether the observed peak fell in
 the forecast window. verificacion.json keeps the last verificacion_dias days
 and a summary per distribuidora (bias and absolute error of the peak, share
 of days with the peak inside the window), so the dashboard can say how much
-the forecast of the evening before is worth.
+the forecast of the evening before is worth. The dashboard files are
+replaced atomically; a verificacion.json that cannot be read is rebuilt from
+the Landing and the archived forecasts, never written over with yesterday
+alone. --rehacer-verificacion recomputes every day kept from the Landing
+(the days before 19.10.2026 were verified with the last run of each UTC day
+only, some 11 hours).
 
-    docker compose exec airflow python /app/jobs/00_landing/job_landing_observacion.py
+    docker compose exec airflow python /app/jobs/00_landing/job_landing_observacion.py [--rehacer-verificacion]
 """
 
 import argparse
@@ -44,7 +52,7 @@ if HERE not in sys.path:
 from job_landing_datos_publicos import fetch  # noqa: E402
 from job_landing_meteo_openmeteo import filesystem  # noqa: E402
 from job_landing_rayos import haversine_km, read_risk  # noqa: E402
-from job_landing_vivo import load_config  # noqa: E402
+from job_landing_vivo import load_config, write_json_atomic  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("observacion")
@@ -72,7 +80,7 @@ def observation_settings(config: dict) -> dict:
 
 
 def ask_observations(cfg: dict, key: str) -> list:
-    """The records of the last 24 hours of every station (two requests: the pointer and the data)."""
+    """The records of the last 12 hours of every station (two requests: the pointer and the data)."""
     timeout = float(cfg["timeout_s"])
     answer = json.loads(fetch(cfg["api"], headers={"api_key": key, "Accept": "application/json"}, timeout=timeout,
                               label="AEMET observacion").decode("utf-8", "replace"))
@@ -127,16 +135,43 @@ def landed_frame(fs, path: str) -> pd.DataFrame:
     return out
 
 
-def last_landed(fs, cfg: dict, day: datetime) -> pd.DataFrame:
-    """The last file landed on a UTC day (empty when there is none)."""
-    folder = f"{cfg['landing'].rstrip('/')}/observacion/{day:%Y%m%d}"
-    try:
-        files = sorted(f for f in fs.ls(folder, detail=False) if str(f).endswith(".json"))
-    except FileNotFoundError:
+def landed_days(fs, cfg: dict, days: list) -> pd.DataFrame:
+    """
+    Every run landed on the given UTC days, joined and without repeated
+    (idema, ts_utc). AEMET answers with the last 12 hours, so a local day
+    needs all the runs of the two UTC days around it, not the last one.
+    """
+    pieces = []
+    for day in sorted(set(days)):
+        folder = f"{cfg['landing'].rstrip('/')}/observacion/{day:%Y%m%d}"
+        try:
+            files = sorted(f for f in fs.ls(folder, detail=False) if str(f).endswith(".json"))
+        except FileNotFoundError:
+            continue
+        for path in files:
+            try:
+                frame = landed_frame(fs, path)
+            except (OSError, ValueError) as error:
+                logger.warning("%s not read: %s", path, error)
+                continue
+            if len(frame):
+                pieces.append(frame)
+    if not pieces:
         return pd.DataFrame(columns=COLUMNS)
-    if not files:
+    return pd.concat(pieces, ignore_index=True).drop_duplicates(["idema", "ts_utc"], keep="last").reset_index(drop=True)
+
+
+def utc_days_of(local_days: list) -> list:
+    """The UTC days that cover some hour of the given local days (Madrid is ahead of UTC: the day before too)."""
+    return sorted({d - timedelta(days=k) for d in local_days for k in (0, 1)})
+
+
+def with_landed(fs, cfg: dict, frame: pd.DataFrame, local_days: list) -> pd.DataFrame:
+    """frame (the run in course) with every run landed on the UTC days of local_days."""
+    pieces = [f for f in (landed_days(fs, cfg, utc_days_of(local_days)), frame) if len(f)]
+    if not pieces:
         return pd.DataFrame(columns=COLUMNS)
-    return landed_frame(fs, files[-1])
+    return pd.concat(pieces, ignore_index=True).drop_duplicates(["idema", "ts_utc"], keep="last").reset_index(drop=True)
 
 
 def land(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> str:
@@ -208,8 +243,7 @@ def write_dashboard(payload: dict, folder: str) -> bool:
         logger.warning("Dashboard folder %s not found: observado.json not written", folder)
         return False
     path = os.path.join(folder, "observado.json")
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(payload, file, ensure_ascii=False, indent=1)
+    write_json_atomic(path, payload, ensure_ascii=False, indent=1)
     logger.info("observado.json written in %s (%s stations, %s distribuidoras)", path, len(payload["estaciones"]),
                 len(payload["distribuidoras"]))
     return True
@@ -340,48 +374,89 @@ def verification_summary(days: dict, minimum_hours: int) -> list:
     return out
 
 
-def verify(fs, cfg: dict, frame: pd.DataFrame, now: datetime) -> dict:
+def verify_archived_day(fs, cfg: dict, day: date, frame: pd.DataFrame = None):
+    """The records of one local day against every run landed for it (None without riesgo_<day>.json)."""
+    folder = cfg["dashboard_dir"]
+    risk = archived_forecast(folder, day)
+    if not risk:
+        return None
+    observed = frame if frame is not None else with_landed(fs, cfg, pd.DataFrame(columns=COLUMNS), [day])
+    before = archived_forecast(folder, day - timedelta(days=1)) or {}
+    return verify_day(observed, risk, cfg, day, archived_forecast(folder, day, "ensemble"), archived_forecast(folder, day, "aemet"),
+                      before.get("pasado_manana"))
+
+
+def archived_days(folder: str, before: date, keep: int) -> list:
+    """The local days before `before` with riesgo_<day>.json in the dashboard folder, the last `keep`."""
+    days = []
+    for name in os.listdir(folder) if folder and os.path.isdir(folder) else []:
+        if name.startswith("riesgo_") and name.endswith(".json") and len(name) == len("riesgo_20261019.json"):
+            try:
+                day = datetime.strptime(name[7:15], "%Y%m%d").date()
+            except ValueError:
+                continue
+            if day < before:
+                days.append(day)
+    return sorted(days)[-keep:]
+
+
+def rebuild_days(fs, cfg: dict, days: list) -> dict:
+    """{day: records} recomputed from the Landing for every day with its archived forecast."""
+    out = {}
+    for day in days:
+        records = verify_archived_day(fs, cfg, day)
+        if records is not None:
+            out[day.isoformat()] = records
+    return out
+
+
+def verify(fs, cfg: dict, frame: pd.DataFrame, now: datetime, rebuild: bool = False) -> dict:
     """
     verificacion.json: yesterday and today (local) of every riesgo_<day>.json
-    found, merged with the days already kept, and the summary. Yesterday is
-    complete only with the last file landed the UTC day before, so both are
-    read; a missing archive or Landing day just leaves that day out.
+    found, merged with the days already kept, and the summary. Every local day
+    is read from all the runs landed on the UTC days that cover it (each run
+    holds 12 hours); a missing archive or Landing day just leaves that day out.
+    A verificacion.json that exists and cannot be read is rebuilt from the
+    Landing for the archived days; with rebuild every day kept is recomputed.
     """
     folder = cfg["dashboard_dir"]
     zone = ZoneInfo(cfg["zona_horaria"])
     today = now.astimezone(zone).date()
     yesterday = today - timedelta(days=1)
+    keep = int(cfg["verificacion_dias"])
     path = os.path.join(folder or "", "verificacion.json")
     kept = {}
     if folder and os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as file:
                 kept = {k: v for k, v in (json.load(file).get("dias") or {}).items()}
-        except (OSError, ValueError):
-            kept = {}
-    pieces = [f for f in (frame, last_landed(fs, cfg, now - timedelta(days=1))) if len(f)]
-    both = pd.concat(pieces, ignore_index=True).drop_duplicates(["idema", "ts_utc"]) if pieces else pd.DataFrame(columns=COLUMNS)
+        except (OSError, ValueError, AttributeError) as error:
+            logger.error("verificacion.json not read (%s): rebuilt from the Landing", str(error)[:120])
+            rebuild = True
+            kept = {d.isoformat(): None for d in archived_days(folder, yesterday, keep)}
+    if rebuild:
+        days = sorted(date.fromisoformat(k) for k in kept if date.fromisoformat(k) < yesterday)
+        rebuilt = rebuild_days(fs, cfg, days)
+        # A day whose archived forecast is gone keeps what it had.
+        kept = {**{k: v for k, v in kept.items() if v is not None}, **rebuilt}
+        logger.info("Verification rebuilt from the Landing for %s days", len(rebuilt))
+    both = with_landed(fs, cfg, frame, [yesterday, today])
     today_records = []
     for day in (yesterday, today):
-        risk = archived_forecast(folder, day)
-        if not risk:
+        records = verify_archived_day(fs, cfg, day, both)
+        if records is None:
             continue
-        before = archived_forecast(folder, day - timedelta(days=1)) or {}
-        records = verify_day(both, risk, cfg, day, archived_forecast(folder, day, "ensemble"), archived_forecast(folder, day, "aemet"),
-                             before.get("pasado_manana"))
         if day == today:
             today_records = records
         else:
             kept[day.isoformat()] = records
-    keep = int(cfg["verificacion_dias"])
     kept = dict(sorted(kept.items())[-keep:])
     payload = {"generado": now.strftime("%Y-%m-%dT%H:%MZ"), "fuente": "previsión de la víspera (riesgo_<día>.json) frente a la racha máxima de las estaciones de AEMET a menos de "
                f"{float(cfg['radio_km']):g} km de la red", "radio_km": float(cfg["radio_km"]), "hoy": {"fecha": today.isoformat(), "distribuidoras": today_records},
                "ayer": {"fecha": yesterday.isoformat(), "distribuidoras": kept.get(yesterday.isoformat(), [])},
                "dias": kept, "resumen": verification_summary(kept, int(cfg["horas_dia_completo"]))}
     if folder and os.path.isdir(folder):
-        with open(path, "w", encoding="utf-8") as file:
-            json.dump(payload, file, ensure_ascii=False, indent=1)
+        write_json_atomic(path, payload, ensure_ascii=False, indent=1)
         logger.info("verificacion.json written in %s (%s days kept)", path, len(kept))
     return payload
 
@@ -391,6 +466,8 @@ def main(argv=None, fs=None, now: datetime = None, records: list = None) -> int:
     parser.add_argument("--config", default=None)
     parser.add_argument("--dashboard-dir", default=None)
     parser.add_argument("--landing", default=None)
+    parser.add_argument("--rehacer-verificacion", action="store_true",
+                        help="Recompute every day kept in verificacion.json from all the runs of the Landing")
     args = parser.parse_args(argv)
     cfg = observation_settings(load_config(args.config))
     if args.dashboard_dir:
@@ -413,12 +490,18 @@ def main(argv=None, fs=None, now: datetime = None, records: list = None) -> int:
     fs = fs or filesystem()
     path = land(fs, cfg, frame, now)
     logger.info("Observations landed in %s", path)
-    payload = dashboard_payload(frame, read_risk(cfg["dashboard_dir"]), cfg, now)
+    local_today = now.astimezone(ZoneInfo(cfg["zona_horaria"])).date()
+    try:
+        day_frame = with_landed(fs, cfg, frame, [local_today])
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Earlier runs of today not read: %s", str(error)[:200])
+        day_frame = frame
+    payload = dashboard_payload(day_frame, read_risk(cfg["dashboard_dir"]), cfg, now)
     write_dashboard(payload, cfg["dashboard_dir"])
     for block in payload["distribuidoras"]:
         logger.info("%s: %s", block["nombre"], block["texto"])
     try:
-        checked = verify(fs, cfg, frame, now)
+        checked = verify(fs, cfg, frame, now, rebuild=args.rehacer_verificacion)
         for block in checked.get("resumen", []):
             logger.info("Verificación %s: %s", block["nombre"], block["texto"])
     except Exception as error:  # noqa: BLE001
