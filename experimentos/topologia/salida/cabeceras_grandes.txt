@@ -1,0 +1,10 @@
+red  cts parte_ct_red  lineas  lineas_red  trafos_que_corta parte_mediana
+ D1  492          61%      28          41               492           60%
+ D2  125          21%       6          26               132           55%
+ D2  124          21%       6          26               261           26%
+ D2  115          19%       5          26               115           30%
+ D1   42           5%       5          41               186           25%
+ D1   41           5%       3          41                45           32%
+ D1   35           4%       3          41                77           25%
+ D1   30           4%       1          41                30           25%
+cabeceras con un solo CT: 17 | con 5 o menos: 21 de 45

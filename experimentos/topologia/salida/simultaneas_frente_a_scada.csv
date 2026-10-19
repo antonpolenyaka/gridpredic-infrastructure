@@ -1,0 +1,5 @@
+instante,redes_calser,incidencias,eventos_scada_5min,eventos_dos_redes_5min,trafos_en_esos_eventos,desfase_s_evento_mas_cercano
+17.04.2022 14:40:46,D1+D2,2,2,1,567,0.0
+27.03.2024 19:21:20,D1+D2,2,4,4,1004,0.3
+28.04.2025 12:33:14,D1+D2+D3,6,1,0,1,0.1
+28.01.2026 08:35:11,D1+D2,2,9,1,424,0.0

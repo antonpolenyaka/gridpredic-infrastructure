@@ -1,0 +1,32 @@
+Universo: 1241 CT (de 1277 elegibles con trafo, linea y cabecera); T0 = 2023-01-01
+  A co-corte (todos los Off): 353566 aristas (46.0 % de los pares)
+  B co-corte (sostenidos): 337973 aristas (43.9 % de los pares)
+  C similitud Jaccard topK 10: 8321 aristas (1.1 % de los pares)
+Incidencias de causa local desde T0 en el universo: 139; con 2 CT o mas: 133 (mediana 21 CT, maximo 486)
+
+                                                      particion  zonas  ct_mediana  ct_max  contenidas_%  precision_%  recall_%  F1_%  pares_misma_zona
+                                           Linea (grupo_red_id)     61        19.0      67          60.2         89.2       9.8  17.7             18542
+                           Cabecera argmax (historico completo)     32        12.0     490          75.9         95.3      82.4  88.4            145522
+                                                      Municipio     73        12.0      89          33.8         91.3      10.4  18.6             19086
+                                                  Distribuidora      3       525.0     706         100.0         43.6     100.0  60.7            386460
+                   Louvain A co-corte (todos los Off), res. 1,0      6       121.0     698          88.7         35.3      63.9  45.4            304863
+    Louvain A co-corte (todos los Off), como lineas (res. 1.33)     61         1.0     698          79.7         23.5      35.7  28.3            256542
+ Louvain A co-corte (todos los Off), como cabeceras (res. 1.29)     32         3.0     698          81.2         25.4      39.6  30.9            263113
+                      Louvain B co-corte (sostenidos), res. 1,0      6        32.5     662          94.7         48.6      98.3  65.1            340245
+       Louvain B co-corte (sostenidos), como lineas (res. 1.72)     62         1.0     662          77.4         26.3      36.7  30.7            234622
+    Louvain B co-corte (sostenidos), como cabeceras (res. 1.65)     39         2.0     662          79.7         27.8      39.6  32.7            239567
+                  Louvain C similitud Jaccard topK 10, res. 1,0     55        23.0      51          63.2         93.4       8.7  15.9             15689
+   Louvain C similitud Jaccard topK 10, como lineas (res. 6.50)     61        19.0      40          55.6         94.9       7.7  14.2             13622
+Louvain C similitud Jaccard topK 10, como cabeceras (res. 0.06)     44        23.5      86          67.7         92.7      12.6  22.2             22856
+
+ARI A co-corte (todos los Off), res. 1,0: con lineas 0.07; con cabeceras 0.15
+ARI A co-corte (todos los Off), como lineas: con lineas 0.08; con cabeceras -0.09
+ARI A co-corte (todos los Off), como cabeceras: con lineas 0.08; con cabeceras -0.05
+ARI B co-corte (sostenidos), res. 1,0: con lineas 0.06; con cabeceras 0.43
+ARI B co-corte (sostenidos), como lineas: con lineas 0.09; con cabeceras -0.06
+ARI B co-corte (sostenidos), como cabeceras: con lineas 0.09; con cabeceras -0.04
+ARI C similitud Jaccard topK 10, res. 1,0: con lineas 0.69; con cabeceras 0.14
+ARI C similitud Jaccard topK 10, como lineas: con lineas 0.68; con cabeceras 0.13
+ARI C similitud Jaccard topK 10, como cabeceras: con lineas 0.62; con cabeceras 0.20
+ARI lineas - cabeceras: 0.14
+Tiempo total: 528.0 s

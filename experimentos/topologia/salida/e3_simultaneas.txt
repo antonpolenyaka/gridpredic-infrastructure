@@ -1,0 +1,22 @@
+[a] mismo segundo: 14 pares de incidencias imprevistas en dos distribuidoras desde el 07.01.2021; con CT de nivel principal en las dos: 14 (en 4 dias)
+    comparten un elemento aguas arriba conocido antes del inicio: 6 pares (21 elementos distintos); con aristas de todo el historico: 6 pares
+    pandas 2627 ms
+    pares sin elemento comun, por dia: {datetime.date(2025, 4, 28): 8}
+    pares con elemento comun, por dia: {datetime.date(2022, 4, 17): 1, datetime.date(2024, 3, 27): 1, datetime.date(2025, 4, 28): 3, datetime.date(2026, 1, 28): 1}
+    CT por incidencia en los pares (mediana): 215
+[a] a 5 minutos o menos: 20 pares de incidencias imprevistas en dos distribuidoras desde el 07.01.2021; con CT de nivel principal en las dos: 20 (en 4 dias)
+    comparten un elemento aguas arriba conocido antes del inicio: 12 pares (21 elementos distintos); con aristas de todo el historico: 12 pares
+    pandas 3184 ms
+    pares sin elemento comun, por dia: {datetime.date(2025, 4, 28): 8}
+    pares con elemento comun, por dia: {datetime.date(2022, 4, 17): 1, datetime.date(2024, 3, 27): 1, datetime.date(2025, 4, 28): 3, datetime.date(2026, 1, 28): 7}
+    CT por incidencia en los pares (mediana): 133
+
+[b] incidencias desde el 07.01.2021 con cabecera anotada en Calser: 238; cuyo codigo casa con un elemento de corte del SCADA: 154; de esas, con interrupciones principales de CT: 154
+    incidencias evaluadas: 154
+    la cabecera de Calser es aguas arriba de algun CT de la incidencia (arista conocida antes): 137 (89.0%); con el historico completo: 150 (97.4%)
+    ... de todos sus CT: 106 (68.8%)
+    parte de los CT de la incidencia que cierran el ciclo (mediana): 100.0%
+    la cabecera de Calser es la cabecera argmax de la mayoria de sus CT: 25 (16.2%)
+    pandas 249 ms
+    sin ciclo ni con el historico completo: 4; por distribuidora: {'Distribuidora 1': 4}
+    con ciclo por distribuidora (arista conocida antes): {'Distribuidora 1': 75, 'Distribuidora 2': 61, 'Distribuidora 3': 1}

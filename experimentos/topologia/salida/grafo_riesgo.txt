@@ -1,0 +1,52 @@
+Captura de kVA.h imprevistos en el top k % de CT (media de 2022 - 2025)
+                         puntuacion  top5  top10  top10_2022  top10_2023  top10_2024  top10_2025  top20
+                          s_oraculo 0.524  0.681       0.614       0.605       0.617       0.889  0.849
+                             s_naif 0.166  0.269       0.178       0.432       0.357       0.109  0.483
+                    s_naif_cabecera 0.053  0.110       0.067       0.170       0.114       0.091  0.216
+                         s_historia 0.158  0.253       0.233       0.359       0.249       0.172  0.525
+              s_historia+estructura 0.160  0.271       0.310       0.368       0.266       0.140  0.543
+                             s_todo 0.150  0.261       0.180       0.400       0.253       0.210  0.473
+           vec_incidencia_tfidf_k10 0.063  0.121       0.064       0.236       0.135       0.051  0.207
+       vec_incidencia_tfidf_k10_kva 0.149  0.257       0.174       0.434       0.292       0.131  0.427
+           vec_incidencia_tfidf_k30 0.053  0.131       0.034       0.274       0.154       0.063  0.223
+       vec_incidencia_tfidf_k30_kva 0.172  0.272       0.190       0.463       0.290       0.144  0.444
+                        vec_lsa_k30 0.052  0.121       0.044       0.251       0.127       0.063  0.219
+                    vec_lsa_k30_kva 0.149  0.249       0.175       0.411       0.261       0.151  0.437
+                  vec_espectral_k30 0.064  0.125       0.037       0.252       0.151       0.060  0.206
+              vec_espectral_k30_kva 0.159  0.263       0.174       0.451       0.266       0.159  0.431
+                      vec_netmf_k10 0.066  0.120       0.069       0.248       0.112       0.049  0.203
+                  vec_netmf_k10_kva 0.157  0.258       0.165       0.455       0.276       0.137  0.417
+                      vec_netmf_k30 0.072  0.123       0.053       0.240       0.137       0.063  0.193
+                  vec_netmf_k30_kva 0.148  0.259       0.184       0.447       0.268       0.137  0.439
+                          vec_grafo 0.056  0.107       0.079       0.220       0.119       0.010  0.186
+                      vec_grafo_kva 0.161  0.254       0.153       0.443       0.272       0.147  0.484
+                              grado 0.025  0.078       0.113       0.034       0.084       0.079  0.211
+    modelo+vec_incidencia_tfidf_k30 0.115  0.195       0.122       0.374       0.221       0.064  0.358
+      naif+vec_incidencia_tfidf_k30 0.109  0.199       0.089       0.405       0.243       0.058  0.334
+modelo+vec_incidencia_tfidf_k30_kva 0.178  0.293       0.214       0.452       0.318       0.186  0.509
+  naif+vec_incidencia_tfidf_k30_kva 0.175  0.274       0.181       0.477       0.306       0.134  0.492
+               modelo+vec_netmf_k30 0.104  0.169       0.088       0.321       0.205       0.061  0.345
+                 naif+vec_netmf_k30 0.113  0.182       0.090       0.358       0.221       0.059  0.314
+           modelo+vec_netmf_k30_kva 0.174  0.279       0.212       0.424       0.312       0.170  0.506
+             naif+vec_netmf_k30_kva 0.164  0.262       0.178       0.455       0.294       0.119  0.489
+                   modelo+vec_grafo 0.103  0.196       0.094       0.364       0.210       0.117  0.425
+                     naif+vec_grafo 0.106  0.186       0.076       0.378       0.219       0.069  0.396
+               modelo+vec_grafo_kva 0.177  0.300       0.257       0.454       0.297       0.192  0.553
+                 naif+vec_grafo_kva 0.166  0.268       0.159       0.472       0.293       0.147  0.483
+
+Mejores combinaciones con el modelo (top 10 %):
+                         puntuacion  top5  top10  top20
+               modelo+vec_grafo_kva 0.177  0.300  0.553
+modelo+vec_incidencia_tfidf_k30_kva 0.178  0.293  0.509
+             modelo+vec_lsa_k30_kva 0.168  0.283  0.509
+             modelo+vec_lsa_k10_kva 0.173  0.282  0.531
+       modelo+vec_espectral_k10_kva 0.167  0.280  0.526
+
+Spearman entre grado y vec_grafo / s_naif_cabecera (todas las filas):
+                 grado  vec_grafo  vec_netmf_k30  s_naif_cabecera  s_naif  y_kva_h
+grado            1.000     -0.649         -0.483           -0.488  -0.301   -0.083
+vec_grafo       -0.649      1.000          0.752            0.734   0.428    0.097
+vec_netmf_k30   -0.483      0.752          1.000            0.633   0.464    0.094
+s_naif_cabecera -0.488      0.734          0.633            1.000   0.507    0.150
+s_naif          -0.301      0.428          0.464            0.507   1.000    0.378
+y_kva_h         -0.083      0.097          0.094            0.150   0.378    1.000
