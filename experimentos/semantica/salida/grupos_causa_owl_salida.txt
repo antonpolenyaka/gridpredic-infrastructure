@@ -1,0 +1,60 @@
+1. Definiciones leídas del código (fichero: línea)
+   CAUSAS iguales en los dos ficheros: True (17 familias; líneas (71, 79))
+   LOCAL_EXCLUDED (riesgo_zonas.py: 54): ['aguas_arriba', 'apagon', 'programada', 'maniobra', 'cliente_bt', 'red_bt']
+   CAUSE_FAMILIES (riesgo_zonas.py: 55): {'vegetacion': 'meteorologia', 'incendio': 'meteorologia', 'objeto_ajeno': 'terceros', 'agente_externo': 'terceros', 'sin_causa': 'desconocida', 'red_bt': 'red_bt'}
+   causas_no_meteo (job_ml_riesgo_dia.py, job_ml_meteo_historia.py: (736, 123)) iguales: True; en config_ml.json: ['/meteo_historia/causas_no_meteo'], iguales: True
+   familias_causa (job_ml_riesgo_ct.py: 127): {'meteo': ['meteorologia', 'desconocida', 'vegetacion', 'incendio', 'objeto_ajeno'], 'fauna': ['fauna'], 'equipo': ['equipo']}
+   listas en línea de riesgo_zonas.py: [(['meteorologia', 'vegetacion'], 440), (['meteorologia', 'vegetacion'], 395)]
+
+2. Grupos (sobre las 17 familias)
+   CausaLocal               11: ['agente_externo', 'desconocida', 'equipo', 'fauna', 'incendio', 'meteorologia', 'objeto_ajeno', 'sin_causa', 'sobrecarga', 'terceros', 'vegetacion']
+   RelacionadaConTiempo     10: ['agente_externo', 'desconocida', 'equipo', 'fauna', 'incendio', 'meteorologia', 'objeto_ajeno', 'sin_causa', 'sobrecarga', 'vegetacion']
+   BloqueMeteoAnual          5: ['desconocida', 'incendio', 'meteorologia', 'objeto_ajeno', 'vegetacion']
+   BloqueFaunaAnual          1: ['fauna']
+   BloqueEquipoAnual         1: ['equipo']
+   MeteoRetrasoCascada       2: ['meteorologia', 'vegetacion']
+   RestoAnual               10: ['agente_externo', 'aguas_arriba', 'apagon', 'cliente_bt', 'maniobra', 'programada', 'red_bt', 'sin_causa', 'sobrecarga', 'terceros']
+   Mostrar_aguas_arriba      1: ['aguas_arriba']
+   Mostrar_apagon            1: ['apagon']
+   Mostrar_cliente_bt        1: ['cliente_bt']
+   Mostrar_desconocida       2: ['desconocida', 'sin_causa']
+   Mostrar_equipo            1: ['equipo']
+   Mostrar_fauna             1: ['fauna']
+   Mostrar_maniobra          1: ['maniobra']
+   Mostrar_meteorologia      3: ['incendio', 'meteorologia', 'vegetacion']
+   Mostrar_programada        1: ['programada']
+   Mostrar_red_bt            1: ['red_bt']
+   Mostrar_sobrecarga        1: ['sobrecarga']
+   Mostrar_terceros          3: ['agente_externo', 'objeto_ajeno', 'terceros']
+   MeteoRetrasoCascada incluido en BloqueMeteoAnual: True
+   BloqueMeteoAnual incluido en RelacionadaConTiempo: True
+   RelacionadaConTiempo incluido en CausaLocal: True
+   BloqueFaunaAnual incluido en RelacionadaConTiempo: True
+   BloqueEquipoAnual incluido en RelacionadaConTiempo: True
+   El bloque 'meteo' del riesgo anual se enseña en riesgo_zonas como: {'desconocida': 'desconocida', 'incendio': 'meteorologia', 'meteorologia': 'meteorologia', 'objeto_ajeno': 'terceros', 'vegetacion': 'meteorologia'}
+   'meteorologia' significa: en riesgo_dia 10 familias, en el bloque anual 5, en la presentación de riesgo_zonas 3 y en el retraso y la cascada 2
+
+3. Incidencias de la exportación: 799 (causa nula: 0)
+   T-Box: 93 tripletas (17 clases de familia, 19 de grupo); A-Box: 799
+   RDFS (owlrl, sin tripletas axiomáticas): 892 -> 4803 tripletas en 1.33 s
+   grupo                   pandas  sin razonar  reescrita  tras RDFS
+   CausaLocal                 681            0        681        681
+   RelacionadaConTiempo       660            0        660        660
+   BloqueMeteoAnual           295            0        295        295
+   BloqueFaunaAnual           129            0        129        129
+   BloqueEquipoAnual          212            0        212        212
+   MeteoRetrasoCascada        130            0        130        130
+   RestoAnual                 163            0        163        163
+   Tiempos: pandas 3.6 ms; SPARQL reescrita 431 ms; SPARQL tras materializar 123 ms (más 1.33 s de materialización)
+   'RestoAnual' por complemento: tras RDFS solo cuenta lo que se declaró; con una familia nueva sin clasificar, pandas la metería en el resto y RDFS no:
+   RestoAnual con la incidencia nueva: RDFS 163; FILTER NOT EXISTS 164 (pandas daría 164); la clase declarada de la familia nueva no existe y la consulta que exige ?f a owl:Class la pierde (163)
+
+4. OWL RL con la presentación como partición y 'meteo' = 'meteorologia': 156 mensajes de inconsistencia en 3.3 s
+   pares de clases disjuntas con individuos comunes: {'Mostrar_desconocida / Mostrar_meteorologia': 154, 'Mostrar_meteorologia / Mostrar_terceros': 2}
+   ejemplo: Disjoint classes https://gridpredic.com/ont#Mostrar_desconocida and https://gridpredic.com/ont#Mostrar_meteorologia have a common individual https://gridpredic.com/id/inc/100
+   incidencias afectadas (familias del bloque anual que no se enseñan como meteorologia): 156 de 799: {'desconocida': 154, 'objeto_ajeno': 2}
+
+5. SKOS de tres niveles (subcausa -> familia -> bloque), incidencias del bloque meteo por skos:broaderTransitive (pandas: 295):
+   RDFS   :    0 (0.46 s, 1813 tripletas)
+   OWL RL :  295 (0.91 s, 1948 tripletas)
+   sin razonar, camino skos:broader+: 295

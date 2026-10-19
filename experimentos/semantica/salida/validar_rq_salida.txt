@@ -1,0 +1,3 @@
+wikidata_municipios_repo.rq: no analiza: Exception: Unknown namespace prefix : wdt
+wikidata_municipios_estandar.rq: analiza bien (SelectQuery)
+federada_municipios.rq: analiza bien (ConstructQuery)
