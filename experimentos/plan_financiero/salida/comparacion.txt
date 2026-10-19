@@ -34,7 +34,7 @@ Flujos libres de los años 1 a 5, v11: -32.287, 16.885, 122.521, 224.958, 309.03
 
 Aportación mínima de los fundadores sobre los 40.000 euros de la v10 para que caja y patrimonio (art. 363) queden en positivo todos los meses con ENISA en el mes 6: 16.287 euros, es decir, 56.287 en total; el plan pone 60.000.
 
-Tarifa: fijo 3000.0, por_ct 50.0, por_senal 1.0, minimo 6000.0
+Tarifa: 3.000 euros fijos, 50 por CT y 1,0 por señal, con un mínimo de 6.000 y sin máximo
   Distribuidora 1: 760 CT, 44.400 señales -> 85.400 euros al año
   Distribuidora 2: 570 CT, 33.300 señales -> 64.800 euros al año
   Distribuidora 3: 10 CT, 600 señales -> 6.000 euros al año
