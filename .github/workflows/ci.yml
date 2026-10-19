@@ -4,6 +4,7 @@
 #   2. compose: compose.yaml se resuelve sin avisos con las variables de .env.example.
 #   3. silver-smoke, gold-smoke y ml-smoke: los tests de extremo a extremo de Silver, de Gold
 #      y del entrenamiento en un Spark local, los mismos que se ejecutan con `make test`.
+#   4. negocio: el plan financiero cuadra y cumple las decisiones de negocio (sin Spark).
 name: CI
 
 on:
@@ -99,3 +100,15 @@ jobs:
           path: ~/.ivy2.5.2
           key: ivy-delta-4.4.0
       - run: python -m pytest tests/04_ml -q
+
+  negocio:
+    name: Test plan financiero
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - run: python -m pytest tests/negocio -q
