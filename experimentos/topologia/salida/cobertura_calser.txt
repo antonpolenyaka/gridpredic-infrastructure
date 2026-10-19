@@ -1,0 +1,22 @@
+             eventos  con_incidencia  trafos_mediana
+red cruzado                                         
+D1  False        437           0.359            14.0
+    True          47           0.234            33.0
+D2  False        481           0.297            12.0
+    True          37           0.162            33.0
+D3  False         33           0.485            10.0
+
+solo eventos con 20 trafos o mas en la red:
+             eventos  con_incidencia
+red cruzado                         
+D1  False        186           0.398
+    True          39           0.179
+D2  False        162           0.284
+    True          22           0.136
+
+parte de los episodios Off -> On de cada red que vienen de eventos que cortan las dos redes:
+     episodios  de_eventos_cruzados  microcortes  microcortes_cruzados   largos  largos_cruzados  corte_etiqueta  etiqueta_cruzados
+red                                                                                                                                
+D1    275257.0                0.065     250068.0                 0.057  23646.0            0.145         23655.0              0.145
+D2    118537.0                0.085     100445.0                 0.074  17048.0            0.132         17064.0              0.132
+D3      3325.0                0.000       3090.0                 0.000    235.0            0.000           235.0              0.000

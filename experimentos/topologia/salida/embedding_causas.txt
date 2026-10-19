@@ -1,0 +1,127 @@
+  2021: grafo con 1520 entidades y 11301 triples (3584 SUFRE); modelos entrenados en 355 s
+  2021: evaluado y guardado (360 s)
+  2022: grafo con 1520 entidades y 11515 triples (3798 SUFRE); modelos entrenados en 644 s
+  2022: evaluado y guardado (647 s)
+  2023: grafo con 1520 entidades y 11602 triples (3885 SUFRE); modelos entrenados en 898 s
+  2023: evaluado y guardado (902 s)
+  2024: grafo con 1520 entidades y 11755 triples (4038 SUFRE); modelos entrenados en 1235 s
+  2024: evaluado y guardado (1240 s)
+  2025: grafo con 1520 entidades y 11822 triples (4105 SUFRE); modelos entrenados en 1581 s
+  2025: evaluado y guardado (1587 s)
+
+== Positivos por familia y anio (CT con alguna interrupcion de la familia; sin historia de la familia)
+        positivos                             positivos_sin_historia                        
+anio         2021   2022   2023   2024   2025                   2021  2022  2023  2024  2025
+familia                                                                                     
+equipo      568.0  244.0  320.0  316.0  382.0                  170.0   NaN  87.0  32.0  11.0
+fauna       108.0  246.0  486.0   44.0  108.0                   25.0   1.0  61.0   2.0   3.0
+meteo       539.0  749.0  237.0  869.0  168.0                   19.0  41.0   2.0  21.0   NaN
+resto        16.0   92.0   92.0   22.0   24.0                    NaN  45.0   3.0  12.0   NaN
+
+== Familia meteo: media 2021 - 2025
+                                                         pr_auc  roc_auc  captura_ct_10  captura_kvah_10  pr_auc_sin_historia
+puntuacion                                                                                                                   
+naif (kVA.h de la familia en el CT, 2 anios)              0.409    0.463          0.103            0.228                0.263
+naif + TransE tipado (percentiles)                        0.406    0.485          0.101            0.228                0.263
+naif + DistMult (percentiles)                             0.441    0.525          0.124            0.226                0.319
+naif + celda (percentiles, control sin grafo aprendido)   0.459    0.526          0.148            0.225                0.319
+celda: kVA.h de la familia por kVA, 3 anios               0.523    0.587          0.193            0.198                0.319
+TransE tipado y filtrado                                  0.462    0.509          0.175            0.173                0.263
+municipio: kVA.h de la familia por kVA, 3 anios           0.528    0.582          0.189            0.169                0.332
+grupo: kVA.h de la familia por kVA, 3 anios               0.534    0.569          0.198            0.144                0.294
+DistMult tipado y filtrado                                0.477    0.590          0.162            0.130                0.319
+logistica + DistMult (percentiles)                        0.479    0.614          0.140            0.114                0.221
+popularidad (todas las causas, 2 anios)                   0.517    0.537          0.196            0.113                0.397
+TransE como el cuaderno                                   0.445    0.569          0.116            0.102                0.434
+cabecera: kVA.h de la familia por kVA, 3 anios            0.510    0.580          0.133            0.097                0.488
+logistica con esos rasgos (anios anteriores)              0.508    0.589          0.154            0.089                0.245
+azar                                                      0.398    0.498          0.100            0.088                0.409
+historia de la familia en el CT desde 2016                0.520    0.615          0.150            0.077                0.263
+logistica + TransE tipado (percentiles)                   0.461    0.557          0.120            0.064                0.238
+
+== Familia fauna: media 2021 - 2025
+                                                         pr_auc  roc_auc  captura_ct_10  captura_kvah_10  pr_auc_sin_historia
+puntuacion                                                                                                                   
+grupo: kVA.h de la familia por kVA, 3 anios               0.421    0.761          0.453            0.412                0.234
+TransE tipado y filtrado                                  0.418    0.777          0.387            0.400                0.300
+municipio: kVA.h de la familia por kVA, 3 anios           0.379    0.745          0.388            0.368                0.416
+naif + TransE tipado (percentiles)                        0.391    0.780          0.308            0.362                0.300
+naif + celda (percentiles, control sin grafo aprendido)   0.327    0.736          0.281            0.352                0.462
+celda: kVA.h de la familia por kVA, 3 anios               0.377    0.731          0.356            0.336                0.462
+naif + DistMult (percentiles)                             0.271    0.706          0.191            0.326                0.140
+naif (kVA.h de la familia en el CT, 2 anios)              0.240    0.658          0.138            0.292                0.053
+historia de la familia en el CT desde 2016                0.322    0.693          0.299            0.288                0.053
+cabecera: kVA.h de la familia por kVA, 3 anios            0.379    0.741          0.275            0.267                0.411
+logistica + TransE tipado (percentiles)                   0.408    0.688          0.319            0.266                0.169
+logistica con esos rasgos (anios anteriores)              0.263    0.537          0.277            0.254                0.082
+popularidad (todas las causas, 2 anios)                   0.253    0.608          0.225            0.232                0.139
+logistica + DistMult (percentiles)                        0.267    0.607          0.170            0.205                0.068
+DistMult tipado y filtrado                                0.233    0.656          0.141            0.198                0.140
+TransE como el cuaderno                                   0.217    0.653          0.157            0.152                0.102
+azar                                                      0.157    0.491          0.084            0.070                0.069
+
+== Familia equipo: media 2021 - 2025
+                                                         pr_auc  roc_auc  captura_ct_10  captura_kvah_10  pr_auc_sin_historia
+puntuacion                                                                                                                   
+naif (kVA.h de la familia en el CT, 2 anios)              0.284    0.461          0.090            0.216                0.400
+logistica + DistMult (percentiles)                        0.277    0.496          0.082            0.172                0.390
+logistica con esos rasgos (anios anteriores)              0.329    0.558          0.118            0.160                0.422
+naif + DistMult (percentiles)                             0.255    0.417          0.073            0.154                0.378
+naif + celda (percentiles, control sin grafo aprendido)   0.303    0.445          0.109            0.148                0.475
+grupo: kVA.h de la familia por kVA, 3 anios               0.329    0.457          0.121            0.112                0.417
+popularidad (todas las causas, 2 anios)                   0.377    0.543          0.152            0.111                0.500
+azar                                                      0.288    0.502          0.098            0.110                0.424
+municipio: kVA.h de la familia por kVA, 3 anios           0.351    0.472          0.125            0.108                0.431
+naif + TransE tipado (percentiles)                        0.247    0.408          0.057            0.100                0.314
+TransE como el cuaderno                                   0.266    0.476          0.078            0.083                0.476
+historia de la familia en el CT desde 2016                0.340    0.518          0.132            0.080                0.400
+cabecera: kVA.h de la familia por kVA, 3 anios            0.329    0.452          0.086            0.078                0.545
+celda: kVA.h de la familia por kVA, 3 anios               0.326    0.458          0.100            0.064                0.475
+DistMult tipado y filtrado                                0.238    0.414          0.035            0.064                0.378
+logistica + TransE tipado (percentiles)                   0.269    0.474          0.059            0.054                0.293
+TransE tipado y filtrado                                  0.235    0.397          0.033            0.045                0.314
+
+== Familia resto: media 2021 - 2025
+                                                         pr_auc  roc_auc  captura_ct_10  captura_kvah_10  pr_auc_sin_historia
+puntuacion                                                                                                                   
+cabecera: kVA.h de la familia por kVA, 3 anios            0.454    0.759          0.540            0.790                0.031
+municipio: kVA.h de la familia por kVA, 3 anios           0.455    0.815          0.588            0.761                0.038
+grupo: kVA.h de la familia por kVA, 3 anios               0.427    0.765          0.483            0.737                0.028
+celda: kVA.h de la familia por kVA, 3 anios               0.444    0.799          0.475            0.725                0.031
+historia de la familia en el CT desde 2016                0.413    0.741          0.381            0.672                0.028
+naif (kVA.h de la familia en el CT, 2 anios)              0.311    0.677          0.420            0.670                0.028
+naif + DistMult (percentiles)                             0.174    0.734          0.425            0.662                0.021
+naif + celda (percentiles, control sin grafo aprendido)   0.434    0.785          0.410            0.658                0.031
+logistica con esos rasgos (anios anteriores)              0.415    0.756          0.397            0.654                0.062
+logistica + DistMult (percentiles)                        0.141    0.737          0.336            0.588                0.031
+naif + TransE tipado (percentiles)                        0.091    0.700          0.240            0.506                0.027
+popularidad (todas las causas, 2 anios)                   0.096    0.668          0.325            0.489                0.061
+DistMult tipado y filtrado                                0.076    0.666          0.163            0.152                0.021
+azar                                                      0.038    0.482          0.095            0.133                0.031
+logistica + TransE tipado (percentiles)                   0.077    0.686          0.120            0.056                0.027
+TransE tipado y filtrado                                  0.061    0.567          0.123            0.046                0.027
+TransE como el cuaderno                                   0.054    0.598          0.067            0.021                0.027
+
+== Media de las cuatro familias y los cinco anios
+                                                         pr_auc  roc_auc  captura_ct_10  captura_kvah_10  pr_auc_sin_historia
+puntuacion                                                                                                                   
+municipio: kVA.h de la familia por kVA, 3 anios           0.428    0.653          0.323            0.352                0.328
+grupo: kVA.h de la familia por kVA, 3 anios               0.428    0.638          0.314            0.351                0.256
+cabecera: kVA.h de la familia por kVA, 3 anios            0.418    0.633          0.258            0.308                0.392
+celda: kVA.h de la familia por kVA, 3 anios               0.418    0.644          0.281            0.331                0.349
+historia de la familia en el CT desde 2016                0.399    0.642          0.241            0.279                0.187
+naif + celda (percentiles, control sin grafo aprendido)   0.380    0.623          0.237            0.346                0.349
+logistica con esos rasgos (anios anteriores)              0.379    0.610          0.237            0.290                0.204
+naif (kVA.h de la familia en el CT, 2 anios)              0.311    0.565          0.188            0.352                0.187
+popularidad (todas las causas, 2 anios)                   0.311    0.589          0.225            0.236                0.279
+logistica + TransE tipado (percentiles)                   0.304    0.601          0.154            0.110                0.191
+TransE tipado y filtrado                                  0.294    0.563          0.179            0.166                0.243
+logistica + DistMult (percentiles)                        0.291    0.614          0.182            0.270                0.180
+naif + DistMult (percentiles)                             0.285    0.596          0.203            0.342                0.222
+naif + TransE tipado (percentiles)                        0.284    0.593          0.177            0.299                0.243
+DistMult tipado y filtrado                                0.256    0.581          0.125            0.136                0.222
+TransE como el cuaderno                                   0.245    0.574          0.104            0.089                0.264
+azar                                                      0.220    0.493          0.094            0.100                0.236
+
+Tiempo E2: 1588 s
+Tiempo total: 1588 s

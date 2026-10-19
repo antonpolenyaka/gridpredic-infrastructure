@@ -1,0 +1,13 @@
+entidades (distribuidora, cabecera): 48 = 42 elementos distintos + 3 repetidos en dos redes + 3 sin_cabecera
+CT en sin_cabecera por red: D1 73 (en estudio 5, con trafo 18), D2 59 (en estudio 6, con trafo 24), D3 1 (en estudio 0, con trafo 0)
+  cabecera repetida en dos redes: CT por red {'D1': 15, 'D2': 29}
+  cabecera repetida en dos redes: CT por red {'D1': 24, 'D2': 1}
+  cabecera repetida en dos redes: CT por red {'D1': 1, 'D2': 6}
+clasificaciones en la exportacion: {'CL_IMPRE': 48045} factor FA_CLIEN: 0 duracion <= 180 s: 0
+interrupciones 2015 - 2025 sin el apagon: 25,242; sin CT en dim_ct: 0
+como el job: entidades 48 (con kVA*h 46), top 5 -> 75.3%; puestos de sin_cabecera [16, 23, 39], su parte 1.2%
+solo cabeceras reales: entidades 45 (con kVA*h 43), top 5 -> 76.2%; puestos de sin_cabecera [], su parte 0.0%
+kVA*h de CT en sin_cabecera: 1.2% | de CT fuera del estudio: 1.0%
+CT sin cabecera con alguna interrupcion 2015 - 2025: 79 de 133
+cts_cabecera y kva_cabecera de los CT sin cabecera (modelo anual): [('D2', 59, 6644), ('D1', 73, 5022), ('D3', 1, 7)]
+cts_cabecera de las cabeceras reales: mediana 6.0 max 492

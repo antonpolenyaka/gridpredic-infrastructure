@@ -1,0 +1,48 @@
+carga 1.72 s
+nodos 11,637 (11,677 por etiqueta: 40 identificadores del SCADA son a la vez centro y posición), aristas 482,640
+
+nodos por etiqueta
+CorteScada       7373
+CT               1414
+Centro           1263
+Incidencia        799
+ElementoCorte     385
+Posicion          237
+Municipio          73
+Grupo              68
+Celda              43
+Causa              15
+TipoZona            4
+Distribuidora       3
+
+aristas por tipo
+DEJA_SIN_TENSION    397119
+AFECTA               48045
+AGUAS_ARRIBA         28959
+EN_MUNICIPIO          1414
+EN_ZONA               1414
+EN_CELDA              1414
+EN_CENTRO             1323
+CUELGA_DE             1263
+POR_CAUSA              799
+DESPEJADA_POR          437
+EN_POSICION            385
+DE_RED                  68
+
+almacén de Neo4j sin propiedades: nodos 0.17 MB + relaciones 16.41 MB
+  topología eléctrica (SystemNodes, SystemBranches): 0.18 MB + 0.39 MB
+  simulación con baja tensión (SimulaNodes, SimulaBranches): 17.20 MB + 36.63 MB
+
+Incidencias principales (2010 - 2026) con CT: 799
+  aristas AFECTA (filas): 48,045; pares (incidencia, CT) distintos: 36,508
+  filas repetidas de la misma incidencia y CT (multiarista): 11,537
+  pares CT - CT si se materializa el co-corte: 2,881,695; sin el apagon del 28.04.2025: 2,613,587
+  pares CT - CT distintos (sumando todas las incidencias): 312,996
+  incidencias del apagon: 6, CT en ellas: 1322
+
+Eventos Off del SCADA: 7,373; aristas DEJA_SIN_TENSION: 397,119
+  pares CT - CT si se materializa el co-corte del SCADA: 41,943,916
+  evento con mas CT: 662; mediana 23
+
+Arista derivada CABECERA (argmax de n_cortes por CT): 1,281 aristas hacia 42 elementos
+  CT con empate en el maximo de n_cortes: 10
