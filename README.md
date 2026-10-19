@@ -669,3 +669,7 @@ Las versiones del runtime están fijadas en `compose.yaml`, en los `Dockerfile` 
 ## 15. Cómo contribuir
 
 Trabajamos con GitHub Flow: una rama por cambio a partir de `main`, commits pequeños con mensaje en imperativo, pull request con la plantilla del repositorio, revisión del otro miembro (la pide `CODEOWNERS`), CI en verde, prueba contra el stack real y merge con borrado de la rama. Las reglas completas, incluido cómo versionamos datos y modelos, están en [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## 16. Licencia
+
+Todos los derechos reservados. El repositorio es público solo para que pueda consultarse durante la evaluación del TFM; sin permiso previo y por escrito de los autores no se puede usar, copiar, modificar, distribuir ni crear obras derivadas de su contenido. El texto completo, en castellano y en inglés, está en [LICENSE](LICENSE).
