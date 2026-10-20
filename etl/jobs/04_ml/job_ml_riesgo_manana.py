@@ -1793,11 +1793,15 @@ def main(argv=None):
         "pasado_manana_error": outlook_error,
     }
     # The model in the store of models (artefactos_uri/<run_id>/, as job_ml_train): a failure is said, never fatal.
-    artifacts, artifacts_error = store_artifacts(
-        {name: scorer}, config.get("artefactos_uri"), args.run_id,
-        {"run_id": args.run_id, "dataset_version": f"riesgo_manana_{day:%Y-%m-%d}", "etiqueta": f"riesgo_manana:{MAIN_LABEL}",
-         "variante": variant["nombre"], "features": features, "modelos": {name: {"params": scorer.params, **scorer.info}},
-         "entorno": fitted_in, "versiones_delta": read_versions}, spark)
+    try:
+        artifacts, artifacts_error = store_artifacts(
+            {name: scorer}, config.get("artefactos_uri"), args.run_id,
+            {"run_id": args.run_id, "dataset_version": f"riesgo_manana_{day:%Y-%m-%d}", "etiqueta": f"riesgo_manana:{MAIN_LABEL}",
+             "variante": variant["nombre"], "features": features, "modelos": {name: {"params": scorer.params, **scorer.info}},
+             "entorno": fitted_in, "versiones_delta": read_versions}, spark)
+    except Exception as error:  # noqa: BLE001 - the risk is published without the stored model
+        logger.error("Model of the evening not stored: %s", error)
+        artifacts, artifacts_error = None, f"{type(error).__name__}: {str(error)[:200]}"
     info["artefactos_error"] = artifacts_error
     folder_id = re.sub(r"[^A-Za-z0-9_.-]", "_", args.run_id)
     seguimiento = follow_up(spark, rcfg["tabla"], events, end, rcfg["niveles"], names)
