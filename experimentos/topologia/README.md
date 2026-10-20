@@ -44,3 +44,8 @@ Desde la raíz del repositorio:
 | `comunidades.py`, `comunidades_bootstrap.py` | Comunidades de Louvain frente a las líneas de TedisNet como unidad de reparto | 2 - 6 min |
 
 Los tiempos son los de un portátil sin otra carga; `salida/` se generó en una máquina compartida y los tiempos que imprimen algunos guiones son mayores. `comunidades.py` y `comunidades_bootstrap.py` necesitan networkx (`pip install networkx`), que no es una dependencia del repositorio; el resto solo usa lo de `requirements.txt`.
+
+Notas de método:
+
+- La cabecera de `misma_cabecera` (e2_fallo_ayer.py y prediccion_enlaces.py) y de la relación CABECERA del embedding (embedding_causas.py) es `dim_ct.cabecera`, el argmax de los cortes de todo el histórico: sabe algo del futuro de cada año evaluado, así que es un comparador optimista.
+- La información lateral "coseno TF-IDF" de prediccion_enlaces.py es el coseno entre los conjuntos de elementos aguas arriba de cada CT ponderados como TF-IDF; no hay textos.

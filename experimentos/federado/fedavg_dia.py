@@ -17,9 +17,10 @@ Para cada año se ajustan con los días anteriores:
 - fed_1ronda: los modelos locales, promedio de las pendientes ponderado por los días con avería de cada red y el
   intercepto de cada red reajustado en local con las pendientes del promedio (FedAvg de una ronda).
 - fed_exacto: pendientes comunes e intercepto propio de cada red, con la penalización L2 de producción, optimizado
-  con L-BFGS sumando en el servidor la pérdida y el gradiente que manda cada red en cada ronda (solo salen 35 + 1
-  números por red y ronda). Es el mismo óptimo que juntar los datos con un intercepto por red sin penalizar; se
-  cuenta cuántas rondas hacen falta.
+  con L-BFGS sumando en el servidor la pérdida y el gradiente que manda cada red en cada ronda (solo salen 33 números por
+  red y ronda: las 32 pendientes y el intercepto). Es el mismo óptimo que juntar los datos con un intercepto por red sin penalizar; se
+  cuenta cuántas rondas hacen falta. La C es la que se elige con los datos juntos (la de producción): en
+  un federado real habría que elegirla también por rondas, así que la cifra es algo optimista.
 
 La estandarización es común a todos (la media y la desviación de cada variable salen de sumar conteos, sumas
 y sumas de cuadrados de cada red; en la variante operativa no hay huecos que imputar desde el 25.06.2018). Deja

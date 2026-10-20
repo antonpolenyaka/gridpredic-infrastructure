@@ -15,7 +15,8 @@ días (500 réplicas, semilla 20261010), como meteo_dia.bootstrap_bloque_dias.
 Modelos: logistica (rejilla de C del día), xgboost (rejilla del día: profundidad 2 y 3), random_forest (las dos
 configuraciones de busqueda en config_ml.json, lo que usaría --modelos random_forest), rf_hoja20 (200 árboles sin
 límite de profundidad, 20 filas por hoja, raíz de p), cart (árbol podado por coste-complejidad, alfa elegido en el
-25 % interno), rango (media de los percentiles por año de la logística y XGBoost) y rango_rf (logística y bosque).
+25 % interno), rango (media de los percentiles de la logística y XGBoost, calculados dentro de cada año puntuado, así que usa la
+distribución de puntuaciones del propio año) y rango_rf (logística y bosque).
 
 Deja comparar_modelos_dia.txt (las tres tablas, las configuraciones elegidas y las reglas del árbol de 2026) y los
 CSV de métricas y diferencias. Las predicciones por día no se guardan.
