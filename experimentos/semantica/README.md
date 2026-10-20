@@ -11,4 +11,4 @@ Necesitan rdflib 7.6.0 y owlrl 7.6.2, que son dependencias de este experimento y
     python experimentos\semantica\costo_inferencia.py %EXP% web\demo\data\riesgo_20260128.json experimentos\semantica\salida\costo_inferencia_salida.txt
     python experimentos\semantica\grupos_causa_owl.py . %EXP% experimentos\semantica\salida\grupos_causa_owl_salida.txt
 
-Las salidas de texto y la ontología (`ontologia_gp.ttl`) van en `salida/`; los volcados del grafo (`gridpredic_grafo.ttl` y `.nt`, unos 35 MB) se regeneran y no se versionan.
+Las salidas de texto y la ontología (`ontologia_gp.ttl`) van en `salida/`; los volcados del grafo (`gridpredic_grafo.ttl` y `.nt`, unos 35 MB) se regeneran y no se versionan ni se publican: llevan el código INE de cada municipio y, con él, se podría saber qué distribuidora es cada una.
