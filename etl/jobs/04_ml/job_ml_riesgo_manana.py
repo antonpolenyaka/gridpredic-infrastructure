@@ -109,7 +109,7 @@ from job_bronze_meteo_openmeteo import merge_local_hours, payload_frame  # noqa:
 from job_landing_meteo_openmeteo import LocalFiles, live_filesystem  # noqa: E402, F401 (LocalFiles: the tests)
 from job_landing_vivo import day_folder, target_day  # noqa: E402
 from job_ml_horas_riesgo import export, refit, to_arrays, train  # noqa: E402
-from job_ml_meteo_historia import FACTS_TABLE, add_history, read_events  # noqa: E402
+from job_ml_meteo_historia import CAUSES_TABLE, FACTS_TABLE, add_history, read_events  # noqa: E402
 from job_ml_riesgo_dia import (  # noqa: E402
     CELLS_TABLE,
     FORECAST_DAILY,
@@ -1639,9 +1639,10 @@ def main(argv=None):
     name = rcfg["modelo"]
     scorer, search, X_train = fit(rows, features, name, config, cfg)
     train_scores = scorer.score(X_train)
-    # What the model was fitted with: the versions of the tables it read and the environment.
-    read_versions = delta_versions(spark, [WEATHER_TABLE, CELLS_TABLE, WARNINGS_TABLE, INCIDENTS_TABLE, FACTS_TABLE,
-                                           DIM_TABLE, rcfg["tabla"]])
+    # What the model was fitted with: the versions of the tables it read and the environment. read_events also
+    # reads the cause of every incident (CAUSES_TABLE), so it goes in the list too: eight tables.
+    read_versions = delta_versions(spark, [WEATHER_TABLE, CELLS_TABLE, WARNINGS_TABLE, INCIDENTS_TABLE, CAUSES_TABLE,
+                                           FACTS_TABLE, DIM_TABLE, rcfg["tabla"]])
     fitted_in = environment()
 
     # Tomorrow, from the live Landing.

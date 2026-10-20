@@ -589,7 +589,9 @@ def test_the_summary_and_the_run(first, spark, workdir):
     assert {"logistica.pkl", "run.json"} <= set(os.listdir(stored))
     meta = json.load(open(os.path.join(stored, "run.json"), encoding="utf-8"))
     used = json.loads(runs.loc[0, "config_json"])
-    assert len(used["versiones_delta"]) == 7 and used["versiones_delta"] == meta["versiones_delta"]
+    # The eight tables the evening reads, the causes of read_events included.
+    assert len(used["versiones_delta"]) == 8 and used["versiones_delta"] == meta["versiones_delta"]
+    assert "l2_silver.f_incidencia_causa" in used["versiones_delta"]
     for table in ("l3_gold.meteo_celda_hora", "l3_gold.map_ct_celda", "l2_silver.f_incidencia", "l3_gold.dim_ct"):
         assert used["versiones_delta"][table] is not None, table
     # The first evening of the test: its own table does not exist yet when the model is fitted.
