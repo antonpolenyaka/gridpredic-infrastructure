@@ -1,6 +1,6 @@
 # La serie diaria de averías
 
-Tabla del modelo del día: 10479 días de red, del 08.01.2017 al 02.08.2026. statsmodels no instalado.
+Tabla del modelo del día: 10479 días de red, del 08.01.2017 al 02.08.2026. statsmodels instalado.
 
 ## 1. Autocorrelación de la etiqueta
 
@@ -12,6 +12,7 @@ Tabla del modelo del día: 10479 días de red, del 08.01.2017 al 02.08.2026. sta
 | Las tres redes | 3493 | 308 | 0.088 | 0.057 | -0.004 | 0.000 | 0.024 | 0.033 | 12.773 | 0.078 | 14.016 | 0.448 | 0.140 | 0.083 | 1.683 | 1.162 |
 
 Chi cuadrado del mes (tres redes apiladas): 12.3, p = 0.34.
+STL de la serie mensual: estacional 0.28, tendencia 0.09 y resto 0.70 de la varianza; ADF p = 0.000.
 
 ## 2. Referencias sin meteorología (días con previsión real de la víspera)
 
@@ -22,11 +23,13 @@ Chi cuadrado del mes (tres redes apiladas): 12.3, p = 0.34.
 | 2024 - 2025 | clima_15_dias | 2133 | 58 | 0.056 | 2.050 | 0.241 | 0.345 |
 | 2024 - 2025 | averia_ayer | 2133 | 58 | 0.042 | 1.562 | 0.259 | 0.310 |
 | 2024 - 2025 | logistica_autorregresiva | 2133 | 58 | 0.069 | 2.541 | 0.190 | 0.328 |
+| 2024 - 2025 | arma_1_1 | 2133 | 58 | 0.060 | 2.203 | 0.293 | 0.397 |
 | 2024 - 2026 | tasa_base | 2766 | 84 | 0.041 | 1.353 | 0.190 | 0.333 |
 | 2024 - 2026 | clima_mensual | 2766 | 84 | 0.044 | 1.440 | 0.155 | 0.298 |
 | 2024 - 2026 | clima_15_dias | 2766 | 84 | 0.052 | 1.702 | 0.202 | 0.333 |
 | 2024 - 2026 | averia_ayer | 2766 | 84 | 0.050 | 1.634 | 0.250 | 0.298 |
 | 2024 - 2026 | logistica_autorregresiva | 2766 | 84 | 0.056 | 1.829 | 0.179 | 0.298 |
+| 2024 - 2026 | arma_1_1 | 2766 | 84 | 0.069 | 2.273 | 0.274 | 0.405 |
 
 ## 3. El hueco de 2025 con la evaluación de producción
 
@@ -59,4 +62,4 @@ Chi cuadrado del mes (tres redes apiladas): 12.3, p = 0.34.
 | Clima mensual, la parte de días de la alerta | 45.557 | 0.125 | 0.135 | 0.088 | 0.062 | 0.172 |
 | GridPredic, la misma parte de días por red y año | 45.557 | 0.125 | 0.521 | 0.708 | 0.507 | 0.428 |
 
-Tiempo: 37 s.
+Tiempo: 56 s.
