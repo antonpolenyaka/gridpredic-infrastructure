@@ -1,6 +1,6 @@
 # Capa Gold (Exploitation Zone)
 
-Este documento explica qué hace la capa Gold de GridPredic, qué decide cada job y por qué. Parte del diseño de la Exploitation Zone que hicimos el 07.09.2026 y de lo que aprendimos al contrastarlo con los datos reales de `TedisNet_EOSA` y de las tres bases Calser. Lo que se ha quedado fuera de esta primera versión está al final, en el apartado 9.
+Este documento explica qué hace la capa Gold de GridPredic, qué decide cada job y por qué. Parte del diseño de la Exploitation Zone que hicimos el 07.09.2026 y de lo que aprendimos al contrastarlo con los datos reales de `TedisNet_GridPredic` y de las tres bases Calser. Lo que se ha quedado fuera de esta primera versión está al final, en el apartado 9.
 
 Silver deja una sola versión válida de cada registro y marca lo dudoso. Gold es donde se toman las decisiones de negocio y de modelado: qué interrupción cuenta para la etiqueta, cómo se fusionan dos registros solapados, cómo se imputa la potencia de un CT, qué ventanas usan las features y cómo se parte el dataset. Todas esas decisiones son parámetros de `etl/config/03_gold/config_gold.json`, de modo que se pueden cambiar y reconstruir Gold sin tocar Silver.
 
