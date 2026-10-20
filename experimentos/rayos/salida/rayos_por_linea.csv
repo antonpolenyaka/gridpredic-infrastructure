@@ -1,0 +1,9 @@
+orden,red,lineas_red,lineas_marcadas,lineas_afectadas,afectada_marcada
+1,Distribuidora 2,26,17,4,True
+5,Distribuidora 2,26,7,1,True
+27,Distribuidora 1,41,2,2,False
+28,Distribuidora 1,41,1,2,False
+34,Distribuidora 3,1,1,1,True
+35,Distribuidora 1,41,41,2,True
+41,Distribuidora 1,41,7,1,False
+42,Distribuidora 1,41,4,2,False
