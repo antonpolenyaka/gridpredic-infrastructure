@@ -37,3 +37,12 @@ def test_a_second_battery_finds_the_lock_taken(tmp_path):
     assert other_process(path) == "ocupado"
     held.close()
     assert other_process(path) == "libre"
+
+
+def test_a_lock_that_cannot_be_opened_is_not_fatal(tmp_path):
+    import pytest
+
+    missing = str(tmp_path / "no_existe" / "candado.lock")
+    with pytest.raises(candado.LockUnavailable):
+        candado.take_lock(missing)
+    assert candado.LOCKED_EXIT_CODE != 3 and os.path.basename(candado.LOCK_PATH).startswith("gridpredic_pytest_")
