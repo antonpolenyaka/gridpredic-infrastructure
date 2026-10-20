@@ -1,0 +1,3 @@
+consulta,fase,variante,frio_s,caliente_mediana_s,caliente_min_s,planificacion_frio_s,splits,filas_leidas,mb_leidos,cpu_s,memoria_pico_mb,tabla_principal,est_filas_lectura,est_filas_filtro,filas_utiles,splits_principal,mb_principal,filtrado_pct,joins,lecturas
+c2a,A,-,3.32,0.35,0.26,1.16,13,957498,1.82,1.3,0.0,dataset_train,957498,861748,546066,4,1.73,42.97,,"dataset_train: 957498 leídas, 546066 útiles, 4 splits, 1.73 MB"
+c5b,A,-,3.61,0.92,0.84,2.37,50,1368955,3.23,2.28,6.47,dataset_train,957498,957498,957498,4,1.74,0.0,REPLICATED est=? real=957498 | REPLICATED est=? real=957498,"dataset_train: 957498 leídas, 957498 útiles, 4 splits, 1.74 MB | map_ct_celda: 1414 leídas, 1414 útiles, 1 splits, 0.01 MB | meteo_celda_hora: 376637 leídas, 31992 útiles, 1 splits, 1.33 MB"
