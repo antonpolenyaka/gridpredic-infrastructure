@@ -5,8 +5,8 @@
  "radio_km": 25.0,
  "estaciones": [
   {
-   "idema": "2930Y",
-   "nombre": "NAVASFRIAS",
+   "idema": "E37",
+   "nombre": "Estación 37",
    "lat": 40.2966,
    "lon": -6.8129,
    "hora": "08:00",
@@ -16,8 +16,8 @@
    "temp_c": 1.5
   },
   {
-   "idema": "2945A",
-   "nombre": "EL BODÓN-BASE AEREA",
+   "idema": "E12",
+   "nombre": "Estación 12",
    "lat": 40.4851,
    "lon": -6.5771,
    "hora": "10:00",
@@ -27,8 +27,8 @@
    "temp_c": 5.2
   },
   {
-   "idema": "3436D",
-   "nombre": "GARGANTA LA OLLA",
+   "idema": "E49",
+   "nombre": "Estación 49",
    "lat": 40.1111,
    "lon": -5.7847,
    "hora": "10:00",
@@ -38,8 +38,8 @@
    "temp_c": 11.7
   },
   {
-   "idema": "3512X",
-   "nombre": "MONTEHERMOSO",
+   "idema": "E17",
+   "nombre": "Estación 17",
    "lat": 40.0808,
    "lon": -6.3389,
    "hora": "10:00",
@@ -49,8 +49,8 @@
    "temp_c": 10.2
   },
   {
-   "idema": "2828Y",
-   "nombre": "BARCO DE AVILA",
+   "idema": "E33",
+   "nombre": "Estación 33",
    "lat": 40.3554,
    "lon": -5.5191,
    "hora": "10:00",
@@ -60,8 +60,8 @@
    "temp_c": 6.3
   },
   {
-   "idema": "4436Y",
-   "nombre": "ALMENDRALEJO",
+   "idema": "E45",
+   "nombre": "Estación 45",
    "lat": 38.6889,
    "lon": -6.361,
    "hora": "11:00",
@@ -71,8 +71,8 @@
    "temp_c": 14.5
   },
   {
-   "idema": "3504X",
-   "nombre": "HERVAS",
+   "idema": "E02",
+   "nombre": "Estación 2",
    "lat": 40.2651,
    "lon": -5.8612,
    "hora": "11:00",
@@ -82,8 +82,8 @@
    "temp_c": 11.9
   },
   {
-   "idema": "4442X",
-   "nombre": "SANTA MARTA DE LOS BARROS",
+   "idema": "E19",
+   "nombre": "Estación 19",
    "lat": 38.6186,
    "lon": -6.6275,
    "hora": "11:00",
@@ -93,8 +93,8 @@
    "temp_c": 14.6
   },
   {
-   "idema": "3514B",
-   "nombre": "TORNAVACAS",
+   "idema": "E52",
+   "nombre": "Estación 52",
    "lat": 40.2586,
    "lon": -5.6783,
    "hora": "11:00",
@@ -104,8 +104,8 @@
    "temp_c": 11.4
   },
   {
-   "idema": "3503",
-   "nombre": "GUIJO DE GRANADILLA",
+   "idema": "E09",
+   "nombre": "Estación 9",
    "lat": 40.1894,
    "lon": -6.1675,
    "hora": "11:00",
@@ -115,8 +115,8 @@
    "temp_c": 12.1
   },
   {
-   "idema": "4511C",
-   "nombre": "JEREZ DE LOS CABALLEROS",
+   "idema": "E50",
+   "nombre": "Estación 50",
    "lat": 38.2985,
    "lon": -6.7651,
    "hora": "11:00",
@@ -126,8 +126,8 @@
    "temp_c": 12.8
   },
   {
-   "idema": "4492F",
-   "nombre": "EVC_BARCARROTA",
+   "idema": "E15",
+   "nombre": "Estación 15",
    "lat": 38.4728,
    "lon": -6.9233,
    "hora": "11:00",
@@ -137,8 +137,8 @@
    "temp_c": 12.9
   },
   {
-   "idema": "4427X",
-   "nombre": "ZAFRA (AUTOMATICA)",
+   "idema": "E34",
+   "nombre": "Estación 34",
    "lat": 38.4259,
    "lon": -6.4366,
    "hora": "11:00",
@@ -148,8 +148,8 @@
    "temp_c": 13.9
   },
   {
-   "idema": "3484X",
-   "nombre": "SAN ESTEBAN DE LA SIERRA",
+   "idema": "E10",
+   "nombre": "Estación 10",
    "lat": 40.5047,
    "lon": -5.9025,
    "hora": "11:00",
@@ -159,8 +159,8 @@
    "temp_c": 7.7
   },
   {
-   "idema": "4520X",
-   "nombre": "FREGENAL DE LA SIERRA",
+   "idema": "E25",
+   "nombre": "Estación 25",
    "lat": 38.1784,
    "lon": -6.6618,
    "hora": "11:00",
@@ -170,8 +170,8 @@
    "temp_c": 13.0
   },
   {
-   "idema": "4486X",
-   "nombre": "OLIVENZA",
+   "idema": "E44",
+   "nombre": "Estación 44",
    "lat": 38.6975,
    "lon": -7.0844,
    "hora": "11:00",
@@ -181,8 +181,8 @@
    "temp_c": 13.0
   },
   {
-   "idema": "3448X",
-   "nombre": "SERRADILLA (AUTOMATICA)",
+   "idema": "E53",
+   "nombre": "Estación 53",
    "lat": 39.8207,
    "lon": -6.1275,
    "hora": "11:00",
@@ -192,8 +192,8 @@
    "temp_c": 12.9
   },
   {
-   "idema": "3475X",
-   "nombre": "CAÑAVERAL",
+   "idema": "E40",
+   "nombre": "Estación 40",
    "lat": 39.7906,
    "lon": -6.3764,
    "hora": "11:00",
@@ -203,8 +203,8 @@
    "temp_c": 13.1
   },
   {
-   "idema": "3469A",
-   "nombre": "CÁCERES",
+   "idema": "E11",
+   "nombre": "Estación 11",
    "lat": 39.4714,
    "lon": -6.3389,
    "hora": "11:00",
@@ -214,8 +214,8 @@
    "temp_c": 13.9
   },
   {
-   "idema": "4464X",
-   "nombre": "ALBURQUERQUE",
+   "idema": "E05",
+   "nombre": "Estación 5",
    "lat": 39.1819,
    "lon": -6.9952,
    "hora": "11:00",
@@ -225,8 +225,8 @@
    "temp_c": 11.6
   },
   {
-   "idema": "3463Y",
-   "nombre": "TRUJILLO",
+   "idema": "E08",
+   "nombre": "Estación 8",
    "lat": 39.4642,
    "lon": -5.8742,
    "hora": "11:00",
@@ -236,8 +236,8 @@
    "temp_c": 14.2
   },
   {
-   "idema": "3455X",
-   "nombre": "JARAICEJO",
+   "idema": "E14",
+   "nombre": "Estación 14",
    "lat": 39.6699,
    "lon": -5.8083,
    "hora": "11:00",
@@ -247,8 +247,8 @@
    "temp_c": 13.0
   },
   {
-   "idema": "4468X",
-   "nombre": "PUEBLA DE OBANDO (AUTOMATICA)",
+   "idema": "E26",
+   "nombre": "Estación 26",
    "lat": 39.1766,
    "lon": -6.6008,
    "hora": "11:00",
@@ -258,8 +258,8 @@
    "temp_c": 10.9
   },
   {
-   "idema": "3494U",
-   "nombre": "NUÑOMORAL",
+   "idema": "E38",
+   "nombre": "Estación 38",
    "lat": 40.4081,
    "lon": -6.2397,
    "hora": "11:00",
@@ -269,8 +269,8 @@
    "temp_c": 9.2
   },
   {
-   "idema": "4452",
-   "nombre": "BADAJOZ/TALAVERA LA REAL",
+   "idema": "E39",
+   "nombre": "Estación 39",
    "lat": 38.8834,
    "lon": -6.8139,
    "hora": "11:00",
@@ -280,8 +280,8 @@
    "temp_c": 14.0
   },
   {
-   "idema": "4411C",
-   "nombre": "ALCUESCAR",
+   "idema": "E21",
+   "nombre": "Estación 21",
    "lat": 39.1976,
    "lon": -6.231,
    "hora": "11:00",
@@ -291,8 +291,8 @@
    "temp_c": 12.0
   },
   {
-   "idema": "3518X",
-   "nombre": "PLASENCIA - PRESA DEL JERTE",
+   "idema": "E32",
+   "nombre": "Estación 32",
    "lat": 40.0619,
    "lon": -6.0453,
    "hora": "11:00",
@@ -302,8 +302,8 @@
    "temp_c": 12.1
   },
   {
-   "idema": "4358X",
-   "nombre": "DON BENITO",
+   "idema": "E06",
+   "nombre": "Estación 6",
    "lat": 38.9556,
    "lon": -5.8805,
    "hora": "11:00",
@@ -313,8 +313,8 @@
    "temp_c": 13.9
   },
   {
-   "idema": "4362X",
-   "nombre": "RETAMAL DE LLERENA ",
+   "idema": "E30",
+   "nombre": "Estación 30",
    "lat": 38.5765,
    "lon": -5.8458,
    "hora": "11:00",
@@ -324,8 +324,8 @@
    "temp_c": 14.4
   },
   {
-   "idema": "4347X",
-   "nombre": "ZORITA",
+   "idema": "E20",
+   "nombre": "Estación 20",
    "lat": 39.2828,
    "lon": -5.7103,
    "hora": "11:00",
@@ -335,8 +335,8 @@
    "temp_c": 14.6
   },
   {
-   "idema": "4340",
-   "nombre": "NAVALVILLAR DE PELA",
+   "idema": "E04",
+   "nombre": "Estación 4",
    "lat": 39.1035,
    "lon": -5.4613,
    "hora": "11:00",
@@ -346,8 +346,8 @@
    "temp_c": 15.5
   },
   {
-   "idema": "4325Y",
-   "nombre": "CASTUERA",
+   "idema": "E01",
+   "nombre": "Estación 1",
    "lat": 38.7418,
    "lon": -5.5291,
    "hora": "11:00",
@@ -357,8 +357,8 @@
    "temp_c": 15.2
   },
   {
-   "idema": "4386B",
-   "nombre": "LLERENA",
+   "idema": "E31",
+   "nombre": "Estación 31",
    "lat": 38.2317,
    "lon": -6.017,
    "hora": "11:00",
@@ -368,8 +368,8 @@
    "temp_c": 12.5
   },
   {
-   "idema": "4260",
-   "nombre": "PERALEDA DEL ZAUCEJO",
+   "idema": "E24",
+   "nombre": "Estación 24",
    "lat": 38.4797,
    "lon": -5.5775,
    "hora": "11:00",
@@ -379,8 +379,8 @@
    "temp_c": 14.5
   },
   {
-   "idema": "3576X",
-   "nombre": "VALENCIA DE ALCÁNTARA",
+   "idema": "E23",
+   "nombre": "Estación 23",
    "lat": 39.4149,
    "lon": -7.2311,
    "hora": "11:00",
@@ -390,8 +390,8 @@
    "temp_c": 12.8
   },
   {
-   "idema": "4395X",
-   "nombre": "VILLAFRANCA DE LOS BARROS",
+   "idema": "E28",
+   "nombre": "Estación 28",
    "lat": 38.5517,
    "lon": -6.3067,
    "hora": "11:00",
@@ -401,8 +401,8 @@
    "temp_c": 14.2
   },
   {
-   "idema": "4497X",
-   "nombre": "VILLANUEVA DEL FRESNO",
+   "idema": "E51",
+   "nombre": "Estación 51",
    "lat": 38.3722,
    "lon": -7.1581,
    "hora": "11:00",
@@ -412,8 +412,8 @@
    "temp_c": 12.9
   },
   {
-   "idema": "2918Y",
-   "nombre": "EL MAILLO (BASE AVIONES - AUTOMATICA)",
+   "idema": "E41",
+   "nombre": "Estación 41",
    "lat": 40.5694,
    "lon": -6.2236,
    "hora": "11:00",
@@ -423,8 +423,8 @@
    "temp_c": 9.4
   },
   {
-   "idema": "3516X",
-   "nombre": "PIORNAL (AUTOMATICA)",
+   "idema": "E18",
+   "nombre": "Estación 18",
    "lat": 40.1208,
    "lon": -5.8324,
    "hora": "11:00",
@@ -434,8 +434,8 @@
    "temp_c": 8.9
   },
   {
-   "idema": "3565X",
-   "nombre": "BROZAS (AUTOMATICA)",
+   "idema": "E29",
+   "nombre": "Estación 29",
    "lat": 39.6181,
    "lon": -6.745,
    "hora": "11:00",
@@ -445,8 +445,8 @@
    "temp_c": 11.7
   },
   {
-   "idema": "3562X",
-   "nombre": "ALISEDA  LA UMBRÍA",
+   "idema": "E03",
+   "nombre": "Estación 3",
    "lat": 39.4275,
    "lon": -6.7364,
    "hora": "11:00",
@@ -456,8 +456,8 @@
    "temp_c": 12.7
   },
   {
-   "idema": "3547X",
-   "nombre": "VALVERDE DE FRESNO",
+   "idema": "E07",
+   "nombre": "Estación 7",
    "lat": 40.2072,
    "lon": -6.8961,
    "hora": "11:00",
@@ -467,8 +467,8 @@
    "temp_c": 12.4
   },
   {
-   "idema": "4410X",
-   "nombre": "MÉRIDA",
+   "idema": "E36",
+   "nombre": "Estación 36",
    "lat": 38.9159,
    "lon": -6.3856,
    "hora": "11:00",
@@ -478,8 +478,8 @@
    "temp_c": 12.6
   },
   {
-   "idema": "3540X",
-   "nombre": "ZARZA LA MAYOR",
+   "idema": "E16",
+   "nombre": "Estación 16",
    "lat": 39.8714,
    "lon": -6.86,
    "hora": "11:00",
@@ -489,8 +489,8 @@
    "temp_c": 11.6
   },
   {
-   "idema": "3536X",
-   "nombre": "HOYOS",
+   "idema": "E13",
+   "nombre": "Estación 13",
    "lat": 40.1748,
    "lon": -6.7244,
    "hora": "11:00",
@@ -500,8 +500,8 @@
    "temp_c": 14.2
   },
   {
-   "idema": "2491C",
-   "nombre": "LA COVATILLA  ESTACIÓN DE ESQUÍ",
+   "idema": "E35",
+   "nombre": "Estación 35",
    "lat": 40.3551,
    "lon": -5.6899,
    "hora": "11:00",
@@ -511,8 +511,8 @@
    "temp_c": 3.2
   },
   {
-   "idema": "4501X",
-   "nombre": "FUENTE DE CANTOS",
+   "idema": "E46",
+   "nombre": "Estación 46",
    "lat": 38.2087,
    "lon": -6.3113,
    "hora": "11:00",
@@ -522,8 +522,8 @@
    "temp_c": 12.1
   },
   {
-   "idema": "4489X",
-   "nombre": "ALCONCHEL (AUTOMATICA)",
+   "idema": "E43",
+   "nombre": "Estación 43",
    "lat": 38.4847,
    "lon": -7.2819,
    "hora": "11:00",
@@ -533,8 +533,8 @@
    "temp_c": 13.2
   },
   {
-   "idema": "3434X",
-   "nombre": "NAVALMORAL DE LA MATA",
+   "idema": "E47",
+   "nombre": "Estación 47",
    "lat": 39.9458,
    "lon": -5.5826,
    "hora": "11:00",
@@ -544,8 +544,8 @@
    "temp_c": 11.8
   },
   {
-   "idema": "3531X",
-   "nombre": "TORRECILLA DE LOS ANGELES",
+   "idema": "E27",
+   "nombre": "Estación 27",
    "lat": 40.2549,
    "lon": -6.4117,
    "hora": "11:00",
@@ -555,8 +555,8 @@
    "temp_c": 11.8
   },
   {
-   "idema": "3526X",
-   "nombre": "CORIA",
+   "idema": "E42",
+   "nombre": "Estación 42",
    "lat": 40.0035,
    "lon": -6.5575,
    "hora": "11:00",
@@ -566,8 +566,8 @@
    "temp_c": 11.8
   },
   {
-   "idema": "4478X",
-   "nombre": "BADAJOZ UNIVERSIDAD",
+   "idema": "E22",
+   "nombre": "Estación 22",
    "lat": 38.8862,
    "lon": -7.0095,
    "hora": "11:00",
@@ -577,8 +577,8 @@
    "temp_c": 13.5
   },
   {
-   "idema": "5473X",
-   "nombre": "AZUAGA (AUTOMATICA)",
+   "idema": "E48",
+   "nombre": "Estación 48",
    "lat": 38.2678,
    "lon": -5.686,
    "hora": "11:00",
