@@ -1,0 +1,17 @@
+grupo,patron,partes,desde_2016,causa_meteorologia,con_sentido_ambiguo,con_otra_palabra_clara,dependen_solo_de_ambigua,cualquier_causa_solo_ambigua,primera_fecha,ultima_fecha,podria_dar,con_ese_resultado_desde_2016
+meteorología,todos los partes,183,,156,,,0,0,,,,
+meteorología,desde 2016,75,,67,,,0,0,,,,
+meteorología,"desde 2016, nivel CT",75,,67,,,0,0,,,,
+palabra de doble sentido,temporal,20,13,,0,18,0,,24.02.2010,24.01.2026,,
+palabra de doble sentido,aparato electrico,11,5,,11,11,0,,25.06.2010,05.11.2025,,
+palabra de doble sentido,gloria,2,2,,0,2,0,,19.01.2020,19.01.2020,,
+palabra de doble sentido,filomena,0,0,,0,0,0,,,,,
+palabra de doble sentido,barbara,1,1,,0,1,0,,20.10.2020,20.10.2020,,
+palabra de doble sentido,kristin,21,21,,0,21,0,,28.01.2026,29.01.2026,,
+cifra o cadena corta,132 pegado a otras cifras,0,0,,,,,,,,origen subestación,0
+cifra o cadena corta,220 pegado a otras cifras,3,2,,,,,,,,subcausa red de transporte u origen subestación,0
+cifra o cadena corta,i de dentro de otra palabra,9,7,,,,,,,,subcausa de interconexión,0
+cifra o cadena corta,"i de suelto, sin el nombre de la empresa vecina detrás",11,3,,,,,,,,subcausa de interconexión,0
+cifra o cadena corta,riada dentro de otra palabra,9,2,,,,,,,,causa meteorología,0
+cifra o cadena corta,dana dentro de otra palabra,8,2,,,,,,,,causa meteorología,0
+subcausa de interconexión del patrón con i de,la dan solo las letras i de,20,8,,,,0,,,,,
