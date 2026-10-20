@@ -362,7 +362,7 @@ En el portátil, desde `D:\GitHub\gridpredic-infrastructure`:
 
 ```powershell
 # Bronze del módulo de Extremadura (las tres bases de Calser) y Silver de causas
-docker compose exec -T airflow spark-submit --conf spark.cores.max=2 --conf spark.executor.memory=2g /app/jobs/01_bronze/job_bronze_sqlserver_batch.py --database Calser_EOSA --table incidencias_ex --extract-mode FULL --write-mode OVERWRITE
+docker compose exec -T airflow spark-submit --conf spark.cores.max=2 --conf spark.executor.memory=2g /app/jobs/01_bronze/job_bronze_sqlserver_batch.py --database <base de Calser de la distribuidora> --table incidencias_ex --extract-mode FULL --write-mode OVERWRITE
 docker compose exec -T spark-master /opt/spark/bin/spark-submit --conf spark.cores.max=2 --conf spark.executor.memory=2g /app/jobs/02_silver/job_silver_f_incidencia_ex.py
 docker compose exec -T spark-master /opt/spark/bin/spark-submit --conf spark.cores.max=2 --conf spark.executor.memory=2g /app/jobs/02_silver/job_silver_f_incidencia_causa.py
 
