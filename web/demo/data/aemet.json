@@ -145,9 +145,9 @@
    "pico": {
     "racha_kmh": 35,
     "hora": 23,
-    "municipio": "Valdemorales"
+    "municipio": "Municipio 18"
    },
-   "texto": "AEMET por municipios (44 municipios, elaborada 07:15): pico de racha 35 km/h a las 23:00 en Valdemorales"
+   "texto": "AEMET por municipios (44 municipios, elaborada 07:15): pico de racha 35 km/h a las 23:00 en Municipio 18"
   },
   {
    "id": 2,
@@ -291,9 +291,9 @@
    "pico": {
     "racha_kmh": 28,
     "hora": 17,
-    "municipio": "Coria"
+    "municipio": "Municipio 73"
    },
-   "texto": "AEMET por municipios (21 municipios, elaborada 07:15): pico de racha 28 km/h a las 17:00 en Coria"
+   "texto": "AEMET por municipios (21 municipios, elaborada 07:15): pico de racha 28 km/h a las 17:00 en Municipio 73"
   }
  ]
 }

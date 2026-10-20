@@ -9,11 +9,18 @@
 # Comprueba antes que ningun fichero lleva el nombre real de una distribuidora (los jobs
 # escriben "Distribuidora 1, 2 y 3" desde la 0.15.0; _runlogs\anonimizar_dashboard.py
 # arregla ficheros antiguos) y se detiene si encuentra alguno.
+#
+# Los municipios, sus codigos INE y las estaciones de AEMET salen con seudonimos: la copia
+# se anonimiza en una carpeta temporal con web\anonimizar_demo.py y solo despues se copia a
+# web\demo\data, asi que esa carpeta nunca tiene los nombres reales. Los seudonimos estan en
+# _runlogs\demo_seudonimos.json (no se versiona); con el mismo mapa, cada municipio tiene el
+# mismo seudonimo en todas las copias. Necesita Python con openpyxl (requirements.txt).
 
 param(
     [string]$Origen = (Join-Path $PSScriptRoot "..\dashboard\data"),
     [string]$Destino = (Join-Path $PSScriptRoot "demo\data"),
-    [string]$Nombres = (Join-Path $PSScriptRoot "..\_runlogs\anonimizar_nombres.json")
+    [string]$Nombres = (Join-Path $PSScriptRoot "..\_runlogs\anonimizar_nombres.json"),
+    [string]$Mapa = (Join-Path $PSScriptRoot "..\_runlogs\demo_seudonimos.json")
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,8 +46,19 @@ if ($reales.Count -gt 0) {
     }
 }
 
-# Los ficheros que ya estaban se sobreescriben; los dias archivados que ya no esten en el origen se quedan.
-foreach ($f in $files) { Copy-Item $f.FullName (Join-Path $Destino $f.Name) -Force }
+# Seudonimos en una carpeta temporal; si algo falla, web\demo\data no se toca.
+$Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("gridpredic_demo_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+New-Item -ItemType Directory -Path $Tmp | Out-Null
+try {
+    foreach ($f in $files) { Copy-Item $f.FullName (Join-Path $Tmp $f.Name) -Force }
+    & python (Join-Path $PSScriptRoot "anonimizar_demo.py") $Tmp --mapa $Mapa
+    if ($LASTEXITCODE -ne 0) { throw "anonimizar_demo.py no ha podido quitar los nombres reales; web\demo\data no ha cambiado" }
+    # Los ficheros que ya estaban se sobreescriben; los dias archivados que ya no esten en el origen se quedan.
+    foreach ($f in $files) { Copy-Item (Join-Path $Tmp $f.Name) (Join-Path $Destino $f.Name) -Force }
+}
+finally {
+    Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
+}
 $riesgo = Get-Content (Join-Path $Destino "riesgo.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-Write-Host ("Copiados {0} ficheros a {1}; riesgo.json generado el {2} para el {3}" -f $files.Count, $Destino, $riesgo.generado, $riesgo.fecha_texto)
+Write-Host ("Copiados {0} ficheros a {1}, con seudonimos; riesgo.json generado el {2} para el {3}" -f $files.Count, $Destino, $riesgo.generado, $riesgo.fecha_texto)
 Write-Host "Siguiente: git add web/demo/data; git commit; PR a main. El workflow pages.yml publica y comprueba la web."
