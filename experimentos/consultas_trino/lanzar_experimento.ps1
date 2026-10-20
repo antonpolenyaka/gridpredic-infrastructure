@@ -79,8 +79,15 @@ if (-not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
 Say "=== Planes de consulta (4.7.3) === Salida: $Dir"
 Say ("  Commit: " + (git -C $Repo log -1 --format="%h %s"))
 FueraDeLaTarde
-while ([int]((docker compose -f $Compose exec -T spark-master bash -lc "ps aux | grep -c '[s]park-submit'") -join "").Trim() -gt 0) {
-    Say "Spark ocupado, espero"; Start-Sleep -Seconds 120
+# Spark ocupado segun la API del master (activeapps), que ve tambien lo que lanza Airflow: la tarde, dag_silver,
+# dag_gold y el mantenimiento. Contar procesos spark-submit en spark-master solo veia lo lanzado a mano.
+docker compose -f $Compose exec -T spark-master mkdir -p /tmp/gp 2>&1 | Out-Null
+docker compose -f $Compose cp "$Repo\experimentos\consultas_trino\apps_spark.py" "spark-master:/tmp/gp/apps_spark.py" 2>&1 | Out-Null
+while ($true) {
+    $n = [int](((docker compose -f $Compose exec -T spark-master python3 /tmp/gp/apps_spark.py) -join "").Trim())
+    if ($n -eq 0) { break }
+    if ($n -lt 0) { Say "ERROR: el master de Spark no responde"; exit 1 }
+    Say "Spark tiene $n aplicaciones en marcha, espero"; Start-Sleep -Seconds 120
 }
 
 $TrinoAntes = (docker compose -f $Compose ps --status running --services 2>$null) -contains "trino"

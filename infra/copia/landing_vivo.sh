@@ -5,4 +5,5 @@
 set -eu
 mc alias set copia http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
 mc mirror --overwrite --quiet copia/datalake/00_landing/vivo /tmp/copia_vivo >/dev/null
-echo "copia_vivo: $(find /tmp/copia_vivo -type f | wc -l) ficheros, $(du -sm /tmp/copia_vivo | cut -f1) MB"
+# The minio image has neither find nor grep: mc lists the local folder, one line per file.
+echo "copia_vivo: $(mc ls --recursive /tmp/copia_vivo | wc -l) ficheros, $(du -sm /tmp/copia_vivo | cut -f1) MB"

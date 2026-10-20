@@ -222,6 +222,11 @@ services:
     image: trinodb/trino:483
 
     restart: unless-stopped
+
+    # Sin tope, la JVM de Trino puede tomar el 80 % de la maquina virtual de Docker (18,8 GiB de 23,5 en el
+    # portatil). Con 4 GB, el mismo -XX:MaxRAMPercentage=80 de la imagen deja un heap de unos 3,2 GB. Medido
+    # el 20.10.2026 con docker stats: 1 GiB en reposo y hasta 3,1 GiB tras la consulta c5b.
+    mem_limit: 4g
     
     depends_on:
       minio:
