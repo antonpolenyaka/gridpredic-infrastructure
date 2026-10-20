@@ -130,8 +130,9 @@ CALSER_REQUIRED_VOCABULARY = ["CL_IMPRE", "CL_PROGR", "FA_CLIEN", "TI_DETEC", "T
 # Maximum share of rejected rows before a metric is marked for review.
 # The series of measures (TagIntervalValues*) rejects a real share of its
 # samples (bad quality flags, out of range); every month its rejected share
-# goes to dq_metrics (rechazo_total), and the figure of the whole window is
-# the one of docs/cifras.md. The other entities should lose almost nothing.
+# goes to dq_metrics (rechazo_total); the share of the whole window has not
+# been measured yet (docs/silver-layer.md). The other entities should lose
+# almost nothing.
 DEFAULT_MAX_REJECTED_PCT = 5.0
 MAX_REJECTED_PCT = {
     "f_tag_interval_value": 30.0,
