@@ -1,5 +1,6 @@
 import argparse
 import logging
+import math
 import os
 import re
 from datetime import date, datetime
@@ -153,6 +154,23 @@ def writer(df, mode: str):
     return w
 
 
+def chunk_plan(start: int, end: int, hi: int, num_partitions: int, max_records_per_file: int = None) -> tuple:
+    """
+    (upper bound, JDBC connections) of the chunk [start, end) of a source
+    whose highest value is hi. The bound is that of the rows that will be
+    read, as in run_single: with the end of the chunk the last one, which is
+    usually short, put all its rows in the first connection. And there are no
+    more connections than files of max_records_per_file rows, so that an
+    incremental run of a million rows leaves one file and not four in a table
+    that the weekly maintenance does not compact (it only gets VACUUM).
+    """
+    upper = min(end, hi + 1)
+    connections = max(1, num_partitions or 1)
+    if max_records_per_file:
+        connections = max(1, min(connections, math.ceil((upper - start) / max_records_per_file)))
+    return upper, connections
+
+
 def run_chunked(spark: SparkSession, target_table: str, target_exists: bool) -> None:
     """
     Reads the table in ranges of --chunk-size values of --partition-column and
@@ -198,13 +216,14 @@ def run_chunked(spark: SparkSession, target_table: str, target_exists: bool) -> 
             condition = f"{where[len('WHERE '):]} AND {condition}"
 
         dbtable = f"(SELECT * FROM dbo.{args.table} WHERE {condition}) AS chunk"
+        upper, connections = chunk_plan(start, end, int(hi), num_partitions, args.max_records_per_file)
 
         df = (
             jdbc_reader(spark, dbtable)
             .option("partitionColumn", column)
             .option("lowerBound", str(start))
-            .option("upperBound", str(end))
-            .option("numPartitions", str(num_partitions))
+            .option("upperBound", str(upper))
+            .option("numPartitions", str(connections))
             .load()
         )
 
@@ -213,8 +232,8 @@ def run_chunked(spark: SparkSession, target_table: str, target_exists: bool) -> 
         writer(df, mode).saveAsTable(target_table)
 
         logger.info(
-            "Chunk %s committed: %s in [%s, %s) mode=%s (last value %s)",
-            chunk, column, start, end, mode, hi,
+            "Chunk %s committed: %s in [%s, %s) with %s connections mode=%s (last value %s)",
+            chunk, column, start, end, connections, mode, hi,
         )
 
         start = end

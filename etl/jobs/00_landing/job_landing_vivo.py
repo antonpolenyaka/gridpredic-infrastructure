@@ -87,6 +87,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+from escritura_atomica import write_json_atomic  # noqa: E402, F401 (also used by the jobs that import this one)
 from job_landing_datos_publicos import fetch  # noqa: E402
 from job_landing_meteo_openmeteo import filesystem, municipality_cells, read_reference  # noqa: E402
 from job_landing_meteo_openmeteo import load_config as load_meteo_config  # noqa: E402
@@ -669,8 +670,7 @@ def write_json_pair(payload: dict, folder: str, name: str) -> bool:
         logger.warning("Dashboard folder %s not found: %s.json not written", folder, name)
         return False
     for file_name in (f"{name}.json", f"{name}_{payload['fecha'].replace('-', '')}.json"):
-        with open(os.path.join(folder, file_name), "w", encoding="utf-8") as file:
-            json.dump(payload, file, ensure_ascii=False, indent=1)
+        write_json_atomic(os.path.join(folder, file_name), payload, ensure_ascii=False, indent=1)
     logger.info("%s.json written in %s", name, folder)
     return True
 
@@ -681,9 +681,7 @@ def write_ensemble(payload: dict, folder: str) -> bool:
         return False
     # ensemble.json for the page and ensemble_<day>.json for the verification of the band against the stations.
     for name in ("ensemble.json", f"ensemble_{payload['fecha'].replace('-', '')}.json"):
-        path = os.path.join(folder, name)
-        with open(path, "w", encoding="utf-8") as file:
-            json.dump(payload, file, ensure_ascii=False, indent=1)
+        write_json_atomic(os.path.join(folder, name), payload, ensure_ascii=False, indent=1)
     logger.info("ensemble.json written in %s", folder)
     return True
 

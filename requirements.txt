@@ -10,6 +10,9 @@ pyarrow==21.0.0
 scikit-learn==1.7.2
 xgboost-cpu==3.0.5
 h5py==3.14.0
+# Los tests de la Landing usan el sistema de ficheros en memoria de fsspec; la misma versión
+# que arrastra s3fs==2026.7.0 en las imágenes (infra/spark/requirements.txt)
+fsspec==2026.7.0
 openpyxl==3.1.5
 pytest==8.4.2
 ruff==0.15.11

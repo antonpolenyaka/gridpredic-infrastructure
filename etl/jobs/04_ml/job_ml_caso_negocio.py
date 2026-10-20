@@ -629,8 +629,7 @@ def write_history(payload: dict, config: dict, rcfg: dict, folder_id: str, dashb
     for target in targets:
         try:
             os.makedirs(os.path.dirname(target), exist_ok=True)
-            with open(target, "w", encoding="utf-8") as file:
-                json.dump(rz.clean(payload), file, ensure_ascii=False, separators=(",", ":"))
+            rz.write_json_atomic(target, rz.clean(payload), ensure_ascii=False, separators=(",", ":"))
             logger.info("historico.json written in %s", target)
         except OSError as error:
             logger.error("historico.json not written in %s: %s", target, error)

@@ -77,6 +77,20 @@ def test_silver_level_clock_and_cell(spark):
         1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
 
 
+def test_the_cell_is_the_nearest_in_km_not_in_degrees(spark):
+    import job_silver_contexto_publico as silver
+
+    # A fire 0.08 degrees south of one cell and 0.10 west of another: in degrees the first is nearer,
+    # in km the second (0.10 degrees of longitude at 39.5 are 8.6 km, 0.08 of latitude 8.9 km).
+    cells = [("39.58_-6.30", 39.58, -6.30), ("39.50_-6.20", 39.50, -6.20)]
+    fire = pd.DataFrame([{"latitud": "39.5", "longitud": "-6.3", "fecha": "2025-08-12", "hora_utc": "1342", "satelite": "N",
+                          "instrumento": "VIIRS", "confianza": "n", "frp": "5.0", "dia_noche": "D", "fuente": "VIIRS_SP"}]).astype("string")
+    out, _ = silver.hotspots(spark, spark.createDataFrame(fire), cells)
+    row = out.toPandas().iloc[0]
+    assert row["celda_id"] == "39.50_-6.20"
+    assert 8.5 < row["distancia_celda_km"] < 8.7
+
+
 def test_gold_fires_near_the_cell_in_the_last_day(spark):
     import job_gold_meteo_celda_hora as gold
     import job_silver_contexto_publico as silver

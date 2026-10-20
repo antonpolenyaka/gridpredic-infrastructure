@@ -467,5 +467,37 @@ def test_the_shadow_forecasts_against_the_regular_grid(fs, monkeypatch, tmp_path
     points = pd.read_csv(out / "puntos.csv").set_index(["fuente", "celda_id"])
     assert 2.0 < points.loc[("icon_eu_nativo", "c1"), "km_al_punto_regular"] < 2.5
     assert "Previsión en sombra" in (out / "resumen.md").read_text(encoding="utf-8")
+    assert summary.loc["ifs", "celdas_comparadas"] == 1 and summary.loc["ifs", "tardes_incompletas"] == 1
+    assert summary.loc["icon_eu_nativo", "tardes_incompletas"] == 0
+    # IFS has one cell of two, so its mean is compared on that cell only: 70 against 80, not against the mean 65.
+    assert summary.loc["ifs", "sesgo_racha_media_kmh"] == pytest.approx(-10.0)
     # Without shadow files there is nothing to compare.
     assert sombra.main(["--desde", "2026-10-20", "--hasta", "2026-10-20", "--config", str(path)], fs=fs) == 1
+
+    # Another evening: the regular grid lost its worst cell (c1) and gave c3 from the reserve model (GFS);
+    # the shadow is compared on c2 only, the one cell both have from ICON-EU.
+    def write_19(path, peak, lat, asked=None):
+        times = [int(datetime(2026, 10, 18, 22, tzinfo=ZoneInfo("UTC")).timestamp()) + 3600 * h for h in range(30)]
+        gusts = [20.0] * 30
+        gusts[10] = peak
+        fs.pipe(path, json.dumps({"latitude": lat, "longitude": -6.4, "elevation": 400.0,
+                                  "hourly": {"time": times, "wind_gusts_10m": gusts, "precipitation": [0.5] * 30},
+                                  "_peticion": {"celda_id": path.split("/")[-1][:-5], **(asked or {})}}).encode())
+
+    day = "/vivo/20261019"
+    write_19(f"{day}/prevision/c2.json", 50.0, 39.6)
+    write_19(f"{day}/prevision/c3.json", 95.0, 39.7, {"modelo": "gfs025", "reserva": True})
+    write_19(f"{day}/prevision_sombra/ifs/c1.json", 75.0, 39.47)
+    write_19(f"{day}/prevision_sombra/ifs/c2.json", 40.0, 39.62)
+    write_19(f"{day}/prevision_sombra/ifs/c3.json", 90.0, 39.7)
+    fs.pipe("/meteo/municipios_celdas.json", json.dumps([
+        {"celda_id": "c1", "distribuidora_ref": "1"}, {"celda_id": "c2", "distribuidora_ref": "1"},
+        {"celda_id": "c3", "distribuidora_ref": "1"}]).encode())
+    out2 = tmp_path / "salida2"
+    assert sombra.main(["--desde", "2026-10-19", "--hasta", "2026-10-19", "--config", str(path), "--salida", str(out2)],
+                       fs=fs) == 0
+    late = pd.read_csv(out2 / "resumen.csv").set_index("fuente")
+    # Comparing the aggregates of each source with its own cells would give 90 against 95 (-5); on c2, -10.
+    assert late.loc["ifs", "sesgo_racha_peor_kmh"] == pytest.approx(-10.0)
+    assert late.loc["ifs", "sesgo_racha_media_kmh"] == pytest.approx(-10.0)
+    assert late.loc["ifs", "celdas_comparadas"] == 1 and late.loc["ifs", "tardes_incompletas"] == 1

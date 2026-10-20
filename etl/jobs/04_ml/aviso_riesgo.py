@@ -30,6 +30,13 @@ AIRFLOW_URL = "http://localhost:8084"
 GUARD_LEVELS = ("alto", "muy alto")
 
 
+def write_state(path: str, state: dict) -> None:
+    """A state file of the dashboard folder, replaced atomically (riesgo_zonas.write_json_atomic)."""
+    import riesgo_zonas
+
+    riesgo_zonas.write_json_atomic(path, state)
+
+
 def guard_advice(level: str, wind: float, storm: float) -> dict:
     """{"reforzar": bool, "motivo": text}: why the guard of the day is reinforced, or "normal"."""
     reasons = []
@@ -40,6 +47,8 @@ def guard_advice(level: str, wind: float, storm: float) -> dict:
     if storm is not None and storm == storm and storm >= 1:
         reasons.append(f"aviso de tormenta de AEMET ({LEVEL_NAMES.get(int(storm), int(storm))})")
     return {"reforzar": bool(reasons), "motivo": "; ".join(reasons) if reasons else "normal"}
+
+
 ORDER = ["bajo", "medio", "alto", "muy alto"]
 
 
@@ -101,6 +110,8 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
     rule = (payload.get("reglas") or {}).get("texto")
     if rule:
         lines.append(rule)
+    if payload.get("artefactos_error"):
+        lines.append(f"El modelo de esta tarde no se ha guardado en el almacén de modelos ({payload['artefactos_error']}).")
     lines.append(f"Cuadro de mando: {DASHBOARD_URL}")
     return "\n".join(lines)
 
@@ -224,8 +235,7 @@ def send_storm(payload: dict, rcfg: dict, state_path: str, now: datetime = None)
         state[str(d.get("id"))] = now.isoformat(timespec="seconds")
     if state_path:
         try:
-            with open(state_path, "w", encoding="utf-8") as file:
-                json.dump(state, file)
+            write_state(state_path, state)
         except OSError as error:
             logger.warning("Storm state not written in %s: %s", state_path, error)
     logger.info("Storm message sent\n%s", message)
@@ -347,8 +357,7 @@ def send_morning(folder: str, rcfg: dict, state_path: str, now: datetime = None)
         return f"error: {type(error).__name__}"
     if state_path:
         try:
-            with open(state_path, "w", encoding="utf-8") as file:
-                json.dump({"enviado": today}, file)
+            write_state(state_path, {"enviado": today})
         except OSError as error:
             logger.warning("Morning state not written in %s: %s", state_path, error)
     logger.info("Morning report sent\n%s", message)

@@ -657,7 +657,8 @@ def hotspots(spark, firms, cells: list, max_step: float = 1.5 * CELL_DEGREES):
         clon = np.array([c[2] for c in cells])
         dlat = np.abs(pdf["latitud"].to_numpy()[:, None] - clat[None, :])
         dlon = np.abs(pdf["longitud"].to_numpy()[:, None] - clon[None, :])
-        nearest = np.argmin(dlat ** 2 + dlon ** 2, axis=1)
+        # The nearest cell in km: a degree of longitude is cos(latitude) of a degree of latitude.
+        nearest = np.argmin(dlat ** 2 + (dlon * np.cos(np.radians(pdf["latitud"].to_numpy()))[:, None]) ** 2, axis=1)
         rows = np.arange(len(pdf))
         close = (dlat[rows, nearest] <= max_step + 1e-9) & (dlon[rows, nearest] <= max_step + 1e-9)
         km = 111.2 * np.sqrt(dlat[rows, nearest] ** 2
