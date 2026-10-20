@@ -231,6 +231,12 @@ def test_answers_of_12_hours_still_give_yesterday_its_24_hours_and_the_morning_p
     # Today has its hours from midnight in observado.json, not only the 12 of the run in course.
     with open(tmp_path / "observado.json", encoding="utf-8") as file:
         seen = json.load(file)
+    # Every station spoke today: the hour alone. A station silent since yesterday gives the date too.
+    assert all(":" in st["hora"] and "." not in st["hora"] for st in seen["estaciones"])
+    quiet = obs.inside(answer_at(datetime(2026, 7, 19, 18, 25, tzinfo=timezone.utc), morning_storm), cfg["caja"])
+    quiet["idema"] = "CALLADA"
+    late = obs.dashboard_payload(quiet, {}, cfg, NOW)
+    assert late["estaciones"][0]["hora"] == "19.07.2026 20:00"
     hours = [h["hora"] for h in seen["distribuidoras"][0]["horas"]]
     assert hours[0] == 0 and len(hours) == 16 and seen["distribuidoras"][0]["racha_max_kmh"] == 72
     # Nothing half written is left behind in the dashboard folder.
