@@ -323,6 +323,9 @@ services:
   kafka:
     image: quay.io/debezium/kafka:3.6
 
+    # CDC only: docker compose --profile cdc up -d (the capture has been stopped since the load of 08.10.2026).
+    profiles: ["cdc"]
+
     restart: unless-stopped
 
     environment:
@@ -343,6 +346,9 @@ services:
 
   kafka-connect:
     image: quay.io/debezium/connect:3.6
+
+    # CDC only: docker compose --profile cdc up -d (the capture has been stopped since the load of 08.10.2026).
+    profiles: ["cdc"]
 
     restart: unless-stopped
 
@@ -379,6 +385,9 @@ services:
   kafka-ui:
     # v1.5.0 (20.04.2026), the release the laptop runs: pinned like the rest of the images.
     image: ghcr.io/kafbat/kafka-ui:v1.5.0
+
+    # CDC only: docker compose --profile cdc up -d (the capture has been stopped since the load of 08.10.2026).
+    profiles: ["cdc"]
 
     restart: unless-stopped
 
