@@ -160,7 +160,8 @@ Y el volumen. El job no trata nunca la tabla entera:
 
 - Procesa un mes cada vez (`--desde 2021-01 --hasta 2026-08`), filtrando por el instante de rejilla. Bronze no está particionada, pero Delta guarda mínimos y máximos por fichero y las filas se escribieron en orden de `Id`, que es orden temporal. Para que eso sirva de algo, Bronze carga esta tabla por trozos de `Id` y con un tamaño máximo de fichero (`chunk_size` y `max_records_per_file` en `config_bronze_sqlserver.json`); con una sola lectura JDBC quedaba en un único fichero enorme y el filtro del mes no se saltaba nada.
 - La salida está particionada por `fecha_mes` y cada ejecución sobrescribe solo los meses procesados (`replaceWhere`). Se puede reprocesar un mes sin tocar el resto.
-- Un mes cuenta como hecho cuando su última métrica (`tags_con_datos`) está en `dq_metrics`. Una ejecución nueva se salta los meses hechos, así que si el job muere a medias (en el portátil se puede perder un executor después de una hora de I/O) el reintento sigue desde el primer mes sin terminar. `--rehacer` fuerza todos los meses del rango.
+- Un mes cuenta como hecho cuando su última métrica (`tags_con_datos`) está en `dq_metrics`. Una ejecución nueva se salta los meses hechos, así que si el job muere a medias (en el portátil se puede perder un executor después de una hora de I/O) el reintento sigue desde el primer mes sin terminar. `--rehacer` fuerza todos los meses del rango. Eso vale también para un mes que la copia dejó a medias: agosto de 2026 está hecho con la copia del 14.08.2026, y con la próxima copia el DAG, que lanza el job con `--desde 2021-01` y sin `--rehacer`, se lo saltaría y perdería del 14 al 31.08. Al cargarla hay que relanzar este job y `agg_medida_hora` de Gold con `--desde 2026-08 --rehacer` ([operacion-diaria.md](operacion-diaria.md), apartado 4).
+- El job lleva su propia configuración de Spark en `config_silver.json` desde la carga del 09.10.2026. Enero de 2025 trae bastantes más muestras que los meses anteriores, y el job, que entonces corría con 2 núcleos, 4 GB y 64 particiones, se quedó sin memoria al guardar en caché la salida de la deduplicación del mes: perdimos seis ejecutores en 16 minutos, Spark recalculó cuatro veces las salidas intermedias de la etapa antes de abandonar y lanzamos la tarea seis veces antes de dar con el arreglo. Con 4 núcleos, 8 GB más 1 GB de margen y 256 particiones, la memoria de cada tarea es casi la misma (unos 1.139 MB antes y 1.184 MB después), pero cada partición es cuatro veces más pequeña, y esa tarde los 20 meses de 2025 y 2026 salieron en unos 78 minutos. Desde entonces el job guarda la lista de tags en caché, que Spark reconstruye desde Delta si se pierde un ejecutor, y le da 600 s a un ejecutor ocupado antes de darlo por perdido (`spark.network.timeout`).
 - La clave de deduplicación es `(tag, instante de rejilla)`: solo puede haber una muestra por tag e instante. `Id` no sirve como clave porque la tabla Big y la pequeña tienen espacios de `Id` distintos. Gana Historic, después el valor más reciente.
 - Los rechazos no se copian fila a fila (serían cientos de millones): `f_tag_interval_value_rechazo_diario` guarda el recuento por tag, día y motivo, y la métrica pasa a `REVISAR` si el rechazo supera el 30 %. La proporción de la ventana completa no la hemos sacado; el 22 % que citábamos salió de una consulta de la exploración que no guardamos y ya no lo usamos.
 
@@ -196,15 +197,16 @@ El último job, `job_silver_dq_checks.py`, hace tres comprobaciones más:
 2. **Cobertura de la clave Calser - TedisNet** sobre los CT con interrupciones desde 2021. En el análisis verificado era del 97,8 %; si cae por debajo del 95 % se marca para revisión.
 3. **Alineación temporal**. Empareja cada interrupción de Calser desde noviembre de 2025 (la era 3, en la que sus horas coinciden con las de TedisNet) con el Off más cercano del mismo trafo en TedisNet y calcula el desfase. Si la mediana sale en 60 o 120 minutos es que una fuente está en hora local y la otra en UTC, y toda la ventana de predicción de 1 a 3 horas estaría desplazada. Silver no corrige nada por su cuenta: lo mide y lo marca.
 
-Con `"fail_on_review": true` en `config_silver.json`, el DAG falla si queda alguna métrica en `REVISAR` y Gold no se carga. Mientras ajustamos umbrales lo dejamos en `false`.
+Con `"fail_on_review": true` en `config_silver.json`, el DAG falla si queda alguna métrica en `REVISAR` y Gold no se carga. Hoy está en `false`: en la carga completa del 09.10.2026 (`run_id` `carga_20261009_1817_silver`) quedaron en `REVISAR` dos métricas de Silver, y en Gold diez que describen el histórico y no un fallo de la ejecución (la tabla está en el apartado 7 de [gold-layer.md](gold-layer.md)). Activarlo así pararía cada carga, y antes hace falta una lista de excepciones conocidas (entidad, ámbito y métrica) para que `REVISAR` señale solo lo nuevo.
 
-Consulta útil desde Trino:
+Consulta útil desde Trino, con el último estado de cada métrica (una métrica que se corrigió en una ejecución posterior ya no sale, y una tarea reintentada no sale repetida):
 
 ```sql
-SELECT job, entidad, ambito, metrica, valor, total, pct, umbral_pct, detalle
-FROM lakehouse.l2_silver.dq_metrics
-WHERE estado = 'REVISAR'
-ORDER BY ts DESC;
+SELECT job, entidad, ambito, metrica, valor, total, pct, umbral_pct, detalle, ts
+FROM (SELECT *, row_number() OVER (PARTITION BY job, entidad, ambito, metrica ORDER BY ts DESC) AS rn
+      FROM lakehouse.l2_silver.dq_metrics)
+WHERE rn = 1 AND estado = 'REVISAR'
+ORDER BY job, entidad, metrica;
 ```
 
 ## 7. Ejecución
