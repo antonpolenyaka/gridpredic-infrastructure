@@ -1,6 +1,6 @@
 # Diferencias de las pruebas del día por fechas y por semanas
 
-18 diferencias frente a la operativa (9 variantes en 2024 - 2025 y 2024 - 2026). Con bloques de siete días el intervalo mide entre 0.73 y 1.18 veces lo que mide por fechas (mediana 0.91); cambia de lado del cero en 0.
+18 diferencias frente a la operativa (9 variantes en 2024 - 2025 y 2024 - 2026). Con bloques de siete días el intervalo mide entre 0.73 y 1.18 veces lo que mide por fechas (mediana 0.91). Cambian de clase (intervalo encima del cero, debajo o incluyéndolo) 1: estacion_indicadores en 2024-2026 (debajo por fechas, incluye_0 por semanas).
 
 | anios | variante | pr_auc | dif_b1 | dif_p2_5_b1 | dif_p97_5_b1 | dif_p2_5_b7 | dif_p97_5_b7 | razon_anchura |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
