@@ -6,7 +6,7 @@ language:
 license: other
 license_name: propietaria
 license_details: Modelo del TFM GridPredic. Entrenado con datos confidenciales de SITEL y de las distribuidoras; no se publica el modelo ni los datos.
-library_name: xgboost
+library_name: sklearn
 pipeline_tag: tabular-classification
 tags:
   - energy
@@ -14,22 +14,24 @@ tags:
   - scada
   - outage-prediction
   - time-series
+  - logistic-regression
   - xgboost
   - shap
 datasets:
   - gridpredic-calser-tedisnet (local, ver docs/dataset_card.md)
 metrics:
+  - pr-auc
+  - brier
+  - roc-auc
   - precision
   - recall
-  - pr-auc
-  - roc-auc
 ---
 
 # Model Card for GridPredic - Riesgo de interrupción del día siguiente y aviso de 1 a 3 horas
 
 Clasificadores binarios que estiman la probabilidad de que empiece una interrupción imprevista de suministro. Empezamos a 1 - 3 horas vista con dos unidades, cada centro de transformación (CT) de media tensión y hora y cada distribuidora y hora (horas de riesgo), y los resultados nos llevaron a una tercera, la distribuidora y el día siguiente: la señal se ve en el día y se pierde al bajar a la hora y al CT. El riesgo del día siguiente es el modelo que corre cada tarde; los otros dos se quedaron en evaluación. Los modelos por horas se entrenan con la telemetría histórica del SCADA TedisNet y las interrupciones registradas en Calser (ver la [dataset card](dataset_card.md)); el del día, con el calendario, las interrupciones de Calser, la meteorología y los avisos de AEMET, sin telemetría. Es una herramienta de apoyo a la decisión del operador de la distribuidora: no actúa sobre la red.
 
-Estado a 17.10.2026 (la versión 0.16.0 cierra el desarrollo el 19.10.2026): pipeline hasta Gold cargado con la ventana completa (dataset `ds_20261010T045104_a5a2531cacbb`, 246 features, 1.287 CT), meteorología integrada, modelos entrenados y evaluados en `etl/jobs/04_ml` (ver [ml-training.md](ml-training.md)) y test usado una sola vez, con la configuración cerrada. Los requisitos y la metodología de evaluación se fijaron en esta ficha antes de entrenar; los resultados están en Results. Desde el 13.10.2026 Results recoge también el riesgo del día siguiente por distribuidora, con los avisos de AEMET y la previsión real de ICON-EU, y ese modelo corre cada tarde en Airflow (`dag_riesgo_manana`); desde el 15.10.2026 la misma ejecución da también la orientación de pasado mañana (`operativa_48h`).
+Estado en la versión 0.16.0 (la etiqueta v0.16.0 cierra el desarrollo antes de la entrega del 26.10.2026): pipeline hasta Gold cargado con la ventana completa (dataset `ds_20261010T045104_a5a2531cacbb`, 246 features, 1.287 CT), meteorología integrada, modelos entrenados y evaluados en `etl/jobs/04_ml` (ver [ml-training.md](ml-training.md)) y test usado una sola vez, con la configuración cerrada. Los requisitos y la metodología de evaluación se fijaron en esta ficha antes de entrenar; los resultados están en Results. Desde el 13.10.2026 Results recoge también el riesgo del día siguiente por distribuidora, con los avisos de AEMET y la previsión real de ICON-EU, y ese modelo corre cada tarde en Airflow (`dag_riesgo_manana`); desde el 15.10.2026 la misma ejecución da también la orientación de pasado mañana (`operativa_48h`).
 
 ## Model Details
 
@@ -38,12 +40,12 @@ Estado a 17.10.2026 (la versión 0.16.0 cierra el desarrollo el 19.10.2026): pip
 - **Developed by:** Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka (TFM, UPC School, Máster en Data Science and Engineering 2025-2026)
 - **Funded by [optional]:** proyecto académico; SITEL Sistemas Electrónicos SA aporta los datos y el conocimiento del dominio
 - **Shared by [optional]:** no se publica
-- **Model type:** clasificación binaria supervisada sobre datos tabulares derivados de series temporales. XGBoost (gradient boosting sobre árboles), Random Forest y regresión logística, comparados con referencias sin modelo: tasa base, histórico de interrupciones y la racha máxima de viento en la zona. Explicabilidad post hoc con SHAP. En el modelo del día se comparó además la logística L2 de producción con LDA, QDA, Naive Bayes, k vecinos, SVM, el perceptrón y variantes de la logística (`experimentos/perfil_dia/familias_dia.py`, cuaderno 3w): ninguna la supera
-- **Language(s) (NLP):** no aplica (datos numéricos y categóricos; documentación en castellano)
+- **Model type:** clasificación binaria supervisada sobre datos tabulares derivados de series temporales. En producción, una regresión logística con regularización L2 de scikit-learn por distribuidora y día, explicada por sus coeficientes. En evaluación, por CT y hora y por distribuidora y hora, XGBoost (gradient boosting sobre árboles), Random Forest y regresión logística, comparados con referencias sin modelo: tasa base, histórico de interrupciones y la racha máxima de viento en la zona, con SHAP para explicar el modelo por horas. En el modelo del día se comparó además la logística L2 de producción con XGBoost, los bosques, LDA, QDA, Naive Bayes, k vecinos, SVM, el perceptrón y variantes de la logística (`experimentos/perfil_dia/familias_dia.py` y `comparar_modelos_dia.py`, cuaderno 3w): ninguno la supera
+- **Language(s) (NLP):** no aplica al modelo (datos numéricos y categóricos; documentación en castellano). Sí hay texto detrás de algunas etiquetas: la causa de cada incidencia se lee con reglas del texto libre de Calser, y de ella dependen `y_dia_meteo`, las incidencias de causa local con que la tarde reparte el riesgo por líneas y se mide el caso de negocio, y las familias del riesgo anual; `y_dia`, la etiqueta del modelo de producción, no depende de ella (ver la [dataset card](dataset_card.md), Annotation process)
 - **License:** propietaria
 - **Finetuned from model [optional]:** no aplica; se entrena desde cero
 - **Model date:** 13.10.2026, primera tarde en producción del modelo del día; desde entonces se reentrena cada tarde con todos los días etiquetados
-- **Model version:** variante `operativa` de `etl/config/04_ml/config_ml.json` en la versión 0.16.0 del repositorio (la que fija `CHANGELOG.md`); cada tarde deja su `run_id` y la configuración de su modelo en `l3_gold.ml_runs`
+- **Model version:** variante `operativa` de `etl/config/04_ml/config_ml.json` en la etiqueta v0.16.0 del repositorio (la versión que fija `CHANGELOG.md`); cada tarde deja su `run_id` y la configuración de su modelo en `l3_gold.ml_runs`, y desde la 0.16.0 también el modelo ajustado en MinIO (How to Get Started)
 
 En resumen: en producción está el riesgo del día siguiente por distribuidora (regresión logística con la previsión real de ICON-EU de la víspera y los avisos de AEMET), que da cada tarde una probabilidad, un nivel por percentiles de su propia red y una recomendación de guardia. El modelo por CT y hora se evaluó (XGBoost dobla la tasa base) y no pasa a producción.
 
@@ -51,7 +53,7 @@ En resumen: en producción está el riesgo del día siguiente por distribuidora 
 
 - **Repository:** https://github.com/antonpolenyaka/gridpredic-infrastructure
 - **Paper [optional]:** memoria del TFM GridPredic (UPC School), en redacción
-- **Demo [optional]:** no disponible
+- **Demo [optional]:** https://gridpredic.com/demo/, el cuadro de mando con una copia congelada de sus datos (`web/demo/data`, las tres redes como Distribuidora 1, 2 y 3); la copia se renueva con `web/congelar_demo.ps1`
 
 ## Uses
 
@@ -93,12 +95,43 @@ Recomendamos leer la salida como una ordenación de prioridades y dejar la decis
 
 ## How to Get Started with the Model
 
-Cada ejecución de `etl/jobs/04_ml/job_ml_train.py` guarda los modelos en MinIO (`s3://datalake/ml/modelos/<run_id>/`) y deja su registro en `l3_gold.ml_runs` con la versión congelada del dataset de Gold (`l3_gold.dataset_versions`). Cada `.pkl` es un objeto con un método `score` que recibe la matriz de features en float32, en el orden de `run.json`, y devuelve la probabilidad ya corregida a la población real:
+El riesgo del día siguiente, que es el modelo de producción, no hay que cargarlo a mano: `dag_riesgo_manana` lo calcula cada tarde a las 20:30 con la previsión de ICON-EU y los avisos de AEMET de ese momento, vuelve a entrenar la regresión logística con todos los días etiquetados y deja una fila por distribuidora y día en `l3_gold.riesgo_dia_siguiente`, una por línea en `l3_gold.riesgo_zona_siguiente`, la orientación de pasado mañana en `l3_gold.riesgo_pasado_manana` (la variante de dos tardes antes, `operativa_48h`, con la misma previsión y los mismos avisos: 5,4 veces la tasa base frente a 6,5 la víspera con las mismas variables en 2024 - 2025; [investigacion-continua.md](investigacion-continua.md), 3e) y el JSON del cuadro de mando en `dashboard/data/` (http://localhost:8086; ver [causas-incidencias.md](causas-incidencias.md), apartados 8 y 10):
+
+```sql
+SELECT fecha, distribuidora, nivel, ROUND(probabilidad, 3) AS probabilidad, ROUND(veces_tasa_base, 1) AS veces,
+       motivos, zonas, avisos_disponibles, historia_al_dia, params_json, run_id
+FROM lakehouse.l3_gold.riesgo_dia_siguiente
+ORDER BY fecha DESC, probabilidad DESC;
+```
+
+Desde la 0.16.0 la tarde guarda además el modelo que ha ajustado, como los entrenamientos por CT: `logistica.pkl` y `run.json` en `s3://datalake/ml/modelos/<run_id>/`, con el `run_id` de su fila de `riesgo_dia_siguiente`, y la carpeta queda en `artefactos_uri` de `l3_gold.ml_runs`. `run.json` lleva la variante, las variables en el orden en que las espera el modelo, la C elegida, la versión Delta de siete de las tablas que leyó la tarde (todas menos `f_incidencia_causa`) y el entorno con que se ajustó (Python y las versiones de numpy, scipy, scikit-learn, xgboost y pandas). Lo probamos el 20.10.2026 con una tarde repetida sobre el 28.01.2026 (`prueba_c12_20260128`). Para ver el modelo de una tarde y sus coeficientes:
 
 ```python
-import json, pickle, s3fs
+import json, pickle, sys
+import s3fs
+
+sys.path.insert(0, "/app/jobs/04_ml")  # el .pkl es un ml_models.EstimatorScorer
+import ml_models
 
 # Desde un contenedor del stack (spark-master): MinIO no publica el puerto 9000 al anfitrión
+fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": "http://minio:9000"})
+base = "datalake/ml/modelos/<run_id>"  # el run_id de la fila de l3_gold.riesgo_dia_siguiente
+modelo = pickle.load(fs.open(f"{base}/logistica.pkl", "rb"))
+run = json.load(fs.open(f"{base}/run.json"))
+
+print(run["variante"], run["modelos"]["logistica"]["params"], run["versiones_delta"])
+coeficientes = ml_models.linear_terms(modelo)  # una fila por variable: coeficiente y razón de odds por desviación típica
+```
+
+`modelo.score` recibe la matriz de las variables de `run["features"]` en float32 y devuelve la probabilidad del día. Las filas no se guardan como tabla: las construye la propia tarde con lo que se sabe a las 20:30 (ver la [dataset card](dataset_card.md), el conjunto del riesgo del día siguiente).
+
+El modelo por CT y hora, evaluado y fuera de producción, se carga igual. Cada ejecución de `etl/jobs/04_ml/job_ml_train.py` guarda los modelos en MinIO (`s3://datalake/ml/modelos/<run_id>/`) y deja su registro en `l3_gold.ml_runs` con la versión congelada del dataset de Gold (`l3_gold.dataset_versions`). Cada `.pkl` tiene el mismo método `score`, que recibe la matriz de features en float32, en el orden de `run.json`, y devuelve la probabilidad ya corregida a la población real:
+
+```python
+import json, pickle, sys
+import s3fs
+
+sys.path.insert(0, "/app/jobs/04_ml")
 fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": "http://minio:9000"})
 base = "datalake/ml/modelos/<run_id>"
 modelo = pickle.load(fs.open(f"{base}/xgboost.pkl", "rb"))
@@ -109,15 +142,6 @@ probabilidad = modelo.score(filas[features].to_numpy(dtype="float32", na_value=f
 ```
 
 Para entrenar, `l3_gold.dataset_train` trae la columna `split` y una muestra reproducible de negativos (`en_muestra_train`, `peso_muestra`). Cómo se lanza y qué tablas deja está en [ml-training.md](ml-training.md).
-
-El riesgo del día siguiente no hay que cargarlo a mano: `dag_riesgo_manana` lo calcula cada tarde a las 20:30 con la previsión de ICON-EU y los avisos de AEMET de ese momento, vuelve a entrenar la regresión logística con todos los días etiquetados y deja una fila por distribuidora y día en `l3_gold.riesgo_dia_siguiente`, una por línea en `l3_gold.riesgo_zona_siguiente`, la orientación de pasado mañana en `l3_gold.riesgo_pasado_manana` (la variante de dos tardes antes, `operativa_48h`, con la misma previsión y los mismos avisos: 5,4 veces la tasa base frente a 6,5 la víspera con las mismas variables en 2024 - 2025; [investigacion-continua.md](investigacion-continua.md), 3e) y el JSON del cuadro de mando en `dashboard/data/` (http://localhost:8086; ver [causas-incidencias.md](causas-incidencias.md), apartados 8 y 10):
-
-```sql
-SELECT fecha, distribuidora, nivel, ROUND(probabilidad, 3) AS probabilidad, ROUND(veces_tasa_base, 1) AS veces,
-       motivos, zonas, avisos_disponibles, historia_al_dia
-FROM lakehouse.l3_gold.riesgo_dia_siguiente
-ORDER BY fecha DESC, probabilidad DESC;
-```
 
 ## Training Details
 
@@ -139,19 +163,20 @@ La limpieza genérica (deduplicación, calidad, huérfanos, distribuidora) se ha
 
 #### Training Hyperparameters
 
-- Algoritmo principal: XGBoost, objetivo `binary:logistic`, `tree_method = hist`, entrenado sobre la muestra de negativos de Gold (todos los positivos y el 2 % de los negativos) y con la probabilidad corregida después por el muestreo (corrección de prior, monótona). Parada temprana sobre la PR-AUC de una muestra ponderada de valid (2025). Búsqueda de hiperparámetros con una lista corta de configuraciones (profundidad 4 a 8, `min_child_weight` 1 y 20, `learning_rate` 0,05, `subsample` 0,8, `colsample_bytree` 0,5 a 0,6) elegidas sobre valid, nunca con validación cruzada aleatoria.
-- Comparación: Random Forest (200 árboles, profundidad 14 a 20) y regresión logística L2 (C entre 0,01 y 1) sobre las mismas features y el mismo split, y las referencias de tasa base y naif histórico.
+- Modelo del día, en producción: regresión logística con regularización L2 de scikit-learn (`lbfgs`) sobre las 35 variables de la variante `operativa`, dentro de una tubería que imputa la mediana con un indicador de hueco, pasa las variables a logaritmo con signo y las estandariza (`ml_models.build_estimator`). Cada tarde elige C entre 0,003, 0,01, 0,03 y 0,1 con la PR-AUC del último 25 % de los días etiquetados y vuelve a ajustar la elegida con todos (`job_ml_riesgo_manana.fit`, con la rejilla de `job_ml_riesgo_dia.py`). En la evaluación por años esa validación interna elige 0,003, la más fuerte de la rejilla, en 2022, 2023, 2024 y 2025, y su PR-AUC baja a medida que se relaja C. Ampliar la rejilla hacia abajo (0,0003 y 0,001) no ayuda: la validación interna pasa a elegir 0,0003 tres años de cuatro y la PR-AUC baja de 0,188 a 0,156 con la previsión real de 2024 - 2025 y de 0,151 a 0,114 sobre el reanálisis de 2022 - 2025 (`experimentos/perfil_dia/salida/familias/`, `familias_busqueda.csv` y `familias.csv`). La C de cada tarde queda en `params_json` de `riesgo_dia_siguiente` y en `busqueda_json` de `ml_runs`.
+- Modelo por CT y hora, evaluado y fuera de producción: XGBoost, objetivo `binary:logistic`, `tree_method = hist`, entrenado sobre la muestra de negativos de Gold (todos los positivos y el 2 % de los negativos) y con la probabilidad corregida después por el muestreo (corrección de prior, monótona). Parada temprana sobre la PR-AUC de una muestra ponderada de valid (2025). Búsqueda de hiperparámetros con una lista corta de configuraciones (profundidad 4 a 8, `min_child_weight` 1 y 20, `learning_rate` 0,05, `subsample` 0,8, `colsample_bytree` 0,5 a 0,6) elegidas sobre valid, nunca con validación cruzada aleatoria.
+- Comparación en el modelo por CT: Random Forest (200 árboles, profundidad 14 a 20) y regresión logística L2 (C entre 0,01 y 1) sobre las mismas features y el mismo split, y las referencias de tasa base y naif histórico.
 - Los valores de cada configuración probada y la elegida quedan en `l3_gold.ml_runs` (`busqueda_json`, `modelos_json`) y en `etl/config/04_ml/config_ml.json`. En las horas de riesgo la configuración se elige en cada año de la evaluación con el último 25 % de las horas anteriores y el modelo se reentrena con todas; XGBoost conserva el número de árboles del early stopping.
 
 #### Speeds, Sizes, Times [optional]
 
-En el portátil del stack (12 CPU lógicas, 32 GB): el modelo por CT entrena sobre una muestra de 884.971 filas (todos los positivos de train y el 2 % de los negativos) y la ejecución completa con búsqueda tarda unos 40 minutos, 7,5 de ellos en puntuar los 11,2 millones de filas de valid. El dataset de horas de riesgo (144.962 filas) se construye en 18 minutos una vez por versión del dataset y la evaluación por años de cuatro modelos con búsqueda tarda 9 minutos. Un modelo XGBoost guardado ocupa unos pocos MB.
+En el portátil del stack (12 CPU lógicas, 32 GB): el modelo del día se reentrena y puntúa cada tarde en unos 5 minutos (apartado Technical Specifications). El modelo por CT entrena sobre una muestra de 884.971 filas (todos los positivos de train y el 2 % de los negativos), y la ejecución completa con búsqueda del 11.10.2026 tardó 43 min 15 s: 15 min 22 s de búsqueda, con nueve configuraciones de la logística, el bosque y XGBoost, y 455 s para puntuar los 11,2 millones de filas de valid. El dataset de horas de riesgo (144.962 filas) se construye en 18 minutos una vez por versión del dataset y la evaluación por años de cuatro modelos con búsqueda tarda 9 minutos. Un modelo XGBoost guardado ocupa unos pocos MB.
 
 ## Evaluation
 
 ### Testing Data, Factors & Metrics
 
-**Datos de prueba.** División temporal: entrenamiento hasta 2024, validación 2025, prueba 2026 hasta el 01.06.2026 (censura de las etiquetas al final de la ventana). Ningún dato posterior a la fecha de corte entra en el entrenamiento ni en la selección de hiperparámetros. Para las horas de riesgo se evalúan además 2023, 2024 y 2025 por separado, cada año con un modelo que solo ha visto los anteriores, y los intervalos de confianza salen de un bootstrap por días con réplicas emparejadas entre modelos.
+**Datos de prueba.** División temporal: entrenamiento hasta 2024, validación 2025, prueba 2026 hasta el 01.06.2026 (censura de las etiquetas al final de la ventana). Ningún dato posterior a la fecha de corte entra en el entrenamiento ni en la selección de hiperparámetros. Para las horas de riesgo se evalúan además 2023, 2024 y 2025 por separado, cada año con un modelo que solo ha visto los anteriores, y los intervalos de confianza salen de un bootstrap por días con réplicas emparejadas entre modelos. En el modelo del día, desde la 0.16.0 el bootstrap sortea bloques de siete días seguidos con todas las redes de cada fecha (`meteo_dia.bootstrap_bloque_dias`), porque con la previsión real los días seguidos no son independientes: en el residuo de la víspera el contraste de Ljung y Box da p = 0,008 con la chi cuadrado, 0,019 con la referencia simulada y 0,49 con el residuo de Pearson, así que lo que queda está en los temporales de varios días (`experimentos/evaluacion/salida/autocorrelacion.csv`). Las ejecuciones `dia_*` del 12 al 16.10.2026 que cita Results se midieron por fechas. En las tablas, la parte de las réplicas en la que gana un modelo no es la probabilidad de que sea mejor.
 
 **Factores.** Los resultados se desglosan por distribuidora, por tipo de evento (local o sistémico), por tipo de zona del municipio (urbana, semiurbana, rural concentrada, rural dispersa) y por disponibilidad de telemetría del CT.
 
@@ -174,7 +199,7 @@ En el portátil del stack (12 CPU lógicas, 32 GB): el modelo por CT entrena sob
 
 **Horas de riesgo por distribuidora, sin previsión meteorológica.** Evaluación por años 2023 - 2025 (104 incidencias), PR-AUC con intervalo del 95 %:
 
-| Modelo | PR-AUC | Lift | P(mejor que la racha) |
+| Modelo | PR-AUC | Lift | Réplicas en las que gana a la racha |
 | --- | --- | --- | --- |
 | Racha máxima observada en la zona (referencia) | 0,0094 [0,0057 - 0,0173] | 3,2 | - |
 | Regresión logística | 0,0084 [0,0056 - 0,0127] | 2,8 | 28 % |
@@ -185,7 +210,7 @@ En el portátil del stack (12 CPU lógicas, 32 GB): el modelo por CT entrena sob
 
 **Test (01.01 - 01.06.2026, 21 incidencias, usado una sola vez, `hr_20261011T100606_7391f5`):**
 
-| Modelo | PR-AUC | Lift | P(mejor que la tasa base) | P(mejor que la racha) | recall_episodios con 2 h de alerta al día |
+| Modelo | PR-AUC | Lift | Réplicas en las que gana a la tasa base | Réplicas en las que gana a la racha | recall_episodios con 2 h de alerta al día |
 | --- | --- | --- | --- | --- | --- |
 | Random Forest | 0,0319 [0,0050 - 0,1386] | 7,2 | 100 % | 89 % | 0,143 |
 | XGBoost | 0,0172 [0,0037 - 0,0916] | 3,9 | 100 % | 65 % | 0,238 |
@@ -197,7 +222,7 @@ Frente a los criterios de aceptación de esta ficha, el de la PR-AUC se cumple, 
 
 **Fuentes, grupos y zonas** (evaluación por años, `hr_20261011T131024_10b6e9`). La meteorología sola es la fuente que más aporta (XGBoost 0,0102, regresión logística 0,0111); los datos eléctricos solos tienen señal pero menos (TedisNet 0,0061, Calser 0,0044). Mezclar las fuentes tal cual no mejora a la meteorología sola, y con interacciones explícitas entre tiempo y estado de la red la mezcla vuelve a su nivel (0,0101) con el comportamiento más estable año a año. Ni un modelo por distribuidora (0,0081) ni un modelo por zona meteorológica (0,0047) mejoran al modelo global. Ninguna variante se distingue con claridad de la regla de la racha máxima.
 
-**Cuántos datos harían falta** (`hr_20261011T180132_a6b4e6`). Con el 25 %, el 50 % y el 100 % de los días por distribuidora de entrenamiento, la regresión logística con la meteorología pasa de 0,0097 a 0,0101 y a 0,0115, y XGBoost con las tres fuentes de 0,0066 a 0,0083 y a 0,0095: las dos curvas siguen subiendo y la del modelo complejo más deprisa. La ventaja de la logística sobre la racha (84 % de las réplicas) sería significativa al 95 % con 3,7 veces más datos, unos 33 años-distribuidora frente a los 9 actuales. Un modelo entrenado con una distribuidora funciona en las otras (la Distribuidora 1 -> la Distribuidora 2 0,0145, mejor que el propio de la Distribuidora 2, 0,0082), así que juntar distribuidoras ayuda a todas. Ver [network-analysis.md](network-analysis.md).
+**Cuántos datos harían falta** (`hr_20261011T180132_a6b4e6`). Con el 25 %, el 50 % y el 100 % de los días por distribuidora de entrenamiento, la regresión logística con la meteorología pasa de 0,0097 a 0,0101 y a 0,0115, y XGBoost con las tres fuentes de 0,0066 a 0,0083 y a 0,0095: las dos curvas siguen subiendo y la del modelo complejo más deprisa, aunque con tres puntos la recta que las prolonga tiene un solo grado de libertad y, con diez veces más datos, su intervalo de predicción incluye la regla de la racha. La logística gana hoy a la racha en el 84 % de las réplicas; si la diferencia se mantuviera, con 3,7 veces más datos quedaría justo en el umbral del 95 %, con una potencia del 50 %, y para detectarla el 80 % de las veces harían falta 8,5 veces más, unos 76 años-distribuidora frente a los 9 actuales. Un modelo entrenado con una distribuidora funciona en las otras (la Distribuidora 1 -> la Distribuidora 2 0,0145, mejor que el propio de la Distribuidora 2, 0,0082), así que juntar distribuidoras ayuda a todas. Ver [network-analysis.md](network-analysis.md).
 
 **Riesgo del año siguiente por CT y cabecera** (`job_ml_riesgo_ct.py`, `rct_20261011T215018_d996ba`, años 2021 - 2025). XGBoost Tweedie sobre los kVA·h imprevistos de cada CT y año, con lo que se sabía al empezar el año. Por cabecera, el 10 % que señala el modelo con historia y estructura recoge el 70,9 % de los kVA·h del año siguiente, frente al 63,5 % de ordenar por los dos años anteriores y al 80,7 % del máximo posible, y gana en cuatro de los cinco años; con el 20 % y el SCADA llega al 82,9 % (74,3 % la lista naif). Por CT apenas mejora a la lista naif (30,9 % frente a 27,9 % con el clima). Ni los datos públicos ni el bloque de obras y edificación (PLACSP y Catastro) aportan a un año vista. Las obras públicas por municipio y año tampoco anticipan las averías de terceros: comparando cada municipio consigo mismo, la razón de tasas es 0,66 (intervalo del 90 %, de 0,51 a 1,08). Ver [network-analysis.md](network-analysis.md).
 
@@ -218,7 +243,7 @@ Con el reanálisis en 2022 - 2025 (137 días con avería) la logística con avis
 
 **Test 2026 del riesgo del día siguiente** (01.01 - 01.07.2026, 24 días con avería, usado una sola vez, `dia_test2026_20261013_0428`). Con la previsión real, la logística con avisos y extremos da 0,132 (3,1 veces la tasa base de 0,044) y el 20 % de días de más riesgo recoge el 52 % de los días con avería, pero no se distingue del modelo que solo sabe el tiempo de ayer (0,164), que este año acierta más de lo habitual porque los temporales de enero llegaron seguidos. Con solo 24 días con avería, el test no separa las variantes entre sí. Después de esta prueba, 2026 entró en la evaluación por años como un año más: con los días hasta el 02.08.2026 (84 días con avería), la variante operativa da 0,161 de PR-AUC, 5,3 veces la tasa base (`dia_2026_20261015_1119`). Ver [causas-incidencias.md](causas-incidencias.md), apartado 8.
 
-**Por líneas, municipios y CT, y la hora siguiente** (`riesgo_zonas.py`, 13.10.2026). Dentro del día, la línea que falla (grupo de red de TedisNet, 70 líneas) queda entre las tres de más riesgo de su distribuidora en el 15 - 18 % de las incidencias de 2022 - 2025 (al azar, el 9 %) y el tamaño de la línea lo hace igual de bien que cualquier modelo; el área que falla (la red en cuatro áreas) está entre las dos de más riesgo en el 62 % de los casos, el 79 % los días de viento. Por línea y hora, con el tiempo observado y la cascada, la PR-AUC es 19 veces la tasa base de 0,041 % y alertar el 1 % de las línea-horas recoge el 23 - 24 % de las incidencias de las 1 - 3 horas siguientes con una precisión del 0,9 %, y por distribuidora y hora, el 3,9 % de las horas recoge el 24 % con una precisión del 2,2 %. Tres de cada cinco incidencias por meteorología empiezan a menos de 3 horas del pico de racha del día; tras una incidencia, otra empieza en 3 horas en el 11 % de los casos (30 % si la primera fue por meteorología). Ver [causas-incidencias.md](causas-incidencias.md), apartado 8.
+**Por líneas, municipios y CT, y la hora siguiente** (`riesgo_zonas.py`, 13.10.2026). Dentro del día, la línea que falla (grupo de red de TedisNet, 70 líneas) queda entre las tres de más riesgo de su distribuidora en el 15 - 18 % de las incidencias de 2022 - 2025 (al azar, el 9 %) y el tamaño de la línea lo hace igual de bien que cualquier modelo; el área que falla (la red en cuatro áreas, por k-means sobre las coordenadas de los municipios) está entre las dos de más riesgo en el 62 % de los casos y en el 79 % de los días de viento (42 casos), cuando al azar sería el 50 %, dos áreas de cuatro; es un cálculo de la exploración que no tiene guion en el repositorio. Por línea y hora, con el tiempo observado y la cascada, la PR-AUC es 19 veces la tasa base de 0,041 % y alertar el 1 % de las línea-horas recoge el 23 - 24 % de las incidencias de las 1 - 3 horas siguientes con una precisión del 0,9 %, y por distribuidora y hora, el 3,9 % de las horas recoge el 24 % con una precisión del 2,2 %. Tres de cada cinco incidencias por meteorología empiezan a menos de 3 horas del pico de racha del día; tras una incidencia, otra empieza en 3 horas en el 11 % de los casos (30 % si la primera fue por meteorología). Ver [causas-incidencias.md](causas-incidencias.md), apartado 8.
 
 **En operación, día a día (`job_ml_caso_negocio.py`, `caso_v10_20261014_1543`, 14.10.2026).** La variante `operativa` reentrenada cada tarde solo con los años anteriores, sobre la Distribuidora 1 y la Distribuidora 2 de 2022 al 02.08.2026 (3.348 días de distribuidora, 143 con incidencia de causa local). Con la previsión real de ICON-EU de la víspera (2024 - 2026, 1.844 días): un día muy alto tiene avería el 17,9 % de las veces y un día bajo el 1,9 % (9 veces); la probabilidad está calibrada (muy alto: dice 15,5 % y pasa 17,9 %; bajo: 2,7 % y 1,9 %); AUC 0,72 (la Distribuidora 1 0,76, la Distribuidora 2 0,66) y Brier 0,036 frente a 0,038 de la tasa base (con las tres redes, BSS de 0,052 con intervalo de 0,003 a 0,096 y pendiente de calibración de 1,27: las probabilidades son algo tímidas; la Distribuidora 3 recibe un 2 % de media y en 922 días no tuvo ninguna avería; el valor según el coste de reforzar está en el apartado 2c de [caso-de-negocio.md](caso-de-negocio.md)); los días en alerta (alto o muy alto, el 12,5 % de los días) concentran el 72 % de las horas-cliente perdidas por causas locales (46 % sin el temporal del 28.01.2026), detectan el 41 % de los días con incidencia y el 71 % de los días con dos o más con un 11 - 12 % de falsas alarmas, y, a partir de unos 16 días al año, cubren más horas-cliente que los avisos de viento y que los naranjas o rojos con los mismos días, aunque no superan a la regla de viento o tormenta. Dentro de los días de alerta, el 84 % de las incidencias empiezan en la franja horaria prevista y la línea que falla está entre las 3 primeras del ranking el 25 % de las veces (azar 9 %). Las variables probadas después y descartadas (humedad del suelo, lluvia acumulada, factor de racha, horas sobre el percentil 90 local, umbral por estación) están en [investigacion-continua.md](investigacion-continua.md); el detalle, en [caso-de-negocio.md](caso-de-negocio.md).
 
@@ -228,15 +253,17 @@ Con el reanálisis en 2022 - 2025 (137 días con avería) la logística con avis
 
 ## Model Examination [optional]
 
-Explicabilidad post hoc con SHAP: importancia global de las features y explicación local de cada alerta. En las horas de riesgo pesan sobre todo la lluvia y las rachas (de la última hora a 24 h), los reenganches aguas arriba en 6 y 24 h, las faltas de tensión y los defectos a tierra en el grupo de red, los microcortes y cortes del SCADA, los cambios de comunicaciones y la hora del día. Ninguna feature supera el umbral de alerta de leakage (PR-AUC sola de 0,3). Cada ejecución guarda en `l3_gold.ml_importancia` la media del SHAP absoluto de XGBoost, la importancia de los otros dos modelos y la PR-AUC de cada feature sola; las que ordenan los positivos demasiado bien por sí solas quedan marcadas con `alerta_leakage` para revisarlas antes de aceptar el modelo.
+En producción la explicación son los coeficientes de la regresión logística. `ml_models.linear_terms` los da en la escala que ve el modelo, después de la imputación, el logaritmo y la estandarización, de modo que cada uno se lee como una razón de odds por desviación típica, y la tarde deja los de su modelo en `coeficientes.csv` junto a su informe y dentro del `logistica.pkl` que guarda en MinIO. Los motivos que lee cada tarde el jefe de brigadas suman las contribuciones de cada grupo de variables (viento, lluvia, avisos, historia) en lugar de leer coeficientes sueltos, porque las variables que se mueven juntas se reparten el efecto, y las frases las escribe el parte con plantillas fijas.
+
+En el modelo por horas, que no está en producción, usamos SHAP: importancia global de las features y explicación local de cada alerta. En las horas de riesgo pesan sobre todo la lluvia y las rachas (de la última hora a 24 h), los reenganches aguas arriba en 6 y 24 h, las faltas de tensión y los defectos a tierra en el grupo de red, los microcortes y cortes del SCADA, los cambios de comunicaciones y la hora del día. Ninguna feature supera el umbral de alerta de leakage (PR-AUC sola de 0,3). Cada ejecución guarda en `l3_gold.ml_importancia` la media del SHAP absoluto de XGBoost, la importancia de los otros dos modelos y la PR-AUC de cada feature sola; las que ordenan los positivos demasiado bien por sí solas quedan marcadas con `alerta_leakage` para revisarlas antes de aceptar el modelo.
 
 ## Environmental Impact
 
-Entrenamiento local en un portátil (12 CPU lógicas, 32 GB) sobre datos agregados; no se usa GPU ni nube. No hemos medido el consumo eléctrico; cada entrenamiento completo dura de 9 a 40 minutos.
+Entrenamiento local en un portátil (12 CPU lógicas, 32 GB) sobre datos agregados; no se usa GPU ni nube. No hemos medido el consumo eléctrico; cada entrenamiento completo dura de 9 a 43 minutos.
 
 ## Technical Specifications [optional]
 
-- Modelo del día (en producción). Entrada: una fila por distribuidora y día con lo que se sabe a las 20:30 de la víspera (calendario, historia de Calser, tiempo de ayer, avisos de AEMET y la previsión de ICON-EU para el día). Salida: probabilidad, nivel, motivos, franja horaria, guardia recomendada y su reparto por líneas, municipios y CT. Tiempo: entre 4 min 33 s y 5 min 38 s la puntuación, reentreno incluido, y unos 15 minutos la tarde completa.
+- Modelo del día (en producción). Entrada: una fila por distribuidora y día con lo que se sabe a las 20:30 de la víspera (calendario, historia de Calser, tiempo de ayer, avisos de AEMET y la previsión de ICON-EU para el día). Salida: probabilidad, nivel, motivos, franja horaria, guardia recomendada y su reparto por líneas, municipios y CT; desde la 0.16.0, también el modelo ajustado (`logistica.pkl` y `run.json` en `datalake/ml/modelos/<run_id>/`). Tiempo: entre 4 min 33 s y 5 min 38 s la puntuación, reentreno incluido, y unos 15 minutos la tarde completa.
 - Modelo por CT y hora (evaluado, no en producción). Entrada: fila de `features_ct_hora` (un CT, una hora). Salida: probabilidad en [0, 1] y, aplicado el umbral acordado, alerta sí/no con su explicación SHAP.
 - Dependencias: Python, xgboost (`xgboost-cpu` 3.0.5), scikit-learn 1.7.2, pandas y pyarrow, fijadas en `infra/spark/requirements.txt`. Para los gráficos SHAP de los notebooks, el paquete `shap`; MLflow queda pendiente.
 - Latencia objetivo del modelo por CT y hora, si se sirviera: inferencia por debajo de un minuto por ciclo horario para todos los CT de una distribuidora.
@@ -251,7 +278,8 @@ Formatos de documentación seguidos: Mitchell et al. (2019), "Model Cards for Mo
 
 - **CT**: centro de transformación (media a baja tensión). Unidad de predicción.
 - **Evento local / sistémico**: interrupción que afecta a un solo CT frente a varias a la vez por la misma incidencia.
-- **PR-AUC**: área bajo la curva precision-recall.
+- **PR-AUC**: área bajo la curva precision-recall, calculada como la average precision de scikit-learn.
+- **Brier**: error cuadrático medio de la probabilidad; el BSS lo compara con el de decir cada día la tasa observada.
 - **SHAP**: valores de Shapley para atribuir la predicción a cada feature.
 
 ## More Information [optional]

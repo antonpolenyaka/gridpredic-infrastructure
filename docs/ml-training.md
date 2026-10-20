@@ -28,7 +28,7 @@ Es un problema muy desbalanceado: en el dataset `ds_20261010T045104_a5a2531cacbb
 
 Nunca usamos validación cruzada aleatoria: el modelo se usa sobre los mismos CT en el futuro, así que lo evaluamos igual. Los CT no se separan entre splits.
 
-**Corrección del muestreo.** Los modelos se entrenan sobre la muestra, donde los positivos pesan unas 50 veces más que en la realidad. En vez de entrenar con `peso_muestra`, corregimos la probabilidad después con la corrección de prior, `p = p_s * r / (p_s * r + 1 - p_s)` con `r = 0,02`. Es monótona, así que no cambia la ordenación ni ninguna métrica de ranking (PR-AUC, ROC-AUC, alertas con presupuesto), y deja las probabilidades en la escala de la población real. Con `usar_peso_muestra: true` se entrena con los pesos y no se corrige.
+**Corrección del muestreo.** Los modelos se entrenan sobre la muestra, donde los positivos pesan unas 50 veces más que en la realidad. En vez de entrenar con `peso_muestra`, corregimos la probabilidad después con la corrección de prior, `p = p_s * r / (p_s * r + 1 - p_s)` con `r = 0,02`. Es monótona, así que no cambia la ordenación ni ninguna métrica de ranking (PR-AUC, ROC-AUC, alertas con presupuesto), y deja las probabilidades en la escala de la población real. Es exacta si el modelo está calibrado en la muestra: es la fórmula de Bayes con otra proporción de clases y la misma verosimilitud, y en la logística equivale a restar log(1 / r) = log 50 = 3,91 al intercepto. Con `usar_peso_muestra: true` se entrena con los pesos y no se corrige.
 
 **Final de test.** Las etiquetas de los últimos 41 a 62 días de la ventana están censuradas (las interrupciones tardan en cargarse en Calser, lo mide `job_gold_dq_checks`). Contar esas horas como negativas penalizaría al modelo por acertar, así que la evaluación de test se corta en `evaluacion.test_hasta` (01.06.2026 por defecto). Las predicciones de esas horas sí se guardan.
 
@@ -328,7 +328,7 @@ Otras opciones: `--modelos xgboost,naif_historico` para entrenar solo algunos, `
 
 El job no va en Airflow a propósito. El driver hace el entrenamiento y usa todos los cores durante bastante rato; en el contenedor de Airflow eso deja sin CPU al scheduler, que en el portátil ya se cae con la carga de I/O. En `spark-master` el driver tiene la memoria y los cores del contenedor y los executors solo puntúan valid y test.
 
-**Memoria y tiempo en el portátil.** La muestra de train son unos 0,9 GB en float32 y el proceso Python del driver llega a unos 5 o 6 GB al entrenar el bosque. Conviene parar lo que no se usa (`docker compose stop sqlserver kafka kafka-connect kafka-ui trino`). Como referencia, contamos con entre una y dos horas para la ejecución completa con búsqueda, la mayor parte en XGBoost y en puntuar los 11 millones de filas de valid desde el disco externo.
+**Memoria y tiempo en el portátil.** La muestra de train son unos 0,9 GB en float32 y el proceso Python del driver llega a unos 5 o 6 GB al entrenar el bosque. Conviene parar lo que no se usa (`docker compose stop sqlserver kafka kafka-connect kafka-ui trino`). Como referencia, la ejecución completa con búsqueda del 11.10.2026 tardó 43 min 15 s: 15 min 22 s de búsqueda, con las nueve configuraciones de la logística, el bosque y XGBoost, y 455 s para puntuar los 11,2 millones de filas de valid desde el disco externo.
 
 ## 11. Pendiente
 
