@@ -8,15 +8,21 @@ tables that are rewritten by month (features_ct_hora, labels_ct_hora,
 agg_medida_hora...) and thousands of small files in the CDC tables of Bronze.
 
     spark-submit job_mantenimiento_delta.py [--bases l1_bronze,l2_silver,l3_gold] [--horas 168] [--sin-vacuum]
-        [--parar-a 18] [--solo-vacuum l3_gold.dataset_train]
+        [--parar-a 18] [--parar-grandes-a 17] [--grandes-gb 5] [--solo-vacuum l3_gold.dataset_train]
 
-A table that fails (a concurrent write of the streaming, say) is logged and
-skipped; the next week tries again.
+Every step of a table has its own try: an OPTIMIZE that fails (a concurrent
+write of the streaming, or the memory of the executor) is logged and the
+VACUUM of the same table still runs; the next week tries again.
 
-dataset_train only gets VACUUM: it is compacted by partition, and the months
-of 2025 ordered by (distribuidora_id, ct_id) with ZORDER, by
+Two tables only get VACUUM. dataset_train is compacted by partition, and the
+months of 2025 ordered by (distribuidora_id, ct_id) with ZORDER, by
 experimentos/consultas_trino/compactar_dataset.py, and a plain OPTIMIZE would
-merge the ordered files of each month into one again.
+merge the ordered files of each month into one again. The big table of
+values of TedisNet in Bronze (2.150 million rows) is written in Id order in
+files of 5 million rows (max_records_per_file), which is what lets Silver
+skip files by their statistics; OPTIMIZE would rewrite it whole for nothing.
+Its name in the catalog is the one job_bronze_sqlserver_batch.py builds with
+to_snake from the database and the table of config_bronze_sqlserver.json.
 """
 
 import argparse
@@ -30,7 +36,8 @@ from pyspark.sql import SparkSession
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("mantenimiento_delta")
 
-ONLY_VACUUM = "l3_gold.dataset_train"
+BIG_BRONZE_TABLE = "l1_bronze.tedis_net_eosa_historic_tag_interval_values_big"
+ONLY_VACUUM = f"l3_gold.dataset_train,{BIG_BRONZE_TABLE}"
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -40,6 +47,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--sin-vacuum", action="store_true", help="Only OPTIMIZE")
     parser.add_argument("--parar-a", type=int, default=None,
                         help="Local hour (Madrid) from which no new table is started, to leave Spark free for the evening")
+    parser.add_argument("--parar-grandes-a", type=int, default=None,
+                        help="Local hour (Madrid) from which a big table gets no OPTIMIZE (VACUUM only): its OPTIMIZE "
+                             "takes long and --parar-a is only checked between tables")
+    parser.add_argument("--grandes-gb", type=float, default=5.0, help="Size from which a table counts as big for --parar-grandes-a")
     parser.add_argument("--solo-vacuum", default=ONLY_VACUUM,
                         help="Tables (comma separated) that keep their own file layout: VACUUM without OPTIMIZE")
     return parser.parse_args(argv)
@@ -51,6 +62,14 @@ def actions(name: str, args: argparse.Namespace) -> list:
     steps = [] if name in keep else ["optimize"]
     if not args.sin_vacuum:
         steps.append("vacuum")
+    return steps
+
+
+def late_for_big(steps: list, size_bytes: int, hour: int, args: argparse.Namespace) -> list:
+    """The steps without OPTIMIZE when the table is big and it is already --parar-grandes-a or later."""
+    if (args.parar_grandes_a is not None and "optimize" in steps and hour >= args.parar_grandes_a
+            and size_bytes >= args.grandes_gb * 1e9):
+        return [s for s in steps if s != "optimize"]
     return steps
 
 
@@ -75,6 +94,19 @@ def files_of(spark, name: str) -> tuple:
     return int(detail["numFiles"] or 0), int(detail["sizeInBytes"] or 0)
 
 
+def run_steps(spark, name: str, steps: list, hours: int) -> list:
+    """The steps that worked. Each one has its own try, so a failed OPTIMIZE does not leave the table without VACUUM."""
+    ran = []
+    for step in steps:
+        statement = f"OPTIMIZE {name}" if step == "optimize" else f"VACUUM {name} RETAIN {hours} HOURS"
+        try:
+            spark.sql(statement)
+            ran.append(step)
+        except Exception as error:  # noqa: BLE001
+            logger.warning("%s: %s failed (%s)", name, step.upper(), str(error)[:200])
+    return ran
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     spark = SparkSession.builder.appName("mantenimiento_delta").enableHiveSupport().getOrCreate()
@@ -86,24 +118,37 @@ def main(argv=None) -> int:
                 logger.info("Stopping at %s:00 before %s; the next run goes on", args.parar_a, name)
                 break
             start = time.time()
+            steps = actions(name, args)
+            if not steps:
+                continue
             try:
-                steps = actions(name, args)
-                if not steps:
-                    continue
                 files, size = files_of(spark, name)
-                if "optimize" in steps:
-                    spark.sql(f"OPTIMIZE {name}")
-                if "vacuum" in steps:
-                    spark.sql(f"VACUUM {name} RETAIN {args.horas} HOURS")
-                files_after, size_after = files_of(spark, name)
-                before_files += files
-                after_files += files_after
-                done += 1
-                logger.info("%s (%s): %s -> %s files, %.1f -> %.1f MB in %.0f s", name, " + ".join(steps), files,
-                            files_after, size / 1e6, size_after / 1e6, time.time() - start)
             except Exception as error:  # noqa: BLE001
                 failed += 1
                 logger.warning("%s: skipped (%s)", name, str(error)[:200])
+                continue
+            hour = datetime.now(ZoneInfo("Europe/Madrid")).hour
+            planned = late_for_big(steps, size, hour, args)
+            if planned != steps:
+                logger.info("%s: %.1f GB at %s:00, no OPTIMIZE after %s:00 for big tables (VACUUM only)", name, size / 1e9, hour,
+                            args.parar_grandes_a)
+                steps = planned
+            if not steps:
+                continue
+            ran = run_steps(spark, name, steps, args.horas)
+            if len(ran) < len(steps):
+                failed += 1
+            if not ran:
+                continue
+            try:
+                files_after, size_after = files_of(spark, name)
+            except Exception:  # noqa: BLE001
+                files_after, size_after = files, size
+            before_files += files
+            after_files += files_after
+            done += 1
+            logger.info("%s (%s): %s -> %s files, %.1f -> %.1f MB in %.0f s", name, " + ".join(ran), files,
+                        files_after, size / 1e6, size_after / 1e6, time.time() - start)
     logger.info("Done: %s tables, %s skipped; current files %s -> %s", done, failed, before_files, after_files)
     spark.stop()
     return 0

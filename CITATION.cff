@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "Si usas este repositorio, cítalo así."
+message: "Si lo citas, hazlo así."
 title: "GridPredic infrastructure: plataforma de datos para la predicción de interrupciones en redes de distribución eléctrica"
 type: software
 version: 0.15.0
