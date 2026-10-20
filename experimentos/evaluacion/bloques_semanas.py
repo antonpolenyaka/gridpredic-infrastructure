@@ -10,7 +10,7 @@ Las variantes son las tres de codificacion.py (sin la estación, la estación en
 indicadores) y las de las pruebas de octubre que la tabla exportada permite repetir (fragilidad, extensión del viento
 fuerte, interacciones, régimen, NAO y pendiente por red); las que no tienen sus columnas en la tabla se saltan con un
 aviso. Deja bloques_semanas.csv con cada diferencia por fechas (bloque 1) y por semanas (bloque 7) y la razón de
-anchuras de los dos intervalos, y bloques_semanas.md con el resumen. Tarda alrededor de un minuto.
+anchuras de los dos intervalos y de qué lado del cero queda cada uno, y bloques_semanas.md con el resumen. Tarda alrededor de un minuto.
 """
 
 import json
@@ -34,6 +34,11 @@ logging.getLogger().setLevel(logging.ERROR)
 
 OCTOBER = ("operativa_fragilidad", "operativa_extension", "operativa_interacciones", "operativa_regimen",
            "operativa_nao", "operativa_pendiente_red")
+
+
+def side(lo: float, hi: float) -> str:
+    """Dónde queda el intervalo de la diferencia: encima del cero, debajo o incluyéndolo."""
+    return "encima" if lo > 0 else "debajo" if hi < 0 else "incluye_0"
 
 
 def main(argv) -> int:
@@ -84,7 +89,9 @@ def main(argv) -> int:
             if name != "operativa":
                 row["razon_anchura"] = ((row["dif_p97_5_b7"] - row["dif_p2_5_b7"])
                                         / (row["dif_p97_5_b1"] - row["dif_p2_5_b1"]))
-                row["decision_cambia"] = (row["dif_p2_5_b1"] > 0) != (row["dif_p2_5_b7"] > 0)
+                row["lado_b1"] = side(row["dif_p2_5_b1"], row["dif_p97_5_b1"])
+                row["lado_b7"] = side(row["dif_p2_5_b7"], row["dif_p97_5_b7"])
+                row["decision_cambia"] = row["lado_b1"] != row["lado_b7"]
             rows.append(row)
     table = pd.DataFrame(rows)
     table.to_csv(os.path.join(out, "bloques_semanas.csv"), index=False)
@@ -93,8 +100,11 @@ def main(argv) -> int:
     lines = ["# Diferencias de las pruebas del día por fechas y por semanas", "",
              f"{int(widths.size)} diferencias frente a la operativa ({table['variante'].nunique() - 1} variantes en "
              f"2024 - 2025 y 2024 - 2026). Con bloques de siete días el intervalo mide entre {widths.min():.2f} y "
-             f"{widths.max():.2f} veces lo que mide por fechas (mediana {widths.median():.2f}); cambia de lado del cero "
-             f"en {flips}.", ""]
+             f"{widths.max():.2f} veces lo que mide por fechas (mediana {widths.median():.2f}). Cambian de clase (intervalo "
+             f"encima del cero, debajo o incluyéndolo) {flips}" + (": " + ", ".join(
+                 f"{r.variante} en {r.anios} ({r.lado_b1} por fechas, {r.lado_b7} por semanas)"
+                 for r in table[table["decision_cambia"].eq(True)].itertuples()) if flips else "")
+             + ".", ""]
     shown = table[["anios", "variante", "pr_auc", "dif_b1", "dif_p2_5_b1", "dif_p97_5_b1", "dif_p2_5_b7",
                    "dif_p97_5_b7", "razon_anchura"]].round(3)
     lines += ["| " + " | ".join(shown.columns) + " |", "| " + " | ".join("---" for _ in shown.columns) + " |"]
