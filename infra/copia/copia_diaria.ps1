@@ -4,11 +4,12 @@
 # de mando (dashboard\data) y un volcado del catalogo de Hive (metastore_db en PostgreSQL):
 # sin el, las tablas Delta siguen en MinIO pero no aparecen en Spark ni en Trino.
 #
-#     .\infra\copia\copia_diaria.ps1                                   # desde la raiz del repositorio
+#     .\infra\copia\copia_diaria.ps1                                   # desde la raiz del repositorio; destino %USERPROFILE%\gridpredic_copia
 #     .\infra\copia\copia_diaria.ps1 -Destino C:\Users\yo\copia_gp     # otra carpeta
 #
-# Para que corra sola: una tarea del Programador de tareas de Windows, todos los dias a las
-# 22:30 (despues de la tarde), con "Iniciar en" la raiz del repositorio. Solo lee: mc mirror
+# Para que corra sola hay que registrar a mano una tarea del Programador de tareas de Windows,
+# todos los dias a las 22:30 (despues de la tarde), con "Iniciar en" la raiz del repositorio
+# (el comando esta en docs/operacion-diaria.md, apartado 4). Solo lee: mc mirror
 # copia sin borrar en el destino, pg_dump no bloquea el catalogo y robocopy no toca el origen.
 # Las claves no salen de los contenedores (mc y pg_dump usan sus variables de entorno).
 
@@ -17,7 +18,9 @@ param(
     [int]$Volcados = 14
 )
 
-$ErrorActionPreference = "Stop"
+# "Continue" and not "Stop": in PowerShell 5.1 with the output redirected, a line that docker writes to stderr
+# (progress of docker compose cp) would stop the script. Every native command is checked by its exit code.
+$ErrorActionPreference = "Continue"
 $Raiz = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $Raiz
 $hoy = Get-Date -Format "yyyyMMdd"
@@ -33,6 +36,7 @@ if ($Destino.Substring(0, 2) -eq $Raiz.Substring(0, 2)) {
 #    suya que se mantiene entre dias, y de ahi al destino. Los .sh se copian al contenedor y se
 #    ejecutan alli, sin pasar comillas por la linea de comandos de Windows.
 docker compose cp (Join-Path $PSScriptRoot "landing_vivo.sh") minio:/tmp/landing_vivo.sh
+if ($LASTEXITCODE -ne 0) { throw "docker compose cp de landing_vivo.sh ha fallado" }
 docker compose exec -T minio sh /tmp/landing_vivo.sh
 if ($LASTEXITCODE -ne 0) { throw "mc mirror de 00_landing/vivo ha fallado" }
 docker compose cp minio:/tmp/copia_vivo/. (Join-Path $Destino "vivo")
@@ -46,6 +50,7 @@ if ($LASTEXITCODE -ge 8) { throw "robocopy de dashboard\data ha fallado ($LASTEX
 #    que tambien da el numero de tablas de TBLS para comprobar el volcado restaurado.
 $volcado = "metastore_db_$hoy.dump"
 docker compose cp (Join-Path $PSScriptRoot "volcado_catalogo.sh") postgres:/tmp/volcado_catalogo.sh
+if ($LASTEXITCODE -ne 0) { throw "docker compose cp de volcado_catalogo.sh ha fallado" }
 $tablas = docker compose exec -T postgres sh /tmp/volcado_catalogo.sh
 if ($LASTEXITCODE -ne 0) { throw "pg_dump de metastore_db ha fallado" }
 docker compose cp postgres:/tmp/metastore_db.dump (Join-Path $Destino "metastore\$volcado")
