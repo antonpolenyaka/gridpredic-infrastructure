@@ -275,6 +275,8 @@ docker compose config
 docker compose up -d --build --wait
 ```
 
+Kafka, Kafka Connect y Kafka UI van en el perfil `cdc` y no arrancan con el resto: la captura de TedisNet está parada desde la carga inicial del 08.10.2026 y así un reinicio del portátil no espera a que se recuperen. Para la ingesta en flujo, `docker compose --profile cdc up -d --wait`.
+
 Los `healthchecks` y las dependencias del Compose controlan el orden de inicialización. Cuando el comando termina correctamente, el entorno está listo para utilizarse.
 
 El primer arranque es largo. Como referencia, en un portátil con 4 cores y 12 GB asignados a Docker:
@@ -312,7 +314,7 @@ Durante el arranque se realiza automáticamente:
 | Spark UI de un job en marcha | http://localhost:4040 (lanzado desde Airflow) y http://localhost:4041 (lanzado a mano en `spark-master`) | Etapas y tareas del job mientras corre |
 | Spark Master | http://localhost:8080 por defecto; 8090 en el portátil, con `SPARK_MASTER_UI_PORT` | Estado del clúster Spark |
 | Spark Worker | http://localhost:8081 | Estado del worker Spark |
-| Kafka UI | http://localhost:8082 | Topics, mensajes y estado de Kafka Connect |
+| Kafka UI | http://localhost:8082 | Topics, mensajes y estado de Kafka Connect (solo con `--profile cdc`) |
 | Airflow | http://localhost:8084 | Gestión y ejecución de DAGs |
 | Trino | http://localhost:8085 | Endpoint/UI del motor SQL |
 | Cuadro de mando del riesgo | http://localhost:8086 | El riesgo de mañana por distribuidora, línea y municipio sobre un mapa (ver apartado 13) |
