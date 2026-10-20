@@ -33,6 +33,7 @@ _runlogs/*/
 # Correspondencias con los nombres reales de las distribuidoras (solo en el portatil)
 experimentos/plan_financiero/privado/
 _runlogs/anonimizar_nombres.json
+_runlogs/demo_seudonimos.json
 experimentos/aves/titulares.json
 
 # Volcados del grafo RDF de experimentos/semantica (unos 35 MB, se regeneran)

@@ -157,9 +157,9 @@
    "pico": {
     "racha_kmh": 57,
     "hora": 23,
-    "municipio": "Segura de Toro"
+    "municipio": "Municipio 46"
    },
-   "texto": "AEMET por municipios (44 municipios, elaborada 17:57): pico de racha 57 km/h a las 23:00 en Segura de Toro; hasta 37,5 mm de lluvia; probabilidad de tormenta hasta el 75 %"
+   "texto": "AEMET por municipios (44 municipios, elaborada 17:57): pico de racha 57 km/h a las 23:00 en Municipio 46; hasta 37,5 mm de lluvia; probabilidad de tormenta hasta el 75 %"
   },
   {
    "id": 2,
@@ -315,9 +315,9 @@
    "pico": {
     "racha_kmh": 43,
     "hora": 13,
-    "municipio": "Ceclavín"
+    "municipio": "Municipio 43"
    },
-   "texto": "AEMET por municipios (24 municipios, elaborada 17:57): pico de racha 43 km/h a las 13:00 en Ceclavín; hasta 8,8 mm de lluvia; probabilidad de tormenta hasta el 75 %"
+   "texto": "AEMET por municipios (24 municipios, elaborada 17:57): pico de racha 43 km/h a las 13:00 en Municipio 43; hasta 8,8 mm de lluvia; probabilidad de tormenta hasta el 75 %"
   },
   {
    "id": 1366,
@@ -473,9 +473,9 @@
    "pico": {
     "racha_kmh": 38,
     "hora": 19,
-    "municipio": "Valle de Santa Ana"
+    "municipio": "Municipio 20"
    },
-   "texto": "AEMET por municipios (1 municipio, elaborada 17:57): pico de racha 38 km/h a las 19:00 en Valle de Santa Ana; hasta 0,6 mm de lluvia; probabilidad de tormenta hasta el 80 %"
+   "texto": "AEMET por municipios (1 municipio, elaborada 17:57): pico de racha 38 km/h a las 19:00 en Municipio 20; hasta 0,6 mm de lluvia; probabilidad de tormenta hasta el 80 %"
   }
  ]
 }

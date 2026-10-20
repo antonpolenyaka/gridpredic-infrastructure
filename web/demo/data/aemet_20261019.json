@@ -157,9 +157,9 @@
    "pico": {
     "racha_kmh": 54,
     "hora": 3,
-    "municipio": "Piornal"
+    "municipio": "Municipio 36"
    },
-   "texto": "AEMET por municipios (44 municipios, elaborada 17:07): pico de racha 54 km/h a las 3:00 en Piornal; hasta 0,1 mm de lluvia; probabilidad de tormenta hasta el 40 %"
+   "texto": "AEMET por municipios (44 municipios, elaborada 17:07): pico de racha 54 km/h a las 3:00 en Municipio 36; hasta 0,1 mm de lluvia; probabilidad de tormenta hasta el 40 %"
   },
   {
    "id": 2,
@@ -315,9 +315,9 @@
    "pico": {
     "racha_kmh": 42,
     "hora": 0,
-    "municipio": "Pedroso de Acim"
+    "municipio": "Municipio 72"
    },
-   "texto": "AEMET por municipios (24 municipios, elaborada 17:07): pico de racha 42 km/h a las 0:00 en Pedroso de Acim; probabilidad de tormenta hasta el 15 %"
+   "texto": "AEMET por municipios (24 municipios, elaborada 17:07): pico de racha 42 km/h a las 0:00 en Municipio 72; probabilidad de tormenta hasta el 15 %"
   },
   {
    "id": 1366,
@@ -473,9 +473,9 @@
    "pico": {
     "racha_kmh": 24,
     "hora": 17,
-    "municipio": "Valle de Santa Ana"
+    "municipio": "Municipio 20"
    },
-   "texto": "AEMET por municipios (1 municipio, elaborada 17:07): pico de racha 24 km/h a las 17:00 en Valle de Santa Ana; hasta 0,6 mm de lluvia; probabilidad de tormenta hasta el 60 %"
+   "texto": "AEMET por municipios (1 municipio, elaborada 17:07): pico de racha 24 km/h a las 17:00 en Municipio 20; hasta 0,6 mm de lluvia; probabilidad de tormenta hasta el 60 %"
   }
  ]
 }
