@@ -40,11 +40,10 @@ Con 40.000 euros y ENISA en el mes 6, los fundadores tienen que renunciar como m
 Importe redondo más alto de ENISA que cumple la condición de fondos propios y deja caja y patrimonio en positivo todos los meses: 38.500 euros; el plan pide 35.000.
 
 Tarifa: 3.000 euros fijos, 150 euros por CT del 1 al 100, 15 euros del 101 al 300 y 10 euros desde el 301, y 0,10 euros por señal, con un mínimo de 6.000 euros y sin máximo
-  Distribuidora 1: 760 CT, 44.400 señales -> 30.040 euros al año
-  Distribuidora 2: 570 CT, 33.300 señales -> 27.030 euros al año
-  Distribuidora 3: 10 CT, 600 señales -> 6.000 euros al año
+  Distribuidora 1: 796 CT, 34.647 señales -> 29.425 euros al año
+  Distribuidora 2: 578 CT, 27.513 señales -> 26.531 euros al año
+  Distribuidora 3: 10 CT, 606 señales -> 6.000 euros al año
   Red tipo del plan: 150 CT, 9.000 señales -> 19.650 euros al año
   Red de 50 CT: 50 CT, 2.900 señales -> 10.790 euros al año
   Red de 100 CT: 100 CT, 6.000 señales -> 18.600 euros al año
   Red de 300 CT: 300 CT, 17.500 señales -> 22.750 euros al año
-  Las señales de las tres distribuidoras son provisionales (78.301 tags de TedisNet repartidos por CT).
