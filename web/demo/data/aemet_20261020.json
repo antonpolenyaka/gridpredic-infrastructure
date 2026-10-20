@@ -1,0 +1,299 @@
+{
+ "generado": "2026-10-20T07:55Z",
+ "fecha": "2026-10-20",
+ "fuente": "AEMET OpenData, predicción horaria por municipios",
+ "distribuidoras": [
+  {
+   "id": 3,
+   "nombre": "Distribuidora 1",
+   "municipios": 44,
+   "elaborado": "2026-10-20T07:15:09",
+   "horas": [
+    {
+     "hora": 2,
+     "racha_kmh": null,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 3,
+     "racha_kmh": 15,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 15,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 19,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 19,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 9,
+     "racha_kmh": 22,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 10,
+     "racha_kmh": 23,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 29,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 20,
+     "racha_kmh": 18,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 21,
+     "racha_kmh": 22,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 22,
+     "racha_kmh": 30,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 23,
+     "racha_kmh": 35,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    }
+   ],
+   "pico": {
+    "racha_kmh": 35,
+    "hora": 23,
+    "municipio": "Valdemorales"
+   },
+   "texto": "AEMET por municipios (44 municipios, elaborada 07:15): pico de racha 35 km/h a las 23:00 en Valdemorales"
+  },
+  {
+   "id": 2,
+   "nombre": "Distribuidora 2",
+   "municipios": 21,
+   "elaborado": "2026-10-20T07:15:09",
+   "horas": [
+    {
+     "hora": 2,
+     "racha_kmh": null,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 3,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 11,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 10,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 10,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 9,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 10,
+     "racha_kmh": 20,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 22,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 22,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 22,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 27,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 27,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 20,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 21,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 22,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 23,
+     "racha_kmh": 27,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    }
+   ],
+   "pico": {
+    "racha_kmh": 28,
+    "hora": 17,
+    "municipio": "Coria"
+   },
+   "texto": "AEMET por municipios (21 municipios, elaborada 07:15): pico de racha 28 km/h a las 17:00 en Coria"
+  }
+ ]
+}
