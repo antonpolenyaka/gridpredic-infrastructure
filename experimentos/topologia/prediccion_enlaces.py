@@ -13,7 +13,7 @@ los positivos son los pares que se cortan juntos en Y.
    entrenamiento (vecinos comunes, Jaccard, Adamic-Adar, asignación de
    recursos, preferential attachment, Katz truncado), información lateral
    (elementos aguas arriba compartidos conocidos antes del corte, coseno
-   TF-IDF de los textos de cada CT, mismo grupo, cabecera, municipio o celda, distancia) y azar.
+   TF-IDF entre los conjuntos de elementos aguas arriba de cada CT (no hay textos), mismo grupo, cabecera, municipio o celda, distancia) y azar.
    Métricas: ROC-AUC y PR-AUC sobre todos los candidatos, ROC-AUC con
    negativos muestreados como en el cuaderno (un extremo cambiado por un nodo
    al azar de las tres redes, sin filtrar), con negativos "dificiles" (misma

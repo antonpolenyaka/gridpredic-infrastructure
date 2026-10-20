@@ -9,6 +9,10 @@ la de experimentos/perfil_dia/exportar_dia.py y causas_dias_meteo.csv la de job_
 (cau_20261012T025409_4681c9). Solo las Distribuidoras 1 y 2, como el caso de negocio. Dos preguntas, con la
 previsión real de la víspera y con el reanálisis:
 
+Los días con avería son los del caso de negocio, que ya cuenta solo las incidencias de causa local (sin las de
+LOCAL_EXCLUDED de riesgo_zonas.py: aguas arriba, apagón, programadas, maniobras y baja tensión), así que no hace
+falta filtrar otra vez por causa.
+
 1. Fallos: días con avería de causa local en nivel bajo frente a los días con avería en alerta (alto o muy alto).
    La memoria dice que son averías de equipos o de causa desconocida que llegan con buen tiempo; la frase se queda si
    al menos dos tercios de los fallos son solo de equipos o desconocida y ninguno tenía aviso de viento o tormenta.

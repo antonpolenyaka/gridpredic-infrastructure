@@ -5,3 +5,5 @@
     python experimentos\federado\fedavg_dia.py <dia.csv.gz> <bloques.json> experimentos\federado\salida
 
 Deja `salida/fedavg_dia.txt` en menos de dos minutos. Las predicciones por día no se guardan.
+
+Nota de método: `fed_exacto` usa la C que se elige con los datos juntos (la de producción); un federado real tendría que elegirla también por rondas, así que su cifra es algo optimista.

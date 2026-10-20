@@ -12,7 +12,8 @@ servicio externo.
 
 Anonimización: los CT, trafos, líneas, cabeceras e incidencias se numeran en secuencia dentro de cada
 distribuidora; ningún código real de instalación entra en las URIs ni en las salidas. Las distribuidoras son
-Distribuidora 1, 2 y 3. Los municipios se identifican por su código INE (dato público de geografía).
+Distribuidora 1, 2 y 3. Los municipios se identifican por su código INE, así que los
+volcados del grafo no se publican (no se versionan; ver el README).
 
 Las incidencias de Calser se identifican por (distribuidora, periodo, id): el id se repite entre periodos.
 Las interrupciones no llevan rdf:type ni las incidencias tampoco: lo infiere RDFS por dominio y rango
