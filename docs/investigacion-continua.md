@@ -14,7 +14,7 @@ Las primeras pruebas sobre el modelo del día usan el mismo banco: los días de 
 
 Si el AUC rodante no sube y el Brier no baja, la variable no entra, aunque la literatura la respalde: con 143 días positivos el modelo no tiene sitio para variables que solo añaden ruido.
 
-A partir de 3e las pruebas del modelo del día pasan a `job_ml_riesgo_dia.py`. La regla es la misma (cada año lo puntúa un modelo que solo vio los anteriores y todas las variantes se comparan sobre los mismos días), pero cambian las cifras: PR-AUC, veces la tasa base y parte de los días con avería en el 10 y el 20 % de días de más riesgo, con la previsión real de ICON-EU y la diferencia emparejada con bootstrap por fechas. El criterio de entrada desde entonces es el de 3f.
+A partir de 3e las pruebas del modelo del día pasan a `job_ml_riesgo_dia.py`. La regla es la misma (cada año lo puntúa un modelo que solo vio los anteriores y todas las variantes se comparan sobre los mismos días), pero cambian las cifras: PR-AUC, veces la tasa base y parte de los días con avería en el 10 y el 20 % de días de más riesgo, con la previsión real de ICON-EU y la diferencia emparejada con bootstrap por fechas. Junto a cada diferencia damos la parte de las réplicas del bootstrap en que la variante sale mejor: es una forma de leer el intervalo, no la probabilidad de que la variante sea mejor. Los intervalos de las pruebas 3 a 3r se sortean por fechas sueltas; los de 3s y los de `job_ml_riesgo_dia.py` desde el 17.10.2026, por bloques de siete días seguidos. El criterio de entrada desde entonces es el de 3f.
 
 ## 2. Lo que dice la literatura y lo que ya teníamos
 
@@ -150,7 +150,7 @@ Variantes `operativa_extension`, `operativa_interacciones`, `operativa_pendiente
 
 **Resultados** (`dia_mas_20261014_2301`, 7 minutos; regresión logística, cada año puntuado por un modelo que solo vio los anteriores). Con la previsión real de ICON-EU de 2024 - 2025 (58 días con avería de distribuidora):
 
-| variante | PR-AUC | ROC-AUC | días con avería en el 10 % de más riesgo | en el 20 % | diferencia emparejada de PR-AUC frente a `operativa` [IC 95 %] | prob. de ser mejor |
+| variante | PR-AUC | ROC-AUC | días con avería en el 10 % de más riesgo | en el 20 % | diferencia emparejada de PR-AUC frente a `operativa` [IC 95 %] | réplicas en que es mejor |
 | --- | --- | --- | --- | --- | --- | --- |
 | `operativa` (producción) | 0,188 | 0,82 | 53 % | 67 % | | |
 | `operativa_interacciones` | 0,187 | 0,82 | 53 % | 67 % | -0,002 [-0,016, +0,017] | 39 % |
@@ -171,7 +171,7 @@ Sobre el reanálisis de 2022 - 2025 (cuatro años, la comparación con más día
 
 **Resultados** (`dia_conteos_20261014_2343`, variante `operativa`, cada año puntuado por un modelo que solo vio los anteriores). Con la previsión real de ICON-EU de 2024 - 2025:
 
-| modelo | PR-AUC | ROC-AUC | días con avería en el 10 % de más riesgo | en el 20 % | diferencia emparejada frente a la logística [IC 95 %] | prob. de ser mejor |
+| modelo | PR-AUC | ROC-AUC | días con avería en el 10 % de más riesgo | en el 20 % | diferencia emparejada frente a la logística [IC 95 %] | réplicas en que es mejor |
 | --- | --- | --- | --- | --- | --- | --- |
 | logística (producción) | 0,188 | 0,82 | 53 % | 67 % | | |
 | logística equilibrada | 0,158 | 0,81 | 53 % | 66 % | -0,028 [-0,052, -0,005] | 0,2 % |
@@ -212,7 +212,7 @@ Por cabecera, que es la unidad con la que se decide (revisar, podar, telemandar)
 
 **Diseño.** En `job_ml_riesgo_dia.py`: `seq_3m` y `seq_6m` (bloque `sequia`), el balance hídrico (lluvia menos evapotranspiración de referencia, del reanálisis) de los 90 y 180 días que acaban en D - 1, como z-score de su mes del calendario con la media y la desviación de los años anteriores a 2022, por distribuidora; y `hie_horas` (bloque `hielo`), las CT-horas de D con precipitación a 0,5 grados o menos, del reanálisis, con su gemelo desde la previsión del día anterior (`prev_hie_horas`, ICON-EU da temperatura y lluvia) para medirlo con la previsión real. Variantes `operativa_sequia` y `operativa_hielo` frente a `operativa`, mismo banco que 3f.
 
-**Resultados** (`dia_sequia_20261015_0109`, regresión logística, cada año puntuado por un modelo que solo vio los anteriores). Con la previsión real de 2024 - 2025: `operativa` 0,188 de PR-AUC (53 % de los días con avería en el 10 % de más riesgo, 67 % en el 20 %); con la sequía 0,178 (53 %, 66 %; diferencia emparejada -0,009 [-0,030, +0,005], probabilidad de ser mejor 11 %); con la precipitación helada 0,179 (53 %, 67 %; -0,006 [-0,027, +0,001], 23 %). Sobre el reanálisis de 2022 - 2025: 0,151 frente a 0,144 con la sequía (-0,006, 10 %) y 0,152 con el hielo (+0,000, 52 %); por años, la sequía solo gana en 2025 (0,197 frente a 0,189) y el hielo en 2023.
+**Resultados** (`dia_sequia_20261015_0109`, regresión logística, cada año puntuado por un modelo que solo vio los anteriores). Con la previsión real de 2024 - 2025: `operativa` 0,188 de PR-AUC (53 % de los días con avería en el 10 % de más riesgo, 67 % en el 20 %); con la sequía 0,178 (53 %, 66 %; diferencia emparejada -0,009 [-0,030, +0,005], mejor en el 11 % de las réplicas); con la precipitación helada 0,179 (53 %, 67 %; -0,006 [-0,027, +0,001], 23 %). Sobre el reanálisis de 2022 - 2025: 0,151 frente a 0,144 con la sequía (-0,006, 10 %) y 0,152 con el hielo (+0,000, 52 %); por años, la sequía solo gana en 2025 (0,197 frente a 0,189) y el hielo en 2023.
 
 **Lectura.** Ninguna de las dos entra. La sequía de meses no añade nada a lo que ya dicen el calendario, el tiempo previsto del día y la historia reciente (y los días con avería de verano los marcan la tormenta y el calor más que el balance hídrico acumulado); la precipitación helada es demasiado rara en estas redes para que una logística aprenda de ella (unas pocas CT-horas al año, casi todas en el norte de Cáceres) y el aviso de nieve de AEMET ya está dentro. Las dos quedan en el job, y con ellas se cierran las filas de sequía y nieve de la lista de la revisión.
 
@@ -226,7 +226,7 @@ Por cabecera, que es la unidad con la que se decide (revisar, podar, telemandar)
 
 **Resultados** (`dia_modelos_20261015_0144`; GFS y GEM cubren el 100 % de los días con previsión de ICON-EU; variante `operativa`, regresión logística, cada año puntuado por un modelo que solo vio los anteriores; 58 días con avería en 2024 - 2025):
 
-| el tiempo del día que entra al modelo | PR-AUC | veces la tasa base | ROC-AUC | días con avería en el 10 % de más riesgo | en el 20 % | diferencia emparejada frente a ICON-EU solo [IC 95 %] | prob. de ser mejor |
+| el tiempo del día que entra al modelo | PR-AUC | veces la tasa base | ROC-AUC | días con avería en el 10 % de más riesgo | en el 20 % | diferencia emparejada frente a ICON-EU solo [IC 95 %] | réplicas en que es mejor |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ICON-EU solo (producción) | 0,188 | 6,9 | 0,82 | 53 % | 67 % | | |
 | GEM solo | 0,177 | 6,5 | 0,81 | 47 % | 67 % | -0,011 [-0,036, +0,010] | 16 % |
@@ -240,7 +240,7 @@ Llevados por cuantiles a la escala del reanálisis, donde el sesgo de cada model
 
 **Con 2026 y el UKMO** (`dia_modelos_2026_20261015_1126`). Bajamos GFS y GEM hasta el 31.08.2026 y el UKMO de 10 km desde 2025 (racha, viento y lluvia; el archivo no guarda más de él) y repetimos la comparación. Como el UKMO empieza en 2025, la ventana es 2025 - 2026, 54 días con avería, y no 2024 - 2026. Con la regresión logística de producción:
 
-| el tiempo del día que entra al modelo | PR-AUC | por cuantiles | días con avería en el 10 % de más riesgo | en el 20 % | diferencia por cuantiles frente a ICON-EU [IC 95 %] | prob. de ser mejor |
+| el tiempo del día que entra al modelo | PR-AUC | por cuantiles | días con avería en el 10 % de más riesgo | en el 20 % | diferencia por cuantiles frente a ICON-EU [IC 95 %] | réplicas en que es mejor |
 | --- | --- | --- | --- | --- | --- | --- |
 | ICON-EU solo (producción) | 0,145 | 0,150 | 37 % | 59 % | | |
 | GFS solo | 0,160 | 0,159 | 39 % | 56 % | +0,008 [-0,005, +0,027] | 91 % |
@@ -258,7 +258,7 @@ En esta ventana el orden entre ICON-EU y GFS se da la vuelta respecto a 2024 - 2
 
 **Los datos.** 424 compuestos (211 de Terra y 213 de Aqua; 848 contando los dos mosaicos de MODIS que tocan las celdas) de 12.2016 a 09.2026 para las 43 celdas (19.080 filas; el 97,4 % de los días del conjunto tienen valor con la latencia de una semana). Las celdas se comportan como se espera de la dehesa y de la montaña: en la penillanura de Cáceres el NDVI va de 0,61 en invierno a 0,26 en agosto (el pasto se seca), y en los valles del norte de la Distribuidora 1 se queda entre 0,58 y 0,72 todo el año con el máximo en mayo (la hoja de los castaños y los robles); 2024 y 2025 salen como años muy verdes (anomalía media +1,2 y +1,0) y 2017 y 2019 como secos (-0,6).
 
-**Resultados** (`dia_fenologia_20261015_0423`, regresión logística, cada año puntuado por un modelo que solo vio los anteriores). Con la previsión real de 2024 - 2025: `operativa` 0,188 de PR-AUC (53 % de los días con avería en el 10 % de más riesgo, 67 % en el 20 %) y `operativa_fenologia` 0,172 (53 %, 67 %; diferencia emparejada -0,012 [-0,032, -0,000], probabilidad de ser mejor 2 %); llevadas por cuantiles, las dos dan 0,179 (-0,000 [-0,007, +0,007], 47 %). Sobre el reanálisis de 2022 - 2025: 0,151 frente a 0,150 (-0,001 [-0,007, +0,004], 34 %), con la captura igual (37 - 38 % en el 10 %, 54 - 55 % en el 20 %); por años gana solo en 2023 (0,160 frente a 0,152) y pierde en 2022 y 2025.
+**Resultados** (`dia_fenologia_20261015_0423`, regresión logística, cada año puntuado por un modelo que solo vio los anteriores). Con la previsión real de 2024 - 2025: `operativa` 0,188 de PR-AUC (53 % de los días con avería en el 10 % de más riesgo, 67 % en el 20 %) y `operativa_fenologia` 0,172 (53 %, 67 %; diferencia emparejada -0,012 [-0,032, -0,000], mejor en el 2 % de las réplicas); llevadas por cuantiles, las dos dan 0,179 (-0,000 [-0,007, +0,007], 47 %). Sobre el reanálisis de 2022 - 2025: 0,151 frente a 0,150 (-0,001 [-0,007, +0,004], 34 %), con la captura igual (37 - 38 % en el 10 %, 54 - 55 % en el 20 %); por años gana solo en 2023 (0,160 frente a 0,152) y pierde en 2022 y 2025.
 
 **Lectura.** El verdor medido no añade nada a lo que ya dicen el calendario (que lleva la estación), la racha frente al clima de cada celda y la lluvia; la interacción racha x verdor, que era la apuesta (la hoja medida en lugar de abril - octubre), tampoco, y con la previsión en crudo incluso resta, porque hereda el sesgo al alza de la racha de ICON-EU. Cierra la fila de fenología de la revisión con una medida en vez de un "necesita cuenta", y deja dos cosas útiles: el camino sin registro al NDVI de MODIS (que sirve igual para VIIRS cuando Terra y Aqua se apaguen) y la serie de verdor por celda, que vale como contexto de sequía de combustible para el apartado de incendios de la memoria. El bloque queda en el job, apagado en producción (no está en `operativa`).
 
@@ -279,7 +279,7 @@ En esta ventana el orden entre ICON-EU y GFS se da la vuelta respecto a 2024 - 2
 | + HRL | 70,9 % | 81,7 % | 26,5 % | 50,7 % |
 | + los dos | 69,0 % | 81,1 % | 26,9 % | 50,6 % |
 
-Por cabecera el HRL sube 2,5 puntos en el 10 %, pero todo sale de 2022 (56 % frente a 47 %); en los otros cuatro años queda igual o a una décima. Por CT baja un punto. En el modelo del día (`dia_hoja_20261015_1501`, previsión real de 2024 - 2026, 84 días con avería), `operativa_hoja` da 0,151 de PR-AUC frente a 0,156 (-0,005 [-0,020, +0,007], probabilidad de ser mejor 22 %), con la captura igual (45 % y 65 % frente a 45 % y 64 %); sobre el reanálisis de los años comunes, 0,000 [-0,005, +0,007].
+Por cabecera el HRL sube 2,5 puntos en el 10 %, pero todo sale de 2022 (56 % frente a 47 %); en los otros cuatro años queda igual o a una décima. Por CT baja un punto. En el modelo del día (`dia_hoja_20261015_1501`, previsión real de 2024 - 2026, 84 días con avería), `operativa_hoja` da 0,151 de PR-AUC frente a 0,156 (-0,005 [-0,020, +0,007], mejor en el 22 % de las réplicas), con la captura igual (45 % y 65 % frente a 45 % y 64 %); sobre el reanálisis de los años comunes, 0,000 [-0,005, +0,007].
 
 **Lectura.** El HRL no aporta, igual que la altura del dosel por celda y en el corredor. La subida por cabecera es la misma historia que la del arbolado en 2025: un mal año de una cabecera con mucho árbol. El tipo de hoja, que era lo nuevo, no sirve aquí porque el HRL no distingue caducas de perennes. Con esto quedan medidas las tres capas públicas de arbolado que propusimos (WorldCover y altura del dosel, el corredor de OSM y el HRL) y ninguna mejora el modelo con la coordenada del municipio. El bloque se queda en el código, fuera de `operativa`.
 
@@ -337,7 +337,7 @@ En el modelo del día (`dia_corredor_20261015_1243`, previsión real de 2024 - 2
 
 **Resultados.**
 
-| variante | PR-AUC con la previsión real | días con avería en el 10 % de más riesgo | en el 20 % | diferencia frente a `operativa` [IC 95 %] | prob. de ser mejor |
+| variante | PR-AUC con la previsión real | días con avería en el 10 % de más riesgo | en el 20 % | diferencia frente a `operativa` [IC 95 %] | réplicas en que es mejor |
 | --- | --- | --- | --- | --- | --- |
 | `operativa` (producción) | 0,156 | 45 % | 64 % | | |
 | curva de fragilidad | 0,158 | 46 % | 64 % | +0,003 [-0,017, +0,031] | 62 % |
@@ -355,7 +355,7 @@ Sobre el reanálisis de los años comunes (2022 - 2026), la curva da 0,139 de PR
 
 **Los datos.** Ahora sí se separan las redes: la copa caduca cubre de media el 10,1 % del terreno de las celdas de la Distribuidora 1 (en los valles del norte el 75 - 99 % de la copa es caduca) y el 0,03 % de las de la Distribuidora 2, donde todo es encina.
 
-**Resultados.** En el modelo anual (`rct_mfe_20261015_1654`), la captura por CT del 10 % sube de 27,5 % a 29,4 %, con la mayor parte en 2025 (26,7 % frente a 18,7 %) y una pérdida en 2021; por cabecera baja de 68,4 % a 67,8 %. En el del día (`dia_caducas_20261015_1657`), `operativa_caducas` da 0,152 de PR-AUC frente a 0,156 (-0,003 [-0,012, +0,001], probabilidad de ser mejor 11 %), con la misma captura; sobre el reanálisis, -0,001 (6 %).
+**Resultados.** En el modelo anual (`rct_mfe_20261015_1654`), la captura por CT del 10 % sube de 27,5 % a 29,4 %, con la mayor parte en 2025 (26,7 % frente a 18,7 %) y una pérdida en 2021; por cabecera baja de 68,4 % a 67,8 %. En el del día (`dia_caducas_20261015_1657`), `operativa_caducas` da 0,152 de PR-AUC frente a 0,156 (-0,003 [-0,012, +0,001], mejor en el 11 % de las réplicas), con la misma captura; sobre el reanálisis, -0,001 (6 %).
 
 **Lectura.** Con la especie bien medida el resultado se parece al del HRL y al del arbolado de la celda: nada en el día y un solo año bueno en el anual por CT, otra vez 2025, como en 3h. La hoja caduca del norte existe y el MFE la ve, pero en la Distribuidora 1 va con la misma geografía que ya marcan la historia y el relieve, y en la Distribuidora 2 no hay. Cierra la fila del MFE de la revisión.
 
