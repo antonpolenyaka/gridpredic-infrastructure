@@ -193,9 +193,9 @@ Desde el contenedor `spark-master` (los lanzadores locales de `_runlogs` del por
 
 ```
 docker compose exec spark-master python3 /app/jobs/00_landing/job_landing_datos_publicos.py
-docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/01_bronze/job_bronze_datos_publicos.py
-docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/02_silver/job_silver_contexto_publico.py
-docker compose exec spark-master /opt/spark/bin/spark-submit /app/jobs/03_gold/job_gold_contexto_ct.py --config /app/config/03_gold/config_gold.json
+docker compose exec spark-master /opt/spark/bin/spark-submit --conf spark.cores.max=2 --conf spark.executor.memory=2g /app/jobs/01_bronze/job_bronze_datos_publicos.py
+docker compose exec spark-master /opt/spark/bin/spark-submit --conf spark.cores.max=2 --conf spark.executor.memory=2g /app/jobs/02_silver/job_silver_contexto_publico.py
+docker compose exec spark-master /opt/spark/bin/spark-submit --conf spark.cores.max=2 --conf spark.executor.memory=3g /app/jobs/03_gold/job_gold_contexto_ct.py --config /app/config/03_gold/config_gold.json
 
 docker compose exec spark-master /opt/spark/bin/spark-submit --driver-memory 6g \
     --py-files /app/jobs/04_ml/ml_models.py,/app/jobs/04_ml/ml_metrics.py,/app/jobs/04_ml/job_ml_train.py,/app/jobs/04_ml/job_analisis_red.py \
