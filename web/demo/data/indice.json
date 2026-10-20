@@ -1,12 +1,168 @@
 {
- "generado": "17.10.2026 18:46 UTC",
+ "generado": "20.10.2026 09:30 UTC",
  "vivo": {
-  "fecha": "2026-10-18",
-  "fecha_texto": "18.10.2026",
-  "generado": "17.10.2026 18:46 UTC",
-  "run_id": "scheduled__2026-10-17T18:30:00+00:00"
+  "fecha": "2026-10-20",
+  "fecha_texto": "20.10.2026",
+  "generado": "20.10.2026 08:25 UTC",
+  "run_id": "scheduled__2026-10-19T18:30:00+00:00"
  },
  "dias": [
+  {
+   "fecha": "2026-10-20",
+   "fecha_texto": "20.10.2026",
+   "dia": "20261020",
+   "fichero": "riesgo_20261020.json",
+   "generado": "20.10.2026 08:25 UTC",
+   "run_id": "scheduled__2026-10-19T18:30:00+00:00",
+   "repetido": false,
+   "prevision": "20.10.2026 07:56 UTC",
+   "modelo": "regresión logística, variante operativa",
+   "distribuidoras": [
+    {
+     "id": 2,
+     "nombre": "Distribuidora 2",
+     "nivel": "bajo",
+     "probabilidad": 0.019327601417899132,
+     "percentil": 0.16255989048596853,
+     "aviso_max_nivel": 0.0,
+     "guardia_reforzada": false,
+     "guardia_motivo": "normal",
+     "franja": "día de poco viento (racha máxima prevista de 30 km/h): sin franja de viento",
+     "racha_max_kmh": 29.5
+    },
+    {
+     "id": 3,
+     "nombre": "Distribuidora 1",
+     "nivel": "bajo",
+     "probabilidad": 0.020900296047329903,
+     "percentil": 0.1136208076659822,
+     "aviso_max_nivel": 0.0,
+     "guardia_reforzada": false,
+     "guardia_motivo": "normal",
+     "franja": "de 0:00 a 24:00, con el pico de racha (43 km/h) a las 4:00",
+     "racha_max_kmh": 43.2
+    },
+    {
+     "id": 1366,
+     "nombre": "Distribuidora 3",
+     "nivel": "bajo",
+     "probabilidad": 0.015171961858868599,
+     "percentil": 0.6806981519507187,
+     "aviso_max_nivel": 0.0,
+     "guardia_reforzada": false,
+     "guardia_motivo": "normal",
+     "franja": "día de poco viento (racha máxima prevista de 36 km/h): sin franja de viento",
+     "racha_max_kmh": 35.6
+    }
+   ],
+   "pasado_manana": {
+    "fecha": "2026-10-21",
+    "fecha_texto": "21.10.2026",
+    "distribuidoras": [
+     {
+      "id": 3,
+      "nombre": "Distribuidora 1",
+      "nivel": "bajo",
+      "probabilidad": 0.023087387904524803
+     },
+     {
+      "id": 2,
+      "nombre": "Distribuidora 2",
+      "nivel": "bajo",
+      "probabilidad": 0.019998542964458466
+     },
+     {
+      "id": 1366,
+      "nombre": "Distribuidora 3",
+      "nivel": "medio",
+      "probabilidad": 0.018554573878645897
+     }
+    ]
+   },
+   "ficheros": {
+    "parte_guardia": "parte_guardia_20261020.xlsx",
+    "ensemble": "ensemble_20261020.json",
+    "aemet": "aemet_20261020.json"
+   }
+  },
+  {
+   "fecha": "2026-10-19",
+   "fecha_texto": "19.10.2026",
+   "dia": "20261019",
+   "fichero": "riesgo_20261019.json",
+   "generado": "18.10.2026 18:45 UTC",
+   "run_id": "scheduled__2026-10-18T18:30:00+00:00",
+   "repetido": false,
+   "prevision": "18.10.2026 18:30 UTC",
+   "modelo": "regresión logística, variante operativa",
+   "distribuidoras": [
+    {
+     "id": 2,
+     "nombre": "Distribuidora 2",
+     "nivel": "bajo",
+     "probabilidad": 0.023401962593197823,
+     "percentil": 0.392539356605065,
+     "aviso_max_nivel": 0.0,
+     "guardia_reforzada": false,
+     "guardia_motivo": "normal",
+     "franja": "de 0:00 a 13:00, con el pico de racha (45 km/h) a las 0:00",
+     "racha_max_kmh": 45.4
+    },
+    {
+     "id": 3,
+     "nombre": "Distribuidora 1",
+     "nivel": "bajo",
+     "probabilidad": 0.02210863307118416,
+     "percentil": 0.16187542778918548,
+     "aviso_max_nivel": 0.0,
+     "guardia_reforzada": false,
+     "guardia_motivo": "normal",
+     "franja": "de 0:00 a 9:00, con el pico de racha (41 km/h) a las 0:00",
+     "racha_max_kmh": 41.0
+    },
+    {
+     "id": 1366,
+     "nombre": "Distribuidora 3",
+     "nivel": "bajo",
+     "probabilidad": 0.012839225120842457,
+     "percentil": 0.45516769336071183,
+     "aviso_max_nivel": 0.0,
+     "guardia_reforzada": false,
+     "guardia_motivo": "normal",
+     "franja": "día de poco viento (racha máxima prevista de 28 km/h): sin franja de viento",
+     "racha_max_kmh": 28.1
+    }
+   ],
+   "pasado_manana": {
+    "fecha": "2026-10-20",
+    "fecha_texto": "20.10.2026",
+    "distribuidoras": [
+     {
+      "id": 3,
+      "nombre": "Distribuidora 1",
+      "nivel": "bajo",
+      "probabilidad": 0.02043948322534561
+     },
+     {
+      "id": 2,
+      "nombre": "Distribuidora 2",
+      "nivel": "bajo",
+      "probabilidad": 0.0187534149736166
+     },
+     {
+      "id": 1366,
+      "nombre": "Distribuidora 3",
+      "nivel": "bajo",
+      "probabilidad": 0.015742003917694092
+     }
+    ]
+   },
+   "ficheros": {
+    "parte_guardia": "parte_guardia_20261019.xlsx",
+    "ensemble": "ensemble_20261019.json",
+    "aemet": "aemet_20261019.json"
+   }
+  },
   {
    "fecha": "2026-10-18",
    "fecha_texto": "18.10.2026",
@@ -356,8 +512,8 @@
    "fecha_texto": "28.01.2026",
    "dia": "20260128",
    "fichero": "riesgo_20260128.json",
-   "generado": "14.10.2026 13:58 UTC",
-   "run_id": "demo_20260128",
+   "generado": "20.10.2026 09:30 UTC",
+   "run_id": "prueba_c12_20260128",
    "repetido": true,
    "prevision": "día anterior (previsión guardada en Gold, día repetido)",
    "modelo": "regresión logística, variante operativa",
@@ -366,11 +522,11 @@
      "id": 2,
      "nombre": "Distribuidora 2",
      "nivel": "muy alto",
-     "probabilidad": 0.21359264850616455,
-     "percentil": 0.997469269703543,
+     "probabilidad": 0.21127517521381378,
+     "percentil": 0.9974340175953079,
      "aviso_max_nivel": 2.0,
-     "guardia_reforzada": false,
-     "guardia_motivo": null,
+     "guardia_reforzada": true,
+     "guardia_motivo": "nivel muy alto; aviso de viento de AEMET (naranja)",
      "franja": "de 6:00 a 14:00, con el pico de racha (99 km/h) a las 7:00",
      "racha_max_kmh": 99.0
     },
@@ -378,11 +534,11 @@
      "id": 3,
      "nombre": "Distribuidora 1",
      "nivel": "muy alto",
-     "probabilidad": 0.18307414650917053,
-     "percentil": 0.9808387563268257,
+     "probabilidad": 0.18343213200569153,
+     "percentil": 0.9805718475073314,
      "aviso_max_nivel": 2.0,
-     "guardia_reforzada": false,
-     "guardia_motivo": null,
+     "guardia_reforzada": true,
+     "guardia_motivo": "nivel muy alto; aviso de viento de AEMET (naranja)",
      "franja": "de 6:00 a 24:00, con el pico de racha (146 km/h) a las 9:00",
      "racha_max_kmh": 146.2
     },
@@ -390,11 +546,11 @@
      "id": 1366,
      "nombre": "Distribuidora 3",
      "nivel": "muy alto",
-     "probabilidad": 0.18244829773902893,
-     "percentil": 0.9981923355025307,
+     "probabilidad": 0.18196731805801392,
+     "percentil": 0.9981671554252199,
      "aviso_max_nivel": 1.0,
-     "guardia_reforzada": false,
-     "guardia_motivo": null,
+     "guardia_reforzada": true,
+     "guardia_motivo": "nivel muy alto; aviso de viento de AEMET (amarillo)",
      "franja": "de 6:00 a 12:00, con el pico de racha (113 km/h) a las 7:00",
      "racha_max_kmh": 112.7
     }
