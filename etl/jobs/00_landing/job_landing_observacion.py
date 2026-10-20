@@ -208,9 +208,10 @@ def dashboard_payload(frame: pd.DataFrame, risk: dict, cfg: dict, now: datetime)
     f["ts_local"] = f["ts_utc"].dt.tz_convert(zone)
     f["racha_kmh"] = f["racha_ms"] * 3.6
     f["viento_kmh"] = f["viento_ms"] * 3.6
+    # The last value of every station; one that has been silent since an earlier day says the date with the hour.
     last = f.sort_values("ts_utc").groupby("idema").tail(1)
     out["estaciones"] = [{"idema": r.idema, "nombre": r.nombre, "lat": round(float(r.lat), 4), "lon": round(float(r.lon), 4),
-                          "hora": r.ts_local.strftime("%H:%M"), "racha_kmh": None if pd.isna(r.racha_kmh) else round(float(r.racha_kmh)),
+                          "hora": r.ts_local.strftime("%H:%M" if r.ts_local.date() == today else "%d.%m.%Y %H:%M"), "racha_kmh": None if pd.isna(r.racha_kmh) else round(float(r.racha_kmh)),
                           "viento_kmh": None if pd.isna(r.viento_kmh) else round(float(r.viento_kmh)),
                           "lluvia_mm": None if pd.isna(r.lluvia_mm) else round(float(r.lluvia_mm), 1),
                           "temp_c": None if pd.isna(r.temp_c) else round(float(r.temp_c), 1)} for r in last.itertuples()]
