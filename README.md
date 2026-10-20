@@ -128,6 +128,8 @@ SQL Server sigue en la distribuidora en cualquier caso: la captura de cambios y 
 
 Spark hace el trabajo pesado: leer las series del SCADA, los cortes y la meteorología y dejarlos en features por CT y hora o por distribuidora y día. Los modelos se entrenan después con scikit-learn y XGBoost en el driver, pasando de Spark a pandas con Arrow, porque las tablas son pequeñas: la del modelo del día son unos 8.200 días de red por 35 variables, 2,3 MB, y su logística se ajusta en milisegundos; la muestra del modelo por CT, 884.971 filas por 246 variables, ocupa unos 0,9 GB en float32, poco al lado de los 6 GB que `train.sh` da al driver. spark.ml tendría la logística, pero no el XGBoost con parada temprana sobre la PR-AUC de una muestra ponderada ni la evaluación hacia delante con purga entre años. Lo que sí se reparte es la puntuación: el modelo se envía a los ejecutores y valid se puntúa por lotes con `mapInPandas`. Además, scikit-learn permite probar cada modelo sin clúster, en segundos. Si un día el volumen lo pidiera (todas las líneas de una distribuidora grande por hora), el paso sería `xgboost.spark` o un modelo por grupo con `applyInPandas`, sin tocar las capas.
 
+Los modelos están en Python y no en R. Python es el lenguaje de todo el camino hasta la guardia, y la tubería de scikit-learn que evaluamos por años es la misma que se reentrena cada tarde. Sobre Spark 4, R habría sido una capa más, porque SparkR está en desuso desde la versión 4.0. R nos ha servido de referencia: el perfil de los días con avería sigue a FactoMineR y la logística de Firth (`logistica_firth` de `ml_models.py`), al algoritmo de logistf, las dos programadas en Python y comprobadas.
+
 ---
 
 ## 1. Requisitos mínimos del ordenador
