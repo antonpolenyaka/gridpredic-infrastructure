@@ -1,0 +1,71 @@
+{
+ "nucleos": 2,
+ "meses": 1.0,
+ "meses_leidos": 68,
+ "meses_tabla": 68,
+ "filas": 61801970,
+ "columnas": [
+  "horas_hasta_proximo_evento",
+  "hist_duracion_media_365d",
+  "hist_dias_desde_ultima",
+  "hist_scada_dias_desde_ultimo",
+  "ct_potencia_kva",
+  "ct_num_abonados",
+  "ct_n_salidas",
+  "ct_n_trafos",
+  "ct_n_ct_grupo",
+  "ct_n_tags_medida",
+  "ct_tension_primaria_kv",
+  "ct_latitud",
+  "ct_longitud",
+  "med_intensidad_media_24h",
+  "med_intensidad_max_24h",
+  "med_intensidad_delta_1h",
+  "med_intensidad_delta_24h",
+  "med_intensidad_neutro_media_24h",
+  "med_intensidad_neutro_max_24h",
+  "med_intensidad_neutro_delta_1h",
+  "med_intensidad_neutro_delta_24h",
+  "med_tension_media_24h",
+  "med_tension_max_24h",
+  "med_tension_delta_1h",
+  "med_tension_delta_24h",
+  "med_potencia_activa_media_24h",
+  "med_potencia_activa_max_24h",
+  "med_potencia_activa_delta_1h",
+  "med_potencia_activa_delta_24h",
+  "med_potencia_reactiva_media_24h"
+ ],
+ "recorrido": [
+  [
+   2.52,
+   68
+  ],
+  [
+   2.22,
+   68
+  ],
+  [
+   2.07,
+   68
+  ]
+ ],
+ "calculo": [
+  [
+   124.86,
+   1287
+  ],
+  [
+   117.62,
+   1287
+  ],
+  [
+   115.84,
+   1287
+  ]
+ ],
+ "recorrido_s": 2.07,
+ "recorrido_dispersion": 0.217,
+ "calculo_s": 115.84,
+ "calculo_dispersion": 0.078
+}

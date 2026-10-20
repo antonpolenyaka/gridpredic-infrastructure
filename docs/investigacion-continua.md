@@ -529,7 +529,6 @@ Preguntamos qué datos de los equipos instalados en los clientes podrían cruzar
 
 - Volver a probar el suelo y la duración del viento cuando haya dos temporadas más etiquetadas (2027), con el mismo banco de pruebas.
 - De las ejecuciones del 17.10.2026 queda la previsión de IFS de la víspera (3u), cuando acabe su descarga; 3t y 3v están medidas (la noche del 17.10) y 3v devolvió `historia_desfasada` a `"mediana"` el 18.10.
-- En el portátil, fuera de 19:00 - 21:00 y de uno en uno: borrar las estadísticas de ANALYZE de Trino y medir sin ellas c2a y c5b (`experimentos/consultas_trino/lanzar_experimento.ps1 -SoloEstadisticas`, unos 10 minutos) y la serie de escalado de 1 a 12 núcleos con la cuarta parte y la mitad de los meses (`lanzar_escalado.ps1`, 65 - 75 minutos), que decide entre la USL y Amdahl y mide cómo crece el tiempo de Gold con los datos.
 - El salto de racha entre la rejilla regular y la nativa de ICON-EU con las tardes guardadas antes del 30.11.2026 (3u).
 - El coste de un día de guardia reforzada en cada distribuidora, para fijar el umbral con la curva de valor de 3s.
 - Un monitor de deriva para la tarde: la distancia de Mahalanobis de la fila de mañana a los días de entrenamiento, en la escala que ve la logística, con un aviso cuando pase del percentil 99. Hoy la vigilancia es el seguimiento de las alertas pasadas y los avisos de datos que faltan (ficha del modelo).

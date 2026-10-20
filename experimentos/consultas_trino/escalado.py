@@ -7,10 +7,11 @@ cálculo por fila. Se lanza dentro de spark-master una vez por número de núcle
     spark-submit --conf spark.cores.max=<n> --conf spark.executor.memory=6g escalado.py <n> <salida.json>
         [--pasadas 3] [--meses 1.0]
 
-La primera pasada calienta la caché del sistema operativo y no cuenta; luego --pasadas pasadas de cada carga, de las
-que se guardan todas, la menor y la dispersión (máximo entre mínimo). Con --meses por debajo de 1 lee solo esa parte
-de los meses de la tabla (los primeros, por fecha_mes), para medir cómo crece el tiempo con los datos. ajustar_escalado.py
-junta los JSON y ajusta los modelos.
+Una pasada de cada carga calienta la caché del sistema operativo y el plan de las agregaciones y no cuenta; luego
+--pasadas pasadas de cada carga, de las que se guardan todas, la menor y la dispersión (máximo entre mínimo). Hasta el
+20.10.2026 solo se calentaba el recuento, y la primera medida del cálculo salía entre un 4 y un 30 % más lenta que la
+menor de las otras dos. Con --meses por debajo de 1 lee solo esa parte de los meses de la tabla (los primeros, por
+fecha_mes), para medir cómo crece el tiempo con los datos. ajustar_escalado.py junta los JSON y ajusta los modelos.
 """
 
 import argparse
@@ -55,8 +56,10 @@ def main(argv=None):
         return round(time.time() - start, 2), len(rows)
 
     warm = light()  # calienta la caché y da las filas leídas
+    heavy()  # y el plan de las 60 agregaciones, que en la primera pasada medida costaba de más
     result = {"nucleos": args.nucleos, "meses": args.meses, "meses_leidos": len(kept), "meses_tabla": len(months),
-              "filas": int(sum(r["count"] for r in warm)), "columnas": numeric, "recorrido": [], "calculo": []}
+              "filas": int(sum(r["count"] for r in warm)), "columnas": numeric, "calentamiento": ["recorrido", "calculo"],
+              "recorrido": [], "calculo": []}
     for _ in range(args.pasadas):
         result["recorrido"].append(timed(light))
         result["calculo"].append(timed(heavy))
