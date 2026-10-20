@@ -173,6 +173,10 @@ V10 = {
     "iva": 0.21,
     "tipo_is": 0.15,
     "mes_pago_is": 7,
+    # subida anual de la licencia en cada aniversario (el plan no la cuenta; ver valor_ipc)
+    "ipc_licencia": 0.0,
+    # {mes previsto de la contratación: puesta en marcha con la que entra}; vacío = sin regla
+    "contrataciones_ligadas": {},
 }
 
 # ENISA (decisión 10). Constituimos en diciembre de 2026 y el primer ejercicio cierra el
@@ -203,6 +207,9 @@ V11.update({
     "precio_licencia": licencia(**RED_TIPO_PLAN),
     "prima_fundadores": APORTACION_FUNDADORES_V11 - V10["capital_fundadores"],
     "recortes_fundadores": [RECORTE_FUNDADORES_V11],
+    # El ingeniero entra con la tercera puesta en marcha y el comercial con la novena, nunca
+    # antes de los meses 13 y 25. En el plan no cambia nada; en los retrasos, sí.
+    "contrataciones_ligadas": {13: 3, 25: 9},
 })
 V11["enisa"]["mes_cobro"] = MES_ENISA_V11
 V11["enisa"]["importe"] = IMPORTE_ENISA_V11
@@ -268,8 +275,33 @@ def anio_de(m):
 # ---------------------------------------------------------------------------
 # Simulación
 # ---------------------------------------------------------------------------
+def meses_contratacion(S):
+    """Mes en que entra cada contratación con la regla de las puestas en marcha:
+    {mes previsto: mes real}; None si no llegan las puestas en marcha que hacen falta."""
+    pm = sorted(S["puestas_en_marcha"])
+    return {mes: (max(mes, pm[n - 1]) if len(pm) >= n else None)
+            for mes, n in S.get("contrataciones_ligadas", {}).items()}
+
+
+def aplicar_contrataciones(S):
+    meses = meses_contratacion(S)
+    if not meses:
+        return S
+    S2 = copy.deepcopy(S)
+    nunca = 10 ** 6
+    S2["plantilla"] = [(n, b, (meses[d] or nunca) if d in meses else d) for (n, b, d) in S["plantilla"]]
+    S2["inversiones"] = [(((meses[m] or nunca) if (m in meses and tipo == "equipo") else m), c, imp, tipo)
+                         for (m, c, imp, tipo) in S["inversiones"]]
+    return S2
+
+
+def precio_licencia_anio(S, k):
+    """Licencia del año k del cliente (0 = el primero), con la subida anual si la hay."""
+    return S["precio_licencia"] * (1 + S.get("ipc_licencia", 0.0)) ** k
+
+
 def simular(S):
-    S = copy.deepcopy(S)
+    S = aplicar_contrataciones(copy.deepcopy(S))
     N = S["meses"]
     iva = S["iva"]
     P = {k: [0.0] * (N + 2) for k in [
@@ -284,7 +316,6 @@ def simular(S):
     # --- clientes -------------------------------------------------------------
     bajas = dict(S["bajas"])
     clientes = [{"gm": gm, "fin": bajas.get(gm)} for gm in S["puestas_en_marcha"]]
-    lic_mes = S["precio_licencia"] / 12.0
     for c in clientes:
         gm = c["gm"]
         firma = gm - 1
@@ -299,12 +330,12 @@ def simular(S):
         while m <= N:
             if c["fin"] is not None and m >= c["fin"]:
                 break
-            P["fact_base"][m] += S["precio_licencia"]
+            P["fact_base"][m] += precio_licencia_anio(S, (m - gm) // 12)
             m += 12
         for m in range(gm, N + 1):
             if c["fin"] is not None and m >= c["fin"]:
                 break
-            P["ing_lic"][m] += lic_mes
+            P["ing_lic"][m] += precio_licencia_anio(S, (m - gm) // 12) / 12.0
     for m in range(1, N + 1):
         P["fact_iva"][m] = P["fact_base"][m] * iva
 
@@ -534,13 +565,13 @@ def simular(S):
             while mm <= m:
                 if c["fin"] is not None and mm >= c["fin"]:
                     break
-                fact += S["precio_licencia"]
+                fact += precio_licencia_anio(S, (mm - c["gm"]) // 12)
                 mm += 12
             rec = 0.0
             for x in range(c["gm"], m + 1):
                 if c["fin"] is not None and x >= c["fin"]:
                     break
-                rec += lic_mes
+                rec += precio_licencia_anio(S, (x - c["gm"]) // 12) / 12.0
             diferidos += fact - rec
         b["anticipos"] = anticipos
         b["periodificacion"] = diferidos
@@ -798,7 +829,47 @@ def escenario_red(S, ct, senales):
     return S2
 
 
+def escenario_mas_clientes(S):
+    """Optimista: dos clientes nuevos más en los años 2 y 3, en los meses que quita el pesimista
+    (22 y 24; 35 y 36), con el mismo ingeniero (decisión 12)."""
+    S2 = copy.deepcopy(S)
+    S2["puestas_en_marcha"] = sorted(S["puestas_en_marcha"] + [22, 24, 35, 36])
+    return S2
+
+
+def nota_contrataciones(S):
+    """Texto con los meses de contratación que cambian frente a los previstos (13 y 25)."""
+    meses = meses_contratacion(S)
+    nombres = {13: "el ingeniero", 25: "el comercial"}
+    partes = [(nombres.get(m, f"la contratación del mes {m}"), real) for m, real in sorted(meses.items()) if real != m]
+    if not partes:
+        return ""
+    txt = []
+    for i, (n, real) in enumerate(partes):
+        if not real:
+            txt.append(f"{n} no entra")
+        else:
+            txt.append(f"{n} entra en el mes {real}" if i == 0 else f"{n} en el {real}")
+    return " (" + " y ".join(txt) + ")"
+
+
 def lista_escenarios(S):
+    if S["nombre"] == "v11":
+        retraso6, retraso12 = escenario_retraso(S, 6), escenario_retraso(S, 12)
+        menos = escenario_menos_clientes(S, 2)
+        return [
+            ("Moderado: el plan", S),
+            ("Pesimista: dos clientes nuevos menos en los años 2 y 3" + nota_contrataciones(menos), menos),
+            ("Optimista: dos clientes nuevos más en los años 2 y 3, con el mismo ingeniero", escenario_mas_clientes(S)),
+            ("Los contratos llegan seis meses más tarde" + nota_contrataciones(retraso6), retraso6),
+            ("Lo mismo, con medio sueldo de los fundadores hasta el mes 11", escenario_retraso(S, 6, recorte=(1, 11, 0.5))),
+            ("Los contratos llegan un año más tarde" + nota_contrataciones(retraso12), retraso12),
+            ("Sin la ronda", escenario_sin_ronda(S)),
+            ("ENISA llega dos meses más tarde (mes 8)", escenario_enisa(S, MES_ENISA_V11 + 2)),
+            ("ENISA presta solo el mínimo de la línea (25.000 €)", escenario_enisa_importe(S, 25000.0)),
+            ("ENISA deniega el préstamo", escenario_enisa_denegado(S)),
+            ("Clientes más pequeños: redes de 100 CT y 6.000 señales", escenario_red(S, 100, 6000)),
+        ]
     lista = [
         ("Base: el plan", S),
         ("Los contratos llegan seis meses más tarde", escenario_retraso(S, 6)),
@@ -1077,13 +1148,14 @@ def construir_tablas(res, escen):
         cm, mm = caja_minima(r, 1, 36)
         h, mh = holgura_363(r, 36)
         filas.append([nombre, fmt(cm) + f" (mes {mm})", fmt(h + r["balances"][mh]["umbral_363"]) + f" (mes {mh})",
-                      fmt(pyg_anual(r, 2)["resultado"]), fmt(pyg_anual(r, 3)["ingresos"]),
-                      fmt(pyg_anual(r, 3)["resultado"]), fmt(r["caja"][36]), str(activos_al_final(r, 36))])
+                      fmt(pyg_anual(r, 2)["resultado"]),
+                      fmt(pyg_anual(r, 3)["ingresos"]) + f" ({activos_al_final(r, 36)})",
+                      fmt(pyg_anual(r, 3)["resultado"]), fmt(r["caja"][36])])
     tablas["sensibilidad"] = tabla(
         "Sensibilidad del plan, en euros",
         ["Escenario", "Caja más baja (mes)", "Patrimonio neto más bajo con el participativo (mes)",
-         "Resultado del año 2", "Ingresos del año 3", "Resultado del año 3", "Tesorería al final del año 3",
-         "Clientes al final"], filas, [5, 2, 2, 2, 2, 2, 2, 1])
+         "Resultado del año 2", "Ingresos del año 3 (clientes al final)", "Resultado del año 3",
+         "Tesorería al final del año 3"], filas, [5, 2, 2, 2, 2, 2, 2])
 
     # --- tarifa
     filas = []
@@ -1189,7 +1261,165 @@ def construir_tablas(res, escen):
     ]
     tablas["supuestos"] = tabla("Supuestos del plan financiero", ["Concepto", "Supuesto", "De dónde sale"],
                                 filas, [2, 6, 3])
+    tablas.update(tablas_analisis(res))
     return tablas, y, t
+
+
+# ---------------------------------------------------------------------------
+# Análisis que cita el texto de 3.3, 3.8.3, 3.9 y 3.10.5
+# ---------------------------------------------------------------------------
+# Valor de un minuto de TIEPI de toda la red en el incentivo de calidad (memoria, 3.8.3) y
+# tasa de retribución financiera de la CNMC para 2026 - 2031, con la que se descuenta el
+# valor para el cliente.
+MINUTO_TIEPI = {"Distribuidora 1": 12600.0, "Distribuidora 2": 14900.0}
+TASA_CNMC = 0.0658
+IPC_CONTRASTE = 0.03
+
+
+def cascada(res, a):
+    """Cuenta de resultados en cascada: coste de las ventas = nube, comisión del socio y sueldo y
+    cargas del ingeniero de implantación (con su mes real de entrada)."""
+    S = res["S"]
+    y = pyg_anual(res, a)
+    nube = y["ext"]["Nube (cómputo, almacenamiento, demos)"]
+    ingeniero = 0.0
+    for (puesto, bruto, desde) in S["plantilla"]:
+        if puesto.startswith("Ingeniero"):
+            meses = sum(1 for m in range((a - 1) * 12 + 1, a * 12 + 1) if m >= desde)
+            ingeniero += bruto / 12.0 * meses * (1 + S["cargas_sociales"])
+    cv = nube + y["comision"] + ingeniero
+    return {"ventas": y["ingresos"], "nube": nube, "comision": y["comision"], "ingeniero": ingeniero,
+            "coste_ventas": cv, "margen_bruto": y["ingresos"] - cv, "margen_bruto_pct": (y["ingresos"] - cv) / y["ingresos"],
+            "gastos_operativos": y["gastos_expl"] - cv, "ebitda": y["ebitda"], "amort": y["amort"], "ebit": y["ebit"],
+            "financieros": y["financieros"], "bai": y["bai"], "is": y["is"], "resultado": y["resultado"],
+            "cash_flow": y["resultado"] + y["amort"]}
+
+
+def punto_muerto_detalle(res, a):
+    """Punto muerto con la fórmula del curso: costes fijos / margen de contribución de una licencia;
+    ventas de equilibrio con la mezcla del año y margen de seguridad = (ventas - equilibrio) / ventas."""
+    S = res["S"]
+    y = pyg_anual(res, a)
+    k, imp, L = S["comision_socio"], S["imprevistos"], S["precio_licencia"]
+    fijos = (y["sueldos"] + y["cargas"] + sum(y["ext"].values())) * (1 + imp) + y["amort"] + y["financieros"]
+    aporte = L * (1 - k * (1 + imp))
+    variables = y["comision"] * (1 + imp)
+    ventas_eq = fijos / ((y["ingresos"] - variables) / y["ingresos"])
+    costes = y["gastos_expl"] + y["amort"] + y["financieros"]
+    return {"costes_fijos": fijos, "aporte_licencia": aporte, "licencias": fijos / aporte, "euros": fijos / aporte * L,
+            "ventas_equilibrio": ventas_eq, "ventas": y["ingresos"],
+            "margen_seguridad": (y["ingresos"] - ventas_eq) / y["ingresos"], "peso_fijos": fijos / costes}
+
+
+def fondo_maniobra(res, m):
+    """Activo corriente sin la fianza menos pasivo corriente, y necesidades operativas de fondos."""
+    b = res["balances"][m]
+    ac = b["clientes"] + b["hp_deudora_iva"] + b["tesoreria"]
+    nof = b["clientes"] + b["hp_deudora_iva"] - (b["anticipos"] + b["periodificacion"] + b["hp_ss"])
+    return {"activo_corriente": ac, "pasivo_corriente": b["total_pc"], "fondo_maniobra": ac - b["total_pc"], "nof": nof}
+
+
+def valor_cliente(lic, minuto, tasa=TASA_CNMC, implantacion=20000.0, anios=3):
+    """Valor actual para el cliente de la implantación y tres años de licencia pagados por adelantado, y
+    minutos de TIEPI al año que lo compensan (renta vencida de los mismos años)."""
+    v = 1.0 / (1.0 + tasa)
+    anticipada = sum(v ** t for t in range(anios))
+    vencida = sum(v ** t for t in range(1, anios + 1))
+    valor = implantacion + lic * anticipada
+    return {"licencia": lic, "valor_actual": valor, "minutos": valor / vencida / minuto}
+
+
+def inversor(S, clientes):
+    veces = clientes * S["precio_licencia"] * MULTIPLO_VENTA * S["ronda"]["participacion"] / S["ronda"]["importe"]
+    return {"clientes": clientes, "licencias": clientes * S["precio_licencia"],
+            "valor_venta": clientes * S["precio_licencia"] * MULTIPLO_VENTA, "veces": veces,
+            "tir": veces ** (1.0 / ANIOS_HASTA_VENTA) - 1}
+
+
+def valor_ipc(S, tasa=IPC_CONTRASTE):
+    """Ingresos por licencias de más en los años 2 y 3 si la licencia subiera cada año en su aniversario."""
+    base = simular(S)
+    s2 = copy.deepcopy(S)
+    s2["ipc_licencia"] = tasa
+    con = simular(s2)
+    return {a: pyg_anual(con, a)["lic"] - pyg_anual(base, a)["lic"] for a in (1, 2, 3)}
+
+
+def tablas_analisis(res):
+    S = res["S"]
+    tablas = {}
+    c = {a: cascada(res, a) for a in (1, 2, 3)}
+    filas = [["Ventas"] + [fmt(c[a]["ventas"]) for a in (1, 2, 3)],
+             ["Nube"] + [fmt(-c[a]["nube"]) for a in (1, 2, 3)],
+             ["Comisión del socio"] + [fmt(-c[a]["comision"]) for a in (1, 2, 3)],
+             ["Ingeniero de implantación (sueldo y cargas)"] + [fmt(-c[a]["ingeniero"]) for a in (1, 2, 3)],
+             ["Coste de las ventas"] + [fmt(-c[a]["coste_ventas"]) for a in (1, 2, 3)],
+             ["Margen bruto (sobre las ventas)"] + [f"{fmt(c[a]['margen_bruto'])} ({fmt_pct(c[a]['margen_bruto_pct'], 0)})"
+                                                    for a in (1, 2, 3)],
+             ["Gastos operativos"] + [fmt(-c[a]["gastos_operativos"]) for a in (1, 2, 3)],
+             ["Resultado bruto de explotación (EBITDA)"] + [fmt(c[a]["ebitda"]) for a in (1, 2, 3)],
+             ["Amortizaciones"] + [fmt(-c[a]["amort"]) for a in (1, 2, 3)],
+             ["Resultado de explotación (EBIT)"] + [fmt(c[a]["ebit"]) for a in (1, 2, 3)],
+             ["Gastos financieros"] + [fmt(-c[a]["financieros"]) for a in (1, 2, 3)],
+             ["Resultado antes de impuestos"] + [fmt(c[a]["bai"]) for a in (1, 2, 3)],
+             ["Impuesto sobre Sociedades"] + [fmt(-c[a]["is"]) for a in (1, 2, 3)],
+             ["Resultado del ejercicio"] + [fmt(c[a]["resultado"]) for a in (1, 2, 3)],
+             ["Cash flow (resultado más amortizaciones)"] + [fmt(c[a]["cash_flow"]) for a in (1, 2, 3)]]
+    tablas["cascada"] = tabla("Cuenta de explotación en cascada, en euros", ["Concepto", "Año 1", "Año 2", "Año 3"],
+                              filas, [6, 2, 2, 2])
+
+    p = {a: punto_muerto_detalle(res, a) for a in (2, 3)}
+    filas = [["Costes fijos (estructura con imprevistos, amortizaciones e intereses)"] + [fmt(p[a]["costes_fijos"]) for a in (2, 3)],
+             ["Margen de contribución de una licencia"] + [fmt(p[a]["aporte_licencia"]) for a in (2, 3)],
+             ["Licencias de equilibrio"] + [fmt1(p[a]["licencias"]) for a in (2, 3)],
+             ["En euros de licencias"] + [fmt(p[a]["euros"]) for a in (2, 3)],
+             ["Ventas de equilibrio con la mezcla del año"] + [fmt(p[a]["ventas_equilibrio"]) for a in (2, 3)],
+             ["Ventas del plan"] + [fmt(p[a]["ventas"]) for a in (2, 3)],
+             ["Margen de seguridad"] + [fmt_pct(p[a]["margen_seguridad"], 1) for a in (2, 3)],
+             ["Peso de los costes fijos en los costes del año"] + [fmt_pct(p[a]["peso_fijos"], 1) for a in (2, 3)]]
+    tablas["punto_muerto"] = tabla("Punto muerto y margen de seguridad, en euros", ["Concepto", "Año 2", "Año 3"],
+                                   filas, [6, 2, 2])
+
+    f = {m: fondo_maniobra(res, m) for m in (0, 12, 24, 36)}
+    peor = min(range(1, 12), key=lambda m: fondo_maniobra(res, m)["fondo_maniobra"])
+    filas = [["Activo corriente (sin la fianza)"] + [fmt(f[m]["activo_corriente"]) for m in (0, 12, 24, 36)],
+             ["Pasivo corriente"] + [fmt(f[m]["pasivo_corriente"]) for m in (0, 12, 24, 36)],
+             ["Fondo de maniobra"] + [fmt(f[m]["fondo_maniobra"]) for m in (0, 12, 24, 36)],
+             ["Necesidades operativas de fondos"] + [fmt(f[m]["nof"]) for m in (0, 12, 24, 36)]]
+    tablas["fondo_maniobra"] = tabla(
+        f"Fondo de maniobra y necesidades operativas de fondos, en euros (el peor mes antes de la ronda es el {peor}, "
+        f"con {fmt(fondo_maniobra(res, peor)['fondo_maniobra'])})",
+        ["Concepto", "Momento 0", "Momento 1", "Momento 2", "Momento 3"], filas, [6, 2, 2, 2, 2])
+
+    filas = []
+    for nombre, minuto in MINUTO_TIEPI.items():
+        v = valor_cliente(licencia(**REDES_CALIBRACION[nombre]), minuto)
+        filas.append([nombre, fmt(v["licencia"]), fmt(minuto), fmt(v["valor_actual"]), fmt(round(v["valor_actual"], -2)),
+                      fmt1(v["minutos"])])
+    tablas["valor_cliente"] = tabla(
+        f"Valor actual para el cliente de la implantación y tres años de licencia por adelantado, al "
+        f"{fmt_pct(TASA_CNMC, 2)}, en euros",
+        ["Red", "Licencia al año", "Un minuto de TIEPI", "Valor actual", "Redondeado", "Minutos de TIEPI al año que lo compensan"],
+        filas, [3, 2, 2, 2, 2, 2])
+
+    filas = []
+    for n in (20, 30, 45):
+        i = inversor(S, n)
+        filas.append([str(n), fmt(i["licencias"]), fmt(i["valor_venta"]), fmt1(i["veces"]), fmt_pct(i["tir"], 1)])
+    tablas["inversor"] = tabla(
+        f"Lo que recuperaría el inversor de la ronda si la empresa se vendiera a finales de 2031 por "
+        f"{fmt1(MULTIPLO_VENTA)} veces sus licencias anuales, sin más rondas, en euros",
+        ["Clientes", "Licencias anuales", "Precio de venta", "Veces lo invertido", "Rentabilidad al año"],
+        filas, [2, 2, 2, 2, 2])
+
+    if S["nombre"] == "v11":
+        ipc = valor_ipc(S)
+        tablas["ipc"] = tabla(
+            f"Ingresos por licencias de más si la licencia subiera un {fmt_pct(IPC_CONTRASTE, 0)} en cada aniversario "
+            "(el plan no lo cuenta), en euros",
+            ["Concepto", "Año 1", "Año 2", "Año 3"], [["Licencias de más"] + [fmt(ipc[a]) for a in (1, 2, 3)]],
+            [6, 2, 2, 2])
+    return tablas
 
 
 # ---------------------------------------------------------------------------
@@ -1286,6 +1516,14 @@ def cifras_texto(res, escen, extra):
             "resultado_a2": pyg_anual(r, 2)["resultado"], "resultado_a3": pyg_anual(r, 3)["resultado"],
             "ingresos_a3": pyg_anual(r, 3)["ingresos"], "caja_36": r["caja"][36],
         }
+    c["cascada"] = {a: cascada(res, a) for a in (1, 2, 3)}
+    c["punto_muerto"] = {a: punto_muerto_detalle(res, a) for a in (2, 3)}
+    c["fondo_maniobra"] = {m: fondo_maniobra(res, m) for m in (0, 12, 24, 36)}
+    peor = min(range(1, 12), key=lambda m: fondo_maniobra(res, m)["fondo_maniobra"])
+    c["fondo_maniobra_peor_mes"] = {"mes": peor, "fondo_maniobra": fondo_maniobra(res, peor)["fondo_maniobra"]}
+    c["valor_cliente"] = {n: valor_cliente(licencia(**REDES_CALIBRACION[n]), minuto) for n, minuto in MINUTO_TIEPI.items()}
+    c["ipc_3_pct"] = valor_ipc(S)
+    c["contrataciones_escenarios"] = {nombre: meses_contratacion(s) for nombre, s in lista_escenarios(S)}
     c.update(extra)
     return c
 

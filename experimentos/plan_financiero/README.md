@@ -5,6 +5,7 @@ El modelo mensual que da las tablas de 3.9 de la memoria: supuestos, presupuesto
 ```
 python -I experimentos/plan_financiero/plan_financiero.py              # escribe salida/
 python -I experimentos/plan_financiero/plan_financiero.py --sin-salida # solo enseña las cifras
+python -I experimentos/plan_financiero/mercado.py                     # necesita privado/mercado.json
 python -m pytest tests/negocio -q
 ```
 
@@ -20,7 +21,7 @@ Solo usa la biblioteca estándar (openpyxl, si está, para el Excel). Tarda unos
 - El medio sueldo de los fundadores basta: la rebaja mínima que cumple es del 39,8 % en los meses 1 a 5.
 - Con los supuestos de la v10 reproduce al euro las cifras de la memoria v10 (-75.330, -19.173 y 39.147 €; caja de 288.313, 286.906 y 374.377 €; mínimo de 30.625 € en el mes 5).
 
-Si algo no cuadra, el guion se para con un `AssertionError` y no escribe nada. Las pruebas de `tests/negocio` comprueban además que esas paradas saltan: cuando se descuadra la caja, cuando el activo deja de ser igual al patrimonio neto más el pasivo, cuando la v11 queda peor que la v10 y cuando, sin el medio sueldo, algún mes incumple. Y comprueban que `salida/tablas_v11.txt` y `salida/comparacion.txt` están al día con el código (el Excel, el JSON y el CSV no, porque cambian en el cuarto decimal entre versiones de Python).
+Si algo no cuadra, el guion se para con un `AssertionError` y no escribe nada. Las pruebas de `tests/negocio` comprueban además que esas paradas saltan: cuando se descuadra la caja, cuando el activo deja de ser igual al patrimonio neto más el pasivo, cuando la v11 queda peor que la v10 y cuando, sin el medio sueldo, algún mes incumple. Y comprueban que `salida/tablas_v11.txt` y `salida/comparacion.txt` están al día con el código (el Excel, el JSON y el CSV no, porque cambian en el cuarto decimal entre versiones de Python), y que `salida/mercado.json` solo tiene agregados y está al día cuando el fichero privado está.
 
 ## Las decisiones
 
@@ -66,6 +67,29 @@ De enero a mayo de 2027 (meses 1 a 5), hasta que llega ENISA en junio, cobramos 
 
 La rebaja tiene que ser de verdad: un sueldo que solo se aplaza se devenga igual y no mejora el patrimonio. Con el medio sueldo, el peor mes es el 4, con una caja de 12.301 € y un patrimonio de 5.688 € frente a un umbral de 1.500. Desde el mes 6, el préstamo participativo cuenta como patrimonio para el art. 363 (art. 20.1.d del Real Decreto-ley 7/1996).
 
+## Escenarios y contrataciones
+
+En la v11 las dos contrataciones esperan a las firmas: el ingeniero entra con la tercera puesta en marcha y el comercial con la novena, nunca antes de los meses 13 y 25 (`contrataciones_ligadas`). En el plan no cambia nada. En los escenarios cambia lo siguiente:
+
+- Seis meses de retraso: el ingeniero entra en el mes 15 y el comercial en el 30.
+- Un año de retraso: entran en los meses 21 y 36.
+- Pesimista (dos clientes nuevos menos en los años 2 y 3): el comercial entra en el mes 27, porque la novena puesta en marcha llega entonces.
+- Optimista (dos clientes nuevos más en los años 2 y 3, en los meses que quita el pesimista): mismo ingeniero, como en la decisión 12.
+
+La memoria dice también que el ingeniero entra "con la ronda en la cuenta". Como la ronda entra en el mes 12, eso no cambia nada en el modelo, y el escenario sin ronda no lo aplica.
+
+## Lo que cita la memoria además de las tablas de 3.9
+
+Todo sale de `salida/tablas_v11.txt` y `salida/cifras_v11.json`:
+
+- la cuenta en cascada (coste de las ventas = nube, comisión del socio y sueldo y cargas del ingeniero, y margen bruto);
+- el punto muerto con la fórmula del curso (costes fijos, margen por licencia, ventas de equilibrio con la mezcla del año, margen de seguridad y peso de los costes fijos);
+- el fondo de maniobra y las necesidades operativas de fondos, con el peor mes antes de la ronda;
+- el valor actual para el cliente al 6,58 % de la CNMC, con los minutos de TIEPI que lo compensan;
+- la cuenta del inversor y lo que sumaría una subida de la licencia del 3 % en cada aniversario.
+
+Las cifras de mercado (el 4 % de la retribución mediana de las 92 de más de un millón, y cuántas de las 89 mayores tienen 150 y 100 CT) salen de `mercado.py`. Ese guion lee la resolución del BOE y un fichero privado que no se versiona, `privado/mercado.json`, con los códigos de la Distribuidora 1 y la 2. Su formato está en la cabecera del guion. En `salida/mercado.txt` y `salida/mercado.json` deja solo sumas redondeadas, recuentos y una mediana redondeada.
+
 ## Supuestos de los años 4 y 5
 
 Solo sirven para comparar los dos planes más allá del año 3 y no van a las tablas de 3.9:
@@ -93,6 +117,7 @@ Vienen de la v10, no cambian el modelo y las dejamos escritas con su efecto:
 | `cifras_v11.json` | Las cifras sueltas que cita el texto, con las de cada escenario |
 | `mensual_v11.csv` | Ingresos, gastos, cobros, pagos, tesorería y patrimonio neto de cada mes, con el umbral del art. 363 |
 | `detalle_v11.xlsx` | El detalle mes a mes, los balances y los supuestos |
+| `mercado.txt`, `mercado.json` | Agregados del mercado con la tarifa (los escribe `mercado.py`) |
 
 ## Qué falta
 
