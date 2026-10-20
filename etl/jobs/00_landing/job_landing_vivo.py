@@ -87,6 +87,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+from escritura_atomica import write_json_atomic  # noqa: E402, F401 (also used by the jobs that import this one)
 from job_landing_datos_publicos import fetch  # noqa: E402
 from job_landing_meteo_openmeteo import filesystem, municipality_cells, read_reference  # noqa: E402
 from job_landing_meteo_openmeteo import load_config as load_meteo_config  # noqa: E402
@@ -661,31 +662,6 @@ def land_nao(fs, cfg: dict, folder: str) -> bool:
         file.write("\n".join(lines) + "\n")
     logger.info("NAO index up to %s landed", lines[-1].split(",")[:3])
     return True
-
-
-def write_json_atomic(path: str, payload, **dump_args) -> None:
-    """
-    json.dump to a temporary file in the same folder and os.replace over the
-    target, so the dashboard (or a copy) never reads a half written file. If
-    the replace is refused (a file held open on Windows), the file is written
-    in place as before and the refusal is logged.
-    """
-    folder = os.path.dirname(os.path.abspath(path))
-    temporary = os.path.join(folder, f".{os.path.basename(path)}.{os.getpid()}.tmp")
-    try:
-        with open(temporary, "w", encoding="utf-8") as file:
-            json.dump(payload, file, **dump_args)
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporary, path)
-    except OSError as error:
-        logging.getLogger(__name__).warning("%s not replaced atomically (%s): written in place", path, error)
-        try:
-            os.remove(temporary)
-        except OSError:
-            pass
-        with open(path, "w", encoding="utf-8") as file:
-            json.dump(payload, file, **dump_args)
 
 
 def write_json_pair(payload: dict, folder: str, name: str) -> bool:
