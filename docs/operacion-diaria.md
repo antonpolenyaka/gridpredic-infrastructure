@@ -87,6 +87,17 @@ Register-ScheduledTask -TaskName "GridPredic copia diaria" -Action $accion -Trig
 
 ## 5. Apagar y volver a encender el portátil
 
+Desde el 20.10.2026 hay dos scripts en la raíz del repositorio que lo hacen todo en orden, desde cualquier carpeta:
+
+```powershell
+pwsh -File D:\GitHub\gridpredic-infrastructure\startGridPredic.ps1          # Docker Desktop, el stack por fases, SQL Server al final, la cola y el vigilante
+pwsh -File D:\GitHub\gridpredic-infrastructure\startGridPredic.ps1 -Cdc     # además Kafka, Kafka Connect y Kafka UI
+pwsh -File D:\GitHub\gridpredic-infrastructure\stopGridPredic.ps1           # no para si la cola o Spark tienen algo en marcha o es la franja de la tarde
+pwsh -File D:\GitHub\gridpredic-infrastructure\stopGridPredic.ps1 -ApagarDocker
+```
+
+El de arranque espera a que cada fase esté sana (PostgreSQL y MinIO; Hive, Trino y Spark master; worker, History Server, Airflow y cuadro de mando) para que el disco externo no lo reparta todo a la vez, y deja SQL Server para el final sin esperarlo: tras un reinicio tarda unos 15 minutos en recuperar sus bases y el día a día no lo necesita. Los dos dejan su registro en `_runlogs\start_<fecha>.log` y `_runlogs\stop_<fecha>.log`.
+
 Todo el sistema vive en Docker sobre el disco D: y sobrevive a un apagado normal de Windows. Lo que va aparte son dos scripts de PowerShell, la cola (`cola.ps1`) y el vigilante de Airflow (`vigilar_airflow.ps1`), y desde el 15.10.2026 también arrancan solos al iniciar sesión (punto 3 de "Al encender"). La cola, `comprobar_disco_d.ps1` y los lanzadores de cada trabajo son scripts locales del portátil, en `_runlogs`, que no se versionan (sus registros tampoco); en el repositorio van `vigilar_airflow.ps1`, `arrancar_si_falta.ps1` y `run_silver_test.ps1`.
 
 Tampoco lanzamos dos baterías de pruebas a la vez: cada una arranca un Spark local con 3 GB de memoria junto a la máquina virtual de Docker. Desde el 19.10.2026 lo impide un candado en `tests/conftest.py`: la segunda batería sale enseguida con un mensaje y el código 9 (`GRIDPREDIC_SIN_CANDADO=1` lo apaga; el candado es uno por usuario y, si no se puede abrir, las pruebas siguen sin él).
