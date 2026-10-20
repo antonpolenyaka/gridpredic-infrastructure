@@ -1,0 +1,15 @@
+                                   unidad  entidades  top10 concentracion_10 persistencia_10
+                                       ct       1414    142            51.7%           31.9%
+                        linea (grupo_red)         71      8            46.0%           24.4%
+linea (grupo_red) (sin grupos de relleno)         68      7            43.5%           23.3%
+                                 cabecera         48      5            75.3%           60.3%
+         cabecera (sin grupos de relleno)         45      5            76.2%           60.3%
+                                municipio         73      8            45.4%           23.0%
+CT del estudio con linea y cabecera: 1277; lineas por cabecera: mediana 1, max 28; cabeceras por linea: mediana 1, max 6; parte de los CT de la linea en su cabecera mayoritaria: mediana 100%, lineas con una sola cabecera 35 de 63
+
+Tamano del top 10 % (2015 - 2025) y de la persistencia (media 2023 - 2025):
+CT por cabecera (48 entidades): mediana 6.5 p90 63.20000000000006 max 492 | cabeceras con 5 CT o menos: 22
+  cabecera: top 5 -> 75.3% de los kVA*h con el 61.2% de los CT y el 68.7% de los kVA; persistencia 60.3% con el 53.0% de los CT y el 61.6% de los kVA
+  linea (grupo_red): top 8 -> 46.0% de los kVA*h con el 21.6% de los CT y el 29.4% de los kVA; persistencia 24.4% con el 18.9% de los CT y el 24.4% de los kVA
+  municipio: top 8 -> 45.4% de los kVA*h con el 22.6% de los CT y el 36.7% de los kVA; persistencia 23.0% con el 23.3% de los CT y el 31.9% de los kVA
+  ct: top 142 -> 51.7% de los kVA*h con el 10.0% de los CT y el 28.3% de los kVA; persistencia 31.9% con el 10.0% de los CT y el 28.1% de los kVA

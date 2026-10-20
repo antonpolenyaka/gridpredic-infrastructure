@@ -1,0 +1,142 @@
+@prefix geo: <http://www.opengis.net/ont/geosparql#> .
+@prefix gpo: <https://gridpredic.com/ont#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix sosa: <http://www.w3.org/ns/sosa/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+geo:Geometry rdfs:subClassOf geo:SpatialObject .
+
+gpo: a owl:Ontology ;
+    rdfs:label "Ontología mínima de GridPredic"@es ;
+    rdfs:comment "Clases propias pocas; lo demás se reutiliza de SOSA, OWL-Time, GeoSPARQL, SKOS y PROV-O."@es .
+
+gpo:CorteScada a owl:Class ;
+    rdfs:comment "Off de un trafo según el flood fill de TedisNet: phenomenonTime = cuándo, resultTime = cuándo se supo."@es ;
+    rdfs:subClassOf sosa:Observation .
+
+gpo:ICONEU_vispera a sosa:Procedure ;
+    rdfs:label "previsión de ICON-EU emitida la víspera"@es .
+
+gpo:abonados a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:range xsd:integer .
+
+gpo:afectaA a owl:ObjectProperty ;
+    rdfs:domain gpo:Interrupcion ;
+    rdfs:range gpo:CentroTransformacion .
+
+gpo:altitudM a owl:DatatypeProperty ;
+    rdfs:domain gpo:Municipio ;
+    rdfs:range xsd:decimal .
+
+gpo:cabecera a owl:ObjectProperty ;
+    rdfs:domain gpo:CentroTransformacion .
+
+gpo:causa a owl:ObjectProperty ;
+    rdfs:domain gpo:Incidencia ;
+    rdfs:range skos:Concept .
+
+gpo:deIncidencia a owl:ObjectProperty ;
+    rdfs:domain gpo:Interrupcion ;
+    rdfs:range gpo:Incidencia .
+
+gpo:densidadHabKm2 a owl:DatatypeProperty ;
+    rdfs:domain gpo:Municipio ;
+    rdfs:range xsd:decimal .
+
+gpo:distribuidora a owl:ObjectProperty ;
+    rdfs:range gpo:Distribuidora .
+
+gpo:duracionS a owl:DatatypeProperty ;
+    rdfs:domain gpo:Interrupcion ;
+    rdfs:range xsd:integer .
+
+gpo:enCelda a owl:ObjectProperty ;
+    rdfs:range gpo:CeldaMeteo ;
+    rdfs:subPropertyOf geo:sfWithin .
+
+gpo:enEstudio a owl:DatatypeProperty ;
+    rdfs:domain gpo:CentroTransformacion ;
+    rdfs:range xsd:boolean .
+
+gpo:enLinea a owl:ObjectProperty ;
+    rdfs:domain gpo:CentroTransformacion ;
+    rdfs:range gpo:Linea .
+
+gpo:enMunicipio a owl:ObjectProperty ;
+    rdfs:domain gpo:CentroTransformacion ;
+    rdfs:range gpo:Municipio ;
+    rdfs:subPropertyOf geo:sfWithin .
+
+gpo:esquemaCausas a skos:ConceptScheme ;
+    skos:prefLabel "Causas de incidencia de GridPredic"@es .
+
+gpo:esquemaNivel a skos:ConceptScheme ;
+    skos:prefLabel "Niveles de riesgo del día"@es .
+
+gpo:nivel a owl:ObjectProperty ;
+    rdfs:domain gpo:EstimacionRiesgo ;
+    rdfs:range skos:Concept .
+
+gpo:orden a owl:DatatypeProperty ;
+    rdfs:range xsd:integer .
+
+gpo:paraDia a owl:DatatypeProperty ;
+    rdfs:domain gpo:EstimacionRiesgo ;
+    rdfs:range xsd:date .
+
+gpo:potenciaKVA a owl:DatatypeProperty,
+        owl:FunctionalProperty ;
+    rdfs:range xsd:decimal .
+
+gpo:probabilidad a owl:DatatypeProperty ;
+    rdfs:domain gpo:EstimacionRiesgo ;
+    rdfs:range xsd:decimal .
+
+gpo:rachaViento10m a sosa:ObservableProperty ;
+    rdfs:label "racha de viento a 10 m (km/h)"@es .
+
+gpo:sobre a owl:ObjectProperty ;
+    rdfs:domain gpo:EstimacionRiesgo .
+
+gpo:superficieKm2 a owl:DatatypeProperty ;
+    rdfs:comment "Wikidata P2046, valor normalizado (psn:), en km2."@es ;
+    rdfs:domain gpo:Municipio ;
+    rdfs:range xsd:decimal .
+
+gpo:CeldaMeteo a owl:Class ;
+    rdfs:subClassOf geo:Feature,
+        sosa:FeatureOfInterest .
+
+gpo:Distribuidora a owl:Class ;
+    rdfs:subClassOf prov:Organization .
+
+gpo:Linea a owl:Class ;
+    rdfs:subClassOf geo:Feature .
+
+gpo:codigoINE a owl:DatatypeProperty ;
+    rdfs:domain gpo:Municipio ;
+    rdfs:range xsd:string .
+
+gpo:Incidencia a owl:Class .
+
+gpo:Interrupcion a owl:Class ;
+    rdfs:comment "Relación n-aria reificada: una incidencia, un CT y su intervalo (como Enrollment en clase)."@es .
+
+geo:Feature rdfs:subClassOf geo:SpatialObject .
+
+gpo:EstimacionRiesgo a owl:Class ;
+    rdfs:subClassOf prov:Entity .
+
+gpo:CentroTransformacion a owl:Class ;
+    rdfs:subClassOf geo:Feature,
+        sosa:FeatureOfInterest .
+
+gpo:Municipio a owl:Class ;
+    rdfs:subClassOf geo:Feature ;
+    owl:hasKey ( gpo:codigoINE ) .
+

@@ -1,0 +1,3 @@
+cabecera mayor: lo es de 492 trafos y corta 492; cortes por trafo: mediana 275, maximo 329; primer corte 17.09.2021, ultimo 18.10.2021
+eventos de ese periodo que dejan en Off al 60 % o mas de sus trafos: 212, en 12 dias; solo con microcortes 191 (90%); duracion mediana de sus episodios 0 s; episodios que cuentan como corte (> 180 s) 6.8%
+despues del 18.10.2021 esos trafos siguen cortandose: 1,441 eventos hasta 11.08.2026, ninguno atribuido a esa cabecera

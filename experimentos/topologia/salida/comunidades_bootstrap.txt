@@ -1,0 +1,4 @@
+Incidencias con 2 CT o mas: 133; contenidas en una linea 60.2 %, en una comunidad (Jaccard topK 10, Louvain res. 1,0; 55 zonas) 63.2 %
+Diferencia comunidad - linea: +3.0 puntos, intervalo del 95 % [-4.5, +10.5]
+Solo incidencias de 2 a 30 CT (90): linea 82.2 %, comunidad 84.4 %
+Solo en una de las dos: linea si y comunidad no 10, comunidad si y linea no 14

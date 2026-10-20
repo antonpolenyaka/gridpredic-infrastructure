@@ -177,16 +177,16 @@ Con la pérdida por horas-cliente, la regla probabilística tiene valor positivo
 
 ## Autocorrelación de los residuos
 
-Residuo de cada día: si hubo avería (1 o 0) menos la probabilidad de la víspera, sumado entre redes para las tres juntas. r1 es la correlación de un día con el siguiente; q7 y q14, el contraste de Ljung y Box con 7 y 14 días de retardo, y p7 y p14 sus valores p. Con valores p altos, días seguidos no se parecen más de lo que toca y los intervalos por fechas y por bloques de siete días deben coincidir.
+Residuo de cada día: si hubo avería (1 o 0) menos la probabilidad de la víspera, sumado entre redes para las tres juntas. r1 es la correlación de un día con el siguiente; q7 y q14, el contraste de Ljung y Box con 7 y 14 días de retardo, y p7 y p14 sus valores p con la chi cuadrado. Con probabilidades pequeñas el residuo bruto suma pocos sucesos y la chi cuadrado no es buena referencia: p7_simulado y p14_simulado comparan Q con 2.000 réplicas en las que cada día y red sortea su avería con su propia probabilidad. Las columnas pearson_ repiten el contraste con el residuo de Pearson (dividido por la raíz de la suma de p (1 - p) del día). Con valores p altos, días seguidos no se parecen más de lo que toca y los intervalos por fechas y por bloques de siete días deben coincidir.
 
-| muestra | redes | dias | r1 | q7 | p7 | q14 | p14 |
-|---|---|---|---|---|---|---|---|
-| prevision | Las tres redes | 922 | 0,104 | 19,0 | 0,008 | 28,5 | 0,012 |
-| prevision | Distribuidora 1 | 922 | 0,079 | 21,1 | 0,004 | 24,6 | 0,039 |
-| prevision | Distribuidora 2 | 922 | 0,118 | 17,8 | 0,013 | 26,9 | 0,020 |
-| reanalisis | Las tres redes | 1674 | 0,051 | 7,0 | 0,427 | 11,0 | 0,683 |
-| reanalisis | Distribuidora 1 | 1674 | 0,073 | 16,5 | 0,021 | 20,1 | 0,127 |
-| reanalisis | Distribuidora 2 | 1674 | 0,058 | 11,5 | 0,118 | 13,6 | 0,482 |
-| prevision_sin_28_01 | Las tres redes | 921 | 0,086 | 14,9 | 0,037 | 26,3 | 0,024 |
-| prevision_sin_28_01 | Distribuidora 1 | 921 | 0,067 | 20,9 | 0,004 | 25,4 | 0,031 |
-| prevision_sin_28_01 | Distribuidora 2 | 921 | 0,094 | 13,7 | 0,056 | 26,0 | 0,026 |
+| muestra | redes | dias | r1 | q7 | p7 | p7_simulado | q14 | p14 | p14_simulado | pearson_r1 | pearson_p7 | pearson_p7_simulado |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| prevision | Las tres redes | 922 | 0,104 | 19,0 | 0,008 | 0,019 | 28,5 | 0,012 | 0,033 | 0,066 | 0,485 | 0,466 |
+| prevision | Distribuidora 1 | 922 | 0,079 | 21,1 | 0,004 | 0,017 | 24,6 | 0,039 | 0,073 | 0,065 | 0,177 | 0,162 |
+| prevision | Distribuidora 2 | 922 | 0,118 | 17,8 | 0,013 | 0,030 | 26,9 | 0,020 | 0,047 | 0,079 | 0,271 | 0,214 |
+| reanalisis | Las tres redes | 1674 | 0,051 | 7,0 | 0,427 | 0,486 | 11,0 | 0,683 | 0,713 | 0,020 | 0,932 | 0,949 |
+| reanalisis | Distribuidora 1 | 1674 | 0,073 | 16,5 | 0,021 | 0,035 | 20,1 | 0,127 | 0,180 | 0,053 | 0,264 | 0,245 |
+| reanalisis | Distribuidora 2 | 1674 | 0,058 | 11,5 | 0,118 | 0,141 | 13,6 | 0,482 | 0,511 | 0,027 | 0,629 | 0,572 |
+| prevision_sin_28_01 | Las tres redes | 921 | 0,086 | 14,9 | 0,037 | 0,071 | 26,3 | 0,024 | 0,050 | 0,060 | 0,541 | 0,548 |
+| prevision_sin_28_01 | Distribuidora 1 | 921 | 0,067 | 20,9 | 0,004 | 0,012 | 25,4 | 0,031 | 0,058 | 0,062 | 0,181 | 0,161 |
+| prevision_sin_28_01 | Distribuidora 2 | 921 | 0,094 | 13,7 | 0,056 | 0,077 | 26,0 | 0,026 | 0,045 | 0,070 | 0,326 | 0,253 |

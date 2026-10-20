@@ -1,0 +1,14 @@
+días evaluados: 2031; con algún CT fallado el día anterior: 176
+CT fallados el día anterior (mediana, máximo): 23, 670
+CT en el patrón (mediana, p90, máximo): 497, 718, 1177
+tiempo del patrón con pandas: 3.72 s (21.1 ms por día)
+
+CT-día evaluados: 218,017; con interrupción principal ese día: 1,134 (tasa 0.5201%); de incidencias nuevas: 1,134 (0.5201%)
+conjunto | CT-día en el conjunto | tasa dentro | tasa fuera | veces la tasa base | parte de los positivos | ídem con incidencias nuevas: tasa dentro, parte
+co-corte (aristas conocidas) | 87,684 (40.2%) | 0.290% | 0.675% | 0.6 | 22.4% | 0.290%, 22.4%
+co-corte fuerte (recuentos de todo el histórico) | 30,261 (13.9%) | 0.628% | 0.503% | 1.2 | 16.8% | 0.628%, 16.8%
+mismo grupo de red | 4,230 (1.9%) | 0.000% | 0.530% | 0.0 | 0.0% | 0.000%, 0.0%
+misma cabecera (argmax de todo el histórico) | 35,444 (16.3%) | 0.567% | 0.511% | 1.1 | 17.7% | 0.567%, 17.7%
+misma distribuidora | 104,677 (48.0%) | 0.532% | 0.509% | 1.0 | 49.1% | 0.532%, 49.1%
+
+por incidencia: 1,134 CT-día positivos de 32 incidencias distintas en 14 días; las tres mayores reúnen el 43%; tocan el conjunto del co-corte 6 de 32 (el conjunto reúne el 40% de los CT-día)

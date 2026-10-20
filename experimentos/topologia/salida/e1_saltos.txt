@@ -1,0 +1,32 @@
+aristas AGUAS_ARRIBA: 28,959 (fuertes: 1,639, n_cortes >= 2 y al menos el 20 % de los cortes del CT)
+suma de grado^2 de los elementos (filas del autojoin por elemento): 6,987,087
+
+===== todas las aristas: 1,281 CT, 385 elementos, 28,959 aristas
+Un origen (mediana de 20 CT al azar): CT alcanzados acumulados por salto y tiempo
+  saltos de CT: [1, 2, 3, 4]
+  CT alcanzados (mediana): [674, 765, 766, 766] de 1280
+  filas de la cadena de joins sin DISTINCT (mediana): ['5,878', '34,526,080', '219,103,285,120', '1,393,774,144,589,932']
+  pandas DISTINCT: 157.1 ms por origen (K = 4)
+  pandas sin DISTINCT, primer origen, profundidad 1: 5,995 filas en 37 ms
+  pandas sin DISTINCT, primer origen, profundidad 2: no se materializa, serían 36,173,272 filas
+Todos los CT a un salto (vecinos a dos aristas de cada CT):
+  pandas (autojoin y DISTINCT): 799,832 pares en 2378 ms
+  scipy (B por B traspuesta): 799,832 pares en 51 ms
+  filas intermedias del autojoin antes del DISTINCT: 6,987,087
+  densidad de la proyección CT - CT: 48.8%
+
+===== aristas fuertes: 1,247 CT, 54 elementos, 1,639 aristas
+Un origen (mediana de 20 CT al azar): CT alcanzados acumulados por salto y tiempo
+  saltos de CT: [1, 2, 3, 4]
+  CT alcanzados (mediana): [125, 126, 148, 218] de 1246
+  filas de la cadena de joins sin DISTINCT (mediana): ['131', '16,903', '2,189,265', '283,637,449']
+  pandas DISTINCT: 86.1 ms por origen (K = 4)
+  pandas sin DISTINCT, primer origen, profundidad 1: 126 filas en 10 ms
+  pandas sin DISTINCT, primer origen, profundidad 2: 16,302 filas en 28 ms
+  pandas sin DISTINCT, primer origen, profundidad 3: 2,111,866 filas en 610 ms
+  pandas sin DISTINCT, primer origen, profundidad 4: no se materializa, serían 273,614,208 filas
+Todos los CT a un salto (vecinos a dos aristas de cada CT):
+  pandas (autojoin y DISTINCT): 300,062 pares en 142 ms
+  scipy (B por B traspuesta): 300,062 pares en 12 ms
+  filas intermedias del autojoin antes del DISTINCT: 312,691
+  densidad de la proyección CT - CT: 19.3%

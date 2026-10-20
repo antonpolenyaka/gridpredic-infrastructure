@@ -1,0 +1,73 @@
+Filas del SCADA sin maniobras con CT del estudio: 396,481; eventos: 7,371; desde 2021-01-01 00:00:15.320000 hasta 2026-08-11 18:58:55.040000; microcortes: 89.0% de las filas
+
+== Media 2022 - 2026 (todos los pares de Y y solo los nuevos para Calser)
+                                                            roc_auc  pr_auc  roc_auc_nuevos  pr_auc_nuevos
+puntuacion                                                                                                
+map_aguas_arriba sin fecha de baja (elementos compartidos)    0.874   0.638           0.830          0.285
+SCADA sin microcortes, decaimiento tau 365 dias               0.839   0.599           0.772          0.170
+Calser, numero de co-cortes desde 2016                        0.844   0.593           0.500          0.012
+SCADA sin microcortes, decaimiento tau 730 dias               0.833   0.588           0.772          0.171
+SCADA sin microcortes, decaimiento tau 90 dias                0.817   0.558           0.772          0.168
+SCADA con microcortes, 730 dias                               0.850   0.554           0.828          0.157
+SCADA con microcortes, decaimiento tau 365 dias               0.845   0.549           0.824          0.150
+SCADA sin microcortes, 730 dias                               0.801   0.536           0.769          0.151
+SCADA con microcortes, decaimiento tau 730 dias               0.815   0.528           0.824          0.159
+SCADA con microcortes, toda la historia                       0.796   0.509           0.823          0.158
+SCADA sin microcortes, toda la historia                       0.800   0.509           0.771          0.163
+SCADA con microcortes, decaimiento tau 90 dias                0.810   0.500           0.822          0.128
+SCADA sin microcortes, 365 dias                               0.705   0.483           0.757          0.215
+SCADA con microcortes, 365 dias                               0.801   0.469           0.828          0.145
+SCADA con microcortes, 90 dias                                0.704   0.436           0.757          0.138
+SCADA con microcortes, 180 dias                               0.734   0.418           0.780          0.123
+SCADA con microcortes, 30 dias                                0.613   0.339           0.650          0.183
+SCADA sin microcortes, 180 dias                               0.541   0.287           0.598          0.084
+SCADA sin microcortes, 90 dias                                0.529   0.278           0.587          0.083
+SCADA sin microcortes, 30 dias                                0.520   0.243           0.519          0.045
+
+== PR-AUC por anio, todos los pares
+anio                                                        2022  2023  2024  2025  2026
+puntuacion                                                                              
+Calser, numero de co-cortes desde 2016                     0.647 0.406 0.586 0.594 0.729
+SCADA con microcortes, 180 dias                            0.295 0.545 0.529 0.338 0.383
+SCADA con microcortes, 30 dias                             0.556 0.370 0.393 0.146 0.229
+SCADA con microcortes, 365 dias                            0.278 0.666 0.657 0.215 0.531
+SCADA con microcortes, 730 dias                            0.278 0.864 0.831 0.303 0.494
+SCADA con microcortes, 90 dias                             0.310 0.684 0.525 0.271 0.390
+SCADA con microcortes, decaimiento tau 365 dias            0.273 0.808 0.948 0.242 0.475
+SCADA con microcortes, decaimiento tau 730 dias            0.273 0.846 0.953 0.146 0.421
+SCADA con microcortes, decaimiento tau 90 dias             0.268 0.745 0.637 0.304 0.547
+SCADA con microcortes, toda la historia                    0.278 0.864 0.950 0.094 0.362
+SCADA sin microcortes, 180 dias                            0.236 0.378 0.421 0.151 0.249
+SCADA sin microcortes, 30 dias                             0.247 0.368 0.373 0.059 0.166
+SCADA sin microcortes, 365 dias                            0.220 0.372 0.876 0.474 0.472
+SCADA sin microcortes, 730 dias                            0.220 0.771 0.697 0.473 0.518
+SCADA sin microcortes, 90 dias                             0.237 0.373 0.381 0.150 0.247
+SCADA sin microcortes, decaimiento tau 365 dias            0.215 0.817 0.948 0.448 0.567
+SCADA sin microcortes, decaimiento tau 730 dias            0.216 0.801 0.951 0.391 0.579
+SCADA sin microcortes, decaimiento tau 90 dias             0.214 0.701 0.840 0.398 0.634
+SCADA sin microcortes, toda la historia                    0.220 0.771 0.945 0.187 0.425
+map_aguas_arriba sin fecha de baja (elementos compartidos) 0.485 0.583 0.799 0.528 0.793
+
+== PR-AUC por anio, pares nuevos
+anio                                                        2022  2023  2024  2025  2026
+puntuacion                                                                              
+Calser, numero de co-cortes desde 2016                     0.002 0.006 0.034 0.006 0.009
+SCADA con microcortes, 180 dias                            0.060 0.040 0.200 0.211 0.105
+SCADA con microcortes, 30 dias                             0.230 0.174 0.085 0.341 0.084
+SCADA con microcortes, 365 dias                            0.062 0.039 0.340 0.054 0.230
+SCADA con microcortes, 730 dias                            0.062 0.028 0.462 0.061 0.170
+SCADA con microcortes, 90 dias                             0.031 0.070 0.214 0.263 0.112
+SCADA con microcortes, decaimiento tau 365 dias            0.062 0.030 0.490 0.058 0.110
+SCADA con microcortes, decaimiento tau 730 dias            0.062 0.029 0.502 0.057 0.146
+SCADA con microcortes, decaimiento tau 90 dias             0.056 0.052 0.271 0.051 0.212
+SCADA con microcortes, toda la historia                    0.062 0.028 0.497 0.085 0.117
+SCADA sin microcortes, 180 dias                            0.032 0.129 0.039 0.155 0.067
+SCADA sin microcortes, 30 dias                             0.010 0.165 0.035 0.006 0.009
+SCADA sin microcortes, 365 dias                            0.184 0.133 0.457 0.047 0.258
+SCADA sin microcortes, 730 dias                            0.184 0.029 0.367 0.051 0.126
+SCADA sin microcortes, 90 dias                             0.007 0.142 0.041 0.158 0.066
+SCADA sin microcortes, decaimiento tau 365 dias            0.181 0.044 0.478 0.047 0.099
+SCADA sin microcortes, decaimiento tau 730 dias            0.182 0.032 0.478 0.044 0.121
+SCADA sin microcortes, decaimiento tau 90 dias             0.099 0.162 0.259 0.048 0.274
+SCADA sin microcortes, toda la historia                    0.184 0.029 0.448 0.044 0.111
+map_aguas_arriba sin fecha de baja (elementos compartidos) 0.420 0.114 0.399 0.257 0.234

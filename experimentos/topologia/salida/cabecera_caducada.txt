@@ -1,0 +1,5 @@
+último corte de la ventana: 2026-08-11 18:58:55.040000
+cabecera sin cortar a su trafo en el último año aunque el trafo sí se corta: 736 de 1281 trafos (57.5%; kVA 61.9%); con otro elemento que empieza a cortarlo después (2 cortes o más): 730 (57.0%); de los del estudio: 736 de 1277
+cabecera sin cortar a su trafo en los últimos 2 años aunque el trafo sí se corta: 620 de 1281 trafos (48.4%; kVA 46.7%); con otro elemento que empieza a cortarlo después (2 cortes o más): 620 (48.4%); de los del estudio: 618 de 1277
+parejas sin verse en 1 año(s): 63.5% de 28,959; su parte de n_cortes 61.4%
+parejas sin verse en 2 año(s): 46.7% de 28,959; su parte de n_cortes 49.5%
