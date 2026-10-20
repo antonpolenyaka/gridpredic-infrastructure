@@ -1,0 +1,22 @@
+proveedor,servicio,clave,descripcion,moneda,precio,lista
+OCI,OCI Streaming With Apache Kafka,B110500,Streaming with Apache Kafka (OCPU por hora),EUR,0.093,2026-10-08
+OCI,Networking - FastConnect,B88325,FastConnect 1 Gbps (puerto por hora),EUR,0.197625,2026-10-08
+OCI,Storage - Object Storage,B91628,Object Storage - Storage (GB al mes),EUR,0.023715,2026-10-08
+OCI,Storage - Block Volumes,B91961,Block Volume - Storage (GB al mes),EUR,0.023715,2026-10-08
+OCI,Storage - Block Volumes,B91962,Block Volume - Performance Units (VPU por GB al mes),EUR,0.001581,2026-10-08
+OCI,Data Integration - Workspace Usage,B92598,Data Integration - Workspace Usage (hora),EUR,0.1488,2026-10-08
+OCI,GoldenGate,B92992,GoldenGate (OCPU por hora),EUR,1.250013,2026-10-08
+OCI,Database - Autonomous AI Database,B95701,Autonomous AI Lakehouse - ECPU (ECPU por hora),EUR,0.31248,2026-10-08
+OCI,Database - Autonomous AI Database,B95754,Autonomous AI Database Storage (GB al mes),EUR,0.027807,2026-10-08
+OCI,Compute - Virtual Machine,B97384,Compute - Standard - E5 - OCPU (OCPU por hora),EUR,0.0279,2026-10-08
+OCI,Compute - Virtual Machine,B97385,Compute - Standard - E5 - Memory (GB por hora),EUR,0.00186,2026-10-08
+OCI,Database with PostgreSQL,B99060,Database with PostgreSQL - X86 (OCPU por hora),EUR,0.09114,2026-10-08
+OCI,Database with PostgreSQL,B99062,Database Optimized Storage (GB al mes),EUR,0.06696,2026-10-08
+AWS eu-south-2,AmazonMWAA,EUS2-Airflow-MicroEnvironment,"MWAA, entorno micro (hora)",USD,0.29,2026-09-11
+AWS eu-south-2,AmazonMWAA,EUS2-Airflow-SmallEnvironment,"MWAA, entorno pequeño (hora)",USD,0.49,2026-09-11
+AWS eu-south-2,AmazonMWAA,EUS2-MWAA-Serverless-AWSManaged,MWAA Serverless (hora de tarea),USD,0.088,2026-09-11
+AWS eu-south-2,AmazonS3,EUS2-TimedStorage-ByteHrs,S3 Standard (GB al mes),USD,0.023,2026-10-15
+AWS eu-south-2,AmazonS3,EUS2-Requests-Tier1,S3 PUT (petición),USD,5.3e-06,2026-10-15
+AWS eu-south-2,ElasticMapReduce,EUS2-EMR-SERVERLESS-vCPUHours,EMR Serverless (vCPU por hora),USD,0.0605176,2026-10-18
+AWS eu-south-2,ElasticMapReduce,EUS2-EMR-SERVERLESS-MemoryGBHours,EMR Serverless (GB por hora),USD,0.0066456,2026-10-18
+AWS eu-south-2,AmazonAthena,EUS2-DataScannedInTB,Athena (TB leído),USD,5.65,2026-09-11

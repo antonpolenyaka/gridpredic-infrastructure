@@ -1,0 +1,4 @@
+cabeceras con tiempo de maniobra: 21; la primera reune el 22.1% del de las tres redes, con 1 lineas y 2 incidencias
+dentro de ella: lineas con maniobra 1; la primera linea tiene el 100.0%, las tres primeras el 100.0%
+por linea (todas): 29 lineas con maniobra; la primera 22.1%; la primera cabecera equivale a 1.0 veces la primera linea
+cabecera mayor (492 CT): puesto 2 por kVA*h de maniobra, 20.4% del total, 34 incidencias en 28 lineas; con maniobra 8 lineas; la primera tiene el 55.7% y las tres primeras el 83.3%

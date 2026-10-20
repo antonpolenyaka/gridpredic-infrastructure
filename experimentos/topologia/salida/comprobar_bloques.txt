@@ -1,0 +1,3 @@
+D1 2022 216, D1 2024 216, comunes 211; D1 2026 32 y comunes con 2022 31
+D2 2024 35, de ellos en la componente fuerte mixta 35 de 36; D2 2026 33, en la componente 33
+D1 en eventos cruzados 228, D1 del patron estatico 228, comunes 228

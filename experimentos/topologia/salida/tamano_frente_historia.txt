@@ -1,0 +1,16 @@
+top 10%
+cabecera  2021 - 2025 (entidades 47 - 47), top: naif 63.5%, solo kVA instalados 67.1%, solo número de CT 66.8%, máximo 80.7%; por año kVA ['93%', '49%', '68%', '61%', '65%'] naif ['93%', '44%', '70%', '59%', '52%']
+cabecera  2023 - 2025 (entidades 47 - 47), top: naif 60.3%, solo kVA instalados 64.7%, solo número de CT 64.7%, máximo 80.8%; por año kVA ['68%', '61%', '65%'] naif ['70%', '59%', '52%']
+línea     2021 - 2025 (entidades 70 - 70), top: naif 21.3%, solo kVA instalados 23.5%, solo número de CT 21.4%, máximo 56.3%; por año kVA ['46%', '19%', '26%', '22%', '3%'] naif ['23%', '13%', '34%', '24%', '12%']
+línea     2023 - 2025 (entidades 70 - 70), top: naif 23.3%, solo kVA instalados 17.2%, solo número de CT 16.8%, máximo 56.3%; por año kVA ['26%', '22%', '3%'] naif ['34%', '24%', '12%']
+ct        2021 - 2025 (entidades 1338 - 1356), top: naif 27.9%, solo kVA instalados 28.4%, solo número de CT 10.2%, máximo 68.2%; por año kVA ['33%', '37%', '33%', '27%', '12%'] naif ['31%', '18%', '44%', '36%', '11%']
+ct        2023 - 2025 (entidades 1338 - 1352), top: naif 30.1%, solo kVA instalados 24.4%, solo número de CT 10.4%, máximo 70.5%; por año kVA ['34%', '27%', '12%'] naif ['44%', '36%', '11%']
+ct, solo kVA con el desempate del job (orden de la clave), 2021 - 2025: 26.5%
+top 20%
+cabecera  2021 - 2025 (entidades 47 - 47), top: naif 74.3%, solo kVA instalados 80.2%, solo número de CT 78.8%, máximo 92.9%; por año kVA ['95%', '81%', '77%', '69%', '80%'] naif ['94%', '54%', '79%', '73%', '71%']
+cabecera  2023 - 2025 (entidades 47 - 47), top: naif 74.4%, solo kVA instalados 75.1%, solo número de CT 75.0%, máximo 93.7%; por año kVA ['77%', '69%', '80%'] naif ['79%', '73%', '71%']
+línea     2021 - 2025 (entidades 70 - 70), top: naif 36.3%, solo kVA instalados 41.2%, solo número de CT 41.0%, máximo 77.5%; por año kVA ['64%', '42%', '44%', '37%', '19%'] naif ['39%', '20%', '58%', '45%', '20%']
+línea     2023 - 2025 (entidades 70 - 70), top: naif 41.0%, solo kVA instalados 33.2%, solo número de CT 34.0%, máximo 78.3%; por año kVA ['44%', '37%', '19%'] naif ['58%', '45%', '20%']
+ct        2021 - 2025 (entidades 1338 - 1356), top: naif 47.1%, solo kVA instalados 48.3%, solo número de CT 20.4%, máximo 85.7%; por año kVA ['59%', '53%', '56%', '47%', '27%'] naif ['42%', '27%', '67%', '53%', '46%']
+ct        2023 - 2025 (entidades 1338 - 1352), top: naif 55.4%, solo kVA instalados 44.0%, solo número de CT 20.6%, máximo 86.3%; por año kVA ['56%', '47%', '29%'] naif ['67%', '53%', '46%']
+ct, solo kVA con el desempate del job (orden de la clave), 2021 - 2025: 46.5%

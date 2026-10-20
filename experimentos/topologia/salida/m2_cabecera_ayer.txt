@@ -1,0 +1,8 @@
+Motivo con negacion: filas tras cada paso 437 (cabeceras de Calser casadas), 28,419 (CT bajo esa cabecera), 13,179 (sin los que corto la averia), 3,603 (arista conocida al empezar el dia); 3,089 pares (dia, CT) distintos (0.357 s)
+Merge y anti-join: el mismo conjunto (0.047 s)
+CT-dia evaluados 2,615,928 (2031 dias, 1288 CT), con interrupcion nueva 8,673 (0.33%)
+  dias con algun candidato: 85; candidatos por dia con alguno: mediana 23
+  positivos dentro: 7 de 8,673
+  dentro del conjunto: 3,056 CT-dia (0.12%), tasa 0.23% (0.7 veces la base), recoge el 0.1% de los positivos
+  fuera: tasa 0.33%
+tiempo total 2.6 s

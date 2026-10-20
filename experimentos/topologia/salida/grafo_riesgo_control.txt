@@ -1,0 +1,8 @@
+modelo                         top5 0.160 top10 0.271 (0.310, 0.368, 0.266, 0.140) top20 0.543
+kva_propio                     top5 0.137 top10 0.264 (0.356, 0.322, 0.261, 0.119) top20 0.449
+modelo+kva_propio              top5 0.194 top10 0.315 (0.344, 0.427, 0.290, 0.201) top20 0.547
+modelo+vecinos_kva             top5 0.177 top10 0.300 (0.257, 0.454, 0.297, 0.192) top20 0.553
+modelo+vecinos_barajados_kva   top5 0.202 top10 0.310 (0.333, 0.435, 0.276, 0.194) top20 0.559
+s_naif                         top5 0.166 top10 0.269 (0.178, 0.432, 0.357, 0.109) top20 0.483
+modelo+vecinos_kva - modelo (top 10 %): +0.026 [-0.003, +0.072], P(>0) = 0.97
+modelo+kva_propio - modelo (top 10 %): +0.036 [-0.022, +0.067], P(>0) = 0.96

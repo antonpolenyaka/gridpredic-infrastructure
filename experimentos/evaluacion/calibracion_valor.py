@@ -26,8 +26,9 @@ Todo con y sin el temporal del 28.01.2026, que pesa mucho en las
 horas-cliente, y con intervalos bootstrap por fechas y por semanas (las
 réplicas toman días enteros, o bloques de siete días seguidos, de las tres
 redes a la vez). El contraste de Ljung y Box (1978) sobre los residuos de
-cada día dice si días seguidos se parecen tanto como para fiarse solo de
-los bloques. Los nombres de las distribuidoras no salen nunca: la tabla
+cada día, con la chi cuadrado y con una referencia simulada (cada día sortea
+su avería con su probabilidad) y también con el residuo de Pearson, dice si
+días seguidos se parecen tanto como para fiarse solo de los bloques. Los nombres de las distribuidoras no salen nunca: la tabla
 trae sus ids y aquí pasan a Distribuidora 1, 2 y 3.
 """
 
@@ -181,14 +182,52 @@ def ljung_box(x, lags: tuple = (7, 14)) -> dict:
     return out
 
 
-def autocorrelation_rows(df: pd.DataFrame, label: str) -> list:
-    """Los residuos de cada día (avería sí o no menos la probabilidad), sumados entre redes para las tres juntas."""
+def daily_residuals(part: pd.DataFrame, y=None, pearson: bool = False) -> np.ndarray:
+    """
+    El residuo de cada fecha en orden: avería (1 o 0) menos la probabilidad, sumado entre redes. Con pearson, dividido
+    por la raíz de la suma de p (1 - p) de la fecha, para que los días de probabilidad alta no pesen más.
+    """
+    p = part["probabilidad"].clip(1e-6, 1 - 1e-6).to_numpy()
+    y = part["y"].to_numpy() if y is None else y
+    _, index = np.unique(part["fecha"].to_numpy(), return_inverse=True)
+    raw = np.bincount(index, weights=y - p)
+    return raw / np.sqrt(np.bincount(index, weights=p * (1 - p))) if pearson else raw
+
+
+def ljung_box_simulated(part: pd.DataFrame, pearson: bool, sims: int, rng, lags: tuple = (7, 14)) -> dict:
+    """
+    Valor p del Ljung y Box frente a su distribución bajo días independientes dada la probabilidad: cada réplica
+    sortea la avería de cada día y red con su propia probabilidad. Con probabilidades pequeñas la chi cuadrado no es
+    una buena referencia para el residuo bruto, que suma pocos sucesos; esta sí.
+    """
+    p = part["probabilidad"].clip(1e-6, 1 - 1e-6).to_numpy()
+    observed = ljung_box(daily_residuals(part, pearson=pearson), lags)
+    draws = {h: [] for h in lags}
+    for _ in range(sims):
+        found = ljung_box(daily_residuals(part, (rng.random(len(p)) < p).astype(float), pearson), lags)
+        for h in lags:
+            draws[h].append(found[f"q{h}"])
+    return {f"p{h}_simulado": float((np.sum(np.asarray(draws[h]) >= observed[f"q{h}"]) + 1) / (sims + 1))
+            for h in lags}
+
+
+def autocorrelation_rows(df: pd.DataFrame, label: str, sims: int = 2000, seed: int = 0) -> list:
+    """
+    Los residuos de cada día (avería sí o no menos la probabilidad), sumados entre redes para las tres juntas: el
+    bruto con la chi cuadrado y con la referencia simulada, y el de Pearson con las dos.
+    """
     rows = []
+    rng = np.random.default_rng(seed)
     for scope, part in scopes(df):
         if part.empty:
             continue
-        daily = (part["y"] - part["probabilidad"]).groupby(part["fecha"]).sum().sort_index()
-        rows.append({"muestra": label, "redes": scope, "dias": len(daily), **ljung_box(daily.to_numpy())})
+        part = part.sort_values(["fecha", "red"])
+        row = {"muestra": label, "redes": scope, "dias": part["fecha"].nunique(),
+               **ljung_box(daily_residuals(part)), **ljung_box_simulated(part, False, sims, rng)}
+        pearson = ljung_box(daily_residuals(part, pearson=True))
+        row.update({f"pearson_{k}": v for k, v in pearson.items()})
+        row.update({f"pearson_{k}": v for k, v in ljung_box_simulated(part, True, sims, rng).items()})
+        rows.append(row)
     return rows
 
 
@@ -483,10 +522,16 @@ def report(calibration: pd.DataFrame, reliability: pd.DataFrame, value: pd.DataF
         out += ["", "## Autocorrelación de los residuos", "",
                 "Residuo de cada día: si hubo avería (1 o 0) menos la probabilidad de la víspera, sumado entre redes para las "
                 "tres juntas. r1 es la correlación de un día con el siguiente; q7 y q14, el contraste de Ljung y Box con 7 y 14 "
-                "días de retardo, y p7 y p14 sus valores p. Con valores p altos, días seguidos no se parecen más de lo que toca "
-                "y los intervalos por fechas y por bloques de siete días deben coincidir.", "",
-                table(autocorrelation, ["muestra", "redes", "dias", "r1", "q7", "p7", "q14", "p14"],
-                      {"r1": 3, "q7": 1, "p7": 3, "q14": 1, "p14": 3})]
+                "días de retardo, y p7 y p14 sus valores p con la chi cuadrado. Con probabilidades pequeñas el residuo bruto "
+                "suma pocos sucesos y la chi cuadrado no es buena referencia: p7_simulado y p14_simulado comparan Q con 2.000 "
+                "réplicas en las que cada día y red sortea su avería con su propia probabilidad. Las columnas pearson_ repiten "
+                "el contraste con el residuo de Pearson (dividido por la raíz de la suma de p (1 - p) del día). Con valores p "
+                "altos, días seguidos no se parecen más de lo que toca y los intervalos por fechas y por bloques de siete días "
+                "deben coincidir.", "",
+                table(autocorrelation, ["muestra", "redes", "dias", "r1", "q7", "p7", "p7_simulado", "q14", "p14",
+                                        "p14_simulado", "pearson_r1", "pearson_p7", "pearson_p7_simulado"],
+                      {"r1": 3, "q7": 1, "p7": 3, "p7_simulado": 3, "q14": 1, "p14": 3, "p14_simulado": 3,
+                       "pearson_r1": 3, "pearson_p7": 3, "pearson_p7_simulado": 3})]
     return "\n".join(out) + "\n"
 
 
@@ -511,7 +556,8 @@ def main(argv=None) -> int:
     benefit = pd.DataFrame([r for label, part in samples.items() for r in benefit_rows(part, label)])
     intervals = pd.DataFrame([r for label in ("prevision", "prevision_sin_28_01") if label in samples
                               for r in value_intervals(samples[label], label, args.reps, args.semilla)])
-    autocorrelation = pd.DataFrame([r for label, part in samples.items() for r in autocorrelation_rows(part, label)])
+    autocorrelation = pd.DataFrame([r for label, part in samples.items()
+                                    for r in autocorrelation_rows(part, label, seed=args.semilla)])
 
     for name, frame in (("calibracion", calibration), ("fiabilidad", reliability), ("valor_relativo", value),
                         ("beneficio_neto", benefit), ("intervalos", intervals), ("autocorrelacion", autocorrelation)):

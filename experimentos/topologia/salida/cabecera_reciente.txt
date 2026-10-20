@@ -1,0 +1,3 @@
+trafos con cabecera: 1281; la cabecera reciente cambia en 620 (48.4%)
+hoy: 48 cabeceras, mayor 492 CT; top 5 -> 75.3% de los kVA*h con el 68.7% de los kVA; captura del 10 % 2021 - 2025 (2022 - 2025): naif 63.5% (56.1%), tamano 67.1% (60.7%), maximo 80.7% (76.6%)
+reciente: 70 cabeceras, mayor 144 CT; top 7 -> 52.8% de los kVA*h con el 43.3% de los kVA; captura del 10 % 2021 - 2025 (2022 - 2025): naif 36.0% (35.1%), tamano 39.8% (35.2%), maximo 62.9% (61.5%)
