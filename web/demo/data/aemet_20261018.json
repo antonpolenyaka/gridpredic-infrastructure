@@ -157,9 +157,9 @@
    "pico": {
     "racha_kmh": 63,
     "hora": 12,
-    "municipio": "Segura de Toro"
+    "municipio": "Municipio 46"
    },
-   "texto": "AEMET por municipios (43 municipios, elaborada 13:07): pico de racha 63 km/h a las 12:00 en Segura de Toro; hasta 39,1 mm de lluvia; probabilidad de tormenta hasta el 70 %"
+   "texto": "AEMET por municipios (43 municipios, elaborada 13:07): pico de racha 63 km/h a las 12:00 en Municipio 46; hasta 39,1 mm de lluvia; probabilidad de tormenta hasta el 70 %"
   },
   {
    "id": 2,
@@ -315,9 +315,9 @@
    "pico": {
     "racha_kmh": 51,
     "hora": 15,
-    "municipio": "Sierra de Fuentes"
+    "municipio": "Municipio 52"
    },
-   "texto": "AEMET por municipios (24 municipios, elaborada 13:07): pico de racha 51 km/h a las 15:00 en Sierra de Fuentes; hasta 3,3 mm de lluvia; probabilidad de tormenta hasta el 70 %"
+   "texto": "AEMET por municipios (24 municipios, elaborada 13:07): pico de racha 51 km/h a las 15:00 en Municipio 52; hasta 3,3 mm de lluvia; probabilidad de tormenta hasta el 70 %"
   },
   {
    "id": 1366,
@@ -473,9 +473,9 @@
    "pico": {
     "racha_kmh": 34,
     "hora": 17,
-    "municipio": "Valle de Santa Ana"
+    "municipio": "Municipio 20"
    },
-   "texto": "AEMET por municipios (1 municipio, elaborada 13:07): pico de racha 34 km/h a las 17:00 en Valle de Santa Ana; hasta 0,7 mm de lluvia; probabilidad de tormenta hasta el 80 %"
+   "texto": "AEMET por municipios (1 municipio, elaborada 13:07): pico de racha 34 km/h a las 17:00 en Municipio 20; hasta 0,7 mm de lluvia; probabilidad de tormenta hasta el 80 %"
   }
  ]
 }
