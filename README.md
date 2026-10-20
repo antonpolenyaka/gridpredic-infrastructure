@@ -126,7 +126,7 @@ SQL Server sigue en la distribuidora en cualquier caso: la captura de cambios y 
 
 ### Por qué los modelos van en el driver y no en MLlib
 
-Spark hace el trabajo pesado: leer las series del SCADA, los cortes y la meteorología y dejarlos en features por CT y hora o por distribuidora y día. Los modelos se entrenan después con scikit-learn y XGBoost sobre esa tabla, que cabe en la memoria del driver (el modelo del día tiene una fila por distribuidora y día), pasando de Spark a pandas con Arrow. MLlib no tiene la logística de Firth ni la prior de Cauchy que necesitamos con tan pocos eventos, y el XGBoost distribuido solo añade coste con estos tamaños. Además, scikit-learn permite probar cada modelo sin clúster, en segundos. Si un día el volumen lo pidiera (todas las líneas de una distribuidora grande por hora), el paso sería `xgboost.spark` o un modelo por grupo con `applyInPandas`, sin tocar las capas.
+Spark hace el trabajo pesado: leer las series del SCADA, los cortes y la meteorología y dejarlos en features por CT y hora o por distribuidora y día. Los modelos se entrenan después con scikit-learn y XGBoost en el driver, pasando de Spark a pandas con Arrow, porque las tablas son pequeñas: la del modelo del día son unos 8.200 días de red por 35 variables, 2,3 MB, y su logística se ajusta en milisegundos; la muestra del modelo por CT, 884.971 filas por 246 variables, ocupa unos 0,9 GB en float32, poco al lado de los 6 GB que `train.sh` da al driver. spark.ml tendría la logística, pero no el XGBoost con parada temprana sobre la PR-AUC de una muestra ponderada ni la evaluación hacia delante con purga entre años. Lo que sí se reparte es la puntuación: el modelo se envía a los ejecutores y valid se puntúa por lotes con `mapInPandas`. Además, scikit-learn permite probar cada modelo sin clúster, en segundos. Si un día el volumen lo pidiera (todas las líneas de una distribuidora grande por hora), el paso sería `xgboost.spark` o un modelo por grupo con `applyInPandas`, sin tocar las capas.
 
 ---
 
@@ -371,9 +371,12 @@ Host: localhost
 Port: 8085
 Database/Schema: lakehouse
 Username: <cualquier valor>
+Driver properties: timezone=UTC
 ```
 
-No hay autenticación por contraseña configurada para Trino en este entorno local, y por eso `compose.yaml` publica su puerto solo en `127.0.0.1:8085`, como el resto de consolas de administración (MinIO, Spark y Kafka UI): desde otro equipo de la red no responde. Antes de abrirlo a nadie más habría que activar TLS, la autenticación por contraseña (o la del directorio de la distribuidora) y el control de acceso por reglas de Trino, con un rol de solo lectura sobre `l3_gold` para el cuadro de mando y los analistas y Bronze y Silver reservados a los trabajos, que ya acceden por Spark y no por Trino.
+La propiedad `timezone=UTC` importa. Las horas del lago son las horas locales de Calser y TedisNet guardadas como UTC (apartado 1 de [docs/gold-layer.md](docs/gold-layer.md)), Trino convierte un literal sin zona, como `TIMESTAMP '2025-01-01 00:00:00'`, con la zona de la sesión, y el controlador JDBC toma por defecto la de la JVM del cliente: con DBeaver en hora de Madrid, ese filtro empezaría una o dos horas antes en las horas del lago.
+
+No hay autenticación por contraseña configurada para Trino en este entorno local, y por eso `compose.yaml` publica su puerto solo en `127.0.0.1:8085`, como el resto de consolas de administración (MinIO, Spark y Kafka UI): desde otro equipo de la red no responde. Antes de abrirlo a nadie más habría que activar TLS, la autenticación por contraseña (o la del directorio de la distribuidora) y el control de acceso por reglas de Trino, con un rol de solo lectura sobre `l3_gold` para los analistas y las herramientas de BI (el cuadro de mando no pasa por Trino) y Bronze y Silver reservados a los trabajos, que ya acceden por Spark y no por Trino.
 
 Tiempos de consulta medidos el 17.10.2026 en el portátil, con el tiempo del propio servidor (`system.runtime.queries`), en frío y en caliente (mediana de cinco), antes y después de compactar `dataset_train` (apartado 12; detalle en [docs/cifras.md](docs/cifras.md) y en `experimentos/consultas_trino/salida/`):
 
@@ -386,7 +389,7 @@ Tiempos de consulta medidos el 17.10.2026 en el portátil, con el tiempo del pro
 
 El cuadro de mando no pasa por Trino: lee los ficheros que deja cada tarde en `dashboard/data`.
 
-Desde la 0.16.0 el contenedor de Trino tiene un tope de 4 GB (`mem_limit` en `compose.yaml`). Sin él, la JVM se reservaba el 80 % de la máquina virtual de Docker, unos 18,8 GiB en el portátil, que compartía con Spark, SQL Server y el resto del stack. Con el tope, el heap se queda en unos 3,2 GB; el 20.10.2026 Trino usaba 1 GiB en reposo y hasta 3,1 GiB después de la consulta c5b, el join de `dataset_train` con la meteorología.
+Desde la 0.16.0 el contenedor de Trino tiene un tope de 4 GB (`mem_limit` en `compose.yaml`). Sin él, la JVM se reservaba el 80 % de la máquina virtual de Docker, unos 18,8 GiB en el portátil, que compartía con Spark, SQL Server y el resto del stack. Con el tope, el heap máximo es de 3,2 GiB (medido con jcmd); el 20.10.2026 Trino usaba 1 GiB en reposo y hasta 3,1 GiB después de la consulta c5b, el join de `dataset_train` con la meteorología.
 
 ### MinIO
 
@@ -411,7 +414,7 @@ docker compose exec airflow cat /opt/airflow/simple_auth_manager_passwords.json.
 
 ## 9. Ejecutar los jobs de streaming
 
-Los dos jobs son procesos continuos, por lo que conviene ejecutarlos en **dos terminales diferentes**.
+Los dos jobs son procesos continuos, por lo que conviene ejecutarlos en **dos terminales diferentes**. Con copias quietas, como las del prototipo, se usan como una carga acotada: se lanzan, se espera a que dejen de crecer y se paran. Así los usamos en la carga inicial del 08.10.2026, y desde entonces están parados; Kafka, Kafka Connect y Kafka UI solo arrancan con el perfil `cdc` (`docker compose --profile cdc up -d`).
 
 ### 9.1 Landing
 
@@ -431,9 +434,7 @@ s3a://datalake/00_landing/tedisnet-eosa
 
 ### 9.2 Bronze
 
-**No arrancar Bronze inmediatamente.** Su esquema se obtiene leyendo los ficheros ya existentes en Landing.
-
-Cuando Landing haya escrito al menos los primeros ficheros Parquet (puede comprobarse desde la consola de MinIO), abrir una segunda terminal y ejecutar:
+**No arrancar Bronze inmediatamente.** Su esquema se obtiene leyendo los ficheros de Landing, y una lectura solo ve los de los micro-batches que Landing ya ha confirmado. Hay que esperar a que exista `_spark_metadata/0` en la carpeta del CDC de `00_landing` (o `commits/0` en el checkpoint de Landing, bajo `_checkpoints/00_landing/`): con el snapshot entero, el primer micro-batch tardó 29 min 40 s el 08.10.2026, y un Bronze lanzado antes, cuando MinIO ya enseñaba ficheros, falló con `UNABLE_TO_INFER_SCHEMA`. Entonces, en una segunda terminal:
 
 ```bash
 docker compose exec spark-master \
@@ -442,6 +443,8 @@ docker compose exec spark-master \
 ```
 
 Este job procesa los eventos CDC de Landing y mantiene las tablas Delta correspondientes en `l1_bronze`.
+
+**Repetir la captura.** Kafka borra los mensajes a los siete días, así que repetir la captura pide un snapshot nuevo de Debezium. Cada job guarda en su checkpoint los offsets o los ficheros de cada micro-batch, y Landing lleva además el registro de sus ficheros (`_spark_metadata`) dentro de su carpeta: Landing solo se rehace borrando a la vez la carpeta y su checkpoint, mientras que el checkpoint de Bronze se puede borrar solo, porque vuelve a leer Landing y el MERGE deja las tablas igual.
 
 ---
 
@@ -461,7 +464,7 @@ Ejecutar manualmente el DAG:
 ingest_sqlserver_batch_bronze
 ```
 
-El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `etl/config/01_bronze/config_bronze_sqlserver.json` y las cargan como tablas Delta en `l1_bronze`.
+El DAG lanza los jobs Spark que extraen las tablas batch configuradas en `etl/config/01_bronze/config_bronze_sqlserver.json` y las cargan como tablas Delta en `l1_bronze`. La configuración genera 90 cargas, las 33 tablas de TedisNet y las 19 de Calser de cada una de las tres bases, y el alcance sigue sin depurar: 35 de esas 90 cargas no las lee ningún trabajo de Silver, Gold o modelos (buscando sus nombres en el código), y tampoco 17 de las 29 tablas del CDC.
 
 `HistoricTagIntervalValuesBig` (2.150 millones de filas) no se lee de una vez. Con una sola lectura JDBC Spark usa una conexión y una tarea, tarda horas y deja la tabla en un único fichero enorme, y entonces Silver no puede saltarse ficheros al procesar un mes. En la configuración esa tabla es incremental por `Id` y se lee por trozos:
 
@@ -517,13 +520,16 @@ docker compose exec spark-master \
   /app/jobs/02_silver/job_silver_f_tag_interval_value.py --desde 2026-01 --hasta 2026-03
 ```
 
-Resultado de calidad de cada ejecución desde Trino/DBeaver:
+Un mes cuenta como terminado aunque la copia acabara a mitad de mes: con la próxima copia hay que relanzar agosto de 2026, el último de la copia del 14.08.2026, con `--desde 2026-08 --rehacer`, y lo mismo `agg_medida_hora` de Gold ([docs/operacion-diaria.md](docs/operacion-diaria.md), apartado 4).
+
+Resultado de calidad desde Trino/DBeaver, con el último estado de cada métrica (una métrica que se corrigió en una ejecución posterior sale como quedó, y una tarea reintentada no sale repetida):
 
 ```sql
-SELECT job, entidad, ambito, metrica, valor, total, pct, estado
-FROM lakehouse.l2_silver.dq_metrics
-ORDER BY ts DESC
-LIMIT 200;
+SELECT job, entidad, ambito, metrica, valor, total, pct, estado, ts
+FROM (SELECT *, row_number() OVER (PARTITION BY job, entidad, ambito, metrica ORDER BY ts DESC) AS rn
+      FROM lakehouse.l2_silver.dq_metrics)
+WHERE rn = 1
+ORDER BY estado DESC, job, entidad, metrica;
 ```
 
 Las filas descartadas de cada tabla están en `l2_silver.<tabla>_rejected`, con el motivo en `_motivo`.
@@ -577,9 +583,9 @@ GROUP BY split;
 
 Las filas con `split = 'purga'` son las cinco horas de cada CT antes de cada frontera, cuya ventana de etiqueta de 6 horas mira al período siguiente: no se usan ni para entrenar ni para evaluar. Tampoco entran en el dataset las horas en las que el CT ya estaba en corte, las que no tienen muestras del SCADA ni aquellas en las que el CT todavía no existía en Calser o ya había desaparecido (`ct_vigente = 0` en `labels_ct_hora`, sacado de los períodos que listan cada CT).
 
-Calidad de cada ejecución en `lakehouse.l3_gold.dq_metrics`, con el mismo esquema que la de Silver.
+Calidad de cada ejecución en `lakehouse.l3_gold.dq_metrics`, con el mismo esquema que la de Silver (la misma consulta sirve cambiando el esquema). Las métricas que quedaron en `REVISAR` en la última carga completa, y por qué `fail_on_review` sigue en `false`, están en el apartado 7 de [docs/gold-layer.md](docs/gold-layer.md).
 
-Las tablas Delta de las tres capas se compactan una vez por semana: `dag_mantenimiento_delta` corre los domingos a las 04:10 (hora de Madrid) y lanza `job_mantenimiento_delta.py`, que hace OPTIMIZE y VACUUM con 168 horas de retención sobre `l1_bronze`, `l2_silver` y `l3_gold`. Con esa retención, el time travel solo llega a las versiones de la última semana. La primera pasada, lanzada a mano el viernes 16.10.2026, tardó 3 h 4 min y dejó 225 tablas en 559 ficheros, pero se saltó las cinco más grandes por falta de memoria del ejecutor; desde el 19.10.2026 el DAG lanza el trabajo con 6 GB por ejecutor, 1 GB de margen y 4 núcleos, no empieza ninguna tabla después de las 18:00 y, si el OPTIMIZE de una tabla falla, le hace el VACUUM igual. `dataset_train` la compactamos a mano por particiones el 17.10.2026, con los meses de 2025 ordenados por distribuidora y CT con ZORDER (`experimentos/consultas_trino/compactar_dataset.py`), y el mantenimiento solo le pasa VACUUM para no deshacer ese orden; lo mismo a la tabla grande de valores de Bronze, que está escrita por orden de `Id`. Ordenamos con ZORDER y no con liquid clustering porque el conector de Delta de Trino solo lee la característica de tabla deletion vectors: una tabla con liquid clustering, row tracking o checkpoints v2 dejaría de poder consultarse desde Trino, y `tests/03_gold/test_compatibilidad_trino.py` lo vigila. Como todo DAG nuevo, llega pausado:
+Las tablas Delta de las tres capas se compactan una vez por semana: `dag_mantenimiento_delta` corre los domingos a las 04:10 (hora de Madrid) y lanza `job_mantenimiento_delta.py`, que hace OPTIMIZE y VACUUM con 168 horas de retención sobre `l1_bronze`, `l2_silver` y `l3_gold`. Con esa retención, el time travel solo llega a las versiones de la última semana. La primera pasada, lanzada a mano el viernes 16.10.2026, tardó 3 h 4 min y dejó 225 tablas en 559 ficheros, pero se saltó las cinco más grandes por falta de memoria del ejecutor; desde el 19.10.2026 el DAG lanza el trabajo con 6 GB por ejecutor, 1 GB de margen y 4 núcleos, no empieza ninguna tabla después de las 18:00 y, si el OPTIMIZE de una tabla falla, le hace el VACUUM igual. `dataset_train` la compactamos a mano por particiones el 17.10.2026, con los meses de 2025 ordenados por distribuidora y CT con ZORDER (`experimentos/consultas_trino/compactar_dataset.py`), y el mantenimiento solo le pasa VACUUM para no deshacer ese orden; lo mismo a la tabla grande de valores de Bronze, que está escrita por orden de `Id`. Ordenamos con ZORDER y no con liquid clustering porque Delta no admite clustering en una tabla particionada y `dataset_train` vive de sus particiones por `split` y `fecha_mes`; liquid clustering y row tracking son además características de escritura, que no impiden a Trino leer la tabla aunque no pudiera escribir en ella. `tests/03_gold/test_compatibilidad_trino.py` falla si un job activa una característica de tabla distinta de los deletion vectors (detalle en el apartado Versioning de [docs/dataset_card.md](docs/dataset_card.md)). Como todo DAG nuevo, llega pausado:
 
 ```bash
 docker compose exec airflow airflow dags unpause dag_mantenimiento_delta
