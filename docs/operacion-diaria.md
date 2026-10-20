@@ -74,7 +74,19 @@ Es el mismo comando que enseña `dias.html` y la cabecera del job. El job añade
 - Las incidencias reales de cada día llegan con la siguiente copia de Calser; con ella, `job_ml_caso_negocio.py` vuelve a puntuar esos días y el historial dice si las alertas acertaron.
 - La tarde se entrena con los días hasta la última incidencia de la copia de Calser menos `margen_etiquetas_dias` (45 desde el 17.10.2026): las interrupciones pendientes de procesar reciben su incidencia semanas después.
 - Mientras la copia de Calser no llegue hasta la víspera menos `historia_margen_dias` (7), la tarde entrena el modelo con la historia de incidencias y puntúa el día con la mediana de los días de entrenamiento en esas variables (`riesgo_manana.historia_desfasada`, `"mediana"`): la fila lleva `historia_al_dia` en falso, el resumen y el cuadro de mando lo dicen, y con una copia al día el modelo vuelve solo a usar la historia real.
-- Cada ejecución de la tarde queda en `l3_gold.riesgo_dia_siguiente` y `l3_gold.ml_runs`, con su `run_id`, para repetirla o compararla.
+- Cada ejecución de la tarde queda en `l3_gold.riesgo_dia_siguiente` y `l3_gold.ml_runs`, con su `run_id`, para repetirla o compararla. `ml_runs` no guarda el commit del código: los contenedores leen los trabajos de la copia del repositorio que hay en el portátil. Del cierre de la 0.16.0 a la defensa esa copia no cambia `etl/`, `infra/` ni `compose.yaml` respecto a la etiqueta v0.16.0, así que las tardes de esos días corren con esa versión aunque el registro no lo diga; se comprueba con `git diff --stat v0.16.0 -- etl infra compose.yaml`, que tiene que salir vacío. Guardar el commit en `ml_runs` queda como trabajo futuro.
+- Con la próxima copia de las bases, el último mes de la serie de medidas no se rehace solo. Agosto de 2026 quedó marcado como hecho con la copia del 14.08.2026, y `f_tag_interval_value` de Silver y `agg_medida_hora` de Gold se lo saltarían, así que perderían del 14 al 31.08 sin ningún aviso. Después de cargar la copia hay que relanzar los dos con `--desde 2026-08 --rehacer` y la configuración de Spark de su JSON, antes de reconstruir las features y el dataset:
+
+```bash
+docker compose exec spark-master spark-submit \
+  --conf spark.cores.max=4 --conf spark.executor.memory=8g --conf spark.executor.memoryOverhead=1g \
+  --conf spark.sql.shuffle.partitions=256 --conf spark.network.timeout=600s --conf spark.executor.heartbeatInterval=60s \
+  /app/jobs/02_silver/job_silver_f_tag_interval_value.py --desde 2026-08 --rehacer
+docker compose exec spark-master spark-submit --py-files /app/jobs/03_gold/gold_common.py \
+  --conf spark.cores.max=4 --conf spark.executor.memory=8g --conf spark.executor.memoryOverhead=1g \
+  --conf spark.sql.shuffle.partitions=256 --conf spark.network.timeout=600s --conf spark.executor.heartbeatInterval=60s \
+  /app/jobs/03_gold/job_gold_agg_medida_hora.py --desde 2026-08 --rehacer
+```
 - `prevision_sombra/` de cada tarde, desde el 17.10.2026: la previsión de ICON-EU en la rejilla nativa y la de IFS para las mismas celdas. Antes del 30.11.2026, cuando `icon_eu` pase a la rejilla nativa, dirán si la racha diaria de cada red da un salto (apartado 3u de [investigacion-continua.md](investigacion-continua.md)).
 - La previsión de la víspera de IFS de 2024 - 2025 se descarga aparte, en segundo plano y en unos tres días (`job_landing_meteo_pasadas.py --fuente openmeteo_pasadas_ifs --esperar`): gasta como mucho 8.500 llamadas del plan gratuito al día y deja el resto para la tarde. Si se corta, se vuelve a lanzar y sigue donde iba.
 - `sector.json` (la sección "Dónde está cada red frente al sector" de `negocio.html`) no cambia cada día: lo deja `job_analisis_red.py --dashboard-dir /app/dashboard/data` con la copia anual de Calser, y los índices oficiales se renuevan con `extract_gecos_indices.py` cuando el Ministerio publica un año nuevo (fuente `calidad_sector` de los datos públicos).
@@ -104,6 +116,8 @@ Todo el sistema vive en Docker sobre el disco D: y sobrevive a un apagado normal
 
 Tampoco lanzamos dos baterías de pruebas a la vez: cada una arranca un Spark local con 3 GB de memoria junto a la máquina virtual de Docker. Desde el 19.10.2026 lo impide un candado en `tests/conftest.py`: la segunda batería sale enseguida con un mensaje y el código 9 (`GRIDPREDIC_SIN_CANDADO=1` lo apaga; el candado es uno por usuario y, si no se puede abrir, las pruebas siguen sin él).
 
+**Trabajos a mano y la tarde.** Entre las 19:00 y las 21:00 no lanzamos Spark a mano. El maestro admitiría a la vez la puntuación de la tarde (4 núcleos, un ejecutor de 6 GB con 2 GB de margen y un driver de 4 GB en el contenedor de Airflow: `spark_conf` de `config_ml.json` y `dag_riesgo_manana.py`) y un trabajo pesado de Gold (4 núcleos y 8 GB con 1 GB de margen, `config_gold.json`), pero los dos tendrían que caber, con SQL Server, Trino, Kafka y MinIO, en la memoria de la misma máquina virtual de Docker, de 23,5 GiB, y leer del mismo disco externo. La regla es de quien lanza los trabajos: los DAG no la comprueban, y llevarla a Airflow, con un pool de una plaza para los trabajos que escriben lo que lee la tarde, queda como trabajo futuro. Los trabajos largos llevan además una hora a partir de la cual no empiezan otra tabla o partición (`--parar-a` de `job_mantenimiento_delta.py` y `compactar_dataset.py`, `-PararA` de `lanzar_experimento.ps1`; las 18:00 en el mantenimiento y por defecto en los otros dos), y `lanzar_experimento.ps1` espera a las 21:00 si se lanza en esa franja. Como cada tabla Delta se escribe entera o no se escribe, un trabajo cortado vuelve a la cola sin dejar nada a medias.
+
 Antes de apagar:
 
 1. Mirar `_runlogs\cola\historial.log`: si un trabajo de la cola sigue en marcha (línea "INICIO" sin su "FIN"), esperar a que acabe o crear el fichero `_runlogs\cola\parar` (la cola termina el trabajo en curso y se para). Cortarla a medias no rompe nada: cada tabla Delta se escribe entera o no se escribe, y el trabajo se vuelve a encolar.
@@ -127,3 +141,17 @@ docker compose -f D:\GitHub\gridpredic-infrastructure\compose.yaml exec kafka-co
 ```
 
 La primera orden quita el CDC de las dos tablas, lo que borra sus tablas de cambios en SQL Server pero no las de origen; la segunda publica la lista nueva en Kafka Connect. Los mensajes que ya estaban en Kafka caducan con la retención por defecto del broker (siete días). Las copias de Landing y las tablas `l1_bronze.tedis_net_eosa_system_electric_electrical_lv_lines` y `..._lv_subscribers` se quedan donde están hasta que se borren a mano, y hay que hacerlo antes del primer piloto. Ningún trabajo las lee.
+
+## 6. Instalar en una máquina virtual de plantilla
+
+Fuera del portátil, lo que entregaríamos a una distribuidora es una máquina virtual de plantilla: una imagen con Docker y el Compose, un disco persistente para el lago y las variables de cada cliente. Vale igual para un servidor del cliente o del socio, para la virtualización que ya tenga la distribuidora o para una nube privada. Lo que tiene que llevar, contado sobre el repositorio:
+
+| Elemento | Valor | De dónde sale |
+| --- | --- | --- |
+| Núcleos y memoria | De 2 núcleos y 16 GB a 4 núcleos y 32 GB: 75 y 138 euros al mes por distribuidora con las listas de Oracle del 08.10.2026 | `experimentos/despliegue/salida/coste_nube.txt` |
+| Disco persistente | 200 GB para el lago y los volúmenes de Docker; el lago de las tres redes ocupaba 108,8 GiB en el portátil el 17.10.2026 | `coste_nube.txt` y [cifras.md](cifras.md) |
+| Servicios | Los 13 de `compose.yaml`; Kafka, Kafka Connect y Kafka UI solo arrancan con el perfil `cdc`. El batch de Bronze y el conector de Debezium leen de `sqlserver:1433`, el servicio del propio Compose (`job_bronze_sqlserver_batch.py` y el JSON del conector), así que leer la réplica de la distribuidora pide hacer configurable ese host | `compose.yaml` |
+| Estado que hay que conservar | 7 volúmenes con nombre (`airflow-data`, `hive-db`, `ivy-airflow`, `ivy-spark-master`, `kafka-data`, `minio-data` y `sqlserver-data`) y la carpeta `dashboard/data`, que escriben `spark-master` y `airflow` | `compose.yaml` |
+| Puertos publicados | 11. Para la operación, 8086 (cuadro de mando) y 8084 (Airflow); los siete de administración (consola de MinIO, las cuatro interfaces de Spark, Trino y Kafka UI) solo en 127.0.0.1; además 1433 (SQL Server) y 4040 (la interfaz de los trabajos de Spark que lanza Airflow) | `compose.yaml` |
+| Salida a Internet | HTTPS a Open-Meteo, AEMET, EUMETSAT, NOAA y el webhook, y a Maven Central en el primer arranque, cuando Ivy baja los jars de Spark y del catálogo, que quedan en los volúmenes `ivy-*` | apartado 1, `compose.yaml` y `spark-defaults.conf` |
+| Variables | 13 en `.env.example`: 4 activas (las contraseñas del catálogo, de MinIO y de SQL Server, y el usuario de MinIO) y 9 comentadas (el puerto de la interfaz de Spark; las claves de AEMET y EUMETSAT y el webhook, que usa la operación; y las de FIRMS, Copernicus y el Data Space de Copernicus, que solo usan las cargas a mano y los experimentos) | `.env.example` |
