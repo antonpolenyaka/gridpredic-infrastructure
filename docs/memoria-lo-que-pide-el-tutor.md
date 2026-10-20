@@ -165,7 +165,7 @@ El asesor técnico (Josep Anton Sànchez) nos vio el 13.07 y el 08.10.2026, y el
 | Test reservado, matriz de confusión, AUC, sensibilidad y falsas alarmas | 13.07 (técnico) | 5.4 y 5.7.2: partición por fechas, validación por años y matriz de confusión por días |
 | Semáforo con umbrales del 60, 70 y 80 % | 13.07 (técnico) | 5.5: cuatro niveles por percentiles de cada red, porque ningún día pasa del 50 % |
 | Probabilidad en línea cada 12 segundos | 13.07 (técnico) | 4.5.5: sustituida por la tarde de las 20:30 y las rutas en vivo |
-| Mantener XGBoost | 08.10 (técnico) | 5.5: XGBoost por CT y por horas; en el día ordena mejor la logística con la previsión real |
+| Mantener XGBoost | 08.10 (técnico) | 5.5: XGBoost por CT y por horas; en el día, con la previsión real de 2024 - 2026, 0,138 frente a 0,156 de la logística (-0,016, de -0,082 a +0,047) |
 | Grupos de CT con k-means y un submodelo por grupo | 08.10 (técnico) | 5.6: los submodelos no superan al modelo global |
 | Estación del año y entrenamiento que cubra todas las estaciones | 08.10 (técnico) | 5.3.3, 5.3.4 y 5.4 |
 | Reentreno en batch cada uno a tres meses, aparte de la predicción | 08.10 (técnico) | 5.7.1 |
