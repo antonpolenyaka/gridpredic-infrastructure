@@ -11,7 +11,10 @@ de la carga de cálculo, sin Spark:
   debajo de 0,9, la estimación lineal del coste de Gold con más distribuidoras es una cota superior; entre 0,9 y 1,1
   se sostiene; por encima de 1,1 hay que corregirla.
 
-Marca los puntos con más de un 10 % entre pasadas, que hay que repetir. Deja escalado_nucleos.csv y escalado_nucleos_ajuste.txt (escalado.csv es la medida del 17.10.2026 y no se toca).
+Marca los puntos con más de un 10 % entre las pasadas que cuentan, que hay que repetir. Los JSON de antes del
+20.10.2026 solo calentaban el recuento: en ellos la primera pasada del cálculo no cuenta (salía un 4 - 30 % más lenta
+que la menor de las otras dos) y su sobrecoste queda en la columna primera_pasada_calculo. Deja escalado_nucleos.csv y
+escalado_nucleos_ajuste.txt (escalado.csv es la medida del 17.10.2026 y no se toca).
 """
 
 import glob
@@ -33,6 +36,22 @@ def ols(X, y):
     return beta, np.sqrt(np.diag(cov))
 
 
+def counted(run: dict, load: str) -> list:
+    """Tiempos de las pasadas que cuentan: todas si la ejecución calentó esa carga; si no, todas menos la primera."""
+    times = [t for t, _ in run.get(load) or []]
+    if load in (run.get("calentamiento") or ["recorrido"]) or len(times) < 3:
+        return times
+    return times[1:]
+
+
+def first_pass(run: dict):
+    """Lo que tardó de más la primera pasada del cálculo sin calentar, frente a la menor de las otras."""
+    times = [t for t, _ in run.get("calculo") or []]
+    if "calculo" in (run.get("calentamiento") or []) or len(times) < 3 or min(times[1:]) <= 0:
+        return None
+    return round(times[0] / min(times[1:]) - 1, 3)
+
+
 def main(argv) -> int:
     folder = argv[0]
     out = argv[1] if len(argv) > 1 else os.path.join(HERE, "salida")
@@ -42,18 +61,31 @@ def main(argv) -> int:
             runs.append(json.load(handle))
     if not runs:
         raise SystemExit(f"No hay escalado_*.json en {folder}")
+    for run in runs:
+        for load in ("recorrido", "calculo"):
+            times = counted(run, load)
+            if times:
+                run[f"{load}_s"] = min(times)
+                run[f"{load}_dispersion"] = round(max(times) / min(times) - 1, 3) if min(times) > 0 else None
+        run["primera_pasada_calculo"] = first_pass(run)
     lines = []
     cores = sorted((r for r in runs if r.get("meses", 1.0) >= 1), key=lambda r: r["nucleos"])
     base = next((r for r in cores if r["nucleos"] == 1), None)
-    rows = ["nucleos,meses,filas,recorrido_s,calculo_s,dispersion_calculo,speedup_recorrido,speedup_calculo"]
+    rows = ["nucleos,meses,filas,recorrido_s,calculo_s,dispersion_calculo,primera_pasada_calculo,speedup_recorrido,"
+            "speedup_calculo"]
     for r in sorted(runs, key=lambda r: (r.get("meses", 1.0), r["nucleos"])):
         sr = base["recorrido_s"] / r["recorrido_s"] if base and r.get("meses", 1.0) >= 1 else float("nan")
         sc = base["calculo_s"] / r["calculo_s"] if base and r.get("meses", 1.0) >= 1 else float("nan")
+        first = r.get("primera_pasada_calculo")
         rows.append(f"{r['nucleos']},{r.get('meses', 1.0):g},{r.get('filas', '')},{r['recorrido_s']},{r['calculo_s']},"
-                    f"{r.get('calculo_dispersion', '')},{sr:.2f},{sc:.2f}")
+                    f"{r.get('calculo_dispersion', '')},{'' if first is None else first},{sr:.2f},{sc:.2f}")
         if (r.get("calculo_dispersion") or 0) > 0.10:
             lines.append(f"REPETIR: {r['nucleos']} núcleos y {r.get('meses', 1.0):g} de los meses, "
-                         f"{100 * r['calculo_dispersion']:.0f} % entre pasadas")
+                         f"{100 * r['calculo_dispersion']:.0f} % entre las pasadas que cuentan")
+    firsts = [r["primera_pasada_calculo"] for r in runs if r.get("primera_pasada_calculo") is not None]
+    if firsts:
+        lines.append(f"Primera pasada del cálculo sin calentar (no cuenta): entre un {100 * min(firsts):.0f} y un "
+                     f"{100 * max(firsts):.0f} % más lenta que la menor de las otras.")
     if base and len(cores) >= 3:
         n = np.array([r["nucleos"] for r in cores], dtype=float)
         t = np.array([r["calculo_s"] for r in cores], dtype=float)
