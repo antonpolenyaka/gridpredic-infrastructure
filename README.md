@@ -323,7 +323,7 @@ Durante el arranque se realiza automáticamente:
 >
 > ```text
 > Error response from daemon: ports are not available: exposing port TCP
-> 0.0.0.0:8080 -> 127.0.0.1:0: listen tcp 0.0.0.0:8080: bind: An attempt was
+> 127.0.0.1:8080 -> 127.0.0.1:0: listen tcp 127.0.0.1:8080: bind: An attempt was
 > made to access a socket in a way forbidden by its access permissions
 > ```
 >
@@ -362,7 +362,7 @@ Database/Schema: lakehouse
 Username: <cualquier valor>
 ```
 
-No hay autenticación por contraseña configurada para Trino en este entorno local, y `compose.yaml` publica su puerto en todas las interfaces del portátil: el cortafuegos de Windows tiene que cerrarlo a la red (o publicarlo como `127.0.0.1:8085:8080`). Antes de abrirlo a nadie más habría que activar TLS, la autenticación por contraseña (o la del directorio de la distribuidora) y el control de acceso por reglas de Trino, con un rol de solo lectura sobre `l3_gold` para el cuadro de mando y los analistas y Bronze y Silver reservados a los trabajos, que ya acceden por Spark y no por Trino.
+No hay autenticación por contraseña configurada para Trino en este entorno local, y por eso `compose.yaml` publica su puerto solo en `127.0.0.1:8085`, como el resto de consolas de administración (MinIO, Spark y Kafka UI): desde otro equipo de la red no responde. Antes de abrirlo a nadie más habría que activar TLS, la autenticación por contraseña (o la del directorio de la distribuidora) y el control de acceso por reglas de Trino, con un rol de solo lectura sobre `l3_gold` para el cuadro de mando y los analistas y Bronze y Silver reservados a los trabajos, que ya acceden por Spark y no por Trino.
 
 Tiempos de consulta medidos el 17.10.2026 en el portátil, con el tiempo del propio servidor (`system.runtime.queries`), en frío y en caliente (mediana de cinco), antes y después de compactar `dataset_train` (apartado 12; detalle en [docs/cifras.md](docs/cifras.md) y en `experimentos/consultas_trino/salida/`):
 
