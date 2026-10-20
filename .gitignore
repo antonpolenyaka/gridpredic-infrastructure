@@ -32,3 +32,6 @@ _runlogs/*.csv
 # Correspondencias con los nombres reales de las distribuidoras (solo en el portatil)
 _runlogs/anonimizar_nombres.json
 experimentos/aves/titulares.json
+
+# Datos privados del plan financiero (códigos del BOE de las distribuidoras del TFM)
+experimentos/plan_financiero/privado/

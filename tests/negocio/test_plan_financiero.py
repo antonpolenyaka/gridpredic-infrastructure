@@ -9,6 +9,7 @@ fondos propios de 2026 y un plan igual o mejor que el de la v10.
 
 import copy
 import importlib.util
+import json
 import os
 
 import pytest
@@ -139,3 +140,74 @@ def test_tarifa_por_tramos_minimo_y_sin_techo():
         previo = actual
     assert pf.V11["precio_licencia"] == pf.licencia(**pf.RED_TIPO_PLAN)
     assert pf.licencia(**pf.REDES_CALIBRACION["Distribuidora 3"]) == t["minimo"]
+
+
+def test_contrataciones_ligadas_a_las_puestas_en_marcha():
+    # en el plan la regla no cambia nada: el ingeniero entra en el 13 y el comercial en el 25
+    assert pf.meses_contratacion(pf.V11) == {13: 13, 25: 25}
+    S = copy.deepcopy(pf.V11)
+    S["contrataciones_ligadas"] = {}
+    assert pf.r0(pf.pyg_anual(pf.simular(S), 3)["resultado"]) == pf.r0(pf.pyg_anual(pf.simular(pf.V11), 3)["resultado"])
+    # con los retrasos entran con la tercera y la novena puesta en marcha
+    assert pf.meses_contratacion(pf.escenario_retraso(pf.V11, 6)) == {13: 15, 25: 30}
+    assert pf.meses_contratacion(pf.escenario_retraso(pf.V11, 12)) == {13: 21, 25: 36}
+    assert pf.meses_contratacion(pf.escenario_menos_clientes(pf.V11, 2)) == {13: 13, 25: 27}
+    r = pf.simular(pf.escenario_retraso(pf.V11, 6))
+    ingeniero = [d for (n, _, d) in r["S"]["plantilla"] if n.startswith("Ingeniero")]
+    assert ingeniero == [15]
+
+
+def test_ipc_cero_no_cambia_el_plan():
+    S = copy.deepcopy(pf.V11)
+    S["ipc_licencia"] = 0.0
+    assert pf.simular(S)["caja"][36] == pytest.approx(pf.simular(pf.V11)["caja"][36])
+    extra = pf.valor_ipc(pf.V11)
+    assert extra[1] == 0 and 0 < extra[2] < extra[3]
+
+
+def test_analisis_cuadran_con_la_cuenta(calculo):
+    r = calculo["r11"]
+    for a in (1, 2, 3):
+        c = pf.cascada(r, a)
+        assert c["coste_ventas"] + c["gastos_operativos"] == pytest.approx(pf.pyg_anual(r, a)["gastos_expl"])
+    p3 = pf.punto_muerto_detalle(r, 3)
+    assert p3["licencias"] == pytest.approx(pf.punto_muerto(r, 3)[0])
+    f = pf.fondo_maniobra(r, 12)
+    b = r["balances"][12]
+    assert f["fondo_maniobra"] == pytest.approx(b["clientes"] + b["hp_deudora_iva"] + b["tesoreria"] - b["total_pc"])
+
+
+# --- mercado.py: la retribución del BOE se lee de un fichero privado que no se versiona
+spec_m = importlib.util.spec_from_file_location(
+    "mercado", os.path.join(os.path.dirname(__file__), "..", "..", "experimentos", "plan_financiero", "mercado.py"))
+mercado = importlib.util.module_from_spec(spec_m)
+spec_m.loader.exec_module(mercado)
+
+BOE_FICTICIO = """ANEXO I
+  R1-001   Empresa uno          100.000.000
+  R1-002   Empresa dos           3.000.000
+ANEXO II
+  R1-003   Empresa tres a cuenta        900.000
+ANEXO III
+"""
+
+
+def test_lee_la_resolucion_del_boe():
+    assert mercado.leer_boe(BOE_FICTICIO) == {"R1-001": 100000000, "R1-002": 3000000, "R1-003": 900000}
+
+
+def test_mercado_solo_agregados_y_al_dia():
+    ruta = os.path.join(os.path.dirname(mercado.__file__), "salida", "mercado.json")
+    with open(ruta, encoding="utf-8") as f:
+        guardado = json.load(f)
+    assert set(guardado) == {
+        "distribuidoras_sin_las_grandes", "con_mas_de_un_millon", "tarifa_320", "tarifa_mas_de_un_millon",
+        "tarifa_89_mayores", "tarifa_52_mayores", "regla_320", "regla_89_mayores", "de_las_89_con_150_ct_o_mas",
+        "de_las_89_con_100_ct_o_mas", "mediana_ct_89", "incentivo_4_pct_mediana_mas_de_un_millon"}
+    if not os.path.exists(mercado.PRIVADO):
+        pytest.skip("sin el fichero privado con la retribución del BOE")
+    with open(mercado.PRIVADO, encoding="utf-8") as f:
+        conf = json.load(f)
+    with open(conf["boe_txt"], encoding="utf-8") as f:
+        nuevo = mercado.calcular(mercado.leer_boe(f.read()), conf["codigos"])
+    assert nuevo == guardado, "salida/mercado.json no está al día: vuelve a ejecutar mercado.py"
