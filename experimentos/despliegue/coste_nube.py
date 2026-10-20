@@ -32,6 +32,11 @@ def say(text=""):
     LINES.append(text)
 
 
+def num(value, digits=0):
+    """Número con punto de miles y coma decimal."""
+    return f"{value:,.{digits}f}".replace(",", "x").replace(".", ",").replace("x", ".")
+
+
 def euros(value, digits=0):
     return f"{value:,.{digits}f}".replace(",", "x").replace(".", ",").replace("x", ".") + " €"
 
@@ -133,12 +138,13 @@ def main(argv) -> int:
     mwaa_micro, mwaa_small = P["EUS2-Airflow-MicroEnvironment"], P["EUS2-Airflow-SmallEnvironment"]
     emr = 4 * P["EUS2-EMR-SERVERLESS-vCPUHours"] + 16 * P["EUS2-EMR-SERVERLESS-MemoryGBHours"]
     say("\n## AWS Europe (Spain), en dólares")
-    say(f"MWAA micro {mwaa_micro}/h ({mwaa_micro * H:,.1f}$ al mes); pequeño {mwaa_small}/h ({mwaa_small * H:,.1f}$); "
-        f"MWAA Serverless {P['EUS2-MWAA-Serverless-AWSManaged']}$ por hora de tarea")
-    say(f"S3 {P['EUS2-TimedStorage-ByteHrs']}$ el GB al mes ({P['EUS2-TimedStorage-ByteHrs'] * lake_gb:,.2f}$ los "
-        f"110 GB); PUT {P['EUS2-Requests-Tier1'] * 1000:.4f}$ por 1.000; Athena {P['EUS2-DataScannedInTB']}$ por TB")
-    say(f"EMR Serverless, la tarde (4 vCPU, 16 GB, 15 min al día): {emr * 0.25 * 30:,.2f}$ al mes; en continuo: "
-        f"{emr * H:,.0f}$")
+    say(f"MWAA micro {num(mwaa_micro, 2)}$/h ({num(mwaa_micro * H, 1)}$ al mes); pequeño {num(mwaa_small, 2)}$/h "
+        f"({num(mwaa_small * H, 1)}$); MWAA Serverless {num(P['EUS2-MWAA-Serverless-AWSManaged'], 3)}$ por hora de tarea")
+    say(f"S3 {num(P['EUS2-TimedStorage-ByteHrs'], 3)}$ el GB al mes ({num(P['EUS2-TimedStorage-ByteHrs'] * lake_gb, 2)}$ "
+        f"los 110 GB); PUT {num(P['EUS2-Requests-Tier1'] * 1000, 4)}$ por 1.000; Athena "
+        f"{num(P['EUS2-DataScannedInTB'], 2)}$ por TB")
+    say(f"EMR Serverless, la tarde (4 vCPU, 16 GB, 15 min al día): {num(emr * 0.25 * 30, 2)}$ al mes; en continuo: "
+        f"{num(emr * H, 0)}$")
     say(f"\nLicencia: {euros(18000 / 12)} por cliente y mes")
 
     os.makedirs(out, exist_ok=True)
