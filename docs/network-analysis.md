@@ -55,7 +55,7 @@ Y se repite. Si ordenamos las cabeceras por los kVA·h de los dos años anterior
 
 En una incidencia que corta varios CT, los que vuelven antes que los últimos se repusieron con maniobras (aislar el tramo averiado y cerrar el resto), no con la reparación. Si hubiera un elemento telemandado en el punto adecuado, esa reposición bajaría de 3 minutos y dejaría de contar en el TIEPI. Entre 2016 y 2025, el 33 % de los kVA·h imprevistos de la Distribuidora 1 y el 31 % de los de la Distribuidora 2 fueron tiempo de maniobra, con una mediana de 11 minutos por CT: de media 0,19 h de TIEPI al año en la Distribuidora 1 y 0,09 h en la Distribuidora 2. Es un máximo, porque supone que siempre había un punto de maniobra entre el CT y la avería.
 
-Con el precio del minuto de TIEPI del apartado 6 y el coste de un interruptor-seccionador telemandado (valor unitario de referencia TI-187A de la Orden IET/2660/2015: 11.174 EUR y 61 EUR al año de mantenimiento, unos 837 EUR al año a 30 años y 5,58 %), en 8 cabeceras el interruptor se paga si evita un 25 % o menos de ese máximo. La primera, R89-1T1 de la Distribuidora 1, tuvo 43 incidencias en 2023-2025. La lista completa está en `economia_telemando_cabeceras.csv`.
+Con el precio del minuto de TIEPI del apartado 6 y el coste de un interruptor-seccionador telemandado (valor unitario de referencia TI-187A de la Orden IET/2660/2015: 11.174 EUR y 61 EUR al año de mantenimiento, unos 837 EUR al año a 30 años y 5,58 %), en 8 cabeceras el interruptor se paga si evita un 25 % o menos de ese máximo. La primera, la cabecera mayor de la Distribuidora 1 (491 CT), tuvo 43 incidencias en 2023-2025. La lista completa está en `economia_telemando_cabeceras.csv`.
 
 ## 5. Meteorología: cuánto sube la probabilidad de avería
 
@@ -106,9 +106,9 @@ Esa ejecución usaba en el bloque de estructura `n_posiciones_aguas_arriba`, que
 
 Por cabecera el modelo cierra casi la mitad de la distancia entre la lista naif y el máximo: las 5 cabeceras que señala (el 10 % de 47) recogen el 71 % de los kVA·h imprevistos del año siguiente, frente al 64 % si se ordenan por los dos años anteriores, y gana a la lista naif en cuatro de los cinco años. Por CT la mejora es pequeña (31 % frente a 28 %): la historia dice qué línea va a fallar, pero no en qué CT de esa línea caerá la avería, y eso es casi azar. La unidad de decisión útil es la cabecera, que es además donde se actúa con la revisión y poda de la línea o con el telemando.
 
-Los bloques nuevos aportan poco a este horizonte. El clima de la celda sube algo la captura por CT y el SCADA la de las cabeceras en el top 20 %; los datos públicos y el bloque de obras y edificación (70,4 % por cabecera y 25,7 % por CT en el top 10 %) no la mejoran, y juntar todos los bloques la empeora un poco. La variable con más ganancia del modelo completo es el relieve de la celda (desviación de la altitud), pero coincide con las líneas de montaña del Jerte y del Ambroz que la historia ya marca. Con cinco años de evaluación y unas 30 incidencias al año, diferencias de uno o dos puntos entre bloques no son significativas.
+Los bloques nuevos aportan poco a este horizonte. El clima de la celda sube algo la captura por CT y el SCADA la de las cabeceras en el top 20 %; los datos públicos y el bloque de obras y edificación (70,4 % por cabecera y 25,7 % por CT en el top 10 %) no la mejoran, y juntar todos los bloques la empeora un poco. La variable con más ganancia del modelo completo es el relieve de la celda (desviación de la altitud), pero coincide con las líneas de montaña de los valles del norte que la historia ya marca. Con cinco años de evaluación y unas 30 incidencias al año, diferencias de uno o dos puntos entre bloques no son significativas.
 
-Para 2026, el modelo con todos los años pone en cabeza R89-1T1 (de la Distribuidora 1, con 491 CT), CC52-3 y CECLAV_2 (de la Distribuidora 2); las cinco primeras cabeceras concentran el 77 % de los kVA·h esperados (`prioridades_cabecera.csv` y `l3_gold.ml_riesgo_ct_ranking`). R89-1T1 es también la primera de la lista del telemando del apartado 4, así que es la candidata clara a una actuación combinada: revisión de la línea y un punto de maniobra telemandado.
+Para 2026, el modelo con todos los años pone en cabeza la cabecera mayor de la Distribuidora 1 (491 CT) y dos de la Distribuidora 2; las cinco primeras cabeceras concentran el 77 % de los kVA·h esperados (`prioridades_cabecera.csv` y `l3_gold.ml_riesgo_ct_ranking`). Esa cabecera de la Distribuidora 1 es también la primera de la lista del telemando del apartado 4, así que es la candidata clara a una actuación combinada: revisión de la línea y un punto de maniobra telemandado.
 
 ## 8. Cuántas distribuidoras harían falta
 
@@ -161,23 +161,23 @@ El resultado es el contrario del esperado. Los años con obra tienen menos aver�
 
 Con estos datos, las obras públicas por municipio y año no anticipan las averías de terceros. La escala es demasiado gruesa: lo que cuenta es si una zanja concreta pasa por encima de una línea enterrada, y eso pide obras con su ubicación (licencias municipales con dirección y, sobre todo, las consultas de planos de redes que las constructoras hacen antes de excavar), no licitaciones. Lo dejamos medido para no recomendar una fuente que no aporta, y por la misma razón el bloque de obras no mejora el riesgo anual del apartado 7.
 
-**Crecimiento y potencia.** Para saber si algún municipio va a necesitar potencia nueva cruzamos tres fuentes: las viviendas construidas según el Catastro, la proyección de población del IEEX y los kVA de los CT. En los últimos cinco años completos del Catastro (2020-2024) ningún municipio ha construido lo bastante para pedir un 5 % más de potencia si siguiera al mismo ritmo y con los kVA por cliente de hoy; el que más, Oliva de Plasencia, un 3 %. La proyección oficial va en la misma dirección: la población baja en casi todas las agrupaciones de municipios donde están los CT y solo sube algo en el Valle del Jerte y en Cáceres.
+**Crecimiento y potencia.** Para saber si algún municipio va a necesitar potencia nueva cruzamos tres fuentes: las viviendas construidas según el Catastro, la proyección de población del IEEX y los kVA de los CT. En los últimos cinco años completos del Catastro (2020-2024) ningún municipio ha construido lo bastante para pedir un 5 % más de potencia si siguiera al mismo ritmo y con los kVA por cliente de hoy; el que más, un 3 %. La proyección oficial va en la misma dirección: la población baja en casi todas las agrupaciones de municipios donde están los CT y solo sube algo en dos de ellas.
 
 | Agrupación de municipios (AME) | Municipios | CT | Población 2024-2039 |
 | --- | --- | --- | --- |
-| Trasierra - Tierras de Granadilla - Valle del Ambroz - Hurdes | 16 | 279 | -13,0 % |
-| Sierra de Montánchez | 21 | 315 | -10,8 % |
-| Rivera de Fresnedosa | 9 | 142 | -9,5 % |
-| Tajo - Salor | 8 | 209 | -7,7 % |
-| Sierra Suroeste (la Distribuidora 3) | 1 | 10 | -6,4 % |
-| Trujillo | 2 | 28 | -5,9 % |
-| Riberos del Tajo | 3 | 55 | -0,5 % |
-| Valle del Jerte | 12 | 245 | +1,0 % |
-| Cáceres | 1 | 55 | +1,5 % |
+| Agrupación 1 | 16 | 279 | -13,0 % |
+| Agrupación 2 | 21 | 315 | -10,8 % |
+| Agrupación 3 | 9 | 142 | -9,5 % |
+| Agrupación 4 | 8 | 209 | -7,7 % |
+| Agrupación 5 (la Distribuidora 3) | 1 | 10 | -6,4 % |
+| Agrupación 6 | 2 | 28 | -5,9 % |
+| Agrupación 7 | 3 | 55 | -0,5 % |
+| Agrupación 8 | 12 | 245 | +1,0 % |
+| Agrupación 9 | 1 | 55 | +1,5 % |
 
-En esta zona no va a hacer falta más potencia por población ni por construcción nueva. Si hace falta, será por la electrificación de lo que ya existe (bomba de calor, coche eléctrico, autoconsumo), y para eso los datos señalan dónde mirar primero: los 196 CT con menos de 2 kVA instalados por cliente y las cabeceras cuya punta crece de forma sostenida, como V52-01 de la Distribuidora 1 (de 37 a 73 A entre 2021 y 2025, con 358 CT), J252-5 (de 117 a 145 A entre 2023 y 2025) o A52-1 de la Distribuidora 2 (de 26 a 52 A entre 2021 y 2024). Dos CT tienen en Calser una potencia que no es creíble (10 kVA para 330 clientes en Torremocha, 14 kVA para 94 en Casas de Millán) y conviene revisar su ficha. Para confirmar qué trafo concreto va al límite hace falta su curva de carga.
+En esta zona no va a hacer falta más potencia por población ni por construcción nueva. Si hace falta, será por la electrificación de lo que ya existe (bomba de calor, coche eléctrico, autoconsumo), y para eso los datos señalan dónde mirar primero: los 196 CT con menos de 2 kVA instalados por cliente y las cabeceras cuya punta crece de forma sostenida, como una de la Distribuidora 1 (de 37 a 73 A entre 2021 y 2025, con 358 CT), otra (de 117 a 145 A entre 2023 y 2025) o una de la Distribuidora 2 (de 26 a 52 A entre 2021 y 2024). Dos CT tienen en Calser una potencia que no es creíble (uno con 10 kVA para 330 clientes y otro con 14 kVA para 94) y conviene revisar su ficha. Para confirmar qué trafo concreto va al límite hace falta su curva de carga.
 
-Y lo que aprendimos del resto de fuentes: la población de los 73 municipios está estancada o baja (Hervás pasa de 3.976 habitantes en 2019 a 3.898 en 2025; el municipio de la Distribuidora 3, de 1.139 a 1.090), y el relieve de la celda pesa en el riesgo anual, pero porque marca las líneas de montaña que la historia ya conoce. Los incendios y los rayos, que aquí quedaban como propuesta, entraron después: las áreas quemadas de EFFIS, los focos de FIRMS y el peligro de incendio de CEMS, y los rayos del satélite MTG de EUMETSAT desde julio de 2024 ([causas-incidencias.md](causas-incidencias.md), apartado 7). La Estadística General de Incendios Forestales (consolidada solo hasta 2021) y AEMET, que no tiene archivo abierto de rayos, quedaron descartadas.
+Y lo que aprendimos del resto de fuentes: la población de los 73 municipios está estancada o baja (un municipio de la Distribuidora 1 pierde el 2 % de sus habitantes entre 2019 y 2025, y el de la Distribuidora 3, el 4 %), y el relieve de la celda pesa en el riesgo anual, pero porque marca las líneas de montaña que la historia ya conoce. Los incendios y los rayos, que aquí quedaban como propuesta, entraron después: las áreas quemadas de EFFIS, los focos de FIRMS y el peligro de incendio de CEMS, y los rayos del satélite MTG de EUMETSAT desde julio de 2024 ([causas-incidencias.md](causas-incidencias.md), apartado 7). La Estadística General de Incendios Forestales (consolidada solo hasta 2021) y AEMET, que no tiene archivo abierto de rayos, quedaron descartadas.
 
 ## 11. Lo que falta para predecir mejor
 
