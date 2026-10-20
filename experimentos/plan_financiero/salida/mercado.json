@@ -1,14 +1,14 @@
 {
  "con_mas_de_un_millon": 92,
- "de_las_89_con_100_ct_o_mas": 60,
- "de_las_89_con_150_ct_o_mas": 38,
+ "de_las_89_con_100_ct_o_mas": 62,
+ "de_las_89_con_150_ct_o_mas": 39,
  "distribuidoras_sin_las_grandes": 320,
  "incentivo_4_pct_mediana_mas_de_un_millon": 86600.0,
- "mediana_ct_89": 126,
+ "mediana_ct_89": 130,
  "regla_320": 4180900.0,
  "regla_89_mayores": 2778700.0,
- "tarifa_320": 3411200.0,
- "tarifa_52_mayores": 1203100.0,
- "tarifa_89_mayores": 1793300.0,
- "tarifa_mas_de_un_millon": 1830600.0
+ "tarifa_320": 3412400.0,
+ "tarifa_52_mayores": 1187600.0,
+ "tarifa_89_mayores": 1783900.0,
+ "tarifa_mas_de_un_millon": 1821700.0
 }
