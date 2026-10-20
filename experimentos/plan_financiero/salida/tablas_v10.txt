@@ -1,0 +1,170 @@
+T Presupuesto del primer año (2027), en euros
+H Concepto | Importe | Cómo lo calculamos
+W 4 | 2 | 6
+R Implantaciones | 60.000 | Tres pilotos a 20.000 €
+R Licencias | 27.000 | Tres licencias de 18.000 € al año, con seis meses de servicio de media en 2027
+R Total ingresos | 87.000 | Implantaciones y licencias del año
+R Sueldos y salarios | 90.000 | Los dos fundadores, con 50.000 y 40.000 € brutos al año
+R Cargas sociales | 27.000 | 30 % de los sueldos
+R Nube | 7.200 | Cómputo, almacenamiento, demos y el plan comercial de la previsión, 600 € al mes
+R Herramientas de desarrollo | 2.400 | 100 € por persona y mes
+R Asesoría jurídica | 4.000 | Contratos con el socio y con los clientes, encargo de tratamiento y análisis del AI Act
+R Gestoría | 2.400 | 200 € al mes
+R Actividad comercial con el socio | 5.000 | Viajes y material de las demos con el socio; lo que le paguemos el año 1 sale de aquí
+R Equipos menores, viajes y otros | 3.000 | Material de oficina y desplazamientos
+R Coworking | 6.000 | 250 € por persona y mes
+R Seguro de responsabilidad civil | 1.200 | El que pedirá cualquier distribuidora en el contrato
+R Imprevistos | 7.410 | 5 % de los gastos anteriores
+R Total gastos de explotación | 155.610 | El 75 % es personal
+R Resultado bruto de explotación | -68.610 | Ingresos menos gastos de explotación
+R Amortizaciones | -2.950 | Equipos y aplicaciones en cuatro años; marca y mobiliario en diez
+R Gastos financieros | -3.770 | Intereses de ENISA (6 %) y del banco (6,5 %) y comisión de apertura de ENISA
+R Impuesto sobre Sociedades | 0 | Año con pérdidas
+R Resultado neto del año 1 | -75.330 | Se compensa en el Impuesto sobre Sociedades con los beneficios de los años siguientes
+
+T Cuenta de explotación a tres años, en euros
+H Concepto | Año 1 | Año 2 | Año 3
+W 6 | 2 | 2 | 2
+R Clientes nuevos en el año | 3 | 6 | 8
+R Clientes activos al final del año | 3 | 8 | 15
+R Licencias anuales en cartera al final del año | 54.000 | 144.000 | 270.000
+R Ingresos por implantación | 60.000 | 120.000 | 160.000
+R Ingresos por licencias | 27.000 | 102.000 | 199.500
+R Total ingresos | 87.000 | 222.000 | 359.500
+R Sueldos y salarios | -90.000 | -120.000 | -156.000
+R Cargas sociales | -27.000 | -36.000 | -46.800
+R Nube (cómputo, almacenamiento y demos) | -7.200 | -9.600 | -12.000
+R Herramientas de desarrollo | -2.400 | -3.600 | -4.800
+R Asesoría jurídica | -4.000 | -8.000 | -6.000
+R Gestoría | -2.400 | -3.600 | -4.800
+R Actividad comercial y ferias | -5.000 | -15.000 | -25.000
+R Equipos menores, viajes y otros | -3.000 | -6.000 | -9.000
+R Coworking | -6.000 | -9.000 | -12.000
+R Seguro de responsabilidad civil | -1.200 | -2.000 | -2.000
+R Comisión del socio (10 % de las licencias) | 0 | -10.200 | -19.950
+R Imprevistos (5 %) | -7.410 | -11.150 | -14.918
+R Total gastos de explotación | -155.610 | -234.150 | -313.268
+R Resultado bruto de explotación | -68.610 | -12.150 | 46.233
+R Amortizaciones | -2.950 | -3.592 | -4.150
+R Resultado de explotación | -71.560 | -15.742 | 42.083
+R Gastos financieros | -3.770 | -3.431 | -2.935
+R Resultado antes de impuestos | -75.330 | -19.173 | 39.147
+R Impuesto sobre Sociedades | 0 | 0 | 0
+R Resultado del ejercicio | -75.330 | -19.173 | 39.147
+R Cash flow (resultado más amortizaciones) | -72.380 | -15.581 | 43.297
+
+T Balances de situación de los momentos 0 a 3, en euros
+H Partida | Momento 0 | Momento 1 | Momento 2 | Momento 3
+W 6 | 2 | 2 | 2 | 2
+R Inmovilizado intangible (marca y aplicaciones) | 5.500 | 4.200 | 3.808 | 2.408
+R Inmovilizado material (equipos y mobiliario) | 7.500 | 5.850 | 6.150 | 5.900
+R Total activo no corriente | 13.000 | 10.050 | 9.958 | 8.308
+R Fianza del coworking | 1.000 | 1.000 | 1.000 | 1.000
+R Clientes | 0 | 0 | 33.880 | 55.660
+R Hacienda Pública deudora por IVA | 0 | 2.594 | 0 | 0
+R Tesorería | 82.500 | 288.313 | 286.906 | 374.377
+R Total activo corriente | 83.500 | 291.908 | 321.786 | 431.037
+R Total activo | 96.500 | 301.958 | 331.744 | 439.346
+R Capital social | 3.000 | 4.000 | 4.000 | 4.000
+R Prima de asunción | 37.000 | 286.000 | 286.000 | 286.000
+R Reservas (gastos de constitución y de la ronda) | -1.500 | -4.500 | -4.500 | -4.500
+R Resultados de ejercicios anteriores | 0 | 0 | -75.330 | -94.503
+R Resultado del ejercicio | 0 | -75.330 | -19.173 | 39.147
+R Total patrimonio neto | 38.500 | 210.170 | 190.997 | 230.145
+R Préstamo de ENISA a largo plazo | 38.000 | 38.000 | 30.400 | 22.800
+R Préstamo bancario a largo plazo | 20.000 | 15.000 | 10.000 | 5.000
+R Total pasivo no corriente | 58.000 | 53.000 | 40.400 | 27.800
+R Cuotas de los préstamos que vencen en el año siguiente | 0 | 5.000 | 12.600 | 12.600
+R Ingresos anticipados (licencias y anticipos facturados) | 0 | 27.000 | 69.000 | 139.500
+R Hacienda Pública y Seguridad Social acreedoras | 0 | 6.788 | 18.747 | 29.301
+R Total pasivo corriente | 0 | 38.788 | 100.347 | 181.401
+R Total patrimonio neto y pasivo | 96.500 | 301.958 | 331.744 | 439.346
+
+T Tesorería del año 1 mes a mes, en euros (cobros y pagos con IVA), y patrimonio neto con el préstamo participativo (art. 363 LSC)
+H Mes | Cobros | Personal y Seguridad Social | Proveedores | IVA | Financiación | Saldo del mes | Tesorería final | Patrimonio neto (art. 363)
+W 1 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2
+R 1 | 0 | -5.663 | -3.872 | 0 | -298 | -9.833 | 72.667 | 62.798
+R 2 | 0 | -8.400 | -3.872 | 0 | -108 | -12.381 | 60.286 | 49.287
+R 3 | 0 | -8.400 | -3.872 | 0 | -678 | -12.951 | 47.336 | 35.775
+R 4 | 0 | -12.450 | -3.872 | 0 | -108 | -16.431 | 30.905 | 22.263
+R 5 | 12.100 | -8.400 | -3.872 | 0 | -108 | -281 | 30.625 | 30.252
+R 6 | 33.880 | -8.400 | -3.872 | 0 | -678 | 20.929 | 51.554 | 18.240
+R 7 | 12.100 | -12.450 | -3.872 | -6.152 | -108 | -10.482 | 41.072 | 27.728
+R 8 | 33.880 | -8.400 | -3.872 | 0 | -108 | 21.499 | 62.571 | 17.217
+R 9 | 12.100 | -8.400 | -3.872 | 0 | -678 | -851 | 61.721 | 28.205
+R 10 | 33.880 | -12.450 | -3.872 | -11.896 | -108 | 5.554 | 67.274 | 19.193
+R 11 | 0 | -8.400 | -3.872 | 0 | -108 | -12.381 | 54.894 | 10.182
+R 12 | 0 | -8.400 | -3.872 | 0 | 245.692 | 233.419 | 288.313 | 248.170
+
+T Tesorería de los tres años, en euros
+H Concepto | Año 1 | Año 2 | Año 3
+W 6 | 2 | 2 | 2
+R Tesorería inicial | 82.500 | 288.313 | 286.906
+R Cobros de clientes | 137.940 | 285.560 | 498.520
+R Pagos de personal y Seguridad Social | -110.213 | -153.738 | -200.085
+R Pagos a proveedores | -46.466 | -94.142 | -133.246
+R IVA e Impuesto sobre Sociedades | -18.048 | -26.423 | -59.158
+R Flujo de caja de la explotación | -36.787 | 11.258 | 106.032
+R Inversiones | 0 | -4.235 | -3.025
+R Ronda de capital, neta de gastos | 246.370 | 0 | 0
+R Intereses pagados | -3.770 | -3.431 | -2.935
+R Devolución de préstamos | 0 | -5.000 | -12.600
+R Tesorería final | 288.313 | 286.906 | 374.377
+
+T Fondos propios frente a deuda financiera, en euros
+H Momento | Patrimonio neto | Préstamos (ENISA y banco) | Propio / ajeno | Patrimonio neto con el participativo (art. 363)
+W 3 | 2 | 2 | 2 | 3
+R Momento 0 | 38.500 | 58.000 | 40 % / 60 % | 76.500
+R Mes 11, antes de la ronda | -27.818 | 58.000 | Patrimonio neto negativo | 10.182
+R Momento 1 | 210.170 | 58.000 | 78 % / 22 % | 248.170
+R Momento 2 | 190.997 | 53.000 | 78 % / 22 % | 228.997
+R Momento 3 | 230.145 | 40.400 | 85 % / 15 % | 260.545
+
+T Uso de la ronda: destino previsto y lo que gasta el plan en los años 2 y 3, más los gastos de la ronda, en euros
+H Partida | Destino previsto | Gasto del plan | Qué incluye
+W 2 | 2 | 2 | 6
+R Equipo | 150.000 | 129.800 | Sueldo, cargas y puesto del ingeniero desde el mes 13 y del responsable comercial desde el mes 25
+R Comercial y ferias | 60.000 | 40.000 | Ferias y jornadas del sector, cuotas de asociaciones y viajes de demo de los años 2 y 3
+R Legal y contingencia | 40.000 | 44.068 | Asesoría jurídica, marca en la EUIPO y gastos de la ronda (18.000 €) e imprevistos del 5 % (26.068 €)
+R Total | 250.000 | 213.868 | Lo que no cubren los ingresos queda en caja como colchón
+
+T Sensibilidad del plan, en euros
+H Escenario | Caja más baja (mes) | Patrimonio neto más bajo con el participativo (mes) | Resultado del año 2 | Ingresos del año 3 | Resultado del año 3 | Tesorería al final del año 3 | Clientes al final
+W 5 | 2 | 2 | 2 | 2 | 2 | 2 | 1
+R Base: el plan | 30.625 (mes 5) | 10.182 (mes 11) | -19.173 | 359.500 | 39.147 | 374.377 | 15
+R Los contratos llegan seis meses más tarde | -52.898 (mes 11) | -58.807 (mes 10) | -72.735 | 284.000 | -30.525 | 164.319 | 11
+R Lo mismo, con los sueldos de los fundadores a la mitad de los meses 4 a 11 | -18.472 (mes 10) | -22.975 (mes 10) | -72.735 | 284.000 | -30.525 | 205.269 | 11
+R Los contratos llegan un año más tarde | -64.998 (mes 11) | -84.759 (mes 35) | -146.298 | 222.000 | -88.115 | -24.729 | 8
+R Dos clientes nuevos menos en los años 2 y 3 | 30.625 (mes 5) | 10.182 (mes 11) | -64.543 | 279.000 | -37.100 | 223.698 | 11
+R Sin la ronda | 6.103 (mes 16) | -34.143 (mes 28) | -19.173 | 359.500 | 39.147 | 127.377 | 15
+
+T Licencia anual con la tarifa por tamaño de red (3.000 € fijos, 150 € por CT del 1 al 100, 15 € del 101 al 300 y 10 € desde el 301, y 0,10 € por señal, con un mínimo de 6.000 € y sin máximo), en euros
+H Red | CT | Señales | Parte de los CT | Parte de las señales | Licencia al año | Qué se aplica
+W 3 | 1 | 2 | 2 | 2 | 2 | 3
+R Distribuidora 1 | 760 | unas 44.400 (provisional) | 22.600 | 4.440 | 30.040 | Fijo + CT + señales
+R Distribuidora 2 | 570 | unas 33.300 (provisional) | 20.700 | 3.330 | 27.030 | Fijo + CT + señales
+R Distribuidora 3 | 10 | unas 600 (provisional) | 1.500 | 60 | 6.000 | Mínimo
+R Red tipo del plan | 150 | 9.000 | 15.750 | 900 | 19.650 | Licencia de cada cliente del plan
+R Red de 50 CT | 50 | 2.900 | 7.500 | 290 | 10.790 | Fijo + CT + señales
+R Red de 100 CT | 100 | 6.000 | 15.000 | 600 | 18.600 | Fijo + CT + señales
+R Red de 300 CT | 300 | 17.500 | 18.000 | 1.750 | 22.750 | Fijo + CT + señales
+
+T Supuestos del plan financiero
+H Concepto | Supuesto | De dónde sale
+W 2 | 6 | 3
+R Calendario | Constituimos la sociedad en diciembre de 2026 (momento 0); el año 1 es 2027, el 2 es 2028 y el 3 es 2029. El mes 1 es enero de 2027. | Decisión nuestra
+R Clientes nuevos | 3 el año 1, 6 el año 2 y 8 el año 3. | Pitch v3 para los años 1 y 2 (tres pilotos; de 6 a 8 clientes); el año 3, decisión nuestra para llegar al suelo de ingresos del Pitch
+R Ritmo de las firmas | Puesta en marcha en los meses 5, 7 y 9 del año 1; en los meses 14, 16, 18, 20, 22 y 24 del año 2, y en los meses 26, 27, 29, 30, 32, 33, 35 y 36 del año 3. Antes, un mes de demo gratuita; la firma, el mes anterior a la puesta en marcha. | Decisión nuestra; los pilotos suman 18 meses de licencia el año 1, los mismos que el M2 (seis meses de media)
+R Bajas | Uno de los tres pilotos no renueva al cumplir el año (mes 21) y otro cliente se va al cumplir el suyo (mes 26): dos bajas entre los 17 clientes del plan. | Decisión nuestra, prudente
+R Precio | 20.000 € de implantación y 18.000 € al año de licencia, sin subida con el IPC. | M2 y Pitch v3
+R Facturación y cobro | La implantación, mitad a la firma y mitad en la puesta en marcha; la licencia, por años adelantados. Todo se cobra a 30 días. | Decisión nuestra
+R Plantilla | Los dos fundadores (50.000 y 40.000 € brutos al año). Un ingeniero de implantación y soporte desde el mes 13 (30.000 €) y un responsable comercial del sector desde el mes 25 (36.000 €). | M2 para los fundadores; las contrataciones, decisión nuestra
+R Cargas sociales | 30 % de los salarios brutos. | M2
+R Otros gastos | El año 1, 24.000 € de nube, herramientas, asesoría, gestoría, actividad comercial y otros, más el coworking (250 € por persona y mes) y un seguro de responsabilidad civil; las herramientas, a 100 € por persona y mes. En los años 2 y 3 crecen con la plantilla y con la actividad comercial. | M2; la fianza de dos meses del balance de momento 0; decisión nuestra
+R Comisión del socio | 10 % de las licencias desde el año 2, por instalar y dar el primer soporte. El año 1 va dentro de la partida de actividad comercial. | Decisión nuestra, por negociar con SITEL
+R Imprevistos | 5 % de los gastos de explotación. | Decisión nuestra
+R Inversiones y amortización | El activo del momento 0 (13.000 €), 2.500 € de puesto de trabajo por cada contratación y 1.000 € para la marca en la EUIPO. Amortización lineal: marca y mobiliario en diez años; aplicaciones y equipos informáticos en cuatro. | Balance de momento 0 y su plantilla del año 1; las aplicaciones, decisión nuestra
+R Financiación | 40.000 € de los fundadores, la mitad cada uno (3.000 de capital y 37.000 de prima de asunción). Préstamo participativo de ENISA de 38.000 € a 7 años con 2 de carencia. Préstamo bancario de la línea del ICO de 20.000 € a 5 años con 1 de carencia. Ronda de 250.000 € por el 25 % en el mes 12, con 3.000 € de gastos. | Decisión nuestra; ENISA pide fondos propios al menos iguales al préstamo; la ronda, del Pitch v3
+R Intereses | 6 % el de ENISA (tramo fijo y variable juntos) y 6,5 % el bancario; comisión de apertura de ENISA del 0,5 %. | Decisión nuestra, prudente
+R Impuestos | IVA del 21 % y retenciones de IRPF del 18 %, que se liquidan cada trimestre; la Seguridad Social, el mes siguiente. Impuesto sobre Sociedades del 15 % (entidad de nueva creación), compensando las pérdidas anteriores y pagado en julio del año siguiente; el crédito fiscal no se lleva al balance. | Ley 27/2014 y decisión nuestra
+R Proveedores | Se pagan al contado. | Decisión nuestra, prudente
