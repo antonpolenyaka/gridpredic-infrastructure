@@ -277,6 +277,15 @@ docker compose up -d --build --wait
 
 Kafka, Kafka Connect y Kafka UI van en el perfil `cdc` y no arrancan con el resto: la captura de TedisNet está parada desde la carga inicial del 08.10.2026 y así un reinicio del portátil no espera a que se recuperen. Para la ingesta en flujo, `docker compose --profile cdc up -d --wait`.
 
+Para arrancar y parar todo en orden, sin hacerlo servicio a servicio, hay un script por sistema en la raíz del repositorio:
+
+| Sistema | Arrancar | Parar |
+| --- | --- | --- |
+| Windows (PowerShell 7 y Docker Desktop) | `pwsh -File D:\GitHub\gridpredic-infrastructure\startGridPredic_windows.ps1` | `pwsh -File D:\GitHub\gridpredic-infrastructure\stopGridPredic_windows.ps1` |
+| Linux (Docker Engine o Desktop con compose) | `./startGridPredic_linux.sh` | `./stopGridPredic_linux.sh` |
+
+El de arranque levanta el stack por fases y espera a que cada una esté sana, deja SQL Server para el final sin esperarlo y, en Windows, abre Docker Desktop si hace falta y arranca la cola y el vigilante. Con `-Cdc` (Windows) o `--cdc` (Linux) arranca también el perfil `cdc`. El de parada no para si la cola o Spark tienen algo en marcha o si es la franja de la tarde (salvo con `-Forzar` o `--forzar`). Los detalles están en [docs/operacion-diaria.md](docs/operacion-diaria.md), apartado 5.
+
 Los `healthchecks` y las dependencias del Compose controlan el orden de inicialización. Cuando el comando termina correctamente, el entorno está listo para utilizarse.
 
 El primer arranque es largo. Como referencia, en un portátil con 4 cores y 12 GB asignados a Docker:
