@@ -389,7 +389,7 @@ Tiempos de consulta medidos el 17.10.2026 en el portátil, con el tiempo del pro
 
 El cuadro de mando no pasa por Trino: lee los ficheros que deja cada tarde en `dashboard/data`.
 
-Desde la 0.16.0 el contenedor de Trino tiene un tope de 4 GB (`mem_limit` en `compose.yaml`). Sin él, la JVM se reservaba el 80 % de la máquina virtual de Docker, unos 18,8 GiB en el portátil, que compartía con Spark, SQL Server y el resto del stack. Con el tope, el heap máximo es de 3,2 GiB (medido con jcmd); el 20.10.2026 Trino usaba 1 GiB en reposo y hasta 3,1 GiB después de la consulta c5b, el join de `dataset_train` con la meteorología.
+Desde la 0.16.0 el contenedor de Trino tiene un tope de 4 GB (`mem_limit` en `compose.yaml`). Sin él, la JVM se reservaba el 80 % de la máquina virtual de Docker, unos 18,8 GiB en el portátil, que compartía con Spark, SQL Server y el resto del stack. Con el tope, el heap máximo es de 3,2 GiB (medido con jcmd). Lo medimos el 20.10.2026 con docker stats: sin tope, Trino usaba 1 GiB en reposo y llegó a 3,1 GiB después de la consulta c5b, el join de `dataset_train` con la meteorología; con el tope, 1 GiB en reposo y 1,4 GiB después de c1a, c2a y c5b, que devolvieron las mismas filas que el 17.10.2026, sin quedarse sin memoria ni reiniciarse.
 
 ### MinIO
 
