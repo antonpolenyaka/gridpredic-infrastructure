@@ -5,3 +5,9 @@
     python experimentos\causas_texto\comparar_reglas_tfidf.py <incidencias_causa.csv> experimentos\causas_texto\salida [--rapido]
 
 Deja `salida/comparativa.csv`, `comparativa.md` y `desacuerdos.csv` (red, periodo_id, id, regla, causa de la regla, causa del clasificador y código oficial, sin texto). Ni la consola ni la salida llevan textos, términos de los partes, instalaciones o nombres de bases de datos. Los errores de las reglas que salieron de leer los desacuerdos están en `tests/02_silver/test_causas_incidencia.py`.
+
+`kappa_ambiguas.py` lee el mismo `incidencias_causa.csv` y comprueba dos cosas de las reglas: el acuerdo con el código oficial corregido por azar (la kappa ponderada con su intervalo bootstrap) y las palabras de doble sentido de los patrones, contadas en los partes reales:
+
+    python experimentos\causas_texto\kappa_ambiguas.py <incidencias_causa.csv> experimentos\causas_texto\salida
+
+Deja `salida/kappa.csv`, `ambiguas.csv` y `kappa_ambiguas.md`, solo con recuentos y proporciones.
