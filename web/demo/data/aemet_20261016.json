@@ -157,9 +157,9 @@
    "pico": {
     "racha_kmh": 53,
     "hora": 16,
-    "municipio": "Jarilla"
+    "municipio": "Municipio 6"
    },
-   "texto": "AEMET por municipios (43 municipios, elaborada 16:43): pico de racha 53 km/h a las 16:00 en Jarilla; hasta 23.2 mm de lluvia; probabilidad de tormenta hasta el 65 %"
+   "texto": "AEMET por municipios (43 municipios, elaborada 16:43): pico de racha 53 km/h a las 16:00 en Municipio 6; hasta 23.2 mm de lluvia; probabilidad de tormenta hasta el 65 %"
   },
   {
    "id": 2,
@@ -315,9 +315,9 @@
    "pico": {
     "racha_kmh": 44,
     "hora": 19,
-    "municipio": "Coria"
+    "municipio": "Municipio 73"
    },
-   "texto": "AEMET por municipios (25 municipios, elaborada 16:43): pico de racha 44 km/h a las 19:00 en Coria; probabilidad de tormenta hasta el 30 %"
+   "texto": "AEMET por municipios (25 municipios, elaborada 16:43): pico de racha 44 km/h a las 19:00 en Municipio 73; probabilidad de tormenta hasta el 30 %"
   },
   {
    "id": 1366,
@@ -473,9 +473,9 @@
    "pico": {
     "racha_kmh": 29,
     "hora": 16,
-    "municipio": "Valle de Santa Ana"
+    "municipio": "Municipio 20"
    },
-   "texto": "AEMET por municipios (1 municipios, elaborada 16:43): pico de racha 29 km/h a las 16:00 en Valle de Santa Ana; probabilidad de tormenta hasta el 10 %"
+   "texto": "AEMET por municipios (1 municipios, elaborada 16:43): pico de racha 29 km/h a las 16:00 en Municipio 20; probabilidad de tormenta hasta el 10 %"
   }
  ]
 }
