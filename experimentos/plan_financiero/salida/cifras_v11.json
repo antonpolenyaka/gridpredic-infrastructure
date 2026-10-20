@@ -33,6 +33,62 @@
  },
  "caja_min": 12301.4667,
  "caja_sin_rebaja_min": -6615.0417,
+ "cascada": {
+  "1": {
+   "amort": 2950.0,
+   "bai": -46016.25,
+   "cash_flow": -43066.25,
+   "comision": 0.0,
+   "coste_ventas": 7200.0,
+   "ebit": -43491.25,
+   "ebitda": -40541.25,
+   "financieros": 2525.0,
+   "gastos_operativos": 122816.25,
+   "ingeniero": 0.0,
+   "is": 0.0,
+   "margen_bruto": 82275.0,
+   "margen_bruto_pct": 0.9195,
+   "nube": 7200.0,
+   "resultado": -46016.25,
+   "ventas": 89475.0
+  },
+  "2": {
+   "amort": 3591.6667,
+   "bai": -10624.4583,
+   "cash_flow": -7032.7917,
+   "comision": 11135.0,
+   "coste_ventas": 59735.0,
+   "ebit": -7373.4167,
+   "ebitda": -3781.75,
+   "financieros": 3251.0417,
+   "gastos_operativos": 175396.75,
+   "ingeniero": 39000.0,
+   "is": 0.0,
+   "margen_bruto": 171615.0,
+   "margen_bruto_pct": 0.7418,
+   "nube": 9600.0,
+   "resultado": -10624.4583,
+   "ventas": 231350.0
+  },
+  "3": {
+   "amort": 4150.0,
+   "bai": 55550.0208,
+   "cash_flow": 59700.0208,
+   "comision": 21778.75,
+   "coste_ventas": 72778.75,
+   "ebit": 58449.8125,
+   "ebitda": 62599.8125,
+   "financieros": 2899.7917,
+   "gastos_operativos": 242408.9375,
+   "ingeniero": 39000.0,
+   "is": 0.0,
+   "margen_bruto": 305008.75,
+   "margen_bruto_pct": 0.8074,
+   "nube": 12000.0,
+   "resultado": 55550.0208,
+   "ventas": 377787.5
+  }
+ },
  "cash_flow_a1": -43066.25,
  "cash_flow_a2": -7032.7917,
  "cash_flow_a3": 59700.0208,
@@ -123,22 +179,56 @@
   "van5": 359019.3259
  },
  "clientes_equilibrio": 18,
+ "contrataciones_escenarios": {
+  "Clientes más pequeños: redes de 100 CT y 6.000 señales": {
+   "13": 13,
+   "25": 25
+  },
+  "ENISA deniega el préstamo": {
+   "13": 13,
+   "25": 25
+  },
+  "ENISA llega dos meses más tarde (mes 8)": {
+   "13": 13,
+   "25": 25
+  },
+  "ENISA presta solo el mínimo de la línea (25.000 €)": {
+   "13": 13,
+   "25": 25
+  },
+  "Lo mismo, con medio sueldo de los fundadores hasta el mes 11": {
+   "13": 15,
+   "25": 30
+  },
+  "Los contratos llegan seis meses más tarde (el ingeniero entra en el mes 15 y el comercial en el 30)": {
+   "13": 15,
+   "25": 30
+  },
+  "Los contratos llegan un año más tarde (el ingeniero entra en el mes 21 y el comercial en el 36)": {
+   "13": 21,
+   "25": 36
+  },
+  "Moderado: el plan": {
+   "13": 13,
+   "25": 25
+  },
+  "Optimista: dos clientes nuevos más en los años 2 y 3, con el mismo ingeniero": {
+   "13": 13,
+   "25": 25
+  },
+  "Pesimista: dos clientes nuevos menos en los años 2 y 3 (el comercial entra en el mes 27)": {
+   "13": 13,
+   "25": 27
+  },
+  "Sin la ronda": {
+   "13": 13,
+   "25": 25
+  }
+ },
  "ebitda_a1": -40541.25,
  "ebitda_a2": -3781.75,
  "ebitda_a3": 62599.8125,
  "enisa_maximo": 38500.0,
- "esc: Base: el plan": {
-  "caja_36": 439795.1904,
-  "caja_min": 12301.4667,
-  "holgura_363": 4188.3333,
-  "ingresos_a3": 377787.5,
-  "mes_caja_min": 4,
-  "mes_holgura": 4,
-  "pn363_min": 5688.3333,
-  "primer_mes_negativo": null,
-  "resultado_a2": -10624.4583,
-  "resultado_a3": 55550.0208
- },
  "esc: Clientes más pequeños: redes de 100 CT y 6.000 señales": {
   "caja_36": 416081.9117,
   "caja_min": 12301.4667,
@@ -150,18 +240,6 @@
   "primer_mes_negativo": null,
   "resultado_a2": -15949.7083,
   "resultado_a3": 45134.4583
- },
- "esc: Dos clientes nuevos menos en los años 2 y 3": {
-  "caja_36": 282297.2148,
-  "caja_min": 12301.4667,
-  "holgura_363": 4188.3333,
-  "ingresos_a3": 293575.0,
-  "mes_caja_min": 4,
-  "mes_holgura": 4,
-  "pn363_min": 5688.3333,
-  "primer_mes_negativo": null,
-  "resultado_a2": -56486.7083,
-  "resultado_a3": -24020.1667
  },
  "esc: ENISA deniega el préstamo": {
   "caja_36": 413693.9404,
@@ -200,7 +278,7 @@
   "resultado_a3": 56074.749
  },
  "esc: Lo mismo, con medio sueldo de los fundadores hasta el mes 11": {
-  "caja_36": 248527.5979,
+  "caja_36": 278400.0979,
   "caja_min": -4761.9583,
   "holgura_363": -10904.1667,
   "ingresos_a3": 297200.0,
@@ -208,11 +286,11 @@
   "mes_holgura": 10,
   "pn363_min": -9404.1667,
   "primer_mes_negativo": 10,
-  "resultado_a2": -67263.5208,
-  "resultado_a3": -18675.7917
+  "resultado_a2": -59611.8542,
+  "resultado_a3": 3865.875
  },
- "esc: Los contratos llegan seis meses más tarde": {
-  "caja_36": 217815.0979,
+ "esc: Los contratos llegan seis meses más tarde (el ingeniero entra en el mes 15 y el comercial en el 30)": {
+  "caja_36": 247687.5979,
   "caja_min": -28848.4042,
   "holgura_363": -36497.9167,
   "ingresos_a3": 297200.0,
@@ -220,11 +298,11 @@
   "mes_holgura": 10,
   "pn363_min": -34997.9167,
   "primer_mes_negativo": 9,
-  "resultado_a2": -67263.5208,
-  "resultado_a3": -18675.7917
+  "resultado_a2": -59611.8542,
+  "resultado_a3": 3865.875
  },
- "esc: Los contratos llegan un año más tarde": {
-  "caja_36": 18963.6404,
+ "esc: Los contratos llegan un año más tarde (el ingeniero entra en el mes 21 y el comercial en el 36)": {
+  "caja_36": 96922.3904,
   "caja_min": -40948.4042,
   "holgura_363": -49994.5833,
   "ingresos_a3": 231350.0,
@@ -232,8 +310,44 @@
   "mes_holgura": 11,
   "pn363_min": -48494.5833,
   "primer_mes_negativo": 9,
-  "resultado_a2": -143902.5833,
-  "resultado_a3": -79711.5417
+  "resultado_a2": -113295.9167,
+  "resultado_a3": -30119.875
+ },
+ "esc: Moderado: el plan": {
+  "caja_36": 439795.1904,
+  "caja_min": 12301.4667,
+  "holgura_363": 4188.3333,
+  "ingresos_a3": 377787.5,
+  "mes_caja_min": 4,
+  "mes_holgura": 4,
+  "pn363_min": 5688.3333,
+  "primer_mes_negativo": null,
+  "resultado_a2": -10624.4583,
+  "resultado_a3": 55550.0208
+ },
+ "esc: Optimista: dos clientes nuevos más en los años 2 y 3, con el mismo ingeniero": {
+  "caja_36": 597293.166,
+  "caja_min": 12301.4667,
+  "holgura_363": 4188.3333,
+  "ingresos_a3": 462000.0,
+  "mes_caja_min": 4,
+  "mes_holgura": 4,
+  "pn363_min": 5688.3333,
+  "primer_mes_negativo": null,
+  "resultado_a2": 35237.7917,
+  "resultado_a3": 116468.9458
+ },
+ "esc: Pesimista: dos clientes nuevos menos en los años 2 y 3 (el comercial entra en el mes 27)": {
+  "caja_36": 291222.2148,
+  "caja_min": 12301.4667,
+  "holgura_363": 4188.3333,
+  "ingresos_a3": 293575.0,
+  "mes_caja_min": 4,
+  "mes_holgura": 4,
+  "pn363_min": 5688.3333,
+  "primer_mes_negativo": null,
+  "resultado_a2": -56486.7083,
+  "resultado_a3": -15003.5
  },
  "esc: Sin la ronda": {
   "caja_36": 192795.1904,
@@ -253,6 +367,36 @@
  "flujo_expl_a1": -6242.775,
  "flujo_expl_a2": 22106.3237,
  "flujo_expl_a3": 127497.475,
+ "fondo_maniobra": {
+  "0": {
+   "activo_corriente": 44500.0,
+   "fondo_maniobra": 44500.0,
+   "nof": 0.0,
+   "pasivo_corriente": 0.0
+  },
+  "12": {
+   "activo_corriente": 319696.25,
+   "fondo_maniobra": 278433.75,
+   "nof": -33668.475,
+   "pasivo_corriente": 41262.5
+  },
+  "24": {
+   "activo_corriente": 362599.0071,
+   "fondo_maniobra": 259400.9583,
+   "nof": -58821.5488,
+   "pasivo_corriente": 103198.0488
+  },
+  "36": {
+   "activo_corriente": 499448.1904,
+   "fondo_maniobra": 304600.9792,
+   "nof": -123194.2112,
+   "pasivo_corriente": 194847.2112
+  }
+ },
+ "fondo_maniobra_peor_mes": {
+  "fondo_maniobra": 11005.0,
+  "mes": 4
+ },
  "gastos_expl_a1": 130016.25,
  "gastos_expl_a2": 235131.75,
  "gastos_expl_a3": 315187.6875,
@@ -268,6 +412,11 @@
  "inversor_veces_20": 1.572,
  "inversor_veces_30": 2.358,
  "inversor_veces_45": 3.537,
+ "ipc_3_pct": {
+  "1": 0.0,
+  "2": 687.75,
+  "3": 3115.5075
+ },
  "is_a1": 0.0,
  "is_a2": 0.0,
  "is_a3": 0.0,
@@ -328,11 +477,45 @@
   "4": -14786.6667,
   "5": -6470.8333
  },
+ "punto_muerto": {
+  "2": {
+   "aporte_licencia": 17586.75,
+   "costes_fijos": 230282.7083,
+   "euros": 257299.1155,
+   "licencias": 13.0941,
+   "margen_seguridad": -0.0484,
+   "peso_fijos": 0.9517,
+   "ventas": 231350.0,
+   "ventas_equilibrio": 242539.9664
+  },
+  "3": {
+   "aporte_licencia": 17586.75,
+   "costes_fijos": 299369.7917,
+   "euros": 334491.3873,
+   "licencias": 17.0225,
+   "margen_seguridad": 0.1565,
+   "peso_fijos": 0.929,
+   "ventas": 377787.5,
+   "ventas_equilibrio": 318658.3594
+  }
+ },
  "punto_muerto_licencias": 17.0225,
  "rebaja_minima": 0.3977,
  "resultado_a1": -46016.25,
  "resultado_a2": -10624.4583,
  "resultado_a3": 55550.0208,
  "salidas_mes2": 7885.5708,
- "salidas_mes4": 9910.5708
+ "salidas_mes4": 9910.5708,
+ "valor_cliente": {
+  "Distribuidora 1": {
+   "licencia": 30040.0,
+   "minutos": 3.1412,
+   "valor_actual": 104670.7005
+  },
+  "Distribuidora 2": {
+   "licencia": 27030.0,
+   "minutos": 2.441,
+   "valor_actual": 96186.7189
+  }
+ }
 }

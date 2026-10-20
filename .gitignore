@@ -31,6 +31,7 @@ _runlogs/*.csv
 _runlogs/*/
 
 # Correspondencias con los nombres reales de las distribuidoras (solo en el portatil)
+experimentos/plan_financiero/privado/
 _runlogs/anonimizar_nombres.json
 experimentos/aves/titulares.json
 
