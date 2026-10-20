@@ -95,6 +95,8 @@ Las dos distribuidoras grandes ya están cerca del tope de bonificación: lo que
 
 Resultado de la ejecución `rct_20261011T215018_d996ba`, media de los años evaluados 2021-2025: parte de los kVA·h imprevistos del año que cae en el top k % del ranking hecho con los años anteriores.
 
+Esa ejecución usaba en el bloque de estructura `n_posiciones_aguas_arriba`, que cuenta las posiciones aguas arriba de toda la historia de `dim_ct`, cortes posteriores incluidos, y que Gold prohíbe como variable (`gold_common.FORBIDDEN_FEATURES`). Desde el 19.10.2026 el bloque no la lleva y una prueba impide que vuelva; la repetición con el bloque corregido está pendiente de lanzar antes del cierre de la 0.16.0, y si la captura por cabecera del 10 % se aleja más de un punto del 70,9 % se cambian estas cifras.
+
 | Nivel | Top | Naif (dos años anteriores) | Mejor combinación | Modelo con todo | Máximo posible |
 | --- | --- | --- | --- | --- | --- |
 | Cabecera | 10 % | 63,5 % | 70,9 % (historia y estructura) | 66,4 % | 80,7 % |
