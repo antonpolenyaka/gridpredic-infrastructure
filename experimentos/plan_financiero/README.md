@@ -29,22 +29,16 @@ Si algo no cuadra, el guion se para con un `AssertionError` y no escribe nada. L
 
 | Red | CT | Señales | Licencia al año |
 | --- | --- | --- | --- |
-| Distribuidora 1 | 760 | unas 44.400 (provisional) | 30.040 € |
-| Distribuidora 2 | 570 | unas 33.300 (provisional) | 27.030 € |
-| Distribuidora 3 | 10 | unas 600 (provisional) | 6.000 € (el mínimo) |
+| Distribuidora 1 | 796 | 34.647 | 29.425 € |
+| Distribuidora 2 | 578 | 27.513 | 26.531 € |
+| Distribuidora 3 | 10 | 606 | 6.000 € (el mínimo) |
 | Red tipo del plan | 150 | 9.000 | 19.650 € |
 | Red de 50 CT | 50 | 2.900 | 10.790 € |
 | Red de 100 CT | 100 | 6.000 | 18.600 € |
 
-En la Distribuidora 1 la licencia es lo que valen 2,4 minutos de TIEPI de su incentivo de calidad (12.600 € el minuto) y en la Distribuidora 2, 1,8 minutos (14.900 €). El plan cuenta cada cliente como una red tipo de 150 CT y 9.000 señales, cerca del centro de las 89 distribuidoras más grandes: estimando sus CT por su retribución, 38 tienen 150 CT o más y 60 pasan de 100 CT. Si los clientes fueran redes de 100 CT, la licencia bajaría a 18.600 € y el año 3 seguiría en beneficio (45.134 €). La primera guía para el precio fue una regla rápida, el 0,75 % de la retribución con un mínimo de 6.000 €; con los tramos, las redes grandes pagan bastante menos que con esa regla.
+En la Distribuidora 1 la licencia es lo que valen 2,3 minutos de TIEPI de su incentivo de calidad (12.600 € el minuto) y en la Distribuidora 2, 1,8 minutos (14.900 €). El plan cuenta cada cliente como una red tipo de 150 CT y 9.000 señales, cerca del centro de las 89 distribuidoras más grandes: estimando sus CT por su retribución, 39 tienen 150 CT o más y 62 tienen 100 CT o más. Si los clientes fueran redes de 100 CT, la licencia bajaría a 18.600 € y el año 3 seguiría en beneficio (45.134 €). La primera guía para el precio fue una regla rápida, el 0,75 % de la retribución con un mínimo de 6.000 €; con los tramos, las redes grandes pagan bastante menos que con esa regla.
 
-Las señales de las tres distribuidoras son provisionales: son los 78.301 tags de TedisNet repartidos por CT, unos 58 por CT. Están en un solo sitio, `REDES_CALIBRACION` en `plan_financiero.py`. Cuando el recuento de `senales_por_distribuidora.sql` esté hecho, hay que:
-
-1. cambiar las señales en `REDES_CALIBRACION` y poner `SENALES_PROVISIONALES = False`;
-2. volver a ejecutar el guion;
-3. copiar las licencias nuevas de `salida/comparacion.txt` a este README, a `docs/cifras.md` y a `docs/caso-de-negocio.md`.
-
-Como las señales pesan poco en la tarifa (el 15 % de la licencia de la Distribuidora 1), una desviación del 20 % en su recuento mueve la licencia en unos 900 €.
+Los CT y las señales de las tres distribuidoras salen de `senales_por_distribuidora.sql` sobre la copia de TedisNet de las tres redes (20.10.2026). Los CT son los elementos de tipo TRAFO CT de cada una, que pueden diferir algo de los CT de Calser (unos 760, 570 y 10), y las señales, los tags cuyo elemento cuelga de la distribuidora; los 14.705 tags sin elemento no se reparten. Están en un solo sitio, `REDES_CALIBRACION` en `plan_financiero.py`: si cambian, se vuelve a ejecutar el guion y se copian las licencias nuevas de `salida/comparacion.txt` a este README, a `docs/cifras.md` y a `docs/caso-de-negocio.md`.
 
 **Ingresos de la implantación.** La implantación se reconoce entera como ingreso en la puesta en marcha, aunque la mitad se facture a la firma; esa mitad queda mientras tanto como anticipo. La tratamos como una obligación distinta de la licencia (instalación, integración con su SCADA, calibración con su histórico e informe) que se cumple al ponerla en marcha, según la Resolución del ICAC de 10.02.2021 sobre el reconocimiento de ingresos (BOE del 13.02.2021; su artículo 8 fija cuándo se cumple cada obligación). El criterio pesa en el art. 363: si la implantación se repartiera a lo largo de tres años con la licencia, el patrimonio del mes 5 bajaría de 19.123 € a -322 €, por debajo del umbral. Lo confirmaremos con la gestoría.
 

@@ -508,14 +508,14 @@
  "salidas_mes4": 9910.5708,
  "valor_cliente": {
   "Distribuidora 1": {
-   "licencia": 30040.0,
-   "minutos": 3.1412,
-   "valor_actual": 104670.7005
+   "licencia": 29424.7,
+   "minutos": 3.0892,
+   "valor_actual": 102936.4169
   },
   "Distribuidora 2": {
-   "licencia": 27030.0,
-   "minutos": 2.441,
-   "valor_actual": 96186.7189
+   "licencia": 26531.3,
+   "minutos": 2.4053,
+   "valor_actual": 94781.0838
   }
  }
 }
