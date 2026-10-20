@@ -104,7 +104,7 @@ FROM lakehouse.l3_gold.riesgo_dia_siguiente
 ORDER BY fecha DESC, probabilidad DESC;
 ```
 
-Desde la 0.16.0 la tarde guarda además el modelo que ha ajustado, como los entrenamientos por CT: `logistica.pkl` y `run.json` en `s3://datalake/ml/modelos/<run_id>/`, con el `run_id` de su fila de `riesgo_dia_siguiente`, y la carpeta queda en `artefactos_uri` de `l3_gold.ml_runs`. `run.json` lleva la variante, las variables en el orden en que las espera el modelo, la C elegida, la versión Delta de siete de las tablas que leyó la tarde (todas menos `f_incidencia_causa`) y el entorno con que se ajustó (Python y las versiones de numpy, scipy, scikit-learn, xgboost y pandas). Lo probamos el 20.10.2026 con una tarde repetida sobre el 28.01.2026 (`prueba_c12_20260128`). Para ver el modelo de una tarde y sus coeficientes:
+Desde la 0.16.0 la tarde guarda además el modelo que ha ajustado, como los entrenamientos por CT: `logistica.pkl` y `run.json` en `s3://datalake/ml/modelos/<run_id>/`, con el `run_id` de su fila de `riesgo_dia_siguiente`, y la carpeta queda en `artefactos_uri` de `l3_gold.ml_runs`. `run.json` lleva la variante, las variables en el orden en que las espera el modelo, la C elegida, la versión Delta de las ocho tablas que leyó la tarde y el entorno con que se ajustó (Python y las versiones de numpy, scipy, scikit-learn, xgboost y pandas). Lo probamos el 20.10.2026 con una tarde repetida sobre el 28.01.2026 (`prueba_c12_20260128`), que todavía guardaba siete: faltaba `f_incidencia_causa`. Para ver el modelo de una tarde y sus coeficientes:
 
 ```python
 import json, pickle, sys
