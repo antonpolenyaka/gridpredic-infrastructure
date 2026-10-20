@@ -10,9 +10,11 @@
 # lanzador las borra (system.drop_extended_stats) antes de la fase A y al acabar.
 # Con -SoloEstadisticas solo las borra y mide c2a y c5b sin ellas (unos 10 minutos).
 # Deja todo en _runlogs\planes_trino_<fecha>\ (un JSON por consulta y fase); lo resume resumir_planes.py.
-# La tarde (docs/operacion-diaria.md 5): no empieza ninguna consulta ni la compactacion entre las 19:00 y las
-# 21:00 (si le toca en esa franja, espera a las 21:00), y la compactacion no empieza otra particion despues de
-# la hora de -PararA (18 por defecto).
+# La tarde (docs/operacion-diaria.md 5) tiene reservada la franja de las 20:25 a las 21:00. La regla es una
+# reserva con duracion: un trabajo a mano solo empieza si, con la duracion de su ultimo registro por 1,25, acaba
+# antes de las 20:25. Este lanzador aun no lee esa duracion y la aplica de forma simplificada: no empieza
+# ninguna consulta ni la compactacion entre las 19:00 y las 21:00 (si le toca en esa franja, espera a las
+# 21:00), y la compactacion no empieza otra particion despues de la hora de -PararA (18 por defecto).
 param([string]$Repo = "D:\GitHub\gridpredic-infrastructure", [int]$PararA = 18, [switch]$SinCompactar,
       [switch]$SoloEstadisticas)
 
