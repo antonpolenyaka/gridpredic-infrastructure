@@ -3,8 +3,9 @@
 #   pwsh -File D:\GitHub\gridpredic-infrastructure\experimentos\consultas_trino\lanzar_escalado.ps1
 # Unos 65 - 75 minutos de maquina. No empieza ni sigue entre las 19:00 y las 21:00 (la tarde) y espera mientras el
 # master de Spark tenga alguna aplicacion en marcha (tambien las que lanza Airflow). Cada medida usa un ejecutor de
-# 6 GB, como compactar_dataset.py. Deja los JSON en _runlogs\escalado_<fecha>\json y escalado.csv y
-# escalado_ajuste.txt (ajustar_escalado.py) en experimentos\consultas_trino\salida.
+# 6 GB, como compactar_dataset.py. Deja los JSON en _runlogs\escalado_<fecha>\json y escalado_nucleos.csv y
+# escalado_nucleos_ajuste.txt (ajustar_escalado.py) en experimentos\consultas_trino\salida; escalado.csv, la medida
+# del 17.10.2026, no se toca. No empieza una medida despues de las 18:30 para que ninguna entre en la tarde.
 param([string]$Repo = "D:\GitHub\gridpredic-infrastructure", [int[]]$Nucleos = @(1, 2, 3, 4, 6, 8, 10, 12),
       [double[]]$Meses = @(0.25, 0.5), [int]$Pasadas = 3)
 
@@ -21,10 +22,12 @@ function Say($msg) {
 }
 
 function FueraDeLaTarde() {
-    $h = (Get-Date).Hour
-    if ($h -ge 19 -and $h -lt 21) {
+    # Una medida puede durar 15 - 20 minutos: despues de las 18:30 no se empieza ninguna hasta las 21:00.
+    $now = Get-Date
+    $m = $now.Hour * 60 + $now.Minute
+    if ($m -ge 18 * 60 + 30 -and $m -lt 21 * 60) {
         $t = Get-Date -Hour 21 -Minute 0 -Second 0
-        Say "Son mas de las 19:00: espero a las 21:00 para no coincidir con la tarde"
+        Say "Son mas de las 18:30: espero a las 21:00 para que ninguna medida entre en la tarde"
         while ((Get-Date) -lt $t) { Start-Sleep -Seconds 60 }
     }
 }
@@ -72,7 +75,7 @@ foreach ($m in $Meses) { Medir 8 $m }
 docker compose -f $Compose exec -T spark-master python3 /tmp/gp/ajustar_escalado.py /tmp/gp_escalado /tmp/gp_escalado/salida 2>&1 |
     ForEach-Object { Say ("    " + $_) }
 docker compose -f $Compose cp "spark-master:/tmp/gp_escalado/." "$Dir\json" 2>&1 | ForEach-Object { Say "  $_" }
-foreach ($f in @("escalado.csv", "escalado_ajuste.txt")) {
+foreach ($f in @("escalado_nucleos.csv", "escalado_nucleos_ajuste.txt")) {
     Copy-Item -Force "$Dir\json\salida\$f" "$Repo\experimentos\consultas_trino\salida\$f"
 }
 if ($Script:Fallos -eq 0) { Say "Terminado sin errores."; exit 0 }
