@@ -1,6 +1,6 @@
 # Cómo contribuimos: Git y GitHub Flow
 
-Somos dos personas (Josep y Anton) trabajando en el mismo repositorio desde máquinas distintas, con un stack que tarda más de una hora en arrancar. La forma de trabajar tiene que evitar dos cosas: pisarnos los cambios y romper `main`, que es lo que cualquiera de los dos clona para levantar el entorno. Seguimos [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow), con estas reglas concretas.
+El repositorio lo empezamos entre dos personas (Josep y Anton), desde máquinas distintas y con un stack que tarda más de una hora en arrancar, y desde octubre de 2026 lo lleva Anton solo. La forma de trabajar tiene que evitar dos cosas, sea una persona o sean varias: que los cambios de una rama pisen los de otra y que se rompa `main`, que es lo que se clona para levantar el entorno. Seguimos [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow), con estas reglas concretas.
 
 ## 1. `main` siempre funciona
 
@@ -15,6 +15,9 @@ feat/silver-layer            nueva funcionalidad
 feat2609/improve-mlops       nueva funcionalidad, con la fecha ddmm en la que se abrió
 fix/minio-image              corrección
 docs/dataset-card            solo documentación
+exp/guiones-estudio-2010     experimentos y sus salidas (experimentos/), con la fecha ddmm al final
+pagina/franja-linea-2010     lo que se publica en gridpredic.com (web/); el commit y el PR empiezan por "PÁGINA PÚBLICA:"
+rel1710/version-0.15.0       cierre de una versión (CHANGELOG y número de versión)
 ```
 
 Si la tarea tiene issue, el número va en el nombre (`feat/12-gold-labels`) y el PR lo cierra con `Closes #12`.
@@ -35,15 +38,20 @@ anade la capa Gold y el dataset de entrenamiento
 ```
 
 - Probar antes de hacer commit: `make lint` y `make test` (o `ruff check .` y `python -m pytest tests -q`).
-- `git push` al menos una vez al día, aunque el trabajo no esté acabado. La rama remota es la copia de seguridad y permite que el otro vea por dónde va el cambio.
+- `git push` al menos una vez al día, aunque el trabajo no esté acabado. La rama remota es la copia de seguridad y deja ver por dónde va el cambio.
 
 ## 4. Pull request
 
-Cuando el cambio está listo (o antes, como borrador, si se quiere opinión sobre el enfoque), se abre un PR contra `main` con la plantilla de `.github/PULL_REQUEST_TEMPLATE.md`: qué cambia, por qué, cómo se ha probado y qué hay que hacer después de mezclarlo (por ejemplo, reconstruir una imagen o volver a ejecutar un DAG). `CODEOWNERS` pide la revisión al otro miembro automáticamente.
+Cuando el cambio está listo (o antes, como borrador, si se quiere opinión sobre el enfoque), se abre un PR contra `main` con la plantilla de `.github/PULL_REQUEST_TEMPLATE.md`: qué cambia, por qué, cómo se ha probado y qué hay que hacer después de mezclarlo (por ejemplo, reconstruir una imagen o volver a ejecutar un DAG). `CODEOWNERS` dice quién responde del repositorio: GitHub pide la revisión a los que figuran ahí salvo al autor del PR, así que mientras solo está Anton no pide ninguna.
 
 ## 5. Revisión
 
-El otro miembro revisa el código, prueba lo que pueda y deja comentarios en el propio PR. Las respuestas van como commits nuevos en la misma rama; el PR se actualiza solo. Mientras tanto, la integración continua (`.github/workflows/ci.yml`) ejecuta el linter, valida `compose.yaml` y corre con Python 3.10 los tests de la Landing y Bronze, de Silver, de Gold y de los modelos en un Spark local, entre ellos los que comprueban que cada job de Silver y de Gold espera en `depends_on` a los que escriben lo que lee (`test_dependencias_dag.py`). Lo que la CI no cubre: ningún test carga los DAG en Airflow, ni ejecuta los cuadernos o el cuadro de mando, ni toca el stack real (eso es el paso 6). Un PR con la CI en rojo no se mezcla.
+Mientras fuimos dos, `CODEOWNERS` pedía en cada PR la revisión del otro miembro, pero en GitHub no quedó ninguna registrada: la condición que aplicamos siempre para mezclar fue la integración continua. Con una sola persona, antes de mezclar se exigen dos comprobaciones:
+
+- La integración continua (`.github/workflows/ci.yml`) ejecuta el linter, valida `compose.yaml`, corre con Python 3.10 los tests de la Landing y Bronze, de Silver, de Gold y de los modelos en un Spark local, entre ellos los que comprueban que cada job de Silver y de Gold espera en `depends_on` a los que escriben lo que lee (`test_dependencias_dag.py`), y con Python 3.11 los del plan financiero. Un PR con la CI en rojo no se mezcla.
+- La prueba contra el stack real del paso 6, cuando el cambio lo toca, para lo que la CI no cubre: ningún test carga los DAG en Airflow, ni ejecuta los cuadernos o el cuadro de mando, ni toca el stack real.
+
+Cuando el equipo vuelva a ser de más de una persona, la revisión de otro miembro vuelve a ser condición para mezclar: se añade a cada miembro en `CODEOWNERS` y se activa en GitHub la protección de `main` que exige una aprobación. El revisor prueba lo que pueda y deja los comentarios en el propio PR; las respuestas van como commits nuevos en la misma rama y el PR se actualiza solo.
 
 ## 6. Desplegar antes de mezclar
 
@@ -51,7 +59,7 @@ Nuestro "despliegue" es levantar el stack con la rama y ejecutar lo que toque: u
 
 ## 7. Mezclar y borrar la rama
 
-Con la revisión aprobada y la CI en verde, se mezcla desde GitHub (merge commit, para conservar el historial de la rama) y se borra la rama. El PR y sus comentarios se quedan como registro de por qué se hizo el cambio.
+Con la CI en verde, la prueba del paso 6 cuando hace falta y, si hay equipo, la revisión aprobada, el autor mezcla desde GitHub (merge commit, para conservar el historial de la rama) y borra la rama. El PR y sus comentarios se quedan como registro de por qué se hizo el cambio.
 
 ```bash
 git checkout main

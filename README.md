@@ -681,7 +681,7 @@ Las versiones del runtime están fijadas en `compose.yaml`, en los `Dockerfile` 
 
 ## 15. Cómo contribuir
 
-Trabajamos con GitHub Flow: una rama por cambio a partir de `main`, commits pequeños con mensaje en imperativo, pull request con la plantilla del repositorio, revisión del otro miembro (la pide `CODEOWNERS`), CI en verde, prueba contra el stack real y merge con borrado de la rama. Las reglas completas, incluido cómo versionamos datos y modelos, están en [CONTRIBUTING.md](CONTRIBUTING.md).
+Trabajamos con GitHub Flow: una rama por cambio a partir de `main`, commits pequeños con mensaje en imperativo, pull request con la plantilla del repositorio, CI en verde, prueba contra el stack real y merge con borrado de la rama. Desde octubre de 2026 el repositorio lo lleva una sola persona y mezcla el autor; cuando el equipo vuelva a ser de más de una, la revisión de otro miembro (la pide `CODEOWNERS`) vuelve a ser condición para mezclar. Las reglas completas, incluido cómo versionamos datos y modelos, están en [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 16. Licencia
 

@@ -1,2 +1,3 @@
-# Cada pull request pide revisión automáticamente al otro miembro del equipo.
-* @antonpolenyaka @jmoranchop
+# Quién responde del repositorio. GitHub pide la revisión a los que figuran aquí, salvo al autor del pull request.
+# Desde octubre de 2026 el repositorio lo lleva una sola persona; si el equipo vuelve a crecer, cada miembro se añade aquí.
+* @antonpolenyaka
