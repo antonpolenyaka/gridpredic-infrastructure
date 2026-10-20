@@ -133,8 +133,8 @@
   const RETRIBUCION = { 3: { euros: 11994208 }, 2: { euros: 10833762 }, 1366: { euros: 208986 } };
   // Annual licence of every network with the size-based tariff of the business plan (experimentos/plan_financiero:
   // 3.000 euros fixed, 150 per CT from 1 to 100, 15 from 101 to 300 and 10 from 301, 0,10 per signal, minimum 6.000).
-  // The signals are still provisional: when they change, copy here the licences of salida/comparacion.txt.
-  const LICENCIA = { 3: 30040, 2: 27030, 1366: 6000 }, IMPLANTACION = 20000;
+  // CT and signals counted in TedisNet on 20.10.2026; if they change, copy here the licences of salida/comparacion.txt.
+  const LICENCIA = { 3: 29425, 2: 26531, 1366: 6000 }, IMPLANTACION = 20000;
   let DATA = null;
 
   function hours(d, winsor) { return winsor ? (d.chr != null ? d.chr : (d.m > CAP ? d.ch * CAP / d.m : d.ch)) : d.ch; }
@@ -452,7 +452,7 @@
       html += `<tr><td>${esc(d.nombre)}</td><td class="num">${num(r.euros)}</td><td class="num">${num(lic)}</td><td class="num">${pct(lic / r.euros, 2)}</td><td class="num">${num(IMPLANTACION)}</td></tr>`;
     }
     html += `</tbody></table>
-      <p class="notas">Retribución de 2023 según la resolución de la CNMC publicada en el BOE (BOE-A-2026-19941), la misma con la que la memoria calcula lo que vale un minuto de TIEPI. La licencia se paga por el tamaño de la red, como la del SCADA: 3.000 euros fijos, 150 euros por CT hasta 100 CT y descuento por volumen a partir de ahí (15 euros por CT del 101 al 300 y 10 desde el 301), más 0,10 euros por señal, con un mínimo de 6.000 euros y sin máximo; las señales de cada red son todavía una estimación. La implantación, según el plan de negocio. Ese minuto, unos 12.600 euros de incentivo al año en la Distribuidora 1 y 14.900 en la 2, lo estimamos con la fórmula de la Circular y la referencia del sector; la cifra oficial la publicará la CNMC. Lo que todavía no podemos decir es cuántos minutos evita el sistema, que tiene que medirlo un piloto, ni cuánto se ahorra en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
+      <p class="notas">Retribución de 2023 según la resolución de la CNMC publicada en el BOE (BOE-A-2026-19941), la misma con la que la memoria calcula lo que vale un minuto de TIEPI. La licencia se paga por el tamaño de la red, como la del SCADA: 3.000 euros fijos, 150 euros por CT hasta 100 CT y descuento por volumen a partir de ahí (15 euros por CT del 101 al 300 y 10 desde el 301), más 0,10 euros por señal, con un mínimo de 6.000 euros y sin máximo; los CT y las señales de cada red son los de su SCADA. La implantación, según el plan de negocio. Ese minuto, unos 12.600 euros de incentivo al año en la Distribuidora 1 y 14.900 en la 2, lo estimamos con la fórmula de la Circular y la referencia del sector; la cifra oficial la publicará la CNMC. Lo que todavía no podemos decir es cuántos minutos evita el sistema, que tiene que medirlo un piloto, ni cuánto se ahorra en horas extra, que depende de cómo organiza hoy cada empresa su retén.</p>
       </section>`;
 
     html += `<section id="sector" style="display:none"><h2>Dónde está cada red frente al sector</h2>
