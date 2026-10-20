@@ -58,6 +58,7 @@ def sizes(t, tmp):
 
 
 def main(base, out, tmp):
+    os.makedirs(out, exist_ok=True)
     import formatos
     tabs = formatos.load(base)
     rows = []
