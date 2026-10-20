@@ -11,7 +11,7 @@ de la carga de cálculo, sin Spark:
   debajo de 0,9, la estimación lineal del coste de Gold con más distribuidoras es una cota superior; entre 0,9 y 1,1
   se sostiene; por encima de 1,1 hay que corregirla.
 
-Marca los puntos con más de un 10 % entre pasadas, que hay que repetir. Deja escalado.csv y escalado_ajuste.txt.
+Marca los puntos con más de un 10 % entre pasadas, que hay que repetir. Deja escalado_nucleos.csv y escalado_nucleos_ajuste.txt (escalado.csv es la medida del 17.10.2026 y no se toca).
 """
 
 import glob
@@ -78,9 +78,9 @@ def main(argv) -> int:
         lines.append(f"Datos (8 núcleos): {', '.join(f'{int(v):,}'.replace(',', '.') for v in rows_read)} filas; "
                      f"exponente b = {b:.2f}: {verdict}.")
     os.makedirs(out, exist_ok=True)
-    with open(os.path.join(out, "escalado.csv"), "w", encoding="utf-8") as handle:
+    with open(os.path.join(out, "escalado_nucleos.csv"), "w", encoding="utf-8") as handle:
         handle.write("\n".join(rows) + "\n")
-    with open(os.path.join(out, "escalado_ajuste.txt"), "w", encoding="utf-8") as handle:
+    with open(os.path.join(out, "escalado_nucleos_ajuste.txt"), "w", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
     print("\n".join(rows + [""] + lines))
     return 0
