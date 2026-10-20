@@ -8,7 +8,7 @@ tables that are rewritten by month (features_ct_hora, labels_ct_hora,
 agg_medida_hora...) and thousands of small files in the CDC tables of Bronze.
 
     spark-submit job_mantenimiento_delta.py [--bases l1_bronze,l2_silver,l3_gold] [--horas 168] [--sin-vacuum]
-        [--parar-a 18] [--solo-vacuum l3_gold.dataset_train]
+        [--parar-a 18] [--parar-grandes-a 17] [--grandes-gb 5] [--solo-vacuum l3_gold.dataset_train]
 
 Every step of a table has its own try: an OPTIMIZE that fails (a concurrent
 write of the streaming, or the memory of the executor) is logged and the
@@ -47,6 +47,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--sin-vacuum", action="store_true", help="Only OPTIMIZE")
     parser.add_argument("--parar-a", type=int, default=None,
                         help="Local hour (Madrid) from which no new table is started, to leave Spark free for the evening")
+    parser.add_argument("--parar-grandes-a", type=int, default=None,
+                        help="Local hour (Madrid) from which a big table gets no OPTIMIZE (VACUUM only): its OPTIMIZE "
+                             "takes long and --parar-a is only checked between tables")
+    parser.add_argument("--grandes-gb", type=float, default=5.0, help="Size from which a table counts as big for --parar-grandes-a")
     parser.add_argument("--solo-vacuum", default=ONLY_VACUUM,
                         help="Tables (comma separated) that keep their own file layout: VACUUM without OPTIMIZE")
     return parser.parse_args(argv)
@@ -58,6 +62,14 @@ def actions(name: str, args: argparse.Namespace) -> list:
     steps = [] if name in keep else ["optimize"]
     if not args.sin_vacuum:
         steps.append("vacuum")
+    return steps
+
+
+def late_for_big(steps: list, size_bytes: int, hour: int, args: argparse.Namespace) -> list:
+    """The steps without OPTIMIZE when the table is big and it is already --parar-grandes-a or later."""
+    if (args.parar_grandes_a is not None and "optimize" in steps and hour >= args.parar_grandes_a
+            and size_bytes >= args.grandes_gb * 1e9):
+        return [s for s in steps if s != "optimize"]
     return steps
 
 
@@ -114,6 +126,14 @@ def main(argv=None) -> int:
             except Exception as error:  # noqa: BLE001
                 failed += 1
                 logger.warning("%s: skipped (%s)", name, str(error)[:200])
+                continue
+            hour = datetime.now(ZoneInfo("Europe/Madrid")).hour
+            planned = late_for_big(steps, size, hour, args)
+            if planned != steps:
+                logger.info("%s: %.1f GB at %s:00, no OPTIMIZE after %s:00 for big tables (VACUUM only)", name, size / 1e9, hour,
+                            args.parar_grandes_a)
+                steps = planned
+            if not steps:
                 continue
             ran = run_steps(spark, name, steps, args.horas)
             if len(ran) < len(steps):

@@ -21,7 +21,7 @@ import ast  # noqa: E402
 import json  # noqa: E402
 import re  # noqa: E402
 
-from job_mantenimiento_delta import actions, parse_args, run_steps  # noqa: E402
+from job_mantenimiento_delta import actions, late_for_big, parse_args, run_steps  # noqa: E402
 
 
 def to_snake():
@@ -78,7 +78,16 @@ def test_the_dag_gives_memory_to_the_executor():
         text = file.read()
     assert '"spark.executor.memory": "6g"' in text and '"spark.executor.memoryOverhead": "1g"' in text
     assert '"spark.cores.max": "4"' in text
-    assert 'application_args=["--parar-a", "18"]' in text
+    assert 'application_args=["--parar-a", "18", "--parar-grandes-a", "17"]' in text
+
+
+def test_no_optimize_of_a_big_table_late_in_the_day():
+    args = parse_args(["--parar-grandes-a", "17"])
+    big, small = 12e9, 1e9
+    assert late_for_big(["optimize", "vacuum"], big, 17, args) == ["vacuum"]
+    assert late_for_big(["optimize", "vacuum"], big, 16, args) == ["optimize", "vacuum"]
+    assert late_for_big(["optimize", "vacuum"], small, 17, args) == ["optimize", "vacuum"]
+    assert late_for_big(["optimize", "vacuum"], big, 23, parse_args([])) == ["optimize", "vacuum"]
 
 
 def test_flags():
