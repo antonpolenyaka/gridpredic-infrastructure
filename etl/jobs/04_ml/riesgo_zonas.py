@@ -45,11 +45,19 @@ tested on small synthetic data.
 
 import json
 import math
+import os
+import sys
 import urllib.request
 from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
+
+# The atomic writes of the dashboard files live with the Landing (escritura_atomica.py, only the standard library).
+LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "00_landing")
+if LANDING not in sys.path:
+    sys.path.append(LANDING)
+from escritura_atomica import replace_atomically, write_json_atomic  # noqa: E402, F401 (write_json_atomic: the other jobs)
 
 LOCAL_EXCLUDED = ("aguas_arriba", "apagon", "programada", "maniobra", "cliente_bt", "red_bt")
 CAUSE_FAMILIES = {"vegetacion": "meteorologia", "incendio": "meteorologia", "objeto_ajeno": "terceros",
@@ -585,8 +593,7 @@ def clean(value):
 
 
 def write_json(payload: dict, path: str):
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(clean(payload), file, ensure_ascii=False, indent=1)
+    write_json_atomic(path, clean(payload), ensure_ascii=False, indent=1)
 
 
 def now_text() -> str:
@@ -683,5 +690,5 @@ def write_shift_sheet(payload: dict, path: str) -> bool:
                 for i in range(2, len(frame) + 2):
                     sheet.cell(row=i, column=j).number_format = "0.0%"
         sheet.freeze_panes = "A2"
-    book.save(path)
+    replace_atomically(path, book.save)
     return True

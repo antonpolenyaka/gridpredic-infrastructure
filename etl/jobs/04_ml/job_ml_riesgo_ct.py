@@ -84,6 +84,13 @@ if HERE not in sys.path:
 from job_analisis_red import Data, Report, md_table, pct, read_table, settings  # noqa: E402
 from job_ml_train import GOLD, RUNS_TABLE, get_spark, load_config, logger, save_frame  # noqa: E402
 
+# The list of columns that may never be features, the same that Gold enforces (appended: nothing
+# of 03_gold shadows a module of this folder).
+GOLD_JOBS = os.path.join(HERE, "..", "03_gold")
+if GOLD_JOBS not in sys.path:
+    sys.path.append(GOLD_JOBS)
+from gold_common import FORBIDDEN_FEATURES  # noqa: E402
+
 
 SCADA_TABLE = f"{GOLD}.fact_cortes_scada"
 CONTEXT_TABLE = f"{GOLD}.contexto_ct_anio"
@@ -136,8 +143,9 @@ LABEL_COLUMNS = ["y_kva_h", "y_interrupciones", "y_horas"]
 LEVELS = {"ct": ["distribuidora_id", "ct_id"], "cabecera": ["distribuidora_id", "cabecera"],
           "grupo": ["distribuidora_id", "grupo_red_id"], "municipio": ["distribuidora_id", "municipio_id"]}
 
-STRUCTURE = ["kva", "num_abonados", "zona", "tiene_telemetria", "n_ct_grupo", "cts_cabecera", "kva_cabecera",
-             "n_posiciones_aguas_arriba"]
+# n_posiciones_aguas_arriba left the block on 19.10.2026: it counts the bays of the whole history of
+# dim_ct, future cuts included, and is in gold_common.FORBIDDEN_FEATURES (test_riesgo_ct_bloques.py).
+STRUCTURE = ["kva", "num_abonados", "zona", "tiene_telemetria", "n_ct_grupo", "cts_cabecera", "kva_cabecera"]
 PUBLIC = ["pob_municipio", "pob_crec_1a", "pob_crec_5a_anual", "densidad_hab_km2", "elevacion_municipio_m",
           "kva_municipio_por_hab", "abonados_municipio_por_hab", "celda_elev_media_m", "celda_elev_std_m",
           "celda_desnivel_m", "celda_dens_linea_aerea_km_km2", "celda_dens_apoyos_km2", "celda_dens_carreteras_km_km2",
@@ -266,21 +274,12 @@ def climate_features(spark, cfg: dict) -> pd.DataFrame:
 
 
 def prepare_dim(data: Data) -> pd.DataFrame:
-    """The CTs of dim_ct with the size of their feeder and their upstream bays."""
+    """The CTs of dim_ct with the size of their feeder."""
     dim = data.dim.copy()
     dim["municipio_id"] = dim["municipio_id"].astype(str)
     per_feeder = dim.groupby(["distribuidora_id", "cabecera"]).agg(cts_cabecera=("ct_id", "nunique"),
                                                                   kva_cabecera=("kva", "sum")).reset_index()
-    dim = dim.merge(per_feeder, on=["distribuidora_id", "cabecera"], how="left")
-    upstream = read_table(data.spark, f"{GOLD}.dim_ct", ["distribuidora_id", "ct_id", "n_posiciones_aguas_arriba"])
-    if upstream is not None:
-        up = upstream.toPandas()
-        up["ct_id"] = up["ct_id"].astype(str)
-        dim = dim.drop(columns=[c for c in ["n_posiciones_aguas_arriba"] if c in dim.columns]).merge(
-            up, on=["distribuidora_id", "ct_id"], how="left")
-    else:
-        dim["n_posiciones_aguas_arriba"] = np.nan
-    return dim
+    return dim.merge(per_feeder, on=["distribuidora_id", "cabecera"], how="left")
 
 
 def history_columns(grid: pd.DataFrame) -> list:
@@ -486,10 +485,12 @@ def block_columns(grid: pd.DataFrame) -> dict:
     hist = [c for c in grid.columns if c.startswith(("kva_h_", "interrupciones_", "horas_", "tiepi_"))
             and not c.startswith(("horas_racha",))] + ["anios_desde_ultima"]
     scada = [c for c in grid.columns if c.startswith(("microcortes_", "cortes_scada_", "episodios_scada_"))]
-    return {"historia": hist, "estructura": STRUCTURE, "scada": scada, "publicos": PUBLIC, "obras": WORKS,
-            "clima": CLIMATE, "naturaleza": NATURE, "arbolado": TREES,
-            "hoja": LEAF, "corredor": CORRIDOR, "mfe": MFE, "avifauna": BIRDS,
-            "especies": SPECIES}
+    blocks = {"historia": hist, "estructura": STRUCTURE, "scada": scada, "publicos": PUBLIC, "obras": WORKS,
+              "clima": CLIMATE, "naturaleza": NATURE, "arbolado": TREES,
+              "hoja": LEAF, "corredor": CORRIDOR, "mfe": MFE, "avifauna": BIRDS,
+              "especies": SPECIES}
+    # The blocks found by prefix (horas_ would take horas_hasta_proximo_evento) never take a forbidden column.
+    return {name: [c for c in columns if c not in FORBIDDEN_FEATURES] for name, columns in blocks.items()}
 
 
 def features_of(name: str, blocks: dict) -> list:

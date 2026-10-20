@@ -323,7 +323,7 @@ Durante el arranque se realiza automáticamente:
 >
 > ```text
 > Error response from daemon: ports are not available: exposing port TCP
-> 0.0.0.0:8080 -> 127.0.0.1:0: listen tcp 0.0.0.0:8080: bind: An attempt was
+> 127.0.0.1:8080 -> 127.0.0.1:0: listen tcp 127.0.0.1:8080: bind: An attempt was
 > made to access a socket in a way forbidden by its access permissions
 > ```
 >
@@ -362,7 +362,7 @@ Database/Schema: lakehouse
 Username: <cualquier valor>
 ```
 
-No hay autenticación por contraseña configurada para Trino en este entorno local, y `compose.yaml` publica su puerto en todas las interfaces del portátil: el cortafuegos de Windows tiene que cerrarlo a la red (o publicarlo como `127.0.0.1:8085:8080`). Antes de abrirlo a nadie más habría que activar TLS, la autenticación por contraseña (o la del directorio de la distribuidora) y el control de acceso por reglas de Trino, con un rol de solo lectura sobre `l3_gold` para el cuadro de mando y los analistas y Bronze y Silver reservados a los trabajos, que ya acceden por Spark y no por Trino.
+No hay autenticación por contraseña configurada para Trino en este entorno local, y por eso `compose.yaml` publica su puerto solo en `127.0.0.1:8085`, como el resto de consolas de administración (MinIO, Spark y Kafka UI): desde otro equipo de la red no responde. Antes de abrirlo a nadie más habría que activar TLS, la autenticación por contraseña (o la del directorio de la distribuidora) y el control de acceso por reglas de Trino, con un rol de solo lectura sobre `l3_gold` para el cuadro de mando y los analistas y Bronze y Silver reservados a los trabajos, que ya acceden por Spark y no por Trino.
 
 Tiempos de consulta medidos el 17.10.2026 en el portátil, con el tiempo del propio servidor (`system.runtime.queries`), en frío y en caliente (mediana de cinco), antes y después de compactar `dataset_train` (apartado 12; detalle en [docs/cifras.md](docs/cifras.md) y en `experimentos/consultas_trino/salida/`):
 
@@ -499,6 +499,8 @@ La serie grande de medidas se procesa por meses y solo sobrescribe los meses ind
 ```bash
 docker compose exec spark-master \
   spark-submit \
+  --conf spark.cores.max=4 --conf spark.executor.memory=8g --conf spark.executor.memoryOverhead=1g \
+  --conf spark.sql.shuffle.partitions=256 \
   /app/jobs/02_silver/job_silver_f_tag_interval_value.py --desde 2026-01 --hasta 2026-03
 ```
 
@@ -541,8 +543,12 @@ Un job suelto desde el contenedor de Spark, que lee la configuración de `/app/c
 ```bash
 docker compose exec spark-master \
   spark-submit --py-files /app/jobs/03_gold/gold_common.py \
+  --conf spark.cores.max=4 --conf spark.executor.memory=8g --conf spark.executor.memoryOverhead=1g \
+  --conf spark.sql.shuffle.partitions=256 \
   /app/jobs/03_gold/job_gold_features_ct_hora.py --desde 2026-01 --hasta 2026-03
 ```
+
+La `--conf` es la del job en `config_silver.json` o `config_gold.json`: sin ella, el job corre con los valores de seguridad de `spark-defaults.conf` (2 núcleos y 3 GB por ejecutor), que bastan para los jobs pequeños pero no para la serie de medidas ni para las features.
 
 Resultado desde Trino/DBeaver:
 
@@ -560,7 +566,7 @@ Las filas con `split = 'purga'` son las cinco horas de cada CT antes de cada fro
 
 Calidad de cada ejecución en `lakehouse.l3_gold.dq_metrics`, con el mismo esquema que la de Silver.
 
-Las tablas Delta de las tres capas se compactan una vez por semana: `dag_mantenimiento_delta` corre los domingos a las 04:10 (hora de Madrid) y lanza `job_mantenimiento_delta.py`, que hace OPTIMIZE y VACUUM con 168 horas de retención sobre `l1_bronze`, `l2_silver` y `l3_gold`. Con esa retención, el time travel solo llega a las versiones de la última semana. La primera pasada, lanzada a mano el viernes 16.10.2026, tardó 3 h 4 min y dejó 225 tablas en 559 ficheros, pero se saltó las cinco más grandes por falta de memoria del ejecutor; para ellas queda compactar por particiones. `dataset_train` la compactamos a mano por particiones el 17.10.2026, con los meses de 2025 ordenados por distribuidora y CT con ZORDER (`experimentos/consultas_trino/compactar_dataset.py`), y el mantenimiento solo le pasa VACUUM para no deshacer ese orden. Ordenamos con ZORDER y no con liquid clustering porque el conector de Delta de Trino solo lee la característica de tabla deletion vectors: una tabla con liquid clustering, row tracking o checkpoints v2 dejaría de poder consultarse desde Trino, y `tests/03_gold/test_compatibilidad_trino.py` lo vigila. Como todo DAG nuevo, llega pausado:
+Las tablas Delta de las tres capas se compactan una vez por semana: `dag_mantenimiento_delta` corre los domingos a las 04:10 (hora de Madrid) y lanza `job_mantenimiento_delta.py`, que hace OPTIMIZE y VACUUM con 168 horas de retención sobre `l1_bronze`, `l2_silver` y `l3_gold`. Con esa retención, el time travel solo llega a las versiones de la última semana. La primera pasada, lanzada a mano el viernes 16.10.2026, tardó 3 h 4 min y dejó 225 tablas en 559 ficheros, pero se saltó las cinco más grandes por falta de memoria del ejecutor; desde el 19.10.2026 el DAG lanza el trabajo con 6 GB por ejecutor, 1 GB de margen y 4 núcleos, no empieza ninguna tabla después de las 18:00 y, si el OPTIMIZE de una tabla falla, le hace el VACUUM igual. `dataset_train` la compactamos a mano por particiones el 17.10.2026, con los meses de 2025 ordenados por distribuidora y CT con ZORDER (`experimentos/consultas_trino/compactar_dataset.py`), y el mantenimiento solo le pasa VACUUM para no deshacer ese orden; lo mismo a la tabla grande de valores de Bronze, que está escrita por orden de `Id`. Ordenamos con ZORDER y no con liquid clustering porque el conector de Delta de Trino solo lee la característica de tabla deletion vectors: una tabla con liquid clustering, row tracking o checkpoints v2 dejaría de poder consultarse desde Trino, y `tests/03_gold/test_compatibilidad_trino.py` lo vigila. Como todo DAG nuevo, llega pausado:
 
 ```bash
 docker compose exec airflow airflow dags unpause dag_mantenimiento_delta
@@ -654,7 +660,7 @@ make test                         # python -m pytest tests -q (de Bronze a los m
 make config                       # valida compose.yaml con el .env actual
 ```
 
-Las mismas tres comprobaciones se ejecutan en GitHub Actions en cada pull request y en cada push a `main` (`.github/workflows/ci.yml`), salvo los tests de `tests/01_bronze`, que solo corren con `make test`. El test de Silver monta tablas Bronze pequeñas con los problemas reales de los datos sembrados a propósito, ejecuta todos los jobs en un Spark local y comprueba el resultado. El de Gold hace lo mismo con una semana de datos de dos distribuidoras, comprueba las etiquetas hora a hora y termina con una prueba de leakage: borra de Silver todo lo que pasó a partir de una hora, recalcula y exige que las features anteriores no cambien. El del modelo monta un `dataset_train` sintético, entrena los cinco modelos con búsquedas pequeñas, evalúa valid y test y comprueba todas las tablas de resultados y los modelos guardados. El resto de tests prueba, también sin Docker, la Landing y las fuentes públicas, la meteorología de Gold y los jobs del riesgo y del caso de negocio. La primera ejecución descarga los jars de Delta de Maven Central.
+Las mismas tres comprobaciones se ejecutan en GitHub Actions en cada pull request y en cada push a `main` (`.github/workflows/ci.yml`), con Python 3.10, el de la imagen de Airflow. La CI no carga los DAG en Airflow, ni ejecuta los cuadernos o el cuadro de mando; lo que sí comprueba sin Airflow es que cada job de Silver y de Gold espera en `depends_on` a los que escriben las tablas que lee (`tests/02_silver/test_dependencias_dag.py` y `tests/03_gold/test_dependencias_dag_gold.py`). El test de Silver monta tablas Bronze pequeñas con los problemas reales de los datos sembrados a propósito, ejecuta todos los jobs en un Spark local y comprueba el resultado. El de Gold hace lo mismo con una semana de datos de dos distribuidoras, comprueba las etiquetas hora a hora y termina con una prueba de leakage: borra de Silver todo lo que pasó a partir de una hora, recalcula y exige que las features anteriores no cambien. El del modelo monta un `dataset_train` sintético, entrena los cinco modelos con búsquedas pequeñas, evalúa valid y test y comprueba todas las tablas de resultados y los modelos guardados. El resto de tests prueba, también sin Docker, la Landing y las fuentes públicas, la meteorología de Gold y los jobs del riesgo y del caso de negocio. La primera ejecución descarga los jars de Delta de Maven Central.
 
 Las versiones del runtime están fijadas en `compose.yaml`, en los `Dockerfile` de `infra/` y en `infra/spark/requirements.txt`; `requirements.txt` de la raíz reproduce en local las versiones de Spark y Delta de las imágenes.
 
@@ -663,3 +669,7 @@ Las versiones del runtime están fijadas en `compose.yaml`, en los `Dockerfile` 
 ## 15. Cómo contribuir
 
 Trabajamos con GitHub Flow: una rama por cambio a partir de `main`, commits pequeños con mensaje en imperativo, pull request con la plantilla del repositorio, revisión del otro miembro (la pide `CODEOWNERS`), CI en verde, prueba contra el stack real y merge con borrado de la rama. Las reglas completas, incluido cómo versionamos datos y modelos, están en [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## 16. Licencia
+
+Todos los derechos reservados. El repositorio es público solo para que pueda consultarse durante la evaluación del TFM; sin permiso previo y por escrito de los autores no se puede usar, copiar, modificar, distribuir ni crear obras derivadas de su contenido. El texto completo, en castellano y en inglés, está en [LICENSE](LICENSE).

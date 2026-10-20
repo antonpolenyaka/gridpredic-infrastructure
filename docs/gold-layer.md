@@ -188,11 +188,13 @@ dim_ct -> meteo_celda_hora -> contexto_ct
 dataset_train, meteo_celda_hora, contexto_ct -> dq_checks
 ```
 
-O un job suelto desde el contenedor de Spark (lee la configuración de `/app/config`):
+O un job suelto desde el contenedor de Spark (lee la configuración de `/app/config`), con la `--conf` del job en `config_gold.json`; sin ella corre con los valores de seguridad de `spark-defaults.conf` (2 núcleos y 3 GB por ejecutor):
 
 ```bash
 docker compose exec spark-master \
   spark-submit --py-files /app/jobs/03_gold/gold_common.py \
+  --conf spark.cores.max=4 --conf spark.executor.memory=8g --conf spark.executor.memoryOverhead=1g \
+  --conf spark.sql.shuffle.partitions=256 \
   /app/jobs/03_gold/job_gold_features_ct_hora.py --desde 2026-01 --hasta 2026-03
 ```
 

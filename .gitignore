@@ -26,8 +26,9 @@ spark-warehouse/
 metastore_db/
 derby.log
 
-# Salidas de las pruebas manuales
+# Salidas de las pruebas manuales y subcarpetas de registros de la cola y los lanzadores
 _runlogs/*.csv
+_runlogs/*/
 
 # Correspondencias con los nombres reales de las distribuidoras (solo en el portatil)
 _runlogs/anonimizar_nombres.json

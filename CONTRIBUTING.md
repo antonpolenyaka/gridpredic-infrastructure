@@ -43,7 +43,7 @@ Cuando el cambio está listo (o antes, como borrador, si se quiere opinión sobr
 
 ## 5. Revisión
 
-El otro miembro revisa el código, prueba lo que pueda y deja comentarios en el propio PR. Las respuestas van como commits nuevos en la misma rama; el PR se actualiza solo. Mientras tanto, la integración continua (`.github/workflows/ci.yml`) ejecuta el linter, valida `compose.yaml` y corre los tests de Silver, de Gold y de los modelos en un Spark local (los de `tests/01_bronze` no están en la CI: se pasan con `make test`). Un PR con la CI en rojo no se mezcla.
+El otro miembro revisa el código, prueba lo que pueda y deja comentarios en el propio PR. Las respuestas van como commits nuevos en la misma rama; el PR se actualiza solo. Mientras tanto, la integración continua (`.github/workflows/ci.yml`) ejecuta el linter, valida `compose.yaml` y corre con Python 3.10 los tests de la Landing y Bronze, de Silver, de Gold y de los modelos en un Spark local, entre ellos los que comprueban que cada job de Silver y de Gold espera en `depends_on` a los que escriben lo que lee (`test_dependencias_dag.py`). Lo que la CI no cubre: ningún test carga los DAG en Airflow, ni ejecuta los cuadernos o el cuadro de mando, ni toca el stack real (eso es el paso 6). Un PR con la CI en rojo no se mezcla.
 
 ## 6. Desplegar antes de mezclar
 

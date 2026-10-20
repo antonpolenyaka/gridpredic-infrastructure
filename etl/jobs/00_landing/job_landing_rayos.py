@@ -7,8 +7,9 @@ The Lightning Imager of MTG publishes the flashes it sees every 10 minutes
 with a NetCDF of flashes with position, time, duration and radiance). Before
 17 % of the incidents of 2024 - 2025 there were flashes within 10 km of the
 network in the previous hour, against 1.1 % of the control windows, so a
-storm over a line is the most direct sign of the next hour we have
-(causas-incidencias.md, apartado 8).
+storm over the network is the most direct sign of the next hour we have
+(causas-incidencias.md, apartado 8). The figure is of the network of each
+distribuidora; for a single line it is only an indication.
 
 Every run asks the Data Store for the products of the last ventana_min +
 retraso_min minutes, downloads the ones that are not yet in the Landing,
@@ -53,7 +54,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from job_landing_meteo_openmeteo import filesystem  # noqa: E402
-from job_landing_vivo import load_config  # noqa: E402
+from job_landing_vivo import load_config, write_json_atomic  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("rayos")
@@ -363,8 +364,7 @@ def write_dashboard(payload: dict, folder: str) -> bool:
         logger.warning("Dashboard folder %s not found: rayos.json not written", folder)
         return False
     path = os.path.join(folder, "rayos.json")
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(payload, file, ensure_ascii=False, indent=1)
+    write_json_atomic(path, payload, ensure_ascii=False, indent=1)
     logger.info("rayos.json written in %s (%s flashes in the last %s minutes)", path, payload["n_rayos"],
                 int(payload["ventana_min"]))
     return True
