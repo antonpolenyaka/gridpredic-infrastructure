@@ -90,10 +90,10 @@ Register-ScheduledTask -TaskName "GridPredic copia diaria" -Action $accion -Trig
 Desde el 20.10.2026 hay dos scripts en la raíz del repositorio que lo hacen todo en orden, desde cualquier carpeta:
 
 ```powershell
-pwsh -File D:\GitHub\gridpredic-infrastructure\startGridPredic.ps1          # Docker Desktop, el stack por fases, SQL Server al final, la cola y el vigilante
-pwsh -File D:\GitHub\gridpredic-infrastructure\startGridPredic.ps1 -Cdc     # además Kafka, Kafka Connect y Kafka UI
-pwsh -File D:\GitHub\gridpredic-infrastructure\stopGridPredic.ps1           # no para si la cola o Spark tienen algo en marcha o es la franja de la tarde
-pwsh -File D:\GitHub\gridpredic-infrastructure\stopGridPredic.ps1 -ApagarDocker
+pwsh -File D:\GitHub\gridpredic-infrastructure\startGridPredic_windows.ps1          # Docker Desktop, el stack por fases, SQL Server al final, la cola y el vigilante
+pwsh -File D:\GitHub\gridpredic-infrastructure\startGridPredic_windows.ps1 -Cdc     # además Kafka, Kafka Connect y Kafka UI
+pwsh -File D:\GitHub\gridpredic-infrastructure\stopGridPredic_windows.ps1           # no para si la cola o Spark tienen algo en marcha o es la franja de la tarde
+pwsh -File D:\GitHub\gridpredic-infrastructure\stopGridPredic_windows.ps1 -ApagarDocker
 ```
 
 El de arranque espera a que cada fase esté sana (PostgreSQL y MinIO; Hive, Trino y Spark master; worker, History Server, Airflow y cuadro de mando) para que el disco externo no lo reparta todo a la vez, y deja SQL Server para el final sin esperarlo: tras un reinicio tarda unos 15 minutos en recuperar sus bases y el día a día no lo necesita. Los dos dejan su registro en `_runlogs\start_<fecha>.log` y `_runlogs\stop_<fecha>.log`.
