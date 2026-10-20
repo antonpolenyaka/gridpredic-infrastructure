@@ -1,0 +1,481 @@
+{
+ "generado": "2026-10-18T18:30Z",
+ "fecha": "2026-10-19",
+ "fuente": "AEMET OpenData, predicción horaria por municipios",
+ "distribuidoras": [
+  {
+   "id": 3,
+   "nombre": "Distribuidora 1",
+   "municipios": 44,
+   "elaborado": "2026-10-18T17:07:08",
+   "horas": [
+    {
+     "hora": 0,
+     "racha_kmh": 49,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": null
+    },
+    {
+     "hora": 1,
+     "racha_kmh": 51,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": null
+    },
+    {
+     "hora": 2,
+     "racha_kmh": 53,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 3,
+     "racha_kmh": 54,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 46,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 43,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 44,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 44,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 39,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 25
+    },
+    {
+     "hora": 9,
+     "racha_kmh": 39,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 25
+    },
+    {
+     "hora": 10,
+     "racha_kmh": 37,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 25
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 31,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 25
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 25
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 29,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 25
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 32,
+     "lluvia_mm": 0.1,
+     "tormenta_pct": 40
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 33,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 40
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 29,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 40
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 29,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 40
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 40
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 40
+    },
+    {
+     "hora": 20,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 21,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 22,
+     "racha_kmh": 29,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 23,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    }
+   ],
+   "pico": {
+    "racha_kmh": 54,
+    "hora": 3,
+    "municipio": "Piornal"
+   },
+   "texto": "AEMET por municipios (44 municipios, elaborada 17:07): pico de racha 54 km/h a las 3:00 en Piornal; hasta 0,1 mm de lluvia; probabilidad de tormenta hasta el 40 %"
+  },
+  {
+   "id": 2,
+   "nombre": "Distribuidora 2",
+   "municipios": 24,
+   "elaborado": "2026-10-18T17:07:08",
+   "horas": [
+    {
+     "hora": 0,
+     "racha_kmh": 42,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": null
+    },
+    {
+     "hora": 1,
+     "racha_kmh": 36,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": null
+    },
+    {
+     "hora": 2,
+     "racha_kmh": 33,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 3,
+     "racha_kmh": 34,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 33,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 32,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 30,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 29,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 32,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 9,
+     "racha_kmh": 30,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 10,
+     "racha_kmh": 31,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 32,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 33,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 33,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 31,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 15
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 15
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 15
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 15
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 23,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 15
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 18,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 15
+    },
+    {
+     "hora": 20,
+     "racha_kmh": 16,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 21,
+     "racha_kmh": 17,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 22,
+     "racha_kmh": 16,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 23,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    }
+   ],
+   "pico": {
+    "racha_kmh": 42,
+    "hora": 0,
+    "municipio": "Pedroso de Acim"
+   },
+   "texto": "AEMET por municipios (24 municipios, elaborada 17:07): pico de racha 42 km/h a las 0:00 en Pedroso de Acim; probabilidad de tormenta hasta el 15 %"
+  },
+  {
+   "id": 1366,
+   "nombre": "Distribuidora 3",
+   "municipios": 1,
+   "elaborado": "2026-10-18T17:07:08",
+   "horas": [
+    {
+     "hora": 0,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": null
+    },
+    {
+     "hora": 1,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": null
+    },
+    {
+     "hora": 2,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 3,
+     "racha_kmh": 11,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 7,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 5,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 5,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 5,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 6,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 9,
+     "racha_kmh": 6,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 10,
+     "racha_kmh": 10,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 15,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 17,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 17,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 5
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.1,
+     "tormenta_pct": 60
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 16,
+     "lluvia_mm": 0.1,
+     "tormenta_pct": 60
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 22,
+     "lluvia_mm": 0.1,
+     "tormenta_pct": 60
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.1,
+     "tormenta_pct": 60
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.1,
+     "tormenta_pct": 60
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 15,
+     "lluvia_mm": 0.1,
+     "tormenta_pct": 60
+    },
+    {
+     "hora": 20,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 21,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 22,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 23,
+     "racha_kmh": 10,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    }
+   ],
+   "pico": {
+    "racha_kmh": 24,
+    "hora": 17,
+    "municipio": "Valle de Santa Ana"
+   },
+   "texto": "AEMET por municipios (1 municipio, elaborada 17:07): pico de racha 24 km/h a las 17:00 en Valle de Santa Ana; hasta 0,6 mm de lluvia; probabilidad de tormenta hasta el 60 %"
+  }
+ ]
+}
