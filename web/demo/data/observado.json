@@ -1,6 +1,6 @@
 {
- "generado": "2026-10-18T09:20Z",
- "fecha": "2026-10-18",
+ "generado": "2026-10-20T10:20Z",
+ "fecha": "2026-10-20",
  "fuente": "AEMET OpenData, observación convencional",
  "radio_km": 25.0,
  "estaciones": [
@@ -10,252 +10,32 @@
    "lat": 40.2966,
    "lon": -6.8129,
    "hora": "08:00",
-   "racha_kmh": 13,
-   "viento_kmh": 5,
+   "racha_kmh": 3,
+   "viento_kmh": 0,
    "lluvia_mm": 0.0,
-   "temp_c": 7.8
-  },
-  {
-   "idema": "2828Y",
-   "nombre": "BARCO DE AVILA",
-   "lat": 40.3554,
-   "lon": -5.5191,
-   "hora": "09:00",
-   "racha_kmh": 13,
-   "viento_kmh": 6,
-   "lluvia_mm": 2.4,
-   "temp_c": 7.1
+   "temp_c": 1.5
   },
   {
    "idema": "2945A",
    "nombre": "EL BODÓN-BASE AEREA",
    "lat": 40.4851,
    "lon": -6.5771,
-   "hora": "09:00",
-   "racha_kmh": 42,
-   "viento_kmh": 18,
+   "hora": "10:00",
+   "racha_kmh": 12,
+   "viento_kmh": 8,
    "lluvia_mm": 0.0,
-   "temp_c": 8.4
+   "temp_c": 5.2
   },
   {
    "idema": "3436D",
    "nombre": "GARGANTA LA OLLA",
    "lat": 40.1111,
    "lon": -5.7847,
-   "hora": "09:00",
-   "racha_kmh": 6,
-   "viento_kmh": 3,
-   "lluvia_mm": 1.2,
-   "temp_c": 12.1
-  },
-  {
-   "idema": "4395X",
-   "nombre": "VILLAFRANCA DE LOS BARROS",
-   "lat": 38.5517,
-   "lon": -6.3067,
-   "hora": "10:00",
-   "racha_kmh": 3,
-   "viento_kmh": 1,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.0
-  },
-  {
-   "idema": "3434X",
-   "nombre": "NAVALMORAL DE LA MATA",
-   "lat": 39.9458,
-   "lon": -5.5826,
-   "hora": "10:00",
-   "racha_kmh": 14,
-   "viento_kmh": 6,
-   "lluvia_mm": 0.6,
-   "temp_c": 14.6
-  },
-  {
-   "idema": "4260",
-   "nombre": "PERALEDA DEL ZAUCEJO",
-   "lat": 38.4797,
-   "lon": -5.5775,
    "hora": "10:00",
    "racha_kmh": 6,
-   "viento_kmh": 1,
-   "lluvia_mm": 0.0,
-   "temp_c": 15.6
-  },
-  {
-   "idema": "4411C",
-   "nombre": "ALCUESCAR",
-   "lat": 39.1976,
-   "lon": -6.231,
-   "hora": "10:00",
-   "racha_kmh": 22,
-   "viento_kmh": 9,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.6
-  },
-  {
-   "idema": "2491C",
-   "nombre": "LA COVATILLA  ESTACIÓN DE ESQUÍ",
-   "lat": 40.3551,
-   "lon": -5.6899,
-   "hora": "10:00",
-   "racha_kmh": 51,
-   "viento_kmh": 37,
-   "lluvia_mm": 0.8,
-   "temp_c": 5.2
-  },
-  {
-   "idema": "4427X",
-   "nombre": "ZAFRA (AUTOMATICA)",
-   "lat": 38.4259,
-   "lon": -6.4366,
-   "hora": "10:00",
-   "racha_kmh": 13,
-   "viento_kmh": 8,
-   "lluvia_mm": 0.0,
-   "temp_c": 15.0
-  },
-  {
-   "idema": "4325Y",
-   "nombre": "CASTUERA",
-   "lat": 38.7418,
-   "lon": -5.5291,
-   "hora": "10:00",
-   "racha_kmh": 8,
-   "viento_kmh": 1,
-   "lluvia_mm": 0.0,
-   "temp_c": 16.2
-  },
-  {
-   "idema": "4386B",
-   "nombre": "LLERENA",
-   "lat": 38.2317,
-   "lon": -6.017,
-   "hora": "10:00",
-   "racha_kmh": 15,
-   "viento_kmh": 10,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.2
-  },
-  {
-   "idema": "4362X",
-   "nombre": "RETAMAL DE LLERENA ",
-   "lat": 38.5765,
-   "lon": -5.8458,
-   "hora": "10:00",
-   "racha_kmh": 7,
-   "viento_kmh": 3,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.8
-  },
-  {
-   "idema": "4340",
-   "nombre": "NAVALVILLAR DE PELA",
-   "lat": 39.1035,
-   "lon": -5.4613,
-   "hora": "10:00",
-   "racha_kmh": 13,
-   "viento_kmh": 6,
-   "lluvia_mm": 0.0,
-   "temp_c": 16.2
-  },
-  {
-   "idema": "4358X",
-   "nombre": "DON BENITO",
-   "lat": 38.9556,
-   "lon": -5.8805,
-   "hora": "10:00",
-   "racha_kmh": 5,
-   "viento_kmh": 1,
-   "lluvia_mm": 0.0,
-   "temp_c": 16.8
-  },
-  {
-   "idema": "4347X",
-   "nombre": "ZORITA",
-   "lat": 39.2828,
-   "lon": -5.7103,
-   "hora": "10:00",
-   "racha_kmh": 6,
-   "viento_kmh": 1,
-   "lluvia_mm": 0.0,
-   "temp_c": 15.8
-  },
-  {
-   "idema": "4442X",
-   "nombre": "SANTA MARTA DE LOS BARROS",
-   "lat": 38.6186,
-   "lon": -6.6275,
-   "hora": "10:00",
-   "racha_kmh": 8,
    "viento_kmh": 2,
    "lluvia_mm": 0.0,
-   "temp_c": 14.7
-  },
-  {
-   "idema": "2918Y",
-   "nombre": "EL MAILLO (BASE AVIONES - AUTOMATICA)",
-   "lat": 40.5694,
-   "lon": -6.2236,
-   "hora": "10:00",
-   "racha_kmh": 35,
-   "viento_kmh": 15,
-   "lluvia_mm": 0.0,
-   "temp_c": 6.7
-  },
-  {
-   "idema": "4520X",
-   "nombre": "FREGENAL DE LA SIERRA",
-   "lat": 38.1784,
-   "lon": -6.6618,
-   "hora": "10:00",
-   "racha_kmh": 10,
-   "viento_kmh": 2,
-   "lluvia_mm": 2.0,
-   "temp_c": 14.6
-  },
-  {
-   "idema": "4511C",
-   "nombre": "JEREZ DE LOS CABALLEROS",
-   "lat": 38.2985,
-   "lon": -6.7651,
-   "hora": "10:00",
-   "racha_kmh": 20,
-   "viento_kmh": 15,
-   "lluvia_mm": 0.0,
-   "temp_c": 16.4
-  },
-  {
-   "idema": "4436Y",
-   "nombre": "ALMENDRALEJO",
-   "lat": 38.6889,
-   "lon": -6.361,
-   "hora": "10:00",
-   "racha_kmh": 8,
-   "viento_kmh": 5,
-   "lluvia_mm": 0.0,
-   "temp_c": 16.4
-  },
-  {
-   "idema": "4452",
-   "nombre": "BADAJOZ/TALAVERA LA REAL",
-   "lat": 38.8834,
-   "lon": -6.8139,
-   "hora": "10:00",
-   "racha_kmh": 16,
-   "viento_kmh": 9,
-   "lluvia_mm": 0.0,
-   "temp_c": 16.2
-  },
-  {
-   "idema": "3565X",
-   "nombre": "BROZAS (AUTOMATICA)",
-   "lat": 39.6181,
-   "lon": -6.745,
-   "hora": "10:00",
-   "racha_kmh": 42,
-   "viento_kmh": 31,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.9
+   "temp_c": 11.7
   },
   {
    "idema": "3512X",
@@ -263,329 +43,549 @@
    "lat": 40.0808,
    "lon": -6.3389,
    "hora": "10:00",
-   "racha_kmh": 42,
-   "viento_kmh": 17,
+   "racha_kmh": 2,
+   "viento_kmh": 0,
    "lluvia_mm": 0.0,
-   "temp_c": 12.9
+   "temp_c": 10.2
   },
   {
-   "idema": "4486X",
-   "nombre": "OLIVENZA",
-   "lat": 38.6975,
-   "lon": -7.0844,
+   "idema": "2828Y",
+   "nombre": "BARCO DE AVILA",
+   "lat": 40.3554,
+   "lon": -5.5191,
    "hora": "10:00",
-   "racha_kmh": 26,
-   "viento_kmh": 21,
+   "racha_kmh": 8,
+   "viento_kmh": 4,
    "lluvia_mm": 0.0,
-   "temp_c": 15.2
+   "temp_c": 6.3
   },
   {
-   "idema": "3503",
-   "nombre": "GUIJO DE GRANADILLA",
-   "lat": 40.1894,
-   "lon": -6.1675,
-   "hora": "10:00",
-   "racha_kmh": 39,
-   "viento_kmh": 19,
-   "lluvia_mm": 0.4,
-   "temp_c": 11.4
-  },
-  {
-   "idema": "4489X",
-   "nombre": "ALCONCHEL (AUTOMATICA)",
-   "lat": 38.4847,
-   "lon": -7.2819,
-   "hora": "10:00",
-   "racha_kmh": 34,
-   "viento_kmh": 15,
-   "lluvia_mm": 0.0,
-   "temp_c": 15.7
-  },
-  {
-   "idema": "3514B",
-   "nombre": "TORNAVACAS",
-   "lat": 40.2586,
-   "lon": -5.6783,
-   "hora": "10:00",
-   "racha_kmh": 43,
-   "viento_kmh": 23,
-   "lluvia_mm": 1.4,
-   "temp_c": 8.1
-  },
-  {
-   "idema": "3516X",
-   "nombre": "PIORNAL (AUTOMATICA)",
-   "lat": 40.1208,
-   "lon": -5.8324,
-   "hora": "10:00",
-   "racha_kmh": 18,
-   "viento_kmh": 8,
-   "lluvia_mm": 0.2,
-   "temp_c": 9.5
-  },
-  {
-   "idema": "3494U",
-   "nombre": "NUÑOMORAL",
-   "lat": 40.4081,
-   "lon": -6.2397,
-   "hora": "10:00",
+   "idema": "4436Y",
+   "nombre": "ALMENDRALEJO",
+   "lat": 38.6889,
+   "lon": -6.361,
+   "hora": "11:00",
    "racha_kmh": 23,
-   "viento_kmh": 5,
-   "lluvia_mm": 0.0,
-   "temp_c": 11.3
-  },
-  {
-   "idema": "4410X",
-   "nombre": "MÉRIDA",
-   "lat": 38.9159,
-   "lon": -6.3856,
-   "hora": "10:00",
-   "racha_kmh": 12,
-   "viento_kmh": 6,
-   "lluvia_mm": 0.0,
-   "temp_c": 16.8
-  },
-  {
-   "idema": "4478X",
-   "nombre": "BADAJOZ UNIVERSIDAD",
-   "lat": 38.8862,
-   "lon": -7.0095,
-   "hora": "10:00",
-   "racha_kmh": 19,
    "viento_kmh": 13,
    "lluvia_mm": 0.0,
-   "temp_c": 16.0
-  },
-  {
-   "idema": "3484X",
-   "nombre": "SAN ESTEBAN DE LA SIERRA",
-   "lat": 40.5047,
-   "lon": -5.9025,
-   "hora": "10:00",
-   "racha_kmh": 35,
-   "viento_kmh": 19,
-   "lluvia_mm": 0.0,
-   "temp_c": 9.5
-  },
-  {
-   "idema": "3518X",
-   "nombre": "PLASENCIA - PRESA DEL JERTE",
-   "lat": 40.0619,
-   "lon": -6.0453,
-   "hora": "10:00",
-   "racha_kmh": 29,
-   "viento_kmh": 8,
-   "lluvia_mm": 0.1,
-   "temp_c": 14.0
-  },
-  {
-   "idema": "4492F",
-   "nombre": "EVC_BARCARROTA",
-   "lat": 38.4728,
-   "lon": -6.9233,
-   "hora": "10:00",
-   "racha_kmh": 18,
-   "viento_kmh": 7,
-   "lluvia_mm": 0.0,
-   "temp_c": 16.7
-  },
-  {
-   "idema": "3526X",
-   "nombre": "CORIA",
-   "lat": 40.0035,
-   "lon": -6.5575,
-   "hora": "10:00",
-   "racha_kmh": 35,
-   "viento_kmh": 18,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.0
-  },
-  {
-   "idema": "3576X",
-   "nombre": "VALENCIA DE ALCÁNTARA",
-   "lat": 39.4149,
-   "lon": -7.2311,
-   "hora": "10:00",
-   "racha_kmh": 19,
-   "viento_kmh": 9,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.3
-  },
-  {
-   "idema": "4468X",
-   "nombre": "PUEBLA DE OBANDO (AUTOMATICA)",
-   "lat": 39.1766,
-   "lon": -6.6008,
-   "hora": "10:00",
-   "racha_kmh": 16,
-   "viento_kmh": 12,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.0
-  },
-  {
-   "idema": "3531X",
-   "nombre": "TORRECILLA DE LOS ANGELES",
-   "lat": 40.2549,
-   "lon": -6.4117,
-   "hora": "10:00",
-   "racha_kmh": 18,
-   "viento_kmh": 9,
-   "lluvia_mm": 0.0,
-   "temp_c": 11.9
-  },
-  {
-   "idema": "3469A",
-   "nombre": "CÁCERES",
-   "lat": 39.4714,
-   "lon": -6.3389,
-   "hora": "10:00",
-   "racha_kmh": 14,
-   "viento_kmh": 6,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.4
-  },
-  {
-   "idema": "3536X",
-   "nombre": "HOYOS",
-   "lat": 40.1748,
-   "lon": -6.7244,
-   "hora": "10:00",
-   "racha_kmh": 44,
-   "viento_kmh": 23,
-   "lluvia_mm": 0.2,
-   "temp_c": 10.8
-  },
-  {
-   "idema": "4464X",
-   "nombre": "ALBURQUERQUE",
-   "lat": 39.1819,
-   "lon": -6.9952,
-   "hora": "10:00",
-   "racha_kmh": 31,
-   "viento_kmh": 13,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.4
-  },
-  {
-   "idema": "4497X",
-   "nombre": "VILLANUEVA DEL FRESNO",
-   "lat": 38.3722,
-   "lon": -7.1581,
-   "hora": "10:00",
-   "racha_kmh": 30,
-   "viento_kmh": 19,
-   "lluvia_mm": 0.0,
-   "temp_c": 16.5
-  },
-  {
-   "idema": "3463Y",
-   "nombre": "TRUJILLO",
-   "lat": 39.4642,
-   "lon": -5.8742,
-   "hora": "10:00",
-   "racha_kmh": 34,
-   "viento_kmh": 22,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.2
-  },
-  {
-   "idema": "3540X",
-   "nombre": "ZARZA LA MAYOR",
-   "lat": 39.8714,
-   "lon": -6.86,
-   "hora": "10:00",
-   "racha_kmh": 25,
-   "viento_kmh": 15,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.7
-  },
-  {
-   "idema": "3547X",
-   "nombre": "VALVERDE DE FRESNO",
-   "lat": 40.2072,
-   "lon": -6.8961,
-   "hora": "10:00",
-   "racha_kmh": 53,
-   "viento_kmh": 25,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.7
-  },
-  {
-   "idema": "3455X",
-   "nombre": "JARAICEJO",
-   "lat": 39.6699,
-   "lon": -5.8083,
-   "hora": "10:00",
-   "racha_kmh": 44,
-   "viento_kmh": 32,
-   "lluvia_mm": 0.4,
-   "temp_c": 12.8
-  },
-  {
-   "idema": "3562X",
-   "nombre": "ALISEDA  LA UMBRÍA",
-   "lat": 39.4275,
-   "lon": -6.7364,
-   "hora": "10:00",
-   "racha_kmh": 9,
-   "viento_kmh": 1,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.4
+   "temp_c": 14.5
   },
   {
    "idema": "3504X",
    "nombre": "HERVAS",
    "lat": 40.2651,
    "lon": -5.8612,
-   "hora": "10:00",
-   "racha_kmh": 13,
-   "viento_kmh": 4,
-   "lluvia_mm": 1.0,
-   "temp_c": 9.4
+   "hora": "11:00",
+   "racha_kmh": 8,
+   "viento_kmh": 1,
+   "lluvia_mm": 0.0,
+   "temp_c": 11.9
   },
   {
-   "idema": "4501X",
-   "nombre": "FUENTE DE CANTOS",
-   "lat": 38.2087,
-   "lon": -6.3113,
-   "hora": "10:00",
-   "racha_kmh": 17,
-   "viento_kmh": 6,
+   "idema": "4442X",
+   "nombre": "SANTA MARTA DE LOS BARROS",
+   "lat": 38.6186,
+   "lon": -6.6275,
+   "hora": "11:00",
+   "racha_kmh": 22,
+   "viento_kmh": 13,
    "lluvia_mm": 0.0,
-   "temp_c": 14.9
+   "temp_c": 14.6
+  },
+  {
+   "idema": "3514B",
+   "nombre": "TORNAVACAS",
+   "lat": 40.2586,
+   "lon": -5.6783,
+   "hora": "11:00",
+   "racha_kmh": 7,
+   "viento_kmh": 3,
+   "lluvia_mm": 0.0,
+   "temp_c": 11.4
+  },
+  {
+   "idema": "3503",
+   "nombre": "GUIJO DE GRANADILLA",
+   "lat": 40.1894,
+   "lon": -6.1675,
+   "hora": "11:00",
+   "racha_kmh": 14,
+   "viento_kmh": 7,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.1
+  },
+  {
+   "idema": "4511C",
+   "nombre": "JEREZ DE LOS CABALLEROS",
+   "lat": 38.2985,
+   "lon": -6.7651,
+   "hora": "11:00",
+   "racha_kmh": 19,
+   "viento_kmh": 13,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.8
+  },
+  {
+   "idema": "4492F",
+   "nombre": "EVC_BARCARROTA",
+   "lat": 38.4728,
+   "lon": -6.9233,
+   "hora": "11:00",
+   "racha_kmh": 15,
+   "viento_kmh": 9,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.9
+  },
+  {
+   "idema": "4427X",
+   "nombre": "ZAFRA (AUTOMATICA)",
+   "lat": 38.4259,
+   "lon": -6.4366,
+   "hora": "11:00",
+   "racha_kmh": 17,
+   "viento_kmh": 7,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.9
+  },
+  {
+   "idema": "3484X",
+   "nombre": "SAN ESTEBAN DE LA SIERRA",
+   "lat": 40.5047,
+   "lon": -5.9025,
+   "hora": "11:00",
+   "racha_kmh": 15,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 7.7
+  },
+  {
+   "idema": "4520X",
+   "nombre": "FREGENAL DE LA SIERRA",
+   "lat": 38.1784,
+   "lon": -6.6618,
+   "hora": "11:00",
+   "racha_kmh": 14,
+   "viento_kmh": 7,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.0
+  },
+  {
+   "idema": "4486X",
+   "nombre": "OLIVENZA",
+   "lat": 38.6975,
+   "lon": -7.0844,
+   "hora": "11:00",
+   "racha_kmh": 25,
+   "viento_kmh": 14,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.0
   },
   {
    "idema": "3448X",
    "nombre": "SERRADILLA (AUTOMATICA)",
    "lat": 39.8207,
    "lon": -6.1275,
-   "hora": "10:00",
-   "racha_kmh": 14,
-   "viento_kmh": 7,
-   "lluvia_mm": 0.2,
-   "temp_c": 13.2
+   "hora": "11:00",
+   "racha_kmh": 4,
+   "viento_kmh": 1,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.9
   },
   {
    "idema": "3475X",
    "nombre": "CAÑAVERAL",
    "lat": 39.7906,
    "lon": -6.3764,
-   "hora": "10:00",
-   "racha_kmh": 43,
-   "viento_kmh": 27,
+   "hora": "11:00",
+   "racha_kmh": 6,
+   "viento_kmh": 3,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.1
+  },
+  {
+   "idema": "3469A",
+   "nombre": "CÁCERES",
+   "lat": 39.4714,
+   "lon": -6.3389,
+   "hora": "11:00",
+   "racha_kmh": 4,
+   "viento_kmh": 2,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.9
+  },
+  {
+   "idema": "4464X",
+   "nombre": "ALBURQUERQUE",
+   "lat": 39.1819,
+   "lon": -6.9952,
+   "hora": "11:00",
+   "racha_kmh": 5,
+   "viento_kmh": 2,
+   "lluvia_mm": 0.0,
+   "temp_c": 11.6
+  },
+  {
+   "idema": "3463Y",
+   "nombre": "TRUJILLO",
+   "lat": 39.4642,
+   "lon": -5.8742,
+   "hora": "11:00",
+   "racha_kmh": 9,
+   "viento_kmh": 6,
+   "lluvia_mm": 0.0,
+   "temp_c": 14.2
+  },
+  {
+   "idema": "3455X",
+   "nombre": "JARAICEJO",
+   "lat": 39.6699,
+   "lon": -5.8083,
+   "hora": "11:00",
+   "racha_kmh": 6,
+   "viento_kmh": 4,
    "lluvia_mm": 0.0,
    "temp_c": 13.0
+  },
+  {
+   "idema": "4468X",
+   "nombre": "PUEBLA DE OBANDO (AUTOMATICA)",
+   "lat": 39.1766,
+   "lon": -6.6008,
+   "hora": "11:00",
+   "racha_kmh": 8,
+   "viento_kmh": 5,
+   "lluvia_mm": 0.0,
+   "temp_c": 10.9
+  },
+  {
+   "idema": "3494U",
+   "nombre": "NUÑOMORAL",
+   "lat": 40.4081,
+   "lon": -6.2397,
+   "hora": "11:00",
+   "racha_kmh": 3,
+   "viento_kmh": 0,
+   "lluvia_mm": 0.0,
+   "temp_c": 9.2
+  },
+  {
+   "idema": "4452",
+   "nombre": "BADAJOZ/TALAVERA LA REAL",
+   "lat": 38.8834,
+   "lon": -6.8139,
+   "hora": "11:00",
+   "racha_kmh": 18,
+   "viento_kmh": 7,
+   "lluvia_mm": 0.0,
+   "temp_c": 14.0
+  },
+  {
+   "idema": "4411C",
+   "nombre": "ALCUESCAR",
+   "lat": 39.1976,
+   "lon": -6.231,
+   "hora": "11:00",
+   "racha_kmh": 21,
+   "viento_kmh": 7,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.0
+  },
+  {
+   "idema": "3518X",
+   "nombre": "PLASENCIA - PRESA DEL JERTE",
+   "lat": 40.0619,
+   "lon": -6.0453,
+   "hora": "11:00",
+   "racha_kmh": 4,
+   "viento_kmh": 0,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.1
+  },
+  {
+   "idema": "4358X",
+   "nombre": "DON BENITO",
+   "lat": 38.9556,
+   "lon": -5.8805,
+   "hora": "11:00",
+   "racha_kmh": 17,
+   "viento_kmh": 10,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.9
+  },
+  {
+   "idema": "4362X",
+   "nombre": "RETAMAL DE LLERENA ",
+   "lat": 38.5765,
+   "lon": -5.8458,
+   "hora": "11:00",
+   "racha_kmh": 21,
+   "viento_kmh": 13,
+   "lluvia_mm": 0.0,
+   "temp_c": 14.4
+  },
+  {
+   "idema": "4347X",
+   "nombre": "ZORITA",
+   "lat": 39.2828,
+   "lon": -5.7103,
+   "hora": "11:00",
+   "racha_kmh": 10,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 14.6
+  },
+  {
+   "idema": "4340",
+   "nombre": "NAVALVILLAR DE PELA",
+   "lat": 39.1035,
+   "lon": -5.4613,
+   "hora": "11:00",
+   "racha_kmh": 29,
+   "viento_kmh": 16,
+   "lluvia_mm": 0.0,
+   "temp_c": 15.5
+  },
+  {
+   "idema": "4325Y",
+   "nombre": "CASTUERA",
+   "lat": 38.7418,
+   "lon": -5.5291,
+   "hora": "11:00",
+   "racha_kmh": 28,
+   "viento_kmh": 18,
+   "lluvia_mm": 0.0,
+   "temp_c": 15.2
+  },
+  {
+   "idema": "4386B",
+   "nombre": "LLERENA",
+   "lat": 38.2317,
+   "lon": -6.017,
+   "hora": "11:00",
+   "racha_kmh": 18,
+   "viento_kmh": 13,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.5
+  },
+  {
+   "idema": "4260",
+   "nombre": "PERALEDA DEL ZAUCEJO",
+   "lat": 38.4797,
+   "lon": -5.5775,
+   "hora": "11:00",
+   "racha_kmh": 24,
+   "viento_kmh": 9,
+   "lluvia_mm": 0.0,
+   "temp_c": 14.5
+  },
+  {
+   "idema": "3576X",
+   "nombre": "VALENCIA DE ALCÁNTARA",
+   "lat": 39.4149,
+   "lon": -7.2311,
+   "hora": "11:00",
+   "racha_kmh": 6,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.8
+  },
+  {
+   "idema": "4395X",
+   "nombre": "VILLAFRANCA DE LOS BARROS",
+   "lat": 38.5517,
+   "lon": -6.3067,
+   "hora": "11:00",
+   "racha_kmh": 13,
+   "viento_kmh": 9,
+   "lluvia_mm": 0.0,
+   "temp_c": 14.2
+  },
+  {
+   "idema": "4497X",
+   "nombre": "VILLANUEVA DEL FRESNO",
+   "lat": 38.3722,
+   "lon": -7.1581,
+   "hora": "11:00",
+   "racha_kmh": 10,
+   "viento_kmh": 6,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.9
+  },
+  {
+   "idema": "2918Y",
+   "nombre": "EL MAILLO (BASE AVIONES - AUTOMATICA)",
+   "lat": 40.5694,
+   "lon": -6.2236,
+   "hora": "11:00",
+   "racha_kmh": 6,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 9.4
+  },
+  {
+   "idema": "3516X",
+   "nombre": "PIORNAL (AUTOMATICA)",
+   "lat": 40.1208,
+   "lon": -5.8324,
+   "hora": "11:00",
+   "racha_kmh": 9,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 8.9
+  },
+  {
+   "idema": "3565X",
+   "nombre": "BROZAS (AUTOMATICA)",
+   "lat": 39.6181,
+   "lon": -6.745,
+   "hora": "11:00",
+   "racha_kmh": 9,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 11.7
+  },
+  {
+   "idema": "3562X",
+   "nombre": "ALISEDA  LA UMBRÍA",
+   "lat": 39.4275,
+   "lon": -6.7364,
+   "hora": "11:00",
+   "racha_kmh": 15,
+   "viento_kmh": 10,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.7
+  },
+  {
+   "idema": "3547X",
+   "nombre": "VALVERDE DE FRESNO",
+   "lat": 40.2072,
+   "lon": -6.8961,
+   "hora": "11:00",
+   "racha_kmh": 5,
+   "viento_kmh": 3,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.4
+  },
+  {
+   "idema": "4410X",
+   "nombre": "MÉRIDA",
+   "lat": 38.9159,
+   "lon": -6.3856,
+   "hora": "11:00",
+   "racha_kmh": 14,
+   "viento_kmh": 11,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.6
+  },
+  {
+   "idema": "3540X",
+   "nombre": "ZARZA LA MAYOR",
+   "lat": 39.8714,
+   "lon": -6.86,
+   "hora": "11:00",
+   "racha_kmh": 8,
+   "viento_kmh": 3,
+   "lluvia_mm": 0.0,
+   "temp_c": 11.6
+  },
+  {
+   "idema": "3536X",
+   "nombre": "HOYOS",
+   "lat": 40.1748,
+   "lon": -6.7244,
+   "hora": "11:00",
+   "racha_kmh": 9,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 14.2
+  },
+  {
+   "idema": "2491C",
+   "nombre": "LA COVATILLA  ESTACIÓN DE ESQUÍ",
+   "lat": 40.3551,
+   "lon": -5.6899,
+   "hora": "11:00",
+   "racha_kmh": 28,
+   "viento_kmh": 13,
+   "lluvia_mm": 0.0,
+   "temp_c": 3.2
+  },
+  {
+   "idema": "4501X",
+   "nombre": "FUENTE DE CANTOS",
+   "lat": 38.2087,
+   "lon": -6.3113,
+   "hora": "11:00",
+   "racha_kmh": 15,
+   "viento_kmh": 13,
+   "lluvia_mm": 0.0,
+   "temp_c": 12.1
+  },
+  {
+   "idema": "4489X",
+   "nombre": "ALCONCHEL (AUTOMATICA)",
+   "lat": 38.4847,
+   "lon": -7.2819,
+   "hora": "11:00",
+   "racha_kmh": 9,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.2
+  },
+  {
+   "idema": "3434X",
+   "nombre": "NAVALMORAL DE LA MATA",
+   "lat": 39.9458,
+   "lon": -5.5826,
+   "hora": "11:00",
+   "racha_kmh": 6,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 11.8
+  },
+  {
+   "idema": "3531X",
+   "nombre": "TORRECILLA DE LOS ANGELES",
+   "lat": 40.2549,
+   "lon": -6.4117,
+   "hora": "11:00",
+   "racha_kmh": 13,
+   "viento_kmh": 3,
+   "lluvia_mm": 0.0,
+   "temp_c": 11.8
+  },
+  {
+   "idema": "3526X",
+   "nombre": "CORIA",
+   "lat": 40.0035,
+   "lon": -6.5575,
+   "hora": "11:00",
+   "racha_kmh": 4,
+   "viento_kmh": 2,
+   "lluvia_mm": 0.0,
+   "temp_c": 11.8
+  },
+  {
+   "idema": "4478X",
+   "nombre": "BADAJOZ UNIVERSIDAD",
+   "lat": 38.8862,
+   "lon": -7.0095,
+   "hora": "11:00",
+   "racha_kmh": 13,
+   "viento_kmh": 8,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.5
   },
   {
    "idema": "5473X",
    "nombre": "AZUAGA (AUTOMATICA)",
    "lat": 38.2678,
    "lon": -5.686,
-   "hora": "10:00",
-   "racha_kmh": 7,
-   "viento_kmh": 2,
+   "hora": "11:00",
+   "racha_kmh": 19,
+   "viento_kmh": 9,
    "lluvia_mm": 0.0,
-   "temp_c": 14.3
+   "temp_c": 14.5
   }
  ],
  "distribuidoras": [
@@ -596,85 +596,92 @@
    "horas": [
     {
      "hora": 0,
-     "racha_kmh": 35,
-     "lluvia_mm": 0.8,
-     "temp_c": 17.4,
+     "racha_kmh": 17,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.9,
      "estaciones": 10
     },
     {
      "hora": 1,
-     "racha_kmh": 30,
-     "lluvia_mm": 0.4,
-     "temp_c": 16.8,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.3,
      "estaciones": 10
     },
     {
      "hora": 2,
-     "racha_kmh": 37,
-     "lluvia_mm": 3.0,
-     "temp_c": 16.2,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.7,
      "estaciones": 10
     },
     {
      "hora": 3,
-     "racha_kmh": 36,
-     "lluvia_mm": 0.4,
-     "temp_c": 15.7,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.7,
      "estaciones": 10
     },
     {
      "hora": 4,
-     "racha_kmh": 41,
-     "lluvia_mm": 0.2,
-     "temp_c": 15.4,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.4,
      "estaciones": 10
     },
     {
      "hora": 5,
-     "racha_kmh": 46,
+     "racha_kmh": 19,
      "lluvia_mm": 0.0,
-     "temp_c": 14.7,
+     "temp_c": 12.8,
      "estaciones": 10
     },
     {
      "hora": 6,
-     "racha_kmh": 44,
+     "racha_kmh": 13,
      "lluvia_mm": 0.0,
-     "temp_c": 14.2,
+     "temp_c": 12.8,
      "estaciones": 10
     },
     {
      "hora": 7,
-     "racha_kmh": 46,
-     "lluvia_mm": 0.2,
-     "temp_c": 14.0,
+     "racha_kmh": 11,
+     "lluvia_mm": 0.0,
+     "temp_c": 12.7,
      "estaciones": 10
     },
     {
      "hora": 8,
-     "racha_kmh": 45,
+     "racha_kmh": 12,
      "lluvia_mm": 0.0,
-     "temp_c": 13.9,
+     "temp_c": 11.7,
      "estaciones": 10
     },
     {
      "hora": 9,
-     "racha_kmh": 42,
+     "racha_kmh": 13,
      "lluvia_mm": 0.0,
-     "temp_c": 13.9,
+     "temp_c": 12.6,
      "estaciones": 10
     },
     {
      "hora": 10,
-     "racha_kmh": 43,
-     "lluvia_mm": 0.2,
-     "temp_c": 14.6,
+     "racha_kmh": 21,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.4,
      "estaciones": 10
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 21,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.2,
+     "estaciones": 9
     }
    ],
-   "racha_max_kmh": 46,
-   "hora_racha_max": 7,
-   "texto": "racha máxima observada hoy 46 km/h a las 7:00 (10 estaciones a menos de 25 km de la red)"
+   "racha_max_kmh": 21,
+   "hora_racha_max": 10,
+   "texto": "racha máxima observada hoy 21 km/h a las 10:00 (10 estaciones a menos de 25 km de la red)"
   },
   {
    "id": 3,
@@ -683,85 +690,92 @@
    "horas": [
     {
      "hora": 0,
-     "racha_kmh": 48,
-     "lluvia_mm": 0.4,
-     "temp_c": 16.6,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "temp_c": 15.9,
      "estaciones": 17
     },
     {
      "hora": 1,
-     "racha_kmh": 55,
-     "lluvia_mm": 0.4,
-     "temp_c": 16.1,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "temp_c": 16.0,
      "estaciones": 17
     },
     {
      "hora": 2,
-     "racha_kmh": 44,
-     "lluvia_mm": 0.2,
-     "temp_c": 15.7,
-     "estaciones": 17
-    },
-    {
-     "hora": 3,
-     "racha_kmh": 46,
-     "lluvia_mm": 0.4,
-     "temp_c": 15.5,
-     "estaciones": 17
-    },
-    {
-     "hora": 4,
-     "racha_kmh": 48,
-     "lluvia_mm": 1.4,
-     "temp_c": 15.7,
-     "estaciones": 17
-    },
-    {
-     "hora": 5,
-     "racha_kmh": 46,
-     "lluvia_mm": 1.2,
-     "temp_c": 16.2,
-     "estaciones": 17
-    },
-    {
-     "hora": 6,
-     "racha_kmh": 46,
-     "lluvia_mm": 0.8,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
      "temp_c": 15.1,
      "estaciones": 17
     },
     {
+     "hora": 3,
+     "racha_kmh": 39,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.1,
+     "estaciones": 17
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 44,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.0,
+     "estaciones": 17
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 40,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.0,
+     "estaciones": 17
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 37,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.2,
+     "estaciones": 17
+    },
+    {
      "hora": 7,
-     "racha_kmh": 43,
-     "lluvia_mm": 0.4,
-     "temp_c": 15.6,
+     "racha_kmh": 38,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.1,
      "estaciones": 17
     },
     {
      "hora": 8,
-     "racha_kmh": 41,
-     "lluvia_mm": 1.4,
-     "temp_c": 14.7,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.2,
      "estaciones": 17
     },
     {
      "hora": 9,
-     "racha_kmh": 48,
-     "lluvia_mm": 2.4,
-     "temp_c": 14.3,
+     "racha_kmh": 30,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.1,
      "estaciones": 17
     },
     {
      "hora": 10,
-     "racha_kmh": 51,
-     "lluvia_mm": 1.4,
-     "temp_c": 15.8,
-     "estaciones": 15
+     "racha_kmh": 27,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.9,
+     "estaciones": 17
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.6,
+     "estaciones": 14
     }
    ],
-   "racha_max_kmh": 55,
-   "hora_racha_max": 1,
-   "texto": "racha máxima observada hoy 55 km/h a las 1:00 (17 estaciones a menos de 25 km de la red)"
+   "racha_max_kmh": 44,
+   "hora_racha_max": 4,
+   "texto": "racha máxima observada hoy 44 km/h a las 4:00 (17 estaciones a menos de 25 km de la red)"
   },
   {
    "id": 1366,
@@ -770,85 +784,92 @@
    "horas": [
     {
      "hora": 0,
-     "racha_kmh": 34,
-     "lluvia_mm": 0.0,
-     "temp_c": 19.2,
-     "estaciones": 3
-    },
-    {
-     "hora": 1,
-     "racha_kmh": 44,
-     "lluvia_mm": 0.0,
-     "temp_c": 18.9,
-     "estaciones": 3
-    },
-    {
-     "hora": 2,
-     "racha_kmh": 32,
-     "lluvia_mm": 0.0,
-     "temp_c": 18.1,
-     "estaciones": 3
-    },
-    {
-     "hora": 3,
-     "racha_kmh": 31,
+     "racha_kmh": 10,
      "lluvia_mm": 0.0,
      "temp_c": 17.1,
      "estaciones": 3
     },
     {
-     "hora": 4,
-     "racha_kmh": 16,
+     "hora": 1,
+     "racha_kmh": 10,
      "lluvia_mm": 0.0,
-     "temp_c": 16.5,
+     "temp_c": 16.2,
      "estaciones": 3
     },
     {
-     "hora": 5,
-     "racha_kmh": 15,
+     "hora": 2,
+     "racha_kmh": 17,
      "lluvia_mm": 0.0,
      "temp_c": 15.5,
      "estaciones": 3
     },
     {
-     "hora": 6,
-     "racha_kmh": 18,
+     "hora": 3,
+     "racha_kmh": 17,
      "lluvia_mm": 0.0,
-     "temp_c": 15.6,
+     "temp_c": 14.0,
+     "estaciones": 3
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 17,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.3,
+     "estaciones": 3
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "temp_c": 12.6,
+     "estaciones": 3
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "temp_c": 11.9,
      "estaciones": 3
     },
     {
      "hora": 7,
      "racha_kmh": 13,
      "lluvia_mm": 0.0,
-     "temp_c": 15.2,
+     "temp_c": 11.2,
      "estaciones": 3
     },
     {
      "hora": 8,
-     "racha_kmh": 9,
+     "racha_kmh": 12,
      "lluvia_mm": 0.0,
-     "temp_c": 15.5,
+     "temp_c": 10.6,
      "estaciones": 3
     },
     {
      "hora": 9,
-     "racha_kmh": 16,
+     "racha_kmh": 12,
      "lluvia_mm": 0.0,
-     "temp_c": 15.6,
+     "temp_c": 10.3,
      "estaciones": 3
     },
     {
      "hora": 10,
-     "racha_kmh": 20,
-     "lluvia_mm": 2.0,
-     "temp_c": 16.7,
+     "racha_kmh": 19,
+     "lluvia_mm": 0.0,
+     "temp_c": 11.2,
+     "estaciones": 3
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 19,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.0,
      "estaciones": 3
     }
    ],
-   "racha_max_kmh": 44,
-   "hora_racha_max": 1,
-   "texto": "racha máxima observada hoy 44 km/h a las 1:00 (3 estaciones a menos de 25 km de la red)"
+   "racha_max_kmh": 19,
+   "hora_racha_max": 10,
+   "texto": "racha máxima observada hoy 19 km/h a las 10:00 (3 estaciones a menos de 25 km de la red)"
   }
  ]
 }
