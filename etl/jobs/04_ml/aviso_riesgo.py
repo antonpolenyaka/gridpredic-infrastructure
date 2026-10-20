@@ -30,12 +30,12 @@ AIRFLOW_URL = "http://localhost:8084"
 GUARD_LEVELS = ("alto", "muy alto")
 
 
-
 def write_state(path: str, state: dict) -> None:
     """A state file of the dashboard folder, replaced atomically (riesgo_zonas.write_json_atomic)."""
     import riesgo_zonas
 
     riesgo_zonas.write_json_atomic(path, state)
+
 
 def guard_advice(level: str, wind: float, storm: float) -> dict:
     """{"reforzar": bool, "motivo": text}: why the guard of the day is reinforced, or "normal"."""
@@ -47,6 +47,8 @@ def guard_advice(level: str, wind: float, storm: float) -> dict:
     if storm is not None and storm == storm and storm >= 1:
         reasons.append(f"aviso de tormenta de AEMET ({LEVEL_NAMES.get(int(storm), int(storm))})")
     return {"reforzar": bool(reasons), "motivo": "; ".join(reasons) if reasons else "normal"}
+
+
 ORDER = ["bajo", "medio", "alto", "muy alto"]
 
 

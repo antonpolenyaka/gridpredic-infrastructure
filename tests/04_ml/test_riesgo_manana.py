@@ -677,8 +677,10 @@ def test_an_old_copy_of_calser_leaves_the_history_out_of_the_model(first, spark,
     assert "no se ha guardado en el almacén de modelos" in message
 
 
-def test_the_old_copy_of_calser_with_the_history_kept_and_the_median(first, spark, config_path, workdir):
+def test_the_old_copy_of_calser_with_the_history_kept_and_the_median(first, spark, config_path, workdir, monkeypatch):
     """The default (historia_desfasada "mediana"): the model keeps the history, tomorrow takes the median of the training days."""
+    # The store of models breaks in a way store_artifacts does not catch: the evening publishes all the same.
+    monkeypatch.setattr(rm, "store_artifacts", lambda *a, **k: (_ for _ in ()).throw(TypeError("cannot pickle the scorer")))
     later = DAY + pd.Timedelta(days=40)
     with open(config_path, encoding="utf-8") as file:
         config = json.load(file)
@@ -693,6 +695,7 @@ def test_the_old_copy_of_calser_with_the_history_kept_and_the_median(first, spar
     rows = spark.table("l3_gold.riesgo_dia_siguiente").toPandas()
     new = rows[rows["run_id"] == RUN_ID + "_4"]
     assert len(new) == 2 and not new["historia_al_dia"].any()
+    assert "El modelo de esta tarde no se ha guardado en el almacén de modelos (TypeError: cannot pickle the scorer)" in text
 
 
 def test_a_past_day_is_played_again_from_gold_without_touching_the_live_day(first, spark, config_path, workdir):

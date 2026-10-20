@@ -658,13 +658,15 @@ def store_artifacts(scorers: dict, uri: str, run_id: str, meta: dict, spark) -> 
         return None, None
 
     target = f"{uri.rstrip('/')}/{run_id}"
-    files = {f"{name}.pkl": pickle.dumps(scorer) for name, scorer in scorers.items()}
-    files["run.json"] = json.dumps(meta, ensure_ascii=False, indent=2, default=str).encode("utf-8")
-
-    if "xgboost" in scorers:
-        files["xgboost_booster.json"] = bytes(scorers["xgboost"].estimator.get_booster().save_raw("json"))
 
     try:
+        # Serialising is inside the try too: a model that cannot be pickled is a failure to save, not of the run.
+        files = {f"{name}.pkl": pickle.dumps(scorer) for name, scorer in scorers.items()}
+        files["run.json"] = json.dumps(meta, ensure_ascii=False, indent=2, default=str).encode("utf-8")
+
+        if "xgboost" in scorers:
+            files["xgboost_booster.json"] = bytes(scorers["xgboost"].estimator.get_booster().save_raw("json"))
+
         if target.startswith("s3://"):
             import s3fs
 
