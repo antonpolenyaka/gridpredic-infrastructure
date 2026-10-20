@@ -66,20 +66,21 @@ TARIFA = {
     "minimo": 6000.0,
 }
 
-# ÚNICO SITIO con los CT y las señales de las tres redes del TFM. Los CT son los de la
-# red actual (docs/cifras.md, apartado 1). Las señales son PROVISIONALES: los 78.301 tags
-# de TedisNet repartidos por CT (unos 58 por CT). Cuando llegue el recuento de
-# senales_por_distribuidora.sql, se cambian aquí, se pone SENALES_PROVISIONALES = False y
-# se vuelve a ejecutar el guion (y se copian las licencias nuevas de salida/comparacion.txt).
+# ÚNICO SITIO con los CT y las señales de las tres redes del TFM. Salen de
+# senales_por_distribuidora.sql sobre la copia de TedisNet de las tres redes (20.10.2026):
+# CT = elementos de tipo TRAFO CT de cada distribuidora (pueden diferir algo de los CT de
+# Calser, unos 760, 570 y 10); señales = tags cuyo elemento cuelga de la distribuidora. Los
+# 14.705 tags sin elemento no se reparten. Si cambian, se vuelve a ejecutar el guion y se
+# copian las licencias nuevas de salida/comparacion.txt.
 REDES_CALIBRACION = {
-    "Distribuidora 1": {"ct": 760, "senales": 44400},
-    "Distribuidora 2": {"ct": 570, "senales": 33300},
-    "Distribuidora 3": {"ct": 10, "senales": 600},
+    "Distribuidora 1": {"ct": 796, "senales": 34647},
+    "Distribuidora 2": {"ct": 578, "senales": 27513},
+    "Distribuidora 3": {"ct": 10, "senales": 606},
 }
-SENALES_PROVISIONALES = True
+SENALES_PROVISIONALES = False
 
 # Red tipo de los clientes del plan: una red pequeña con telecontrol, cerca del centro de
-# las 89 distribuidoras más grandes (38 de ellas tienen 150 CT o más y 60 pasan de 100 CT,
+# las 89 distribuidoras más grandes (39 de ellas tienen 150 CT o más y 62 tienen 100 CT o más,
 # estimados por su retribución). Su licencia es la de cada cliente del plan.
 RED_TIPO_PLAN = {"ct": 150, "senales": 9000}
 
