@@ -1,0 +1,38 @@
+# Propuesta (no ejecutada): la misma pregunta en SPARQL 1.1 estandar, para que no dependa del motor actual
+# del servicio de consultas de Wikidata (la Fundacion Wikimedia ha anunciado su sustitucion, con QLever y
+# Virtuoso como candidatos, y objetivo en verano de 2027).
+#  - prefijos declarados;
+#  - etiqueta con rdfs:label y LANG, sin el servicio de etiquetas;
+#  - superficie y altitud por el valor normalizado (psn:, metros cuadrados y metros), excluyendo las
+#    declaraciones con rango obsoleto, para que las dos magnitudes se lean igual;
+#  - isLiteral() para no convertir en numero un "valor desconocido";
+#  - la revision de cada elemento (schema:version), para poder reconstruir lo que se leyo;
+#  - identificadores de otras fuentes (GeoNames, relacion de OpenStreetMap) que el QID enlaza.
+PREFIX wd:       <http://www.wikidata.org/entity/>
+PREFIX wdt:      <http://www.wikidata.org/prop/direct/>
+PREFIX p:        <http://www.wikidata.org/prop/>
+PREFIX psn:      <http://www.wikidata.org/prop/statement/value-normalized/>
+PREFIX wikibase: <http://wikiba.se/ontology#>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX schema:   <http://schema.org/>
+
+SELECT ?item ?ine ?nombre ?area_m2 ?elev_m ?revision ?geonames ?osm_rel WHERE {
+  ?item wdt:P772 ?ine .
+  FILTER(STRLEN(?ine) = 5 && (STRSTARTS(?ine, "06") || STRSTARTS(?ine, "10")))
+  OPTIONAL { ?item rdfs:label ?nombre . FILTER(LANG(?nombre) = "es") }
+  OPTIONAL {
+    ?item p:P2046 ?st_a .
+    ?st_a psn:P2046/wikibase:quantityAmount ?area_m2 ;
+          wikibase:rank ?rank_a .
+    FILTER(?rank_a != wikibase:DeprecatedRank && isLiteral(?area_m2))
+  }
+  OPTIONAL {
+    ?item p:P2044 ?st_e .
+    ?st_e psn:P2044/wikibase:quantityAmount ?elev_m ;
+          wikibase:rank ?rank_e .
+    FILTER(?rank_e != wikibase:DeprecatedRank && isLiteral(?elev_m))
+  }
+  OPTIONAL { ?item schema:version ?revision . }
+  OPTIONAL { ?item wdt:P1566 ?geonames . }
+  OPTIONAL { ?item wdt:P402 ?osm_rel . }
+}

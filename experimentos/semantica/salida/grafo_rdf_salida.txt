@@ -1,0 +1,21 @@
+TBox: 97 tripletas
+Lectura de Parquet y anonimización: 0.95 s
+Construcción del grafo: 11.81 s, 170273 tripletas (TBox incluida)
+CT 1414, municipios 73, celdas 43, líneas 68, incidencias 799, interrupciones 48045, estimaciones 73, observaciones de previsión 1032
+   gpo:afectaA                  48045
+   gpo:deIncidencia             48045
+   gpo:duracionS                48045
+   rdf:type                     3757
+   time:inXSDDateTime           1622
+   gpo:distribuidora            1555
+   gpo:abonados                 1414
+   gpo:enCelda                  1414
+   gpo:enEstudio                1414
+   gpo:enMunicipio              1414
+   gpo:potenciaKVA              1414
+   gpo:enLinea                  1323
+   gpo:cabecera                 1281
+   sosa:hasFeatureOfInterest    1032
+   sosa:hasSimpleResult         1032
+Turtle: 11.2 MB en 43.5 s; N-Triples: 23.4 MB en 2.7 s
+Parquet de origen (ficheros enteros, con todas sus columnas): {'dim_ct': '56 kB', 'map_ct_celda': '18 kB', 'contexto_ct_anio': '160 kB', 'interrupciones': '353 kB'}

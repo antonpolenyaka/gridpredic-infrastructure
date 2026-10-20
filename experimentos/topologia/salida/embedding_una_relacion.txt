@@ -1,0 +1,2 @@
+Grafo de co-corte no dirigido (< 2025, 511,324 triples, cada arista en los dos sentidos): |r| / |e| medio = 0.137; Spearman entre -|h + r - t| y -|h - t| en 20.000 pares = 0.960 (417 s)
+Relacion dirigida CT -> elemento de map_aguas_arriba (< 2025, 23,670 triples): |r| / |e| medio = 1.342 (431 s)

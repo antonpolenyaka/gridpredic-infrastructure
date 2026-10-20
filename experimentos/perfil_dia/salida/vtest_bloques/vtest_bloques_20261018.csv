@@ -1,0 +1,28 @@
+variable,nombre,v_test,error_dias,error_fechas,error_semanas,factor_fechas,factor_semanas,v_test_fechas,v_test_semanas
+dia_lluvia_max,"Lluvia del día, peor celda (mm)",16.1908,1.9729,2.2829,2.3232,1.1572,1.1776,13.9917,13.7489
+dia_lluvia_media,"Lluvia del día, media de los CT (mm)",15.2445,0.8485,1.0688,1.0947,1.2597,1.2903,12.1019,11.815
+dia_lluvia_hora_max,Lluvia en la peor hora (mm),15.0699,0.2567,0.2932,0.2968,1.1421,1.1559,13.1955,13.0371
+dia_racha_max,"Racha máxima, peor celda (km/h)",12.2036,1.9259,1.9527,1.8743,1.0139,0.9732,12.0359,12.5394
+ext_racha_clima_max,Racha frente al p98 de su celda,11.9689,0.0209,0.0237,0.0234,1.1363,1.1235,10.5333,10.653
+dia_viento_max,"Viento medio máximo, peor celda (km/h)",11.0162,0.502,0.5686,0.5718,1.1328,1.1392,9.7246,9.6704
+dia_racha_media_max,"Racha máxima, media de los CT (km/h)",9.5808,1.1362,1.2956,1.29,1.1403,1.1354,8.4023,8.4386
+ext_racha_clima_media,"Racha frente al p98, media de los CT",9.0211,0.0199,0.0229,0.023,1.1466,1.1534,7.8678,7.8215
+ext_racha_ku,Exceso de racha sobre el p98,8.3622,0.0225,0.0295,0.028,1.3116,1.2464,6.3755,6.7093
+ext_fraccion_p98_max,Parte de la red sobre su p98,8.2821,0.0223,0.0264,0.0275,1.1862,1.2363,6.9823,6.6993
+dia_presion_min,Presión mínima (hPa),-7.6695,0.449,0.514,0.5217,1.1448,1.1619,-6.6997,-6.6006
+ayer_lluvia_max,Lluvia de ayer (mm),6.6493,1.2858,1.3739,1.3853,1.0686,1.0774,6.2227,6.1715
+hist_incidencias_365d,Incidencias del año anterior,6.6042,0.4735,0.4567,0.4853,0.9646,1.025,6.8467,6.443
+ayer_racha_max,Racha máxima de ayer (km/h),6.3341,1.5995,1.5916,1.6239,0.995,1.0153,6.3656,6.2388
+dia_viento_media_max,"Viento medio máximo, media de los CT (km/h)",5.5285,0.4628,0.5259,0.5323,1.1363,1.1502,4.8652,4.8065
+dia_presion_caida_24h,Variación de presión en 24 h (hPa),-5.4772,0.2726,0.3174,0.3015,1.1643,1.1058,-4.7044,-4.9531
+dia_humedad_media,Humedad media (%),4.0436,1.2879,1.3698,1.425,1.0636,1.1065,3.8018,3.6546
+hist_incidencias_30d,Incidencias de los 30 días anteriores,3.62,0.1063,0.1034,0.1142,0.9732,1.0745,3.7199,3.369
+hist_dias_desde_ultima,Días desde la última incidencia,-3.5513,2.2287,2.1788,2.4643,0.9776,1.1057,-3.6326,-3.2118
+nao_30d,Índice NAO de 30 días,-2.7956,0.036,0.0396,0.0395,1.0982,1.0956,-2.5456,-2.5516
+dia_temp_max,Temperatura máxima (°C),-1.4894,0.5208,0.5465,0.5539,1.0492,1.0634,-1.4195,-1.4005
+hist_incidencias_7d,Incidencias de los 7 días anteriores,1.4446,0.0609,0.0615,0.0583,1.0108,0.957,1.4292,1.5096
+fen_ndvi_anom,Anomalía del verdor (NDVI),-0.9751,0.0664,0.0692,0.0717,1.042,1.0796,-0.9358,-0.9032
+hie_horas,Horas con riesgo de hielo,0.6541,0.004,0.0039,0.0042,0.9644,1.046,0.6783,0.6254
+ext_dias_calor,Días seguidos de calor,-0.5777,0.1429,0.1476,0.1309,1.0329,0.916,-0.5593,-0.6307
+seq_3m,Balance hídrico de 3 meses,-0.1926,0.0664,0.0688,0.0657,1.0349,0.9895,-0.1861,-0.1946
+dia_temp_media_min,"Temperatura mínima, media (°C)",-0.0614,0.3611,0.3707,0.3842,1.0265,1.064,-0.0598,-0.0577

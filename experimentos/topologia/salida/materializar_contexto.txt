@@ -1,0 +1,17 @@
+## E. Materializar la relacion CT - CT o dejar el evento como nodo
+Calser, incidencias de causa local desde 2016 en CT del estudio: 371 incidencias, 17,835 filas incidencia - CT, 1280 CT; proyeccion CT - CT: 257,950 aristas (31.5% de todos los pares posibles), 0.89 s
+  la incidencia mas grande corta 490 CT y aporta ella sola 119,805 pares
+SCADA, eventos de corte desde 2021: 7,373 eventos, 397,119 filas evento - trafo, 1281 trafos; proyeccion trafo - trafo: 383,375 aristas (46.8% de los pares posibles), 26.87 s
+map_aguas_arriba (relacion ya materializada trafo - elemento): 28,959 aristas
+  'con quien se corta este CT' sin materializar, desde los indices CT -> incidencias -> CT: 0.374 ms por consulta
+rutas de la Distribuidora 2: 26 municipios, matriz 26 x 26 (325 pares), pedida el 2026-10-13; minutos entre municipios mediana 56, max 111
+rutas de la Distribuidora 1: 46 municipios, matriz 46 x 46 (1035 pares), pedida el 2026-10-13; minutos entre municipios mediana 68, max 154
+
+## F. El subgrafo que explicaria el riesgo de un CT
+         nodos_1  aristas_1  nodos_2  aristas_2  incidencias  elementos_aa
+mediana     46.0       55.0    512.0     2478.0         14.0          22.0
+p95         71.0       88.0    551.0     3571.0         26.0          35.0
+maximo      77.0       99.0    578.0     3840.0         30.0          41.0
+CT 1288; CT sin ninguna incidencia de causa local desde 2016: 8; tiempo para los 1288 CT: 0.32 s
+
+tiempo total 28.9 s

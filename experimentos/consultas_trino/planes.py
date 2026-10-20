@@ -20,7 +20,14 @@ resumir_planes.py.
 
 Solo lee, salvo --analyze, que escribe las estadísticas extendidas de Trino
 (número de valores distintos y tamaño por columna) junto al log de cada tabla
-sin tocar sus datos.
+sin tocar sus datos, y --borrar-estadisticas, que las borra
+(system.drop_extended_stats) y deja SHOW STATS de cada tabla después:
+
+    python3 planes.py --fase B --borrar-estadisticas --salida /tmp/gp_planes
+
+Trino usa esas estadísticas en todas las consultas y no las actualiza cuando
+Spark reescribe la tabla, así que el lanzador las borra antes de la fase A
+(para medir sin ellas) y al acabar (para no dejarlas activas).
 """
 
 import argparse
@@ -103,6 +110,16 @@ ANALYZE = [
     f"ANALYZE {T}.map_ct_celda",
     f"ANALYZE {T}.meteo_celda_hora WITH (columns = ARRAY['celda_id', 'hora', 'met_racha_clima_1h'])",
     f"ANALYZE {T}.dataset_train WITH (columns = ARRAY['distribuidora_id', 'ct_id', 'hora', 'y_1_3h'])",
+    f"SHOW STATS FOR {T}.map_ct_celda",
+    f"SHOW STATS FOR {T}.meteo_celda_hora",
+    f"SHOW STATS FOR {T}.dataset_train",
+]
+
+# Las tablas de ANALYZE: borrar sus estadísticas extendidas devuelve a Trino a la estimación sin ellas.
+BORRAR = [
+    "CALL lakehouse.system.drop_extended_stats('l3_gold', 'dataset_train')",
+    "CALL lakehouse.system.drop_extended_stats('l3_gold', 'map_ct_celda')",
+    "CALL lakehouse.system.drop_extended_stats('l3_gold', 'meteo_celda_hora')",
     f"SHOW STATS FOR {T}.map_ct_celda",
     f"SHOW STATS FOR {T}.meteo_celda_hora",
     f"SHOW STATS FOR {T}.dataset_train",
@@ -205,17 +222,26 @@ def main(argv=None) -> int:
     parser.add_argument("--sesion", action="append", default=[], help="clave=valor de una propiedad de sesión")
     parser.add_argument("--repeticiones", type=int, default=5)
     parser.add_argument("--analyze", action="store_true", help="SHOW STATS, ANALYZE y SHOW STATS de las tablas")
+    parser.add_argument("--borrar-estadisticas", action="store_true",
+                        help="borra las estadísticas extendidas de las tablas de ANALYZE y deja SHOW STATS")
     args = parser.parse_args(argv)
     os.makedirs(args.salida, exist_ok=True)
     tag = args.fase + ("_" + "_".join(s.replace("=", "-") for s in args.sesion) if args.sesion else "")
     failed = 0
-    if args.analyze:
-        steps = [run(sql) for sql in ANALYZE]
+    for flag, sentences, name in ((args.borrar_estadisticas, BORRAR, "borrar_estadisticas"),
+                                  (args.analyze, ANALYZE, "analyze")):
+        if not flag:
+            continue
+        steps = [run(sql) for sql in sentences]
         failed += sum(1 for s in steps if "error" in s)
-        with open(os.path.join(args.salida, f"{tag}_analyze.json"), "w", encoding="utf-8") as handle:
+        with open(os.path.join(args.salida, f"{tag}_{name}.json"), "w", encoding="utf-8") as handle:
             json.dump(steps, handle, ensure_ascii=False, indent=1)
         for step in steps:
             print(step["sql"][:90], "->", step.get("error", {}).get("message", "ok")[:160], f"{step.get('reloj_s')} s")
+            if step["sql"].startswith("SHOW STATS") and step.get("columnas"):
+                distinct = [r[step["columnas"].index("distinct_values_count")] for r in step.get("filas", [])
+                            if r and r[0] is not None]
+                print(f"    columnas con valores distintos: {sum(1 for d in distinct if d is not None)}")
     for name in [c for c in args.consultas.split(",") if c]:
         result = measure(name, args.sesion, args.repeticiones)
         with open(os.path.join(args.salida, f"{tag}_{name}.json"), "w", encoding="utf-8") as handle:

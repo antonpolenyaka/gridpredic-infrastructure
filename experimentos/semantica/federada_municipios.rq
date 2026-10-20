@@ -1,0 +1,29 @@
+# Propuesta (no ejecutada): la ingesta de Wikidata como consulta federada desde un triplestore que tenga el
+# grafo de GridPredic (GraphDB del laboratorio, por ejemplo). Los municipios locales se mandan en VALUES
+# para que el servicio remoto reciba una sola peticion acotada a los 73 codigos, y el resultado se materializa
+# con CONSTRUCT (o INSERT) en un grafo con nombre fechado: una llamada externa por carga, no por consulta.
+# El enlace queda como owl:sameAs entre la URI propia (por codigo INE) y la URI de Wikidata.
+PREFIX gpo:      <https://gridpredic.com/ont#>
+PREFIX owl:      <http://www.w3.org/2002/07/owl#>
+PREFIX wdt:      <http://www.wikidata.org/prop/direct/>
+PREFIX p:        <http://www.wikidata.org/prop/>
+PREFIX psn:      <http://www.wikidata.org/prop/statement/value-normalized/>
+PREFIX wikibase: <http://wikiba.se/ontology#>
+
+CONSTRUCT {
+  ?m owl:sameAs ?item ;
+     gpo:superficieKm2 ?km2 .
+}
+WHERE {
+  ?m a gpo:Municipio ; gpo:codigoINE ?ine .
+  SERVICE <https://query.wikidata.org/sparql> {
+    # en la carga real: VALUES ?ine { "....." ... } con los codigos de los municipios de los CT
+    ?item wdt:P772 ?ine .
+    OPTIONAL {
+      ?item p:P2046 ?st .
+      ?st psn:P2046/wikibase:quantityAmount ?m2 ; wikibase:rank ?rk .
+      FILTER(?rk != wikibase:DeprecatedRank)
+    }
+  }
+  BIND(?m2 / 1000000 AS ?km2)
+}
