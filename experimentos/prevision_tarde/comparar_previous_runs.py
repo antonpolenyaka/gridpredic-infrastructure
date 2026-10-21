@@ -2,8 +2,10 @@
 20:30 de la víspera) frente a lo que da Previous Runs como previous_day1 (lo previsto unas 24 h antes de cada hora),
 que es lo que usa la evaluación. Para cada día guardado y celda: racha máxima del día y lluvia del día (horas GMT).
 Solo lectura de MinIO; pide Previous Runs a Open-Meteo (una petición por celda y día). Se ejecuta en el contenedor
-de Airflow: docker compose exec airflow python /app/../experimentos/prevision_tarde/comparar_previous_runs.py salida.csv
-(o copiándolo antes al contenedor). Resultado del 21.10.2026 en la memoria, 5.4: 344 celdas y días del 14 al 21.10.2026."""
+de Airflow, que tiene s3fs y el módulo de la Landing:
+    docker compose cp experimentos/prevision_tarde/comparar_previous_runs.py airflow:/tmp/c.py
+    docker compose exec airflow python /tmp/c.py /tmp/salida.csv
+ Resultado del 21.10.2026 en la memoria, 5.4: 344 celdas y días del 14 al 21.10.2026."""
 import csv
 import json
 import statistics as st
