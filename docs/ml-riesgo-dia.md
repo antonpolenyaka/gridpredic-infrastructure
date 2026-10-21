@@ -42,6 +42,8 @@ Todo se conoce antes de que empiece D salvo el tiempo del propio día: el bloque
 | `cad_` | caducas | la copa de frondosas caducas del MFE50 y la racha por ella en abril - octubre | no (3p) |
 | `nao_` | nao | el índice NAO diario de NOAA CPC que se conoce la tarde anterior, el de D - 3 (`nao_dia`, con `meteo_dia.nao.retraso_dias`), y su media de 30 días (`nao_30d`) | no (3r); se descarga cada tarde para volver a medirlo |
 
+La previsión de la víspera de la evaluación es la del archivo Previous Runs (`previous_day1`, lo previsto unas 24 horas antes de cada hora), no la pasada que tiene la tarde a las 20:30. Lo medimos el 21.10.2026 con las 344 celdas y días que la tarde guardó en la Landing del 14 al 21.10.2026 (`experimentos/prevision_tarde/comparar_previous_runs.py`): la racha máxima del día se separa 2,7 km/h de media (el 89 % de las veces 5 km/h o menos, correlación de 0,91) y la lluvia del día 0,6 mm (0,88).
+
 Los bloques que dependen de la racha o de la lluvia del día tienen su gemelo de previsión (`prev_<variable>`), que es el que se usa al puntuar con la previsión real.
 
 ## Horizontes y otros modelos
