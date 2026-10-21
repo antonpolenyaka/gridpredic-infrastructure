@@ -65,22 +65,29 @@ Con un solo ponente no hay reparto de diapositivas, ni frases de relevo, ni preg
 
 ## La demo en 90 segundos
 
-La hago en `http://localhost:8086`, el cuadro de mando del portátil, con el portátil y el navegador en modo claro (la página sigue el tema del sistema). Solo paso por las cuatro páginas del cuadro de mando.
+La hago en `https://gridpredic.com/demo/`, la copia pública con seudónimos, congelada el 20.10.2026, con el portátil y el navegador en modo claro (la página sigue el tema del sistema). No uso el cuadro de mando del portátil (`http://localhost:8086`), que enseña los nombres reales de los municipios. Si no hay red en la sala, abro la misma web en local, montada antes de salir de casa:
+
+```
+python web/montar_sitio.py _site
+python -m http.server 8795 --directory _site
+```
+
+y la demo está en `http://localhost:8795/demo/`. Solo paso por las cuatro páginas del cuadro de mando.
 
 | Segundos | Dónde | Qué hago | Qué digo |
 | --- | --- | --- | --- |
-| 0 - 15 | Riesgo de mañana, arriba | Señalo el nivel de cada red, con su palabra y su probabilidad, y la franja azul de la guardia | Es lo que salió anoche a las 20:30 para hoy; el de mañana sale esta tarde. |
+| 0 - 15 | Riesgo de mañana, arriba | Señalo el nivel de cada red, con su palabra y su probabilidad, y la franja azul de la guardia | Es lo que el sistema publica cada tarde a las 20:30; esta es la tarde que dejamos congelada para la demo. |
 | 15 - 30 | El mapa de la primera red | Señalo los círculos por municipio y las bases propuestas para las brigadas | Dónde: el tamaño del círculo son los CT y el color, el riesgo de su línea. |
 | 30 - 45 | Cuándo: la racha prevista por horas | Señalo la franja y la banda de los 40 escenarios | Cuándo: las horas en las que conviene tener a la gente preparada. |
 | 45 - 55 | Zonas (líneas) por riesgo | Pulso la primera línea, que se marca en el mapa | Las líneas ordenadas por riesgo, con sus municipios. |
 | 55 - 65 | Parte de guardia (Excel) | Abro un momento el botón de arriba | Lo que le llega al jefe de guardia sin abrir la página. |
 | 65 - 90 | `index.html?dia=20260128` | Abro la tarde repetida del 27.01.2026 en la Distribuidora 2 | La tarde del principio: muy alto, la franja de 6 a 14 h y los municipios por riesgo; al día siguiente, 16 incidencias. |
 
-- Si el día de la defensa sale tranquilo en las tres redes, empiezo por el día repetido y vuelvo a la página del día al final.
+- Si la tarde congelada sale tranquila en las tres redes, empiezo por el día repetido y vuelvo a la página del día al final.
 - La probabilidad la leo en la pantalla y no la digo de memoria: según la copia de los datos, puede diferir unas décimas de la que da la memoria.
-- La hora: la defensa es a partir de las 17:00, en dos sesiones en paralelo. La tarde de las 20:30 reescribe `dashboard/data` entre las 20:25 y las 20:50, así que solo coincide con la defensa si el turno se retrasa más de tres horas; en ese caso empiezo por el día repetido, que no depende de esa tarde. Entre las 19:00 y las 21:00 no lanzo nada en Spark.
-- La reserva: si fallan el portátil, Docker o el disco externo, abro `https://gridpredic.com/demo/index.html?dia=20260128`, la copia congelada que publica GitHub Pages mientras el repositorio sea público, hasta el final del máster. Si no hay red, enseño la captura `index_20260128_1_distribuidora_2.png`, que llevo en la carpeta de la presentación. La víspera abro esa dirección desde el móvil, en otra red, y compruebo que el 28.01.2026 enseña los mismos niveles que el portátil.
-- En la sala no abro Airflow (tampoco desde el enlace de la cabecera del cuadro de mando), Kafka UI, MinIO ni DBeaver, ni las interfaces de Spark y de Trino: enseñan los nombres de las bases de las copias.
+- La hora: la defensa es a partir de las 17:00, en dos sesiones en paralelo. La copia pública no cambia con la tarde de las 20:30 del portátil, así que da igual a qué hora caiga el turno. Entre las 19:00 y las 21:00 no lanzo nada en Spark.
+- La reserva: la demo no depende de Docker ni del disco externo. GitHub Pages publica la copia mientras el repositorio sea público, hasta el final del máster; sin red, la copia local de arriba, y si tampoco arranca, enseño la captura `index_20260128_1_distribuidora_2.png`, que llevo en la carpeta de la presentación. La víspera abro `https://gridpredic.com/demo/index.html?dia=20260128` desde el móvil, en otra red, y compruebo que el 28.01.2026 enseña los mismos niveles que la copia local.
+- En la sala no abro el cuadro de mando del portátil, Airflow (tampoco desde el enlace de la cabecera del cuadro de mando), Kafka UI, MinIO ni DBeaver, ni las interfaces de Spark y de Trino: enseñan los nombres de las bases de las copias.
 
 ## Comprobación visual de las diapositivas
 
@@ -114,7 +121,7 @@ La presentación de julio contaba cosas que la memoria corrige. Antes del últim
 | El apagón del 28.04.2025 como gancho | Está fuera de los datos, porque no dice nada de ninguna red (5.2). |
 | El título "Lo que no funcionó primero" | "La víspera es el horizonte que sostienen los datos" (diapositiva 6). |
 
-## Reserva: ocho diapositivas, una por pregunta
+## Reserva: nueve diapositivas, una por pregunta
 
 Van detrás del cierre, en este orden. Ningún documento dice quién forma la comisión: lo más probable es que sean los tres asesores y los dos coordinadores del máster, que asignaron los asesores, y con dos sesiones en paralelo puede que no estén todos. La columna del evaluador dice quién es más probable que haga cada pregunta.
 
@@ -128,10 +135,11 @@ Van detrás del cierre, en este orden. Ningún documento dice quién forma la co
 | R6 | ¿Dónde falla la red y dónde conviene invertir? | Asesor de negocio y asesor de prototipo | La línea aérea de media tensión se lleva el 62 % del TIEPI, y por causa, las programadas el 26,6 %, los equipos el 22,7 % y la meteorología el 17,0 % (5.8.1). El 10 % de las cabeceras, 5 de 48, reúne el 75 % de los kVA·h imprevistos con el 69 % de los kVA instalados (5.8.1). El riesgo anual: el 10 % de cabeceras que señala el modelo recoge el 69 % del año siguiente, frente al 64 % de la lista naif, y gana en cuatro de los cinco años (5.8.3). Con dos cautelas: la mayor cabecera reúne 491 CT de 28 líneas y sale sobre todo de los microcortes de 12 días de 2021 (con la de los dos últimos años, la mayor tendría 144 CT), y no es una línea, porque su tiempo de maniobra de 2023 - 2025 se reparte entre 8 y la primera tiene el 55,7 %, que es donde iría el telemando (5.8.1). |
 | R7 | ¿Cómo sabéis qué CT cuelgan de cada elemento? | Asesor de prototipo | `map_aguas_arriba` deduce la topología de los cortes del SCADA, y la comprobamos como una predicción de enlaces: con lo conocido antes de cada año ordena los pares de CT que caerán juntos con 0,638 de PR-AUC (tasa de 0,213), y 0,285 en los pares nuevos, 25 veces su tasa, frente a 0,050 del grupo de red y 0,062 de la cabecera (5.3.4). Ocultando aristas al azar daría una ROC-AUC de 1,000; por fechas, 0,528 (5.4). La ventana de validez: lo visto en los últimos 30 a 180 días ordena peor que toda la historia (de 0,24 a 0,44 frente a 0,51), y ningún peso por antigüedad la mejora (4.4.4). |
 | R8 | ¿Y con dos o tres días de antelación? | Asesor técnico y asesor de negocio | En 2024 - 2025, 6,5 veces la tasa base la víspera con las mismas variables, 5,4 a dos días y 5,2 a tres; en el 20 % de días de más riesgo caen el 67 %, el 66 % y el 64 % de los días con avería. Con 2026 dentro, 5,3, 4,8 y 4,4 veces (5.7.5). Pasado mañana sale cada tarde desde el 15.10.2026 para planificar, y la guardia fina se sigue decidiendo la víspera (5.7.5). |
+| R9 | ¿Cómo se ve día a día en una red? | Asesor de negocio | La matriz de la Distribuidora 1, un mes por fila y un día por columna, del 20.01.2024 al 02.08.2026 (figura 7, la página Día a día del cuadro de mando): el color es el nivel que el sistema habría dado la tarde anterior con la previsión real, y los anillos, las averías de causa local. El 13 % de los días estuvo en alerta y en ellos cayó el 75 % de las horas-cliente perdidas por causas locales sin recortar los cortes largos, el 64 % recortando (figura 7). |
 
 ## Respuestas habladas, sin diapositiva
 
-Unos 30 segundos cada una; las dos últimas de la primera tabla son algo más largas. No caben en las ocho de reserva y las digo sin pantalla, salvo que la pregunta lleve a una de ellas.
+Unos 30 segundos cada una; las dos últimas de la primera tabla son algo más largas. No caben en las nueve de reserva y las digo sin pantalla, salvo que la pregunta lleve a una de ellas.
 
 | Pregunta | Evaluador probable | Lo que contesto |
 | --- | --- | --- |
