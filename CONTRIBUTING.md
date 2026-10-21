@@ -14,6 +14,7 @@ Cada tarea (una capa nueva, una corrección, documentación) sale de `main` en s
 feat/silver-layer            nueva funcionalidad
 feat2609/improve-mlops       nueva funcionalidad, con la fecha ddmm en la que se abrió
 fix/minio-image              corrección
+fix1410/dashboard-data-gitignore  corrección, con la fecha ddmm en la que se abrió
 docs/dataset-card            solo documentación
 exp/guiones-estudio-2010     experimentos y sus salidas (experimentos/), con la fecha ddmm al final
 pagina/franja-linea-2010     lo que se publica en gridpredic.com (web/); el commit y el PR empiezan por "PÁGINA PÚBLICA:"
