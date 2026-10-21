@@ -177,6 +177,43 @@ def test_analisis_cuadran_con_la_cuenta(calculo):
     assert f["fondo_maniobra"] == pytest.approx(b["clientes"] + b["hp_deudora_iva"] + b["tesoreria"] - b["total_pc"])
 
 
+def test_excel_con_la_estructura_de_las_plantillas(calculo, tmp_path):
+    """El Excel sigue las plantillas de Budgeting y sus partidas cuadran con el modelo: el balance de cada cierre,
+    la cuenta de resultados (los márgenes, con las fórmulas de la plantilla) y el saldo de tesorería de cada mes."""
+    openpyxl = pytest.importorskip("openpyxl")
+    r = calculo["r11"]
+    ruta = tmp_path / "detalle.xlsx"
+    assert pf.escribir_xlsx(r, str(ruta))
+    wb = openpyxl.load_workbook(ruta)
+    for nombre in ["Balance momento 0", "Balance año 3", "Resultados agregada", "Resultados año 1", "Tesorería año 3",
+                   "Mensual", "Balances", "Supuestos"]:
+        assert nombre in wb.sheetnames
+    for a in (0, 1, 2, 3):
+        ws = wb["Balance momento 0" if a == 0 else f"Balance año {a}"]
+        activo = sum(ws[c].value for c in ("F16", "F17", "F21", "F22", "F30", "F39", "F42", "F44"))
+        pasivo = sum(ws[f"K{f}"].value for f in (14, 15, 16, 17, 18, 29, 30, 34, 35, 37, 38, 39))
+        assert activo == pytest.approx(r["balances"][a * 12]["total_activo"])
+        assert pasivo == pytest.approx(activo)
+        assert ws["F47"].value == "=F31+F45" and ws["K47"].value == "=K19+K31+K45"
+    ws = wb["Resultados agregada"]
+    for a in (1, 2, 3):
+        c = chr(ord("C") + a - 1)
+        v = {f: ws[f"{c}{f}"].value for f in (3, 4, 5, 7, 8, 13, 14, 15, 16, 17, 21, 26, 30)}
+        bdi = v[3] + v[4] + v[5] - v[7] - v[8] - sum(v[f] for f in (13, 14, 15, 16, 17)) - v[21] - v[26] - v[30]
+        assert bdi == pytest.approx(pf.pyg_anual(r, a)["resultado"])
+        assert ws[f"{c}32"].value == f"={c}28-{c}30"
+    for a in (1, 2, 3):
+        ws = wb[f"Tesorería año {a}"]
+        saldo = ws["B2"].value
+        assert saldo == pytest.approx(r["caja"][(a - 1) * 12])
+        for i in range(12):
+            c = chr(ord("B") + i)
+            cobros = sum(ws[f"{c}{f}"].value for f in range(4, 11))
+            pagos = sum(ws[f"{c}{f}"].value for f in (15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 28, 29))
+            saldo += cobros - pagos
+            assert saldo == pytest.approx(r["caja"][(a - 1) * 12 + i + 1])
+
+
 # --- mercado.py: la retribución del BOE se lee de un fichero privado que no se versiona
 spec_m = importlib.util.spec_from_file_location(
     "mercado", os.path.join(os.path.dirname(__file__), "..", "..", "experimentos", "plan_financiero", "mercado.py"))

@@ -34,7 +34,8 @@ Salidas (salida/):
     cifras_v11.json      cifras sueltas que cita el texto
     comparacion.txt      antes y después de las cifras clave, con la licencia de cada red
     mensual_v11.csv      tesorería, resultado y patrimonio de cada mes
-    detalle_v11.xlsx     el detalle mes a mes y los balances (si está openpyxl)
+    detalle_v11.xlsx     balances, resultados y tesorería con las plantillas de Budgeting, y el detalle
+                         mes a mes (si está openpyxl)
 
 Todas las cifras van sin IVA salvo los cobros y pagos de la tesorería. Solo usa la
 biblioteca estándar (openpyxl es opcional).
@@ -596,6 +597,7 @@ def simular(S):
         "resultados_anuales": resultados_anuales, "bai_anual": bai_anual, "is_anual": is_anual,
         "bin_final": bin_disponible, "nuevas_participaciones": nuevas,
         "enisa_pend": enisa_pend, "banco_pend": banco_pend,
+        "coste_bruto": coste_bruto, "amort_acum": amort_acum,
     }
     comprobar_encadenado(res)
     return res
@@ -1615,18 +1617,272 @@ def mensual_csv(res, ruta):
                         round(B[m]["umbral_363"], 2)])
 
 
+MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre",
+            "Noviembre", "Diciembre"]
+
+
+def filas_resultados(res, meses):
+    """Las partidas de la cuenta de resultados de la plantilla del curso (Estado de Resultados) para unos meses.
+    Las partidas de entrada; los márgenes y resultados los calcula la hoja con fórmulas."""
+    P = res["P"]
+
+    def s(clave):
+        return sum(P[clave][m] for m in meses)
+    return {
+        "ventas_impl": s("ing_impl"), "ventas_lic": s("ing_lic"), "existencias": 0.0, "compras": 0.0,
+        "otros_ventas": 0.0, "comerciales": s("comision"), "generales": s("externos"), "personal": s("sueldos"),
+        "cargas": s("cargas"), "amort": s("amort"), "otros": s("imprevistos"), "financieros": s("financieros"),
+        "is": s("is"),
+    }
+
+
+def filas_tesoreria(res, m):
+    """Cobros y pagos de un mes con las filas de la plantilla del curso (Plan de Tesorería)."""
+    P = res["P"]
+    return {
+        "cobros_ventas": P["cobros"][m], "capital": P["entrada_capital"][m], "prestamos": P["entrada_prestamo"][m],
+        "proveedores": P["pago_externos"][m], "nomina": P["pago_nomina"][m], "ss": P["pago_ss"][m],
+        "irpf": P["pago_irpf"][m], "iva": P["pago_iva"][m], "is": P["pago_is"][m],
+        "principal": P["pago_principal"][m], "intereses": P["pago_intereses"][m], "inversiones": P["pago_inversion"][m],
+        "otros_pagos": P["pago_gastos_ronda"][m],
+    }
+
+
 def escribir_xlsx(res, ruta):
+    """El Excel del plan con la estructura de las plantillas de Budgeting: el balance de cada cierre (Balance
+    momento 0 y año N), la cuenta de resultados agregada y la mensual de cada año (Estado de Resultados) y el
+    plan de tesorería de cada año (Plan de Tesorería), con fórmulas en los totales como las plantillas. Detrás,
+    las hojas de datos de siempre: Mensual, Balances y Supuestos."""
     try:
         import openpyxl
+        from openpyxl.styles import Font, PatternFill
     except ImportError:
         return False
     P = res["P"]
+    N = res["N"]
+    anios = N // 12
+    S = res["S"]
+    B = res["balances"]
+    negrita = Font(bold=True)
+    sombra = PatternFill("solid", fgColor="DDDDDD")  # como las plantillas: las celdas sombreadas llevan fórmula
+    eur = '#,##0.00'
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Mensual"
+    wb.remove(wb.active)
+
+    def celda(ws, ref, valor, bold=False, formula=False):
+        c = ws[ref]
+        c.value = valor  # sin redondear: el formato enseña dos decimales y los totales cuadran al céntimo
+        if bold:
+            c.font = negrita
+        if formula:
+            c.fill = sombra
+        if isinstance(valor, float) or formula:
+            c.number_format = eur
+        return c
+
+    # --- balances (269207_Balance-Plantilla) --------------------------------------------------------
+    for m in [0] + [a * 12 for a in range(1, anios + 1)]:
+        b = B[m]
+        ws = wb.create_sheet("Balance momento 0" if m == 0 else f"Balance año {m // 12}")
+        celda(ws, "F5", "GridPredic, S.L.", bold=True)
+        celda(ws, "F7", "BALANCE GENERAL AL INICIO" if m == 0 else f"BALANCE GENERAL AL CIERRE DEL AÑO {m // 12}"
+              f" (MES {m})", bold=True)
+        celda(ws, "B11", "ACTIVO", bold=True)
+        celda(ws, "H11", "PASIVO", bold=True)
+        if m == 0:
+            ai = S["activo_inicial"]
+            bruto_i, bruto_m = ai["marca"] + ai["aplicaciones"], ai["mobiliario"] + ai["equipo"]
+            acum_i = acum_m = 0.0
+        else:
+            bruto_i, bruto_m = res["coste_bruto"]["intangible"][m], res["coste_bruto"]["material"][m]
+            acum_i, acum_m = res["amort_acum"]["intangible"][m], res["amort_acum"]["material"][m]
+        celda(ws, "B13", "Activo No Corriente", bold=True)
+        celda(ws, "C15", "Inmovilizado inmaterial")
+        celda(ws, "D16", "Marca y aplicaciones informáticas")
+        celda(ws, "F16", bruto_i)
+        celda(ws, "D17", "  Amortización acumulada")
+        celda(ws, "F17", -acum_i)
+        celda(ws, "C20", "Inmovilizado material")
+        celda(ws, "D21", "Mobiliario y equipo informático")
+        celda(ws, "F21", bruto_m)
+        celda(ws, "D22", "  Amortización acumulada")
+        celda(ws, "F22", -acum_m)
+        celda(ws, "C29", "Inmovilizado Financiero")
+        celda(ws, "D30", "Fianza del alquiler")
+        celda(ws, "F30", b["fianza"])
+        celda(ws, "B31", "Total Activo No Corriente", bold=True)
+        celda(ws, "F31", "=SUM(F16:F17,F21:F22,F30)", formula=True)
+        celda(ws, "B33", "Activo Corriente", bold=True)
+        celda(ws, "C38", "Realizable")
+        celda(ws, "D39", "Clientes")
+        celda(ws, "F39", b["clientes"])
+        celda(ws, "D42", "Hacienda pública deudora (IVA soportado)")
+        celda(ws, "F42", b["hp_deudora_iva"])
+        celda(ws, "C43", "Tesorería")
+        celda(ws, "D44", "Caja y Bancos")
+        celda(ws, "F44", b["tesoreria"])
+        celda(ws, "B45", "Total Activo Corriente", bold=True)
+        celda(ws, "F45", "=SUM(F39:F42,F44)", formula=True)
+        celda(ws, "B47", "SUMA DEL ACTIVO", bold=True)
+        celda(ws, "F47", "=F31+F45", formula=True)
+
+        celda(ws, "H13", "Fondos propios o patrimonio neto", bold=True)
+        celda(ws, "I14", "Capital social")
+        celda(ws, "K14", b["capital"])
+        celda(ws, "I15", "Prima de asunción")
+        celda(ws, "K15", b["prima"])
+        celda(ws, "I16", "Reservas (gastos de constitución y de la ronda)")
+        celda(ws, "K16", b["reservas"])
+        celda(ws, "I17", "Resultados de ejercicios anteriores")
+        celda(ws, "K17", b["anteriores"])
+        celda(ws, "I18", "Resultado del ejercicio")
+        celda(ws, "K18", b["resultado"])
+        celda(ws, "H19", "Total Capital contable", bold=True)
+        celda(ws, "K19", "=SUM(K14:K18)", formula=True)
+        celda(ws, "H28", "Pasivo No Corriente", bold=True)
+        celda(ws, "I29", "Préstamo participativo de ENISA a largo plazo")
+        celda(ws, "K29", b["enisa_lp"])
+        celda(ws, "I30", "Préstamo bancario a largo plazo")
+        celda(ws, "K30", b["banco_lp"])
+        celda(ws, "H31", "Total Pasivo No Corriente", bold=True)
+        celda(ws, "K31", "=SUM(K29:K30)", formula=True)
+        celda(ws, "H33", "Pasivo Corriente", bold=True)
+        celda(ws, "I34", "Anticipos de clientes")
+        celda(ws, "K34", b["anticipos"])
+        celda(ws, "I35", "Periodificación de licencias facturadas")
+        celda(ws, "K35", b["periodificacion"])
+        celda(ws, "I37", "Préstamos a corto plazo (con intereses pendientes)")
+        celda(ws, "K37", b["deuda_cp"])
+        celda(ws, "I38", "Hacienda pública acreedora (IVA, IRPF e Imp. Sociedades)")
+        celda(ws, "K38", b["hp_acreedora"])
+        celda(ws, "I39", "Seguridad Social acreedora")
+        celda(ws, "K39", b["ss_acreedora"])
+        celda(ws, "H45", "Total Pasivo Corriente", bold=True)
+        celda(ws, "K45", "=SUM(K34:K39)", formula=True)
+        celda(ws, "H47", "SUMA DEL PASIVO", bold=True)
+        celda(ws, "K47", "=K19+K31+K45", formula=True)
+        celda(ws, "H49", "Diferencia activo - pasivo (tiene que ser 0)")
+        celda(ws, "K49", "=ROUND(F47-K47,2)", formula=True)
+        celda(ws, "A51", "Nota: las celdas sombreadas contienen fórmulas. Estructura de la plantilla de balance "
+              "de Budgeting; la prueba de cuadre de plan_financiero.py comprueba lo mismo en los "
+              f"{N + 1} cierres.")
+        ws.column_dimensions["D"].width = 40
+        ws.column_dimensions["I"].width = 52
+        for col in "FK":
+            ws.column_dimensions[col].width = 15
+
+    # --- cuenta de resultados (251634_EstadodeResultados) -----------------------------------------------
+    etiquetas = [
+        (2, "A", "Ingresos", None), (3, "B", "Ventas: implantaciones", "ventas_impl"),
+        (4, "B", "Ventas: licencias", "ventas_lic"), (5, "A", "Variación de las existencias (±)", "existencias"),
+        (6, "A", "Costes de las ventas", None), (7, "B", "Compras", "compras"),
+        (8, "B", "Otros costes de las ventas", "otros_ventas"),
+        (10, "B", "Margen (o Utilidad) Bruto {Gross margin}", "=SUM({c}3:{c}5)-SUM({c}7:{c}8)"),
+        (12, "A", "Gastos Operativos", None), (13, "B", "Gastos comerciales (comisión del socio)", "comerciales"),
+        (14, "B", "Gastos generales (servicios externos, coworking, herramientas...)", "generales"),
+        (15, "B", "Gastos administrativos (personal: sueldos brutos)", "personal"),
+        (16, "B", "Impuestos sobre nómina (Seguridad Social de la empresa)", "cargas"),
+        (17, "B", "Otros costes (imprevistos)", "otros"),
+        (19, "B", "{EBITDA} = Beneficio antes de amortizaciones, intereses e impuestos", "={c}10-SUM({c}13:{c}17)"),
+        (21, "B", "Amortizaciones del inmovilizado", "amort"),
+        (23, "B", "BAII = Beneficio antes de intereses e impuestos {EBIT}", "={c}19-{c}21"),
+        (25, "A", "Gastos financieros", None), (26, "B", "Intereses y comisiones de los préstamos", "financieros"),
+        (28, "B", "BAI = Beneficios antes de impuestos {EBT}", "={c}23-{c}26"),
+        (30, "B", "Impuesto de sociedades (25 %, con las bases negativas compensadas)", "is"),
+        (32, "B", "BDI = Beneficios después de impuestos {Net profit}", "={c}28-{c}30"),
+    ]
+    memoria = [(35, "A", "Pro Memoria", None), (36, "B", "Gross Cash Flow (BAI + amortizaciones)", "={c}28+{c}21"),
+               (37, "B", "Net Cash Flow (BDI + amortizaciones)", "={c}32+{c}21")]
+
+    def hoja_resultados(ws, columnas):
+        """columnas: [(letra, título, meses)]."""
+        for fila, col, texto, clave in etiquetas + memoria:
+            celda(ws, f"{col}{fila}", texto, bold=clave is None or str(clave).startswith("="))
+        for letra, titulo, meses in columnas:
+            celda(ws, f"{letra}1", titulo, bold=True)
+            d = filas_resultados(res, meses) if meses else None
+            for fila, _, _, clave in etiquetas + memoria:
+                if clave is None:
+                    continue
+                if str(clave).startswith("="):
+                    celda(ws, f"{letra}{fila}", clave.format(c=letra), formula=True)
+                elif d is not None:
+                    celda(ws, f"{letra}{fila}", d[clave])
+        ws.column_dimensions["A"].width = 4
+        ws.column_dimensions["B"].width = 66
+        for letra, _, _ in columnas:
+            ws.column_dimensions[letra].width = 14
+
+    ws = wb.create_sheet("Resultados agregada")
+    hoja_resultados(ws, [(chr(ord("C") + a - 1), f"Año {a}", list(range((a - 1) * 12 + 1, a * 12 + 1)))
+                         for a in range(1, anios + 1)])
+    for a in range(1, anios + 1):
+        ws = wb.create_sheet(f"Resultados año {a}")
+        cols = [(chr(ord("C") + i), MESES_ES[i], [(a - 1) * 12 + i + 1]) for i in range(12)]
+        hoja_resultados(ws, cols)
+        celda(ws, "O1", "Agregado", bold=True)
+        for fila, _, _, clave in etiquetas + memoria:
+            if clave is None:
+                continue
+            if str(clave).startswith("="):
+                celda(ws, f"O{fila}", clave.format(c="O"), formula=True)
+            else:
+                celda(ws, f"O{fila}", f"=SUM(C{fila}:N{fila})", formula=True)
+        ws.column_dimensions["O"].width = 14
+        celda(ws, "B39", "El impuesto de sociedades se devenga en el cierre de cada año (mes 12), con las bases "
+              "negativas de años anteriores compensadas.")
+
+    # --- plan de tesorería (251635_PlandeTesoreria) -------------------------------------------------------
+    filas_t = [
+        (2, "SALDO INICIAL DE TESORERÍA", None), (4, "Cobros por ventas (con IVA)", "cobros_ventas"),
+        (5, "Otros cobros", 0.0), (6, "Devolución IVA", 0.0), (7, "Ampliaciones de Capital", "capital"),
+        (8, "Préstamos", "prestamos"), (9, "Desinversiones", 0.0), (10, "Otros cobros", 0.0),
+        (12, "TOTAL COBROS", "=SUM({c}4:{c}10)"),
+        (14, "Pagos de explotación", None), (15, "Materiales", 0.0), (16, "Fabricación", 0.0),
+        (17, "Compras y servicios externos (con IVA)", "proveedores"), (18, "Nóminas.Salario Neto", "nomina"),
+        (19, "Nóminas.Seguridad Social (obrera y patronal)", "ss"), (21, "Nóminas.Liquidación IRPF", "irpf"),
+        (22, "Impuestos.Liquidación IVA", "iva"), (23, "Impuestos.Impuesto de sociedades", "is"),
+        (24, "Otros pagos", None), (25, "Dividendos", 0.0), (26, "Devolución préstamos", "principal"),
+        (27, "Intereses de préstamos", "intereses"), (28, "Inversiones (con IVA)", "inversiones"),
+        (29, "Otros pagos (gastos de la ronda)", "otros_pagos"),
+        (30, "TOTAL PAGOS", "=SUM({c}15:{c}29)"),
+        (32, "SALDO FINAL DE TESORERÍA", "={c}2+{c}12-{c}30"),
+    ]
+    for a in range(1, anios + 1):
+        ws = wb.create_sheet(f"Tesorería año {a}")
+        celda(ws, "A1", "MESES", bold=True)
+        for fila, texto, clave in filas_t:
+            celda(ws, f"A{fila}", texto, bold=clave is None or str(clave).startswith("="))
+        for i in range(12):
+            m = (a - 1) * 12 + i + 1
+            c = chr(ord("B") + i)
+            celda(ws, f"{c}1", m, bold=True)
+            d = filas_tesoreria(res, m)
+            celda(ws, f"{c}2", res["caja"][m - 1] if i == 0 else f"={chr(ord(c) - 1)}32", formula=i > 0)
+            for fila, _, clave in filas_t:
+                if clave is None:
+                    continue
+                if isinstance(clave, float):
+                    celda(ws, f"{c}{fila}", clave)
+                elif clave.startswith("="):
+                    celda(ws, f"{c}{fila}", clave.format(c=c), formula=True)
+                else:
+                    celda(ws, f"{c}{fila}", d[clave])
+        celda(ws, "A34", "Saldo final según el modelo (tiene que ser igual)")
+        for i in range(12):
+            celda(ws, f"{chr(ord('B') + i)}34", res["caja"][(a - 1) * 12 + i + 1])
+        celda(ws, "A36", "El saldo inicial de enero es el saldo final del año anterior (o la tesorería del balance "
+              "del momento 0); el saldo final del mes 12 es la tesorería del balance del año. El IVA se liquida a "
+              "trimestre vencido y el impuesto de sociedades en el mes de pago del año siguiente.")
+        ws.column_dimensions["A"].width = 46
+        for i in range(12):
+            ws.column_dimensions[chr(ord("B") + i)].width = 12
+
+    # --- datos de siempre ---------------------------------------------------------------------------------
+    ws = wb.create_sheet("Mensual")
     cols = list(P.keys())
     ws.append(["mes"] + cols + ["tesoreria_final"])
-    for m in range(1, res["N"] + 1):
+    for m in range(1, N + 1):
         ws.append([m] + [round(P[k][m], 2) for k in cols] + [round(res["caja"][m], 2)])
     ws2 = wb.create_sheet("Balances")
     claves = ["intangible", "material", "fianza", "clientes", "hp_deudora_iva", "tesoreria", "total_activo",
@@ -1634,10 +1890,10 @@ def escribir_xlsx(res, ruta):
               "enisa_lp", "banco_lp", "deuda_cp", "anticipos", "periodificacion", "hp_acreedora", "ss_acreedora",
               "total_pn_pasivo"]
     ws2.append(["mes"] + claves)
-    for m in range(0, res["N"] + 1):
-        ws2.append([m] + [round(res["balances"][m][k], 2) for k in claves])
+    for m in range(0, N + 1):
+        ws2.append([m] + [round(B[m][k], 2) for k in claves])
     ws3 = wb.create_sheet("Supuestos")
-    for k, v in res["S"].items():
+    for k, v in S.items():
         ws3.append([k, json.dumps(v, ensure_ascii=False)])
     wb.save(ruta)
     return True
