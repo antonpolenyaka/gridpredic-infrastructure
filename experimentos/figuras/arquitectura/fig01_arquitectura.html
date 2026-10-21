@@ -31,7 +31,7 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #ffffff; }
   body {
-    width: 1200px; height: 900px; position: relative; overflow: hidden;
+    width: 1200px; height: 935px; position: relative; overflow: hidden;
     font-family: "Liberation Sans", Arial, Helvetica, sans-serif;
     font-size: var(--fs); line-height: 1.15; color: var(--ink);
   }
@@ -85,6 +85,7 @@
   .sub.op { border-color: var(--op); background: var(--op-bg); }
   .sub.op b { color: var(--op); }
   .opt { color: var(--op); }
+  .sub.nb { border: 1.6px dotted #8a96a3; background: transparent; color: var(--soft); font-style: italic; }
 
   /* operación */
   .job { border: 2px solid var(--op); border-radius: 8px; background: #ffffff; padding: 6px 10px; }
@@ -104,11 +105,11 @@
   .cat svg { color: var(--cat); }
   .store { display: flex; gap: 9px; align-items: center; white-space: nowrap; padding-left: 12px; }
   .store svg { color: var(--cat); }
-  .legend { display: flex; flex-direction: row; gap: 34px; align-items: center; padding-left: 10px; }
+  .legend { display: flex; flex-direction: row; gap: 22px; white-space: nowrap; align-items: center; padding-left: 10px; }
   .legend .lg { display: flex; align-items: center; gap: 9px; }
   .legend svg.sw { width: 46px; height: 14px; flex: none; }
 
-  #ov { position: absolute; left: 0; top: 0; width: 1200px; height: 900px; pointer-events: none; overflow: visible; }
+  #ov { position: absolute; left: 0; top: 0; width: 1200px; height: 935px; pointer-events: none; overflow: visible; }
 </style>
 </head>
 <body>
@@ -178,8 +179,9 @@
     <div>calser_&lt;base&gt;_*</div>
     <div>tedis_net_&lt;base&gt;_*</div>
     <div class="note">JDBC: la tabla grande, por trozos de Id</div>
-    <div class="note">CDC: 31 tablas System*, MERGE por clave</div>
+    <div class="note">CDC: 29 tablas System*, MERGE por clave</div>
     <div class="note">una tabla por fuente pública</div>
+    <div class="sub nb">incrementales por Landing</div>
   </div>
   <div class="zf">Trino: l1_bronze</div>
 </div>
@@ -197,6 +199,7 @@
     <div>f_meteo_hora</div>
     <div class="note">una tabla por entidad, con distribuidora_id</div>
     <div class="note">rechazos en _rejected; lo dudoso se marca</div>
+    <div class="sub nb">manifiestos por lote</div>
   </div>
   <div class="zf">Trino: l2_silver</div>
 </div>
@@ -214,6 +217,7 @@
     <div class="opt" id="g-riesgo">riesgo_dia_siguiente</div>
     <div class="opt">escrita cada tarde por la puntuación</div>
     <div class="note">grano CT-hora y distribuidora-día</div>
+    <div class="sub nb">predicciones por CT y hora en flujo</div>
   </div>
   <div class="zf">Trino: l3_gold</div>
 </div>
@@ -239,6 +243,7 @@
   <div class="lg"><svg class="sw"><line x1="2" y1="7" x2="34" y2="7" stroke="#1d6a8e" stroke-width="2.8"/><path d="M33 2 44 7 33 12z" fill="#1d6a8e"/></svg>operación del día</div>
   <div class="lg"><svg class="sw"><line x1="2" y1="7" x2="34" y2="7" stroke="#7a4ea6" stroke-width="2.2" stroke-dasharray="7 5"/><path d="M33 2 44 7 33 12z" fill="#7a4ea6"/></svg>control: Airflow lanza o programa</div>
   <div class="lg"><svg class="ic" style="color:#56626f;margin:0 10px"><use href="#i-gear"/></svg>trabajo de Spark</div>
+  <div class="lg"><svg class="sw"><rect x="2" y="1.5" width="42" height="11" rx="2" fill="none" stroke="#8a96a3" stroke-width="1.6" stroke-dasharray="1.6 2.4"/></svg>diseñado, sin construir</div>
 </div>
 
 <!-- Catálogo y almacenamiento -->
@@ -299,7 +304,7 @@
   const Zb = R("z-gold").b;
   // scoring job under Gold; upper lane enters it from vivo
   const vivo = R("l-vivo"), land = R("z-landing");
-  const jTop = Math.max(Zb + 42, vivo.t - 6);
+  const jTop = Math.max(Zb + 32, vivo.t - 6);
   $("job-score").style.top = px(jTop);
   const J0 = R("job-score");
   $("lab-upper").style.top = px(J0.t + 28 - 4 - 24);
@@ -429,7 +434,7 @@
     const blocks = Array.from(document.querySelectorAll(".blk, .lab, .colhead")).map(e => ({ e, r: e.getBoundingClientRect() }));
     blocks.forEach(b => {
       out.contentBottom = Math.max(out.contentBottom, b.r.bottom);
-      if (b.r.left < 0 || b.r.top < 0 || b.r.right > 1200 || b.r.bottom > 900) out.outside.push(b.e.id || b.e.className);
+      if (b.r.left < 0 || b.r.top < 0 || b.r.right > 1200 || b.r.bottom > 935) out.outside.push(b.e.id || b.e.className);
     });
     for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) {
       const a = blocks[i].r, b = blocks[j].r;
