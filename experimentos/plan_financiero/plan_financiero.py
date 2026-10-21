@@ -1060,20 +1060,22 @@ def construir_tablas(res, escen):
     filas = []
     for m in range(1, 13):
         cobros = P["cobros"][m]
-        personal = P["pago_nomina"][m] + P["pago_ss"][m] + P["pago_irpf"][m]
+        nomina, ss, irpf = P["pago_nomina"][m], P["pago_ss"][m], P["pago_irpf"][m]
+        personal = nomina + ss + irpf
         prov = P["pago_externos"][m] + P["pago_inversion"][m]
         iva_is = P["pago_iva"][m] + P["pago_is"][m]
         finan = (P["entrada_capital"][m] + P["entrada_prestamo"][m] - P["pago_gastos_ronda"][m]
                  - P["pago_intereses"][m] - P["pago_principal"][m])
         neto = cobros - personal - prov - iva_is + finan
         assert abs(res["caja"][m - 1] + neto - res["caja"][m]) < 0.01
-        filas.append([str(m), fmt(cobros), fmt(-personal), fmt(-prov), fmt(-iva_is), fmt(finan), fmt(neto),
-                      fmt(res["caja"][m]), fmt(B[m]["pn_mercantil"])])
+        filas.append([str(m), fmt(cobros), fmt(-nomina), fmt(-ss), fmt(-irpf), fmt(-prov), fmt(-iva_is), fmt(finan),
+                      fmt(neto), fmt(res["caja"][m]), fmt(B[m]["pn_mercantil"])])
     tablas["tesoreria_mensual"] = tabla(
         "Tesorería del año 1 mes a mes, en euros (cobros y pagos con IVA), y patrimonio neto con el préstamo "
-        "participativo (art. 363 LSC)",
-        ["Mes", "Cobros", "Personal y Seguridad Social", "Proveedores", "IVA", "Financiación",
-         "Saldo del mes", "Tesorería final", "Patrimonio neto (art. 363)"], filas, [1, 2, 2, 2, 2, 2, 2, 2, 2])
+        "participativo (art. 363 LSC). Las nóminas van netas; la Seguridad Social, la de la empresa y la del "
+        "trabajador, se paga el mes siguiente y las retenciones de IRPF, cada trimestre",
+        ["Mes", "Cobros", "Nóminas", "Seguridad Social", "IRPF", "Proveedores", "IVA", "Financiación",
+         "Saldo del mes", "Tesorería final", "Patrimonio neto (art. 363)"], filas, [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2])
 
     # --- tesorería de los tres años
     def tfila(nombre, clave, signo=1):
