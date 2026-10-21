@@ -62,7 +62,7 @@ dim["linea"] = [lin_cod.get((r, int(c))) if pd.notna(c) else None for r, c in zi
 zona = {"TZ_URBAN": "urbana", "TZ_SUBUR": "semiurbana", "TZ_RUCON": "rural concentrada", "TZ_RUDIS": "rural dispersa"}
 
 escribir("distribuidoras.csv", pd.DataFrame({"red": [1, 2, 3], "nombre": [f"Distribuidora {n}" for n in (1, 2, 3)]}))
-escribir("municipios.csv", dim[["municipio"]].drop_duplicates().sort_values("municipio"))  # uno puede tener CT de dos redes
+escribir("municipios.csv", dim[["municipio"]].drop_duplicates().sort_values("municipio"))  # el seudónimo es único entre redes
 escribir("cts.csv", pd.DataFrame({
     "red": dim.red, "codigo": dim.codigo, "municipio": dim.municipio, "cabecera": dim.cabecera, "linea": dim.linea,
     "zona": dim.tipo_zona_estat.map(zona), "kva": dim.potencia_tiepi_kva.fillna(0.0), "abonados": dim.num_abonados,
