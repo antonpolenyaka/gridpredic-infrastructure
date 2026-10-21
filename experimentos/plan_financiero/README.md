@@ -110,7 +110,7 @@ Vienen de la v10, no cambian el modelo y las dejamos escritas con su efecto:
 | `comparacion.txt` | Antes y después de las cifras clave, la rebaja mínima, el importe máximo de ENISA y la licencia de cada red |
 | `cifras_v11.json` | Las cifras sueltas que cita el texto, con las de cada escenario |
 | `mensual_v11.csv` | Ingresos, gastos, cobros, pagos, tesorería y patrimonio neto de cada mes, con el umbral del art. 363 |
-| `detalle_v11.xlsx` | El detalle mes a mes, los balances y los supuestos |
+| `detalle_v11.xlsx` | Con la estructura de las plantillas de Budgeting: el balance del momento 0 y del cierre de cada año, la cuenta de resultados agregada y la mensual de cada año y el plan de tesorería de cada año, con fórmulas en los totales (celdas sombreadas). Detrás, el detalle mes a mes, los balances y los supuestos |
 | `mercado.txt`, `mercado.json` | Agregados del mercado con la tarifa (los escribe `mercado.py`) |
 
 ## Qué falta
