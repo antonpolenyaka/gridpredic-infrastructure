@@ -33,10 +33,11 @@ MATCH (a:CT {red: 1, codigo: 'CT 0001'}), (b:CT {red: 1, codigo: 'CT 0200'})
 MATCH camino = shortestPath((a)-[:AGUAS_ABAJO_DE*..6]-(b))
 RETURN camino;
 
-// 7. Municipios con CT de dos redes
-MATCH (m:Municipio)<-[:EN]-(c:CT)
-WITH m, collect(DISTINCT c.red) AS redes WHERE size(redes) > 1
-RETURN m.nombre AS municipio, redes;
+// 7. Los municipios de la Distribuidora 1 con más CT cortados por incidencias imprevistas desde 2023
+MATCH (i:Incidencia)-[:CORTA]->(c:CT {red: 1})-[:EN]->(m:Municipio)
+WHERE NOT i.programada AND i.inicio >= localdatetime('2023-01-01T00:00:00')
+RETURN m.nombre AS municipio, count(DISTINCT i) AS incidencias, count(*) AS cortes_de_ct
+ORDER BY cortes_de_ct DESC LIMIT 10;
 
 // 8. Causas por año y red, desde las incidencias
 MATCH (i:Incidencia) WHERE NOT i.programada

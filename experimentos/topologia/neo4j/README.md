@@ -14,7 +14,7 @@ Para enseñar en la defensa el grafo con el que trabajan los guiones de `experim
 
 Relaciones: `(CT)-[:DE]->(Distribuidora)`, `(CT)-[:EN]->(Municipio)`, `(CT)-[:CUELGA_DE]->(Cabecera)`, `(CT)-[:EN_LINEA]->(Linea)`, `(CT)-[:AGUAS_ABAJO_DE {cortes, primer_corte, ultimo_corte}]->(Posicion)` e `(Incidencia)-[:CORTA {inicio, duracion_s}]->(CT)`. La incidencia es un nodo con una arista por CT, no un par de aristas por cada dos CT que cortan juntos (el e0 de la carpeta compara las dos formas). Los códigos se repiten entre redes, por eso las claves son compuestas con la red. Hay índices sobre `inicio`, `fecha` y `causa` de la incidencia y sobre `inicio` de `CORTA`.
 
-Con la exportación del 13.10.2026: 1.288 CT del estudio, 73 municipios, 256 posiciones, 437 incidencias de Calser desde 2016 (sin el apagón ni el 28.04.2025), 23.033 relaciones aguas arriba y 19.221 cortes de CT.
+Con la exportación del 13.10.2026: 1.288 CT del estudio, 45 cabeceras, 63 líneas, 73 municipios, 256 posiciones, 437 incidencias de Calser desde 2016 (sin el apagón ni el 28.04.2025), 23.033 relaciones aguas arriba y 19.221 cortes de CT. La carga tarda unos 10 segundos (21.10.2026, en el portátil).
 
 ## Seudónimos
 
