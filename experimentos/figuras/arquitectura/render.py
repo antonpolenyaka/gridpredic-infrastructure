@@ -12,7 +12,7 @@ from playwright.sync_api import sync_playwright
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "fig01_arquitectura.html")
 OUT = os.path.join(HERE, "fig01_arquitectura.png")
-W, H = 1200, 900
+W, H = 1200, 935
 PRINT_WIDTH_CM = 16.0
 
 
