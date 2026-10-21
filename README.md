@@ -289,6 +289,13 @@ Para arrancar y parar todo en orden, sin hacerlo servicio a servicio, hay un scr
 
 El de arranque levanta el stack por fases y espera a que cada una esté sana, deja SQL Server para el final sin esperarlo y, en Windows, abre Docker Desktop si hace falta y arranca la cola y el vigilante. Con `-Cdc` (Windows) o `--cdc` (Linux) arranca también el perfil `cdc`. El de parada no para si la cola o Spark tienen algo en marcha o si es la franja de la tarde (salvo con `-Forzar` o `--forzar`). Los detalles están en [docs/operacion-diaria.md](docs/operacion-diaria.md), apartado 5.
 
+El grafo de la red en Neo4j, para enseñarlo en la defensa, va aparte y no arranca con el stack. Tiene sus propios scripts, también en la raíz (apartado 8, "Neo4j"):
+
+| Sistema | Arrancar | Parar |
+| --- | --- | --- |
+| Windows (PowerShell 7 y Docker Desktop) | `pwsh -File D:\GitHub\gridpredic-infrastructure\startNeo4j_windows.ps1` | `pwsh -File D:\GitHub\gridpredic-infrastructure\stopNeo4j_windows.ps1` |
+| Linux (Docker Engine o Desktop) | `./startNeo4j_linux.sh` | `./stopNeo4j_linux.sh` |
+
 Los `healthchecks` y las dependencias del Compose controlan el orden de inicialización. Cuando el comando termina correctamente, el entorno está listo para utilizarse.
 
 El primer arranque es largo. Como referencia, en un portátil con 4 cores y 12 GB asignados a Docker:
@@ -332,6 +339,7 @@ Durante el arranque se realiza automáticamente:
 | Cuadro de mando del riesgo | http://localhost:8086 | El riesgo de mañana por distribuidora, línea y municipio sobre un mapa (ver apartado 13) |
 | MinIO Console | http://localhost:9001 | Navegación por buckets y objetos |
 | Spark History Server | http://localhost:18080 | Histórico de aplicaciones Spark |
+| Neo4j Browser y Bolt | http://localhost:7474 y `localhost:7687` | El grafo de la red para la defensa (solo con `startNeo4j_*`) |
 
 > **Si algún puerto está ocupado en tu máquina.** El puerto 8080 de la UI de Spark Master es configurable desde el `.env` con `SPARK_MASTER_UI_PORT`, porque en Windows suele estar tomado por IIS u otro servicio sobre `http.sys`. El síntoma al levantar el stack es:
 >
@@ -397,6 +405,19 @@ Desde la 0.16.0 el contenedor de Trino tiene un tope de 4 GB (`mem_limit` en `co
 ### MinIO
 
 Acceder a `http://localhost:9001` con `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD`.
+
+### Neo4j
+
+El grafo de la red con el que trabajan los guiones de `experimentos/topologia`, cargado en Neo4j 5.26 Community para enseñarlo en la defensa (D30). Los análisis de la memoria no dependen de él: están hechos con networkx y pandas. Va en un contenedor aparte, `gridpredic-neo4j`, fuera de `compose.yaml`, así que no toca la plataforma ni la CI, y escucha solo en 127.0.0.1, sin usuario ni clave.
+
+Cómo funciona:
+
+1. `preparar_csv.py` saca los CSV de la exportación de Gold del 13.10.2026 a `_runlogs/neo4j/import`, fuera de git y solo con seudónimos: las redes como Distribuidora 1, 2 y 3, los municipios con los seudónimos de la demo pública y los CT, las cabeceras, las líneas, las posiciones y las incidencias numerados. Al acabar comprueba que no queda ningún código ni nombre real. Solo hace falta volver a lanzarlo si cambia la exportación.
+2. `startNeo4j_windows.ps1` (o `startNeo4j_linux.sh`) comprueba que Docker responde y, la primera vez, que los puertos 7474 y 7687 están libres; crea el contenedor (1 GB de heap y 512 MB de caché) o arranca el que ya existe y espera a que responda. Si la base está vacía, carga los CSV con `experimentos/topologia/neo4j/carga.cypher`, que crea antes las claves compuestas con la red y los índices de fechas. Con `-Recargar` (`--recargar`) vacía el grafo y lo carga de nuevo. Deja un registro en `_runlogs/neo4j_start_<fecha>.log`.
+3. Con el contenedor en marcha, se abre http://localhost:7474, se elige "No authentication" y se pegan las consultas de `experimentos/topologia/neo4j/consultas.cypher`: los CT que más cortan juntos, el temporal del 27 y 28.01.2026 como grafo, el vecindario de un CT, el camino más corto entre dos CT por las posiciones aguas arriba y el plan de una consulta por fecha.
+4. `stopNeo4j_windows.ps1` (o `stopNeo4j_linux.sh`) para el contenedor y el grafo se queda en el volumen `gridpredic_neo4j_data`: el siguiente arranque no recarga nada. Con `-Borrar` (`--borrar`) quita también el contenedor y el volumen.
+
+El modelo del grafo y las cifras de la carga están en [experimentos/topologia/neo4j/README.md](experimentos/topologia/neo4j/README.md).
 
 ### Airflow
 
