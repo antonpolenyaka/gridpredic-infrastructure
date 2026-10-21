@@ -25,6 +25,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 | [docs/memoria-texto-experimentos.md](docs/memoria-texto-experimentos.md) | Borrador del apartado de resultados de la memoria sobre las pruebas de mejora del modelo del día (método, revisión de literatura, las dieciséis pruebas con su PR-AUC, el arbolado y el riesgo a 48 y 72 h), listo para pegar |
 | [docs/revision-literatura.md](docs/revision-literatura.md) | Revisión de la literatura (modelos de interrupciones por meteorología, 2012 - 2026, con los DOI comprobados), las fuentes públicas que no usamos todavía y las ideas de modelado con respaldo, con las cinco pruebas recomendadas |
 | [docs/investigacion-continua.md](docs/investigacion-continua.md) | Cuaderno de laboratorio: las hipótesis probadas con los datos (literatura, humedad del suelo y duración del viento, datos públicos, dispositivos de los clientes), cómo se probaron y qué se descartó; el código de cada prueba está en `experimentos/` |
+| [docs/licencias.md](docs/licencias.md) | Inventario de licencias de lo que se instalaría en una distribuidora: imágenes, librerías y lo que sirve el cuadro de mando, con la obligación de cada una y el riesgo de MinIO |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | GitHub Flow tal como lo aplicamos, reglas de commits y versionado de datos |
 | [CHANGELOG.md](CHANGELOG.md) | Historial de versiones |
 
@@ -176,7 +177,7 @@ docker compose version
 
 ## 3. Ubicar los datos de Docker fuera del disco del sistema
 
-**Motivo.** Los volúmenes declarados en `compose.yaml` (`sqlserver-data`, `minio-data`, `kafka-data`, `airflow-data`, `hive-db` y las cachés de Ivy `ivy-spark-master` e `ivy-airflow`) no son carpetas del sistema de archivos del anfitrión: viven dentro del **disco virtual de Docker**, junto con las imágenes y la caché de construcción. Ese disco se crea por defecto en la unidad del sistema, con independencia de dónde esté clonado el repositorio. Con `TedisNet_EOSA` restaurada, el disco virtual de Docker entero supera holgadamente los 250 GB, de modo que si la unidad del sistema no dispone de ese margen el arranque se interrumpe a media restauración y hay que empezar de cero.
+**Motivo.** Los volúmenes declarados en `compose.yaml` (`sqlserver-data`, `minio-data`, `kafka-data`, `airflow-data`, `hive-db` y las cachés de Ivy `ivy-spark-master` e `ivy-airflow`) no son carpetas del sistema de archivos del anfitrión: viven dentro del **disco virtual de Docker**, junto con las imágenes y la caché de construcción. Ese disco se crea por defecto en la unidad del sistema, con independencia de dónde esté clonado el repositorio. Con `TedisNet_GridPredic` restaurada, el disco virtual de Docker entero supera holgadamente los 250 GB, de modo que si la unidad del sistema no dispone de ese margen el arranque se interrumpe a media restauración y hay que empezar de cero.
 
 **Windows (Docker Desktop).** Antes del primer arranque:
 
@@ -232,7 +233,7 @@ Crear, si no existe, la carpeta:
 infra/sqlserver/backups/
 ```
 
-Copiar dentro los cuatro backups (las tres copias de Calser y la de TedisNet) con los nombres de fichero que espera `infra/sqlserver/scripts/restore_databases.sql`, que es también el que fija el nombre de cada base al restaurarla. Los nombres reales de las distribuidoras no aparecen en la documentación: en todo lo visible son la Distribuidora 1, la 2 y la 3.
+Copiar dentro los cuatro backups (las tres copias de Calser y la de TedisNet) con los nombres de fichero que espera `infra/sqlserver/scripts/restore_databases.sql`, que es también el que fija el nombre de cada base al restaurarla. Los nombres reales de las distribuidoras no aparecen en la documentación: en todo lo visible son la Distribuidora 1, la 2 y la 3, y las bases se llaman aquí `TedisNet_GridPredic` y `Calser_Distribuidora1`, `Calser_Distribuidora2` y `Calser_Distribuidora3`. Los nombres con los que se restauran están en ese script, en `etl/config/01_bronze/config_bronze_sqlserver.json` y en el conector de `infra/kafka-connect/connectors/`; cuando un comando de esta guía necesita uno, lleva un marcador entre `< >`.
 
 ---
 
@@ -298,7 +299,7 @@ El primer arranque es largo. Como referencia, en un portátil con 4 cores y 12 G
 | Restauración de las cuatro bases en SQL Server | 60 - 70 min |
 | Resolución de dependencias de Spark en `spark-master` | 10 min |
 
-La restauración manda: el backup de `TedisNet_EOSA` son 63,5 GB y se lee desde una ruta del anfitrión montada en la máquina virtual de Docker, a unos 60 MB/s. Por eso el healthcheck de `sqlserver` tiene un `start_period` de 90 minutos (hasta entonces las sondas fallidas no cuentan; después, cinco seguidas marcan el contenedor como `unhealthy`).
+La restauración manda: el backup de `TedisNet_GridPredic` son 63,5 GB y se lee desde una ruta del anfitrión montada en la máquina virtual de Docker, a unos 60 MB/s. Por eso el healthcheck de `sqlserver` tiene un `start_period` de 90 minutos (hasta entonces las sondas fallidas no cuentan; después, cinco seguidas marcan el contenedor como `unhealthy`).
 
 Los `start_period` de los healthchecks están dimensionados para ese primer arranque. Si se reducen, Compose da por fallidos servicios que en realidad están inicializándose y aborta la cadena de dependencias, aunque los contenedores acaben levantando solos.
 
@@ -311,8 +312,8 @@ Durante el arranque se realiza automáticamente:
 - arranque de **PostgreSQL** y **Hive Metastore**;
 - creación de los schemas `l1_bronze`, `l2_silver` y `l3_gold`;
 - restauración de las cuatro bases de datos en **SQL Server**;
-- activación de **CDC** sobre las tablas configuradas de `TedisNet_EOSA`;
-- arranque de **Kafka** y registro del conector `tedisnet-eosa-connector` en **Kafka Connect**;
+- activación de **CDC** sobre las tablas configuradas de `TedisNet_GridPredic`;
+- arranque de **Kafka** y registro del conector de TedisNet (`infra/kafka-connect/connectors/`) en **Kafka Connect**;
 - arranque del clúster **Spark**, **Airflow**, **Trino**, **Kafka UI**, **Spark History Server** y el cuadro de mando (**nginx**).
 
 ---
@@ -416,7 +417,12 @@ docker compose exec airflow cat /opt/airflow/simple_auth_manager_passwords.json.
 
 ## 9. Ejecutar los jobs de streaming
 
-Los dos jobs son procesos continuos, por lo que conviene ejecutarlos en **dos terminales diferentes**. Con copias quietas, como las del prototipo, se usan como una carga acotada: se lanzan, se espera a que dejen de crecer y se paran. Así los usamos en la carga inicial del 08.10.2026, y desde entonces están parados; Kafka, Kafka Connect y Kafka UI solo arrancan con el perfil `cdc` (`docker compose --profile cdc up -d`).
+Los dos jobs son de Structured Streaming y no terminan solos, así que van en **dos terminales diferentes**. Con copias quietas, como las del prototipo, se usan como una carga acotada, y así los usamos en la carga inicial del 08.10.2026; desde entonces están parados. Los pasos son estos:
+
+1. Arrancar Kafka, Kafka Connect y Kafka UI, que solo levantan con el perfil `cdc`: `docker compose --profile cdc up -d`. Al arrancar, Kafka Connect registra el conector de TedisNet y Debezium hace el snapshot de las tablas con CDC.
+2. Lanzar Landing (9.1) en la primera terminal.
+3. Esperar a que Landing confirme su primer micro-batch y solo entonces lanzar Bronze (9.2) en la segunda.
+4. Esperar a que las tablas de `l1_bronze` dejen de crecer y parar los dos jobs con Ctrl+C. Si no hace falta la captura en vivo, `docker compose --profile cdc stop kafka kafka-connect kafka-ui` los para sin tocar el resto del stack.
 
 ### 9.1 Landing
 
@@ -431,8 +437,10 @@ docker compose exec spark-master \
 El job consume los eventos CDC de Kafka y los persiste como Parquet en:
 
 ```text
-s3a://datalake/00_landing/tedisnet-eosa
+s3a://datalake/00_landing/<carpeta_tedisnet>
 ```
+
+La carpeta exacta es `LANDING_PATH` de `job_landing_sqlserver_streaming.py`, y su checkpoint, `CHECKPOINT_PATH`; las dos llevan el nombre de la base.
 
 ### 9.2 Bronze
 
