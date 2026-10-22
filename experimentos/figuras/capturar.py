@@ -7,9 +7,13 @@ regeneran con una orden cuando cambian.
 
     pip install playwright && python -m playwright install chromium
     python experimentos/figuras/capturar.py dashboard _runlogs/figuras [--ancho 1400] [--tema light|dark] [--dias 20260128,20251105]
+    python experimentos/figuras/capturar.py dashboard _runlogs/figuras --memoria
 
-Para la memoria, --ancho 860: los bloques salen de unos 820 px CSS y su texto más pequeño (12 px) se imprime a
-unos 6,6 pt con la figura a 16 cm de ancho; con 1400 px el texto impreso baja de 5 pt.
+Para la memoria, --memoria: una columna de 700 px (los bloques salen de unos 660 px CSS) y el texto más pequeño
+(12 px) se imprime a unos 7,7 pt con la figura a 16 cm de ancho; con 860 px eran 6,6 pt y con 1400 px menos de 5.
+Cada figura mide el texto visible más pequeño que lleva, lo pasa a puntos con el ancho de impresión (--cm, 16 por
+defecto) y avisa si queda por debajo de --pt-min (7 por defecto); el resumen va a tamanos.txt en la carpeta de
+salida. En las figuras no salen los controles de la página (botones, acciones, selectores y el zoom del mapa).
 
 Qué deja (cuando la página tiene los datos):
 - index_<n>_<distribuidora>.png: la sección de cada distribuidora del riesgo de mañana (cifras, mapa, perfil, líneas);
@@ -44,11 +48,13 @@ def serve(folder: str, port: int) -> http.server.ThreadingHTTPServer:
     return server
 
 
-async def capture(base: str, out: str, width: int, theme: str, days: list = None):
+async def capture(base: str, out: str, width: int, theme: str, days: list = None, cm: float = 16.0,
+                  pt_min: float = 7.0):
     from playwright.async_api import async_playwright
 
     os.makedirs(out, exist_ok=True)
     done = []
+    sizes = []  # (figure, css width, smallest text in px, smallest text printed in pt)
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         # Reduced motion: the sections appear without the animation of motion.js, so no block is captured half faded.
@@ -59,14 +65,25 @@ async def capture(base: str, out: str, width: int, theme: str, days: list = None
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
         # The menu is sticky on screen; in a figure of one block it would cover its title.
-        await context.add_init_script("document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = 'nav.menu { position: static !important; }'; document.head.appendChild(s); });")
+        # The controls (buttons, actions, selectors) are hidden only while a figure is taken (html.figura): the
+        # script still uses the selector of negocio.html between figures.
+        await context.add_init_script("document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = 'nav.menu { position: static !important; } html.figura .acciones, html.figura .noimprimir, html.figura .controles, html.figura .boton, html.figura .leaflet-control-zoom { display: none !important; }'; document.head.appendChild(s); });")
 
         async def shot(element, name):
             path = os.path.join(out, name + ".png")
             await element.scroll_into_view_if_needed()
+            await page.evaluate("document.documentElement.classList.add('figura')")
             await page.wait_for_timeout(300)
+            measure = await element.evaluate(SMALLEST_TEXT)
             await element.screenshot(path=path)
+            await page.evaluate("document.documentElement.classList.remove('figura')")
             done.append(path)
+            if measure and measure["px"]:
+                pt = measure["px"] * (cm / 2.54 * 72) / measure["width"]
+                sizes.append((name, measure["width"], measure["px"], pt))
+                if pt < pt_min:
+                    print(f"AVISO: {name}: texto de {measure['px']:g} px en {measure['width']:.0f} px de ancho, "
+                          f"{pt:.1f} pt impreso a {cm:g} cm (mínimo {pt_min:g})", file=sys.stderr)
 
         # The risk of tomorrow: one figure per distributor and the follow-up table (wider, so the table of the
         # lines fits), and the same for every archived or replayed day asked with --dias. Under 1024 px (the
@@ -125,9 +142,38 @@ async def capture(base: str, out: str, width: int, theme: str, days: list = None
         await page.pdf(path=pdf, format="A4", print_background=True, margin={"top": "12mm", "bottom": "12mm", "left": "10mm", "right": "10mm"})
         done.append(pdf)
         await browser.close()
+    if sizes:
+        report = os.path.join(out, "tamanos.txt")
+        with open(report, "w", encoding="utf-8") as f:
+            f.write(f"figura\tancho_css_px\ttexto_min_px\ttexto_min_pt_a_{cm:g}_cm\n")
+            for name, w, px, pt in sizes:
+                f.write(f"{name}\t{w:.0f}\t{px:g}\t{pt:.1f}\n")
+        bajos = [x for x in sizes if x[3] < pt_min]
+        print(f"texto impreso más pequeño: {min(x[3] for x in sizes):.1f} pt; {len(bajos)} figuras por debajo de "
+              f"{pt_min:g} pt (detalle en {report})", file=sys.stderr)
     if errors:
         print("errores de JavaScript:", errors, file=sys.stderr)
     return done
+
+
+# The smallest visible text inside an element, in CSS px, and the width of the element. Only text that is rendered
+# (not hidden, with some size and opacity); the labels of the map tiles and the attribution count as well.
+SMALLEST_TEXT = """el => {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let min = 0;
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (!node.textContent.trim()) continue;
+    const p = node.parentElement;
+    const st = getComputedStyle(p);
+    if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0) continue;
+    const r = p.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    const px = parseFloat(st.fontSize);
+    if (px > 0 && (min === 0 || px < min)) min = px;
+  }
+  return {px: min, width: el.getBoundingClientRect().width};
+}"""
 
 
 def main(argv=None) -> int:
@@ -135,14 +181,20 @@ def main(argv=None) -> int:
     parser.add_argument("dashboard", help="carpeta dashboard/ con data/")
     parser.add_argument("salida", help="carpeta de los PNG")
     parser.add_argument("--ancho", type=int, default=1400)
+    parser.add_argument("--memoria", action="store_true", help="las figuras de la memoria: --ancho 700")
+    parser.add_argument("--cm", type=float, default=16.0, help="ancho de la figura impresa, para medir el texto")
+    parser.add_argument("--pt-min", type=float, default=7.0, help="tamaño mínimo del texto impreso (aviso)")
     parser.add_argument("--tema", default="light", choices=["light", "dark"])
     parser.add_argument("--puerto", type=int, default=8791)
     parser.add_argument("--dias", default="", help="días archivados o repetidos a capturar (YYYYMMDD, separados por comas)")
     args = parser.parse_args(argv)
+    if args.memoria:
+        args.ancho = 700
     server = serve(os.path.abspath(args.dashboard), args.puerto)
     try:
         days = [d.strip() for d in args.dias.split(",") if d.strip()]
-        done = asyncio.run(capture(f"http://127.0.0.1:{args.puerto}", args.salida, args.ancho, args.tema, days))
+        done = asyncio.run(capture(f"http://127.0.0.1:{args.puerto}", args.salida, args.ancho, args.tema, days,
+                                   args.cm, args.pt_min))
     finally:
         server.shutdown()
     for path in done:
