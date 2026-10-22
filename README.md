@@ -329,7 +329,7 @@ Durante el arranque se realiza automáticamente:
 
 | Servicio | Dirección | Uso |
 | --- | --- | --- |
-| SQL Server | `localhost:1433` | Acceso a las cuatro bases de datos |
+| SQL Server | `localhost:14330` (`SQLSERVER_PORT`) | Acceso a las cuatro bases de datos; dentro de Docker, `sqlserver:1433` |
 | Spark UI de un job en marcha | http://localhost:4040 (lanzado desde Airflow) y http://localhost:4041 (lanzado a mano en `spark-master`) | Etapas y tareas del job mientras corre |
 | Spark Master | http://localhost:8080 por defecto; 8090 en el portátil, con `SPARK_MASTER_UI_PORT` | Estado del clúster Spark |
 | Spark Worker | http://localhost:8081 | Estado del worker Spark |
@@ -367,7 +367,7 @@ Durante el arranque se realiza automáticamente:
 Conectar con **SQL Server Management Studio (SSMS)**:
 
 ```text
-Server: localhost,1433
+Server: localhost,14330
 Authentication: SQL Server Authentication
 Login: sa
 Password: <valor de MSSQL_SA_PASSWORD>
