@@ -32,8 +32,10 @@ services:
 
     restart: unless-stopped
 
+    # Published on 14330 and only on 127.0.0.1: 1433 is left to a SQL Server installed on the host (the one of
+    # TedisNet on the laptop). Inside Docker the jobs and the CDC connector keep using sqlserver:1433.
     ports:
-      - "1433:1433"
+      - "127.0.0.1:${SQLSERVER_PORT:-14330}:1433"
 
     environment:
       ACCEPT_EULA: "Y"
