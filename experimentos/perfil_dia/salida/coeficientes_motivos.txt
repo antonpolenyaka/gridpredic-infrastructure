@@ -61,5 +61,5 @@ Modelo con todos los días hasta 2025 (C = 0.003): coeficientes por grupo (escal
   humedad se enseña y calor resta: 0 de 824 días del 10 % de más riesgo; multiplicador enseñado / conjunto: mediana nan, máximo nan
   Motivo primero en los días del 10 %: {'lluvia': 600, 'aviso': 208, 'clima': 9, 'viento': 5, 'historia': 2}
 
-Número de condición de la matriz de correlaciones de las 16 meteorológicas: 28.7
+Número de condición (norma 2) del diseño estandarizado de las 16 meteorológicas, raíz de lambda_max/lambda_min de su matriz de correlaciones: 28.7
 VIF: ext_racha_clima_media=64.0, dia_racha_media_max=38.8, ext_racha_clima_max=35.7, dia_lluvia_max=29.1, dia_viento_media_max=20.2, dia_viento_max=19.1, dia_lluvia_hora_max=18.8, dia_lluvia_media=10.4, dia_temp_max=9.8, dia_racha_max=9.7, dia_temp_media_min=5.9, dia_humedad_media=4.3, ayer_racha_max=2.5, ayer_lluvia_max=2.2, ext_dias_calor=1.5, ext_racha_ku=1.3
