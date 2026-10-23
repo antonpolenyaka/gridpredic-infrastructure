@@ -3,7 +3,9 @@ Atomic writes of the files the dashboard reads (dashboard/data): the content
 goes to a temporary file in the same folder and os.replace puts it over the
 target, so a page (or a copy) never reads a half written file. If the
 replace is refused (a file held open on Windows), the file is written in
-place as before and the refusal is logged. Only the standard library, so
+place as before and the refusal is logged. If the temporary itself cannot be
+written (no space left on the device, for example) the error goes up and the
+file in place is not touched. Only the standard library, so
 the Landing jobs and the ML jobs share it (riesgo_zonas.py adds this folder
 to sys.path).
 """
@@ -32,6 +34,11 @@ def replace_atomically(path: str, write) -> None:
     temporary = temporary_of(path)
     try:
         write(temporary)
+    except BaseException:
+        # the temporary could not be written (no space left, a failing dump): the file in place stays as it was
+        remove_quietly(temporary)
+        raise
+    try:
         os.replace(temporary, path)
     except OSError as error:
         logger.warning("%s not replaced atomically (%s): written in place", path, error)
