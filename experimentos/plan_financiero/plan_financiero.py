@@ -1029,13 +1029,14 @@ def construir_tablas(res, escen):
     filas = [
         bfila("Inmovilizado intangible (marca y aplicaciones)", "intangible"),
         bfila("Inmovilizado material (equipos y mobiliario)", "material"),
-        ["Total activo no corriente"] + [fmt(B[m]["intangible"] + B[m]["material"]) for m in (0, 12, 24, 36)],
-        bfila("Fianza del coworking", "fianza"),
+        bfila("Fianza del coworking (inmovilizado financiero)", "fianza"),
+        ["Total activo no corriente"] + [fmt(B[m]["intangible"] + B[m]["material"] + B[m]["fianza"])
+                                         for m in (0, 12, 24, 36)],
         bfila("Clientes", "clientes"),
         bfila("Hacienda Pública deudora por IVA", "hp_deudora_iva"),
         bfila("Tesorería", "tesoreria"),
-        ["Total activo corriente"] + [fmt(B[m]["fianza"] + B[m]["clientes"] + B[m]["hp_deudora_iva"]
-                                          + B[m]["tesoreria"]) for m in (0, 12, 24, 36)],
+        ["Total activo corriente"] + [fmt(B[m]["clientes"] + B[m]["hp_deudora_iva"] + B[m]["tesoreria"])
+                                      for m in (0, 12, 24, 36)],
         bfila("Total activo", "total_activo"),
         bfila("Capital social", "capital"),
         bfila("Prima de asunción", "prima"),

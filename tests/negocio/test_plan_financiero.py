@@ -165,6 +165,24 @@ def test_ipc_cero_no_cambia_el_plan():
     assert extra[1] == 0 and 0 < extra[2] < extra[3]
 
 
+def test_los_subtotales_del_balance_suman_sus_partidas(calculo):
+    # la fianza del coworking es inmovilizado financiero: va en el activo no corriente, como en el Excel y en la memoria
+    _, _, _, textos = pf.generar(calculo)
+    filas = {}
+    for linea in textos["tablas_v11.txt"].splitlines():
+        celdas = [c.strip() for c in linea[2:].split("|")] if linea.startswith("R ") else []
+        if len(celdas) == 5 and celdas[0] not in filas:
+            filas[celdas[0]] = [int(c.replace(".", "")) for c in celdas[1:]
+                                if c.replace(".", "").lstrip("-").isdigit()]
+    nc = [filas["Inmovilizado intangible (marca y aplicaciones)"], filas["Inmovilizado material (equipos y mobiliario)"],
+          filas["Fianza del coworking (inmovilizado financiero)"]]
+    c = [filas["Clientes"], filas["Hacienda Pública deudora por IVA"], filas["Tesorería"]]
+    # las cifras salen redondeadas al euro: los subtotales pueden diferir de la suma de lo que se ve en uno
+    for partidas, total in ((nc, "Total activo no corriente"), (c, "Total activo corriente")):
+        assert all(abs(a - b) <= 1 for a, b in zip((sum(x) for x in zip(*partidas)), filas[total]))
+        assert len(filas[total]) == 4
+
+
 def test_analisis_cuadran_con_la_cuenta(calculo):
     r = calculo["r11"]
     for a in (1, 2, 3):
