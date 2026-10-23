@@ -4,7 +4,7 @@ Este documento explica dónde está cada cosa en `gridpredic-infrastructure`, po
 
 ## 1. De dónde venimos
 
-En junio de 2026 creamos el repositorio [GridPredict_TFM_UPC](https://github.com/antonpolenyaka/GridPredict_TFM_UPC) con la plantilla CCDS tal cual (`ccds`), con la primera versión de la dataset card y la model card y un primer ciclo de GitHub Flow. En aquel momento el proyecto se planteaba como un paquete Python clásico de ciencia de datos: `data/raw` con ficheros, un módulo con `dataset.py`, `features.py` y `modeling/`, y un `Makefile`.
+En junio de 2026 creamos un primer repositorio privado (GridPredict_TFM_UPC) con la plantilla CCDS tal cual (`ccds`), con la primera versión de la dataset card y la model card y un primer ciclo de GitHub Flow. En aquel momento el proyecto se planteaba como un paquete Python clásico de ciencia de datos: `data/raw` con ficheros, un módulo con `dataset.py`, `features.py` y `modeling/`, y un `Makefile`.
 
 Durante el verano el proyecto cambió de forma. Los datos reales son cuatro bases de datos de SQL Server de 66 GB (61 GiB) en backups (una de ellas de más de 200 GB restaurada; su tabla grande sola son 220 GB), y para trabajar con ellos hace falta una plataforma: SQL Server, Kafka con Debezium, Spark con Delta Lake, MinIO, Hive Metastore, Trino y Airflow, todo en Docker Compose. El código ya no es un paquete que se importa, sino jobs de Spark que se lanzan con `spark-submit` desde DAGs de Airflow. Por eso el trabajo se movió a este repositorio, que Josep creó el 11.09.2026, y la plantilla CCDS se adaptó en lugar de copiarse. La idea de la plantilla se mantiene: cualquiera que llegue sabe dónde buscar los datos, el código, los tests y la documentación, y el pipeline se puede reproducir desde los datos crudos con lo que hay en el repositorio.
 
@@ -21,6 +21,8 @@ gridpredic-infrastructure/
 ├── CONTRIBUTING.md              # Cómo trabajamos con Git y GitHub Flow
 ├── CHANGELOG.md                 # Historial de versiones
 ├── CITATION.cff                 # Cómo citar el repositorio
+├── LICENSE                      # Licencia del código (lo que instalaría una distribuidora, en docs/licencias.md)
+├── startGridPredic_*.ps1/.sh    # Arrancar y parar el stack (Windows y Linux); startNeo4j_* y stopNeo4j_*, el grafo de la defensa aparte
 ├── .github/                     # Plantillas de PR e issues, CODEOWNERS, la CI (ci.yml) y la publicación de gridpredic.com (pages.yml, con la comprobación de que el dominio sirve el commit)
 ├── infra/                       # Un directorio por servicio: Dockerfile, conf, healthcheck, post_start
 │   ├── airflow/  hive/  kafka/  kafka-connect/  minio/  postgres/  spark/  trino/
@@ -35,11 +37,12 @@ gridpredic-infrastructure/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
 ├── dashboard/                   # Cuadro de mando estático (en el portátil, puerto 8086, y como demo pública en gridpredic.com/demo/ con demo.js): index.html (riesgo de mañana, Leaflet y OpenStreetMap), dias.html (días archivados, desde data/indice.json), historial.html y negocio.html (lo que habría dicho en 2022 - 2026); gridpredic.css es el sistema de diseño común, motion.js el movimiento (GSAP y ScrollTrigger) y vendor/ lleva Leaflet, GSAP y la tipografía (IBM Plex Sans, OFL); data/ recibe los JSON de los jobs
 ├── web/                         # La página pública de GridPredic.com (index.html, gridpredic-web.css, web.js): estática, con la escena de la red ligada al scroll (GSAP y ScrollTrigger en vendor/) y dos capturas del cuadro de mando en img/; montar_sitio.py monta el sitio que publica GitHub Pages (la página en la raíz, dashboard/ en /demo/ con la copia congelada de datos de web/demo/data, que renueva congelar_demo.ps1)
-├── docs/                        # Documentación: cards, capas Silver y Gold, modelos, operación, caso de negocio, el diagrama de la arquitectura, este documento
+├── docs/                        # Documentación: cards, capas Silver y Gold, modelos, operación, caso de negocio, cifras, licencias, el diagrama de la arquitectura, este documento
 ├── experimentos/                # El código de cada prueba del cuaderno de laboratorio (docs/investigacion-continua.md), fuera de Spark, y figuras/capturar.py, que saca las figuras de la memoria del cuadro de mando
-│   └── arbolado/  aves/  avisos_antelacion/  consultas_trino/  era5/  evaluacion/  fenologia/  figuras/  fragilidad/  perfil_dia/  suelo_humedad/  umbral_estacion/
+│   ├── arbolado/  aves/  avisos_antelacion/  causas_texto/  consultas_trino/  despliegue/  era5/  evaluacion/  federado/  fenologia/  figuras/
+│   └── formatos/  fragilidad/  perfil_dia/  plan_financiero/  prevision_tarde/  rayos/  semantica/  suelo_humedad/  topologia/  umbral_estacion/  validacion/
 ├── notebooks/                   # Exploración (convención de nombres en su README)
-├── tests/                       # Pruebas locales de los jobs, sin Docker (01_bronze ... 04_ml)
+├── tests/                       # Pruebas locales de los jobs, sin Docker (01_bronze ... 04_ml y negocio, el plan financiero)
 └── _runlogs/                    # Scripts de pruebas manuales y de la operación en el portátil; los logs que generan se ignoran
 ```
 
@@ -78,7 +81,7 @@ La regla de CCDS que más nos importa es que cualquiera pueda reproducir el resu
 5. El resultado se consulta desde Trino (`lakehouse.l2_silver`, `lakehouse.l3_gold`) y la calidad de cada ejecución en `dq_metrics` de cada capa, con el `run_id` de Airflow. Cada dataset de entrenamiento queda registrado en `l3_gold.dataset_versions` con sus parámetros y las versiones Delta de sus tablas de entrada.
 6. Los modelos se entrenan desde `spark-master` con los jobs de `etl/jobs/04_ml` ([ml-training.md](ml-training.md)) y el riesgo de mañana lo calcula cada tarde `dag_riesgo_manana` ([operacion-diaria.md](operacion-diaria.md)).
 
-Sin Docker, las reglas de Silver y de Gold se pueden reproducir en cualquier máquina con `pip install -r requirements.txt` y `python -m pytest tests -q`. La integración continua ejecuta los mismos en cada pull request, salvo los de `tests/01_bronze`.
+Sin Docker, las reglas de Silver y de Gold se pueden reproducir en cualquier máquina con `pip install -r requirements.txt` y `python -m pytest tests -q`. La integración continua ejecuta los mismos en cada pull request, en seis trabajos (ruff, `compose.yaml`, Landing y Bronze con Silver, Gold, el entrenamiento y el plan financiero).
 
 ## 5. Lo que queda por añadir
 

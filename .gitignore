@@ -30,6 +30,9 @@ derby.log
 _runlogs/*.csv
 _runlogs/*/
 
+# Estudios, memoria y material de la defensa (solo en el portatil; la carpeta lleva su propio .gitignore)
+_estudios/
+
 # Correspondencias con los nombres reales de las distribuidoras (solo en el portatil)
 experimentos/plan_financiero/privado/
 _runlogs/anonimizar_nombres.json
