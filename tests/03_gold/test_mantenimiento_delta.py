@@ -120,7 +120,7 @@ class SessionDouble:
 
 def run_main(monkeypatch, ran_steps, files_error=False):
     monkeypatch.setattr(job, "SparkSession", SessionDouble)
-    monkeypatch.setattr(job, "delta_tables", lambda spark, database: ["l1_bronze.una_tabla"])
+    monkeypatch.setattr(job, "delta_tables", lambda spark, database, errors=None: ["l1_bronze.una_tabla"])
     if files_error:
         def broken(spark, name):
             raise RuntimeError("DESCRIBE DETAIL failed")
@@ -142,3 +142,47 @@ def test_the_run_fails_when_a_table_cannot_be_read(monkeypatch):
 
 def test_the_run_is_clean_when_every_step_worked(monkeypatch):
     assert run_main(monkeypatch, lambda steps: steps) == 0
+
+
+class CatalogDouble:
+    def __init__(self, error):
+        self.error = error
+
+    def databaseExists(self, _database):
+        return True
+
+    def listTables(self, _database):
+        class Table:
+            name = "una_tabla"
+            tableType = "MANAGED"
+        return [Table()]
+
+
+class DescribeDouble:
+    """spark.sql('DESCRIBE DETAIL ...') that fails with the given error."""
+
+    def __init__(self, error):
+        self.catalog = CatalogDouble(error)
+        self.error = error
+
+    def sql(self, _statement):
+        raise RuntimeError(self.error)
+
+
+def test_a_table_that_cannot_be_described_counts_as_a_failure():
+    errors = []
+    assert job.delta_tables(DescribeDouble("MinIO unavailable while describing Delta table"), "l1_bronze", errors) == []
+    assert errors == ["l1_bronze.una_tabla"]
+
+
+def test_a_table_that_is_not_delta_is_discarded_without_failure():
+    errors = []
+    assert job.delta_tables(DescribeDouble("`x` is not a Delta table."), "l1_bronze", errors) == []
+    assert errors == []
+
+
+def test_the_run_fails_when_discovery_fails(monkeypatch):
+    monkeypatch.setattr(job, "SparkSession", SessionDouble)
+    monkeypatch.setattr(SessionDouble, "catalog", CatalogDouble("x"), raising=False)
+    monkeypatch.setattr(SessionDouble, "sql", lambda self, statement: (_ for _ in ()).throw(RuntimeError("MinIO unavailable")), raising=False)
+    assert job.main([]) == 1

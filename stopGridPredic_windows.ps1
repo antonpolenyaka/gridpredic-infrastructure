@@ -49,7 +49,9 @@ try {
 } catch {
     # Si el maestro de Spark ni siquiera esta arrancado, no hay aplicaciones que proteger.
     $maestro = docker compose -f $Compose ps --status running -q spark-master 2>$null
-    if ($maestro) { $motivos += "no he podido consultar Spark en el puerto $puertoSpark, asi que no se si hay aplicaciones en marcha" }
+    if ($LASTEXITCODE -ne 0) {
+        $motivos += "no he podido consultar Spark ni el estado del contenedor spark-master (codigo $LASTEXITCODE), asi que no se si hay aplicaciones en marcha"
+    } elseif ($maestro) { $motivos += "no he podido consultar Spark en el puerto $puertoSpark, asi que no se si hay aplicaciones en marcha" }
 }
 # Franja de la tarde
 $ahora = Get-Date
