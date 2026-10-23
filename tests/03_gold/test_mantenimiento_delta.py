@@ -21,6 +21,7 @@ import ast  # noqa: E402
 import json  # noqa: E402
 import re  # noqa: E402
 
+import job_mantenimiento_delta as job  # noqa: E402
 from job_mantenimiento_delta import actions, late_for_big, parse_args, run_steps  # noqa: E402
 
 
@@ -96,3 +97,48 @@ def test_flags():
     assert actions("l3_gold.dataset_train", parse_args(["--sin-vacuum"])) == []
     two = parse_args(["--solo-vacuum", "l3_gold.dataset_train, l3_gold.ml_predicciones"])
     assert actions("l3_gold.ml_predicciones", two) == ["vacuum"]
+
+
+class SessionDouble:
+    """Just enough of SparkSession for main(): builder chain, stop()."""
+
+    class _Builder:
+        def appName(self, _name):
+            return self
+
+        def enableHiveSupport(self):
+            return self
+
+        def getOrCreate(self):
+            return SessionDouble()
+
+    builder = _Builder()
+
+    def stop(self):
+        pass
+
+
+def run_main(monkeypatch, ran_steps, files_error=False):
+    monkeypatch.setattr(job, "SparkSession", SessionDouble)
+    monkeypatch.setattr(job, "delta_tables", lambda spark, database: ["l1_bronze.una_tabla"])
+    if files_error:
+        def broken(spark, name):
+            raise RuntimeError("DESCRIBE DETAIL failed")
+        monkeypatch.setattr(job, "files_of", broken)
+    else:
+        monkeypatch.setattr(job, "files_of", lambda spark, name: (3, 1000))
+    monkeypatch.setattr(job, "run_steps", lambda spark, name, steps, hours: ran_steps(steps))
+    return job.main([])
+
+
+def test_the_run_fails_when_a_step_fails(monkeypatch):
+    assert run_main(monkeypatch, lambda steps: []) == 1
+    assert run_main(monkeypatch, lambda steps: steps[:1]) == 1
+
+
+def test_the_run_fails_when_a_table_cannot_be_read(monkeypatch):
+    assert run_main(monkeypatch, lambda steps: steps, files_error=True) == 1
+
+
+def test_the_run_is_clean_when_every_step_worked(monkeypatch):
+    assert run_main(monkeypatch, lambda steps: steps) == 0
