@@ -1,0 +1,10 @@
+5022 días de red de 2022-01-01 a 2026-08-02, 12.9% en alerta (Distribuidora 1 12.3%, Distribuidora 2 14.6%, Distribuidora 3 11.7%)
+Parte de días en alerta por mes del calendario (tres redes, 2022 - 2026): 01 18%, 02 14%, 03 23%, 04 17%, 05 9%, 06 9%, 07 0%, 08 1%, 09 11%, 10 22%, 11 17%, 12 12%
+Ventanas de 90 días cada 10 días desde 2024-01-01, banda binomial del 99%: 231 ventanas (77 por red); parte en alerta de 1% a 34%; fuera de la banda contra la parte fija (12.5%): 33% de las ventanas; contra los mismos meses de los otros años: 14%
+  Distribuidora 1: fija 14%, mismos meses 9% (77 ventanas)
+  Distribuidora 2: fija 42%, mismos meses 17% (77 ventanas)
+  Distribuidora 3: fija 43%, mismos meses 17% (77 ventanas)
+Ventanas de 60 días cada 10 días desde 2024-01-01, banda binomial del 95%: 249 ventanas (83 por red); parte en alerta de 0% a 42%; fuera de la banda contra la parte fija (12.5%): 42% de las ventanas; contra los mismos meses de los otros años: 23%
+  Distribuidora 1: fija 31%, mismos meses 25% (83 ventanas)
+  Distribuidora 2: fija 48%, mismos meses 24% (83 ventanas)
+  Distribuidora 3: fija 46%, mismos meses 20% (83 ventanas)
