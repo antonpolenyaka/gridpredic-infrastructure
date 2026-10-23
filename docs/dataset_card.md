@@ -63,8 +63,8 @@ Cifras de volumen que condicionan el diseño del pipeline:
 ### Dataset Sources [optional]
 
 - **Repository:** https://github.com/antonpolenyaka/gridpredic-infrastructure (código de ingesta y transformación; los datos no están en el repositorio)
-- **Paper [optional]:** memoria del TFM GridPredic (UPC School, en redacción; se entrega el 26.10.2026)
-- **Demo [optional]:** no aplica
+- **Paper [optional]:** memoria del TFM GridPredic (UPC School), entregada el 26.10.2026 con la versión 0.16.0 de este repositorio; el capítulo 4 describe las fuentes y las zonas del lago
+- **Demo [optional]:** https://gridpredic.com/demo/ enseña lo que sale del dataset (el riesgo por red, por zona y por CT de un día repetido) con las tres redes como Distribuidora 1, 2 y 3; los datos del dataset no se distribuyen
 
 ## Uses
 

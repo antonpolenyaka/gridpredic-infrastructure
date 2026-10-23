@@ -52,7 +52,7 @@ En resumen: en producción está el riesgo del día siguiente por distribuidora 
 ### Model Sources [optional]
 
 - **Repository:** https://github.com/antonpolenyaka/gridpredic-infrastructure
-- **Paper [optional]:** memoria del TFM GridPredic (UPC School), en redacción
+- **Paper [optional]:** memoria del TFM GridPredic (UPC School), entregada el 26.10.2026 con la versión 0.16.0 de este repositorio; el capítulo 5 describe el modelo y el anexo A, sus variables
 - **Demo [optional]:** https://gridpredic.com/demo/, el cuadro de mando con una copia congelada de sus datos (`web/demo/data`, las tres redes como Distribuidora 1, 2 y 3); la copia se renueva con `web/congelar_demo.ps1`
 
 ## Uses
