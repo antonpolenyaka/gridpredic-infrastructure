@@ -58,12 +58,12 @@ H Partida | Momento 0 | Momento 1 | Momento 2 | Momento 3
 W 6 | 2 | 2 | 2 | 2
 R Inmovilizado intangible (marca y aplicaciones) | 5.500 | 4.200 | 3.808 | 2.408
 R Inmovilizado material (equipos y mobiliario) | 7.500 | 5.850 | 6.150 | 5.900
-R Total activo no corriente | 13.000 | 10.050 | 9.958 | 8.308
-R Fianza del coworking | 1.000 | 1.000 | 1.000 | 1.000
+R Fianza del coworking (inmovilizado financiero) | 1.000 | 1.000 | 1.000 | 1.000
+R Total activo no corriente | 14.000 | 11.050 | 10.958 | 9.308
 R Clientes | 0 | 0 | 35.877 | 59.653
 R Hacienda Pública deudora por IVA | 0 | 2.594 | 0 | 0
 R Tesorería | 44.500 | 317.102 | 326.723 | 439.795
-R Total activo corriente | 45.500 | 320.696 | 363.599 | 500.448
+R Total activo corriente | 44.500 | 319.696 | 362.599 | 499.448
 R Total activo | 58.500 | 330.746 | 373.557 | 508.757
 R Capital social | 3.000 | 4.000 | 4.000 | 4.000
 R Prima de asunción | 37.000 | 286.000 | 286.000 | 286.000
