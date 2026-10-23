@@ -9,7 +9,7 @@ Colinealidad de la variante operativa del modelo del día y lo que hace con los 
 2. Con el modelo ajustado con todos los días hasta el 31.12.2025, la suma de los términos de cada grupo de GROUPS
    (los grupos de job_ml_riesgo_manana.py) en los días que el modelo pone en el 10 % de más riesgo: cuántas veces el
    multiplicador que se enseña de "viento" o "clima" queda inflado porque el otro grupo del mismo factor resta.
-3. Número de condición y VIF de las 16 variables meteorológicas en la escala del modelo.
+3. Número de condición (del diseño estandarizado, no de la matriz de correlaciones: es la raíz del de ella) y VIF de las 16 variables meteorológicas en la escala del modelo.
 
 Uso: python coeficientes_motivos.py <dia.csv.gz> <carpeta de salida>
 
@@ -136,7 +136,7 @@ Z = (slog(X) - slog(X).mean()) / slog(X).std(ddof=0)
 R = np.corrcoef(Z.values, rowvar=False)
 lam = np.linalg.eigvalsh(R)
 vif = np.diag(np.linalg.inv(R))
-print(f"\nNúmero de condición de la matriz de correlaciones de las 16 meteorológicas: {math.sqrt(lam.max() / lam.min()):.1f}")
+print(f"\nNúmero de condición (norma 2) del diseño estandarizado de las 16 meteorológicas, raíz de lambda_max/lambda_min de su matriz de correlaciones: {math.sqrt(lam.max() / lam.min()):.1f}")
 print("VIF:", ", ".join(f"{f}={v:.1f}" for f, v in sorted(zip(METEO, vif), key=lambda p: -p[1])))
 coefs.to_csv(os.path.join(OUT, "coeficientes_anios.csv"), index=False)
 stab.round(4).to_csv(os.path.join(OUT, "coeficientes_estabilidad_aprox.csv"))
