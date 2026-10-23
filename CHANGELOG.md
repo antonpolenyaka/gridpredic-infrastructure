@@ -82,6 +82,7 @@ Lo que sale de las tres pasadas de investigación del 17.10.2026: la calibració
 
 ### Corregido
 
+- `experimentos/plan_financiero/plan_financiero.py`: la fianza del coworking pasa al activo no corriente en las tablas de texto (14.000 € en el momento 0 y 44.500 € de activo corriente), como ya estaba en el Excel y en la memoria; antes el texto la sumaba al corriente (13.000 y 45.500) y las dos salidas no se parecían. Prueba nueva de que los subtotales del balance suman sus partidas. `docs/cifras.md` apunta el desfase de la ventana n-4 a n-2 del incentivo en el valor para el cliente.
 - La orientación de pasado mañana (`two_day_outlook` de `job_ml_riesgo_manana.py`) cogía las variables `hace2_*` del propio día en vez de las de dos días antes del objetivo, así que el modelo de D + 2 puntuaba con el tiempo de mañana como si fuera el de hoy. Ahora `hoy_racha_max_kmh` sale en `riesgo_dia_siguiente` para verlo.
 - El modelo por zona de la tarde (`zone_outputs`) seguía usando el bloque de historia cuando el modelo del día se entrenaba sin él (copia de Calser desfasada); ahora los dos van igual, y `coeficientes.csv` lo enseña.
 - Las notas del informe de la tarde fallaban en una distribuidora sin incidencias (`calser_hasta` vacío).
