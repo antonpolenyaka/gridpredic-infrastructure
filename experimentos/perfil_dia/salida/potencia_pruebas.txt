@@ -46,6 +46,10 @@ Diferencia mínima detectable (80 % de potencia, 5 % de dos colas) por años y b
   2024-2026, bloques de 1 día(s), 84 días con avería: mediana 0.018, de 0.010 a 0.037 (de 9 variantes)
   2024-2026, bloques de 7 día(s), 84 días con avería: mediana 0.015, de 0.010 a 0.034 (de 9 variantes)
 
+Anchura de los intervalos al pasar de 58 a 84 días con avería (2024 - 2026 frente a 2024 - 2025): cociente esperado por la raíz del número de días con avería 0.83; medido, mediana entre las variantes
+  bloques de 1 día(s): 0.78 (de 0.48 a 1.24, 9 variantes)
+  bloques de 7 día(s): 0.89 (de 0.61 a 1.17, 9 variantes)
+
 Diferencias medidas (por fechas) frente a la operativa, con su intervalo del 95 %:
   2024-2025 sin_estacion: -0.002 [-0.022, +0.000]
   2024-2025 estacion_indicadores: -0.009 [-0.028, +0.000]

@@ -89,6 +89,14 @@ for (anios, block, averias), s in res:
     lines.append(f"  {anios}, bloques de {block} día(s), {averias} días con avería: mediana {s.median():.3f}, "
                  f"de {s.min():.3f} a {s.max():.3f} (de {len(s)} variantes)")
 lines.append("")
+lines.append("Anchura de los intervalos al pasar de 58 a 84 días con avería (2024 - 2026 frente a 2024 - 2025): cociente "
+             f"esperado por la raíz del número de días con avería {(58 / 84) ** 0.5:.2f}; medido, mediana entre las variantes")
+anchos = table.dropna(subset=["dif"]).assign(ancho=lambda d: d["dif_p97_5"] - d["dif_p2_5"])
+for block, g in anchos.groupby("bloque_dias"):
+    piv = g.pivot(index="variante", columns="anios", values="ancho")
+    coc = piv["2024-2026"] / piv["2024-2025"]
+    lines.append(f"  bloques de {block} día(s): {coc.median():.2f} (de {coc.min():.2f} a {coc.max():.2f}, {len(coc)} variantes)")
+lines.append("")
 lines.append("Diferencias medidas (por fechas) frente a la operativa, con su intervalo del 95 %:")
 for _, r in table[(table["bloque_dias"] == 1) & table["dif"].notna()].iterrows():
     lines.append(f"  {r['anios']} {r['variante']}: {r['dif']:+.3f} [{r['dif_p2_5']:+.3f}, {r['dif_p97_5']:+.3f}]")
