@@ -1,7 +1,9 @@
 """
 The administration ports of the stack are published on 127.0.0.1 only, so
 nobody on the same network (the one of the university during the defence)
-reaches the consoles of MinIO, Spark, Trino or Kafka UI. The test reads
+reaches the consoles of MinIO, Spark, Trino or Kafka UI. Airflow (8084, 4040)
+and the dashboard (8086) are not in the list: they are published on all
+interfaces on purpose, as docs/operacion-diaria.md declares. The test reads
 compose.yaml, without Docker; `docker compose config` gives the same
 host_ip on the laptop. It also checks that Trino keeps its memory cap.
 
