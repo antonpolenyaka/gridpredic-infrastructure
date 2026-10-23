@@ -1,0 +1,71 @@
+    anios  bloque_dias                variante  dias  dias_con_averia  pr_auc  pr_p2_5  pr_p97_5     dif  dif_p2_5  dif_p97_5  gana  minima_detectable
+2024-2025            1               operativa  2133               58  0.1877   0.1081    0.3085     NaN       NaN        NaN   NaN                NaN
+2024-2025            1            sin_estacion  2133               58  0.1804   0.1053    0.3003 -0.0020   -0.0225     0.0000 0.030             0.0161
+2024-2025            1    estacion_indicadores  2133               58  0.1761   0.1023    0.2912 -0.0091   -0.0279     0.0003 0.052             0.0201
+2024-2025            1      avisos_indicadores  2133               58  0.1638   0.0963    0.2713 -0.0224   -0.0435    -0.0012 0.018             0.0302
+2024-2025            1    operativa_fragilidad  2133               58  0.1648   0.0960    0.2771 -0.0179   -0.0468     0.0093 0.108             0.0401
+2024-2025            1     operativa_extension  2133               58  0.1785   0.1009    0.3021 -0.0067   -0.0311     0.0117 0.236             0.0306
+2024-2025            1 operativa_interacciones  2133               58  0.1865   0.1131    0.3011 -0.0019   -0.0159     0.0165 0.392             0.0232
+2024-2025            1       operativa_regimen  2133               58  0.1793   0.1014    0.2970 -0.0077   -0.0259     0.0040 0.094             0.0213
+2024-2025            1           operativa_nao  2133               58  0.1821   0.1062    0.3035 -0.0015   -0.0193     0.0030 0.306             0.0159
+2024-2025            1 operativa_pendiente_red  2133               58  0.1794   0.1056    0.2955 -0.0053   -0.0257     0.0023 0.158             0.0200
+2024-2025            7               operativa  2133               58  0.1877   0.0964    0.2999     NaN       NaN        NaN   NaN                NaN
+2024-2025            7            sin_estacion  2133               58  0.1804   0.0945    0.2953 -0.0021   -0.0184     0.0000 0.034             0.0132
+2024-2025            7    estacion_indicadores  2133               58  0.1761   0.0932    0.2921 -0.0095   -0.0244     0.0005 0.062             0.0178
+2024-2025            7      avisos_indicadores  2133               58  0.1638   0.0875    0.2651 -0.0225   -0.0416    -0.0013 0.020             0.0287
+2024-2025            7    operativa_fragilidad  2133               58  0.1648   0.0903    0.2773 -0.0162   -0.0428     0.0088 0.132             0.0368
+2024-2025            7     operativa_extension  2133               58  0.1785   0.0896    0.2940 -0.0088   -0.0350     0.0155 0.196             0.0360
+2024-2025            7 operativa_interacciones  2133               58  0.1865   0.0971    0.3005 -0.0012   -0.0126     0.0111 0.426             0.0170
+2024-2025            7       operativa_regimen  2133               58  0.1793   0.0882    0.2899 -0.0081   -0.0251     0.0042 0.104             0.0209
+2024-2025            7           operativa_nao  2133               58  0.1821   0.0952    0.2957 -0.0015   -0.0162     0.0035 0.316             0.0141
+2024-2025            7 operativa_pendiente_red  2133               58  0.1794   0.0966    0.2926 -0.0043   -0.0200     0.0018 0.118             0.0156
+2024-2026            1               operativa  2766               84  0.1560   0.0944    0.2625     NaN       NaN        NaN   NaN                NaN
+2024-2026            1            sin_estacion  2766               84  0.1523   0.0929    0.2592 -0.0022   -0.0124     0.0011 0.120             0.0096
+2024-2026            1    estacion_indicadores  2766               84  0.1504   0.0920    0.2574 -0.0044   -0.0165    -0.0003 0.020             0.0116
+2024-2026            1      avisos_indicadores  2766               84  0.1446   0.0896    0.2320 -0.0123   -0.0451     0.0074 0.124             0.0375
+2024-2026            1    operativa_fragilidad  2766               84  0.1585   0.0903    0.2819  0.0030   -0.0170     0.0311 0.620             0.0343
+2024-2026            1     operativa_extension  2766               84  0.1469   0.0926    0.2557 -0.0078   -0.0286     0.0046 0.108             0.0237
+2024-2026            1 operativa_interacciones  2766               84  0.1478   0.0900    0.2550 -0.0071   -0.0230     0.0017 0.056             0.0176
+2024-2026            1       operativa_regimen  2766               84  0.1434   0.0863    0.2549 -0.0119   -0.0301     0.0013 0.038             0.0225
+2024-2026            1           operativa_nao  2766               84  0.1525   0.0922    0.2659 -0.0028   -0.0153     0.0077 0.302             0.0164
+2024-2026            1 operativa_pendiente_red  2766               84  0.1530   0.0943    0.2581 -0.0022   -0.0114     0.0020 0.188             0.0096
+2024-2026            7               operativa  2766               84  0.1560   0.0855    0.2548     NaN       NaN        NaN   NaN                NaN
+2024-2026            7            sin_estacion  2766               84  0.1523   0.0851    0.2500 -0.0022   -0.0136     0.0009 0.096             0.0104
+2024-2026            7    estacion_indicadores  2766               84  0.1504   0.0851    0.2460 -0.0043   -0.0159     0.0001 0.032             0.0114
+2024-2026            7      avisos_indicadores  2766               84  0.1446   0.0854    0.2282 -0.0112   -0.0399     0.0071 0.160             0.0335
+2024-2026            7    operativa_fragilidad  2766               84  0.1585   0.0863    0.2615  0.0017   -0.0201     0.0258 0.572             0.0328
+2024-2026            7     operativa_extension  2766               84  0.1469   0.0829    0.2425 -0.0085   -0.0251     0.0054 0.140             0.0218
+2024-2026            7 operativa_interacciones  2766               84  0.1478   0.0837    0.2394 -0.0068   -0.0204     0.0008 0.048             0.0151
+2024-2026            7       operativa_regimen  2766               84  0.1434   0.0783    0.2357 -0.0118   -0.0285     0.0001 0.028             0.0204
+2024-2026            7           operativa_nao  2766               84  0.1525   0.0844    0.2487 -0.0029   -0.0155     0.0053 0.284             0.0149
+2024-2026            7 operativa_pendiente_red  2766               84  0.1530   0.0860    0.2483 -0.0020   -0.0128     0.0021 0.246             0.0106
+
+Diferencia mínima detectable (80 % de potencia, 5 % de dos colas) por años y bloque: mediana entre las variantes, mínimo y máximo
+  2024-2025, bloques de 1 día(s), 58 días con avería: mediana 0.021, de 0.016 a 0.040 (de 9 variantes)
+  2024-2025, bloques de 7 día(s), 58 días con avería: mediana 0.018, de 0.013 a 0.037 (de 9 variantes)
+  2024-2026, bloques de 1 día(s), 84 días con avería: mediana 0.018, de 0.010 a 0.037 (de 9 variantes)
+  2024-2026, bloques de 7 día(s), 84 días con avería: mediana 0.015, de 0.010 a 0.034 (de 9 variantes)
+
+Anchura de los intervalos al pasar de 58 a 84 días con avería (2024 - 2026 frente a 2024 - 2025): cociente esperado por la raíz del número de días con avería 0.83; medido, mediana entre las variantes
+  bloques de 1 día(s): 0.78 (de 0.48 a 1.24, 9 variantes)
+  bloques de 7 día(s): 0.89 (de 0.61 a 1.17, 9 variantes)
+
+Diferencias medidas (por fechas) frente a la operativa, con su intervalo del 95 %:
+  2024-2025 sin_estacion: -0.002 [-0.022, +0.000]
+  2024-2025 estacion_indicadores: -0.009 [-0.028, +0.000]
+  2024-2025 avisos_indicadores: -0.022 [-0.043, -0.001]
+  2024-2025 operativa_fragilidad: -0.018 [-0.047, +0.009]
+  2024-2025 operativa_extension: -0.007 [-0.031, +0.012]
+  2024-2025 operativa_interacciones: -0.002 [-0.016, +0.017]
+  2024-2025 operativa_regimen: -0.008 [-0.026, +0.004]
+  2024-2025 operativa_nao: -0.001 [-0.019, +0.003]
+  2024-2025 operativa_pendiente_red: -0.005 [-0.026, +0.002]
+  2024-2026 sin_estacion: -0.002 [-0.012, +0.001]
+  2024-2026 estacion_indicadores: -0.004 [-0.016, -0.000]
+  2024-2026 avisos_indicadores: -0.012 [-0.045, +0.007]
+  2024-2026 operativa_fragilidad: +0.003 [-0.017, +0.031]
+  2024-2026 operativa_extension: -0.008 [-0.029, +0.005]
+  2024-2026 operativa_interacciones: -0.007 [-0.023, +0.002]
+  2024-2026 operativa_regimen: -0.012 [-0.030, +0.001]
+  2024-2026 operativa_nao: -0.003 [-0.015, +0.008]
+  2024-2026 operativa_pendiente_red: -0.002 [-0.011, +0.002]
