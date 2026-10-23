@@ -1,0 +1,65 @@
+35 variables; 8880 días de red, 276 con avería
+C elegida por año: {2022: 0.003, 2023: 0.003, 2024: 0.003, 2025: 0.003, 2026: 0.003}
+                        media  minimo  maximo  signo_estable
+variable                                                    
+dist_1366              -0.095  -0.113  -0.073           True
+dist_2                  0.049   0.041   0.058           True
+dist_3                  0.045   0.032   0.055           True
+cal_dia_anio_cos       -0.023  -0.037  -0.007           True
+cal_dia_anio_sin        0.030   0.018   0.043           True
+cal_dia_semana_cos      0.001  -0.010   0.007          False
+cal_dia_semana_sin      0.014   0.002   0.038           True
+cal_festivo             0.001  -0.003   0.004          False
+cal_fin_de_semana      -0.011  -0.027   0.006          False
+estacion                0.013  -0.005   0.036          False
+hist_incidencias_7d     0.010  -0.002   0.028          False
+hist_incidencias_30d    0.057   0.042   0.079           True
+hist_incidencias_365d   0.061   0.036   0.080           True
+hist_dias_desde_ultima -0.023  -0.031  -0.014           True
+aviso_max_nivel         0.025   0.022   0.027           True
+aviso_viento_nivel      0.053   0.030   0.066           True
+aviso_lluvia_nivel      0.069   0.051   0.091           True
+aviso_tormenta_nivel    0.044   0.029   0.075           True
+aviso_nieve_nivel      -0.021  -0.039  -0.004           True
+dia_racha_max           0.055   0.048   0.067           True
+dia_racha_media_max     0.019   0.013   0.029           True
+dia_viento_max          0.067   0.061   0.072           True
+dia_viento_media_max   -0.000  -0.014   0.017          False
+dia_lluvia_max          0.079   0.072   0.088           True
+dia_lluvia_media        0.082   0.071   0.095           True
+dia_lluvia_hora_max     0.089   0.077   0.100           True
+dia_temp_max            0.005  -0.010   0.014          False
+dia_temp_media_min      0.002  -0.006   0.007          False
+dia_humedad_media      -0.005  -0.009  -0.000           True
+ext_racha_clima_max     0.062   0.056   0.068           True
+ext_racha_clima_media   0.023   0.019   0.030           True
+ext_racha_ku            0.029   0.019   0.036           True
+ext_dias_calor          0.001  -0.012   0.010          False
+ayer_racha_max         -0.020  -0.027  -0.007           True
+ayer_lluvia_max         0.003  -0.006   0.010          False
+Signo estable en los cinco años: 25 de 35; en las 16 meteorológicas: 11 de 16
+
+Modelo con todos los días hasta 2025 (C = 0.003): coeficientes por grupo (escala estandarizada)
+  viento         dia_racha_max=+0.067, dia_racha_media_max=+0.013, dia_viento_max=+0.066, dia_viento_media_max=-0.014
+  clima          ext_racha_clima_max=+0.068, ext_racha_clima_media=+0.020, ext_racha_ku=+0.032
+  lluvia         dia_lluvia_max=+0.088, dia_lluvia_media=+0.095, dia_lluvia_hora_max=+0.100
+  calor          dia_temp_max=+0.014, ext_dias_calor=-0.004
+  frio           dia_temp_media_min=+0.005
+  humedad        dia_humedad_media=-0.007
+  aviso          aviso_max_nivel=+0.027, aviso_viento_nivel=+0.066, aviso_lluvia_nivel=+0.082, aviso_tormenta_nivel=+0.075, aviso_nieve_nivel=-0.039
+  ayer           ayer_racha_max=-0.027, ayer_lluvia_max=+0.010
+  historia       hist_incidencias_7d=+0.000, hist_incidencias_30d=+0.042, hist_incidencias_365d=+0.080, hist_dias_desde_ultima=-0.019
+  semana         cal_dia_semana_sin=+0.038, cal_dia_semana_cos=+0.007
+  fin_de_semana  cal_fin_de_semana=-0.027
+  festivo        cal_festivo=-0.003
+  epoca          cal_dia_anio_sin=+0.033, cal_dia_anio_cos=-0.031, estacion=+0.036
+  viento se enseña y clima resta: 11 de 824 días del 10 % de más riesgo; multiplicador enseñado / conjunto: mediana 1.02, máximo 1.05
+  clima se enseña y viento resta: 0 de 824 días del 10 % de más riesgo; multiplicador enseñado / conjunto: mediana nan, máximo nan
+  calor se enseña y frio resta: 0 de 824 días del 10 % de más riesgo; multiplicador enseñado / conjunto: mediana nan, máximo nan
+  frio se enseña y calor resta: 0 de 824 días del 10 % de más riesgo; multiplicador enseñado / conjunto: mediana nan, máximo nan
+  calor se enseña y humedad resta: 0 de 824 días del 10 % de más riesgo; multiplicador enseñado / conjunto: mediana nan, máximo nan
+  humedad se enseña y calor resta: 0 de 824 días del 10 % de más riesgo; multiplicador enseñado / conjunto: mediana nan, máximo nan
+  Motivo primero en los días del 10 %: {'lluvia': 600, 'aviso': 208, 'clima': 9, 'viento': 5, 'historia': 2}
+
+Número de condición de la matriz de correlaciones de las 16 meteorológicas: 28.7
+VIF: ext_racha_clima_media=64.0, dia_racha_media_max=38.8, ext_racha_clima_max=35.7, dia_lluvia_max=29.1, dia_viento_media_max=20.2, dia_viento_max=19.1, dia_lluvia_hora_max=18.8, dia_lluvia_media=10.4, dia_temp_max=9.8, dia_racha_max=9.7, dia_temp_media_min=5.9, dia_humedad_media=4.3, ayer_racha_max=2.5, ayer_lluvia_max=2.2, ext_dias_calor=1.5, ext_racha_ku=1.3
