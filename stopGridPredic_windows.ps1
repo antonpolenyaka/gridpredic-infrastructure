@@ -37,11 +37,20 @@ if (Test-Path $hist) {
     if ($ultima -match " INICIO (.+)$") { $motivos += "la cola esta ejecutando $($Matches[1])" }
 }
 # Aplicaciones de Spark
+$puertoSpark = "8080"
+if (Test-Path "$Repo\.env") {
+    $linea = Get-Content "$Repo\.env" | Where-Object { $_ -match '^\s*SPARK_MASTER_UI_PORT\s*=\s*(\d+)' } | Select-Object -Last 1
+    if ($linea -match '=\s*(\d+)') { $puertoSpark = $Matches[1] }
+}
 try {
-    $j = Invoke-RestMethod -Uri "http://localhost:8090/json/" -TimeoutSec 10
+    $j = Invoke-RestMethod -Uri "http://localhost:$puertoSpark/json/" -TimeoutSec 10
     $n = @($j.activeapps).Count
     if ($n -gt 0) { $motivos += "Spark tiene $n aplicaciones en marcha ($((@($j.activeapps) | ForEach-Object { $_.name }) -join ', '))" }
-} catch { }
+} catch {
+    # Si el maestro de Spark ni siquiera esta arrancado, no hay aplicaciones que proteger.
+    $maestro = docker compose -f $Compose ps --status running -q spark-master 2>$null
+    if ($maestro) { $motivos += "no he podido consultar Spark en el puerto $puertoSpark, asi que no se si hay aplicaciones en marcha" }
+}
 # Franja de la tarde
 $ahora = Get-Date
 if ($ahora.TimeOfDay -ge [TimeSpan]"20:15" -and $ahora.TimeOfDay -lt [TimeSpan]"21:00") { $motivos += "es la franja de la tarde (20:15 - 21:00): el riesgo de manana puede estar corriendo" }

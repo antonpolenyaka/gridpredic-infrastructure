@@ -151,6 +151,9 @@ def main(argv=None) -> int:
                         files_after, size / 1e6, size_after / 1e6, time.time() - start)
     logger.info("Done: %s tables, %s skipped; current files %s -> %s", done, failed, before_files, after_files)
     spark.stop()
+    if failed:
+        logger.error("%s tables or steps failed: the run does not count as done (exit code 1)", failed)
+        return 1
     return 0
 
 
