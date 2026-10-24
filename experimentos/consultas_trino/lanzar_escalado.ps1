@@ -64,7 +64,8 @@ if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta 
 Say "=== Escalado de la lectura de Gold === Salida: $Dir"
 Say ("  Commit: " + (git -C $Repo log -1 --format="%h %s"))
 docker compose -f $Compose exec -T spark-master mkdir -p /tmp/gp /tmp/gp_escalado 2>&1 | Out-Null
-docker compose -f $Compose exec -T spark-master sh -c "rm -f /tmp/gp_escalado/*.json" 2>&1 | Out-Null
+# Sin restos de una pasada anterior: ni sus JSON ni su ajuste (salida/), para no publicar resultados viejos.
+docker compose -f $Compose exec -T spark-master sh -c "rm -rf /tmp/gp_escalado/*.json /tmp/gp_escalado/salida" 2>&1 | Out-Null
 foreach ($f in @("escalado.py", "ajustar_escalado.py", "apps_spark.py")) {
     docker compose -f $Compose cp "$Repo\experimentos\consultas_trino\$f" "spark-master:/tmp/gp/$f" 2>&1 | ForEach-Object { Say "  $_" }
 }
@@ -76,12 +77,19 @@ foreach ($m in $Meses) { Medir 8 $m }
 
 docker compose -f $Compose exec -T spark-master python3 /tmp/gp/ajustar_escalado.py /tmp/gp_escalado /tmp/gp_escalado/salida 2>&1 |
     ForEach-Object { Say ("    " + $_) }
-if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "FALLO: el ajuste del escalado devolvio $LASTEXITCODE" }
+$ajusteOk = ($LASTEXITCODE -eq 0)
+if (-not $ajusteOk) { $Script:Fallos++; Say "FALLO: el ajuste del escalado devolvio $LASTEXITCODE" }
 docker compose -f $Compose cp "spark-master:/tmp/gp_escalado/." "$Dir\json" 2>&1 | ForEach-Object { Say "  $_" }
-if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "FALLO: no se pudieron copiar los resultados del contenedor" }
-foreach ($f in @("escalado_nucleos.csv", "escalado_nucleos_ajuste.txt")) {
-    try { Copy-Item -Force -ErrorAction Stop "$Dir\json\salida\$f" "$Repo\experimentos\consultas_trino\salida\$f" }
-    catch { $Script:Fallos++; Say "FALLO: falta $f en los resultados ($($_.Exception.Message))" }
+$copiaOk = ($LASTEXITCODE -eq 0)
+if (-not $copiaOk) { $Script:Fallos++; Say "FALLO: no se pudieron copiar los resultados del contenedor" }
+if ($ajusteOk -and $copiaOk) {
+    # Solo se publica en el repositorio lo que salio de esta ejecucion, con el ajuste y la copia correctos.
+    foreach ($f in @("escalado_nucleos.csv", "escalado_nucleos_ajuste.txt")) {
+        try { Copy-Item -Force -ErrorAction Stop "$Dir\json\salida\$f" "$Repo\experimentos\consultas_trino\salida\$f" }
+        catch { $Script:Fallos++; Say "FALLO: falta $f en los resultados ($($_.Exception.Message))" }
+    }
+} else {
+    Say "  No se publica nada en experimentos\consultas_trino\salida: el ajuste o la copia fallaron"
 }
 if ($Script:Fallos -eq 0) { Say "Terminado sin errores."; exit 0 }
 Say "Terminado con $($Script:Fallos) medidas con errores (ver el log)."

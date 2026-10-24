@@ -335,16 +335,37 @@ def unknown_without_reading(blocks: list, landed: dict) -> list:
     absence of lightning: those blocks say instead that there are no current
     data. The flashes already landed still count when they are there.
     """
-    if not landed.get("error"):
-        return blocks
-    for block in blocks:
-        if block.get("nivel") == "sin tormenta":
-            block["nivel"] = "sin datos"
-            block["texto"] = "sin datos actuales de rayos: no se pudo leer la última hora"
+    if landed.get("error"):
+        for block in blocks:
+            if block.get("nivel") == "sin tormenta":
+                block["nivel"] = "sin datos"
+                block["texto"] = "sin datos actuales de rayos: no se pudo leer la última hora"
+    elif landed.get("incompleta"):
+        # some products of the hour failed: no lightning in what was read is not an hour without lightning
+        for block in blocks:
+            if block.get("nivel") == "sin tormenta":
+                block["nivel"] = "lectura incompleta"
+                block["texto"] = f"sin rayos cerca de la red en lo que se pudo leer de la última hora ({landed['incompleta']})"
     return blocks
 
 
-def dashboard_payload(recent: pd.DataFrame, risk: dict, cfg: dict, now: datetime, landed: dict) -> dict:
+def covered_minutes(fs, cfg: dict, now: datetime, minutes: float) -> int:
+    """The minutes of the last window covered by products already in the Landing (10 minutes each, at most the window)."""
+    since = now - timedelta(minutes=minutes)
+    seen = set()
+    for day in {since.strftime("%Y%m%d"), now.strftime("%Y%m%d")}:
+        folder = day_folder(cfg["landing"], day)
+        if not fs.exists(folder):
+            continue
+        for path in fs.ls(folder, detail=False):
+            match = re.match(r"flashes_(\d{14})_(\d{14})\.csv$", os.path.basename(path))
+            if match and match.group(2) >= since.strftime("%Y%m%d%H%M%S"):
+                seen.add(match.group(1))
+    return int(min(len(seen) * 10, minutes))
+
+
+def dashboard_payload(recent: pd.DataFrame, risk: dict, cfg: dict, now: datetime, landed: dict,
+                      covered: int = None) -> dict:
     radii = [float(r) for r in cfg["radio_km"]]
     rows = [{"ts": t.strftime("%Y-%m-%dT%H:%MZ"), "lat": round(float(a), 4), "lon": round(float(o), 4),
              "minutos": int((now - t.to_pydatetime()).total_seconds() // 60)}
@@ -352,6 +373,7 @@ def dashboard_payload(recent: pd.DataFrame, risk: dict, cfg: dict, now: datetime
     return {
         "generado": now.strftime("%Y-%m-%dT%H:%MZ"),
         "ventana_min": float(cfg["ventana_min"]),
+        "minutos_leidos": covered,
         "fuente": "EUMETSAT, Lightning Imager de MTG (LI-2-LFL, cada 10 minutos)",
         "caja": list(cfg["caja"]),
         "ultimo_producto": landed,
@@ -417,8 +439,13 @@ def main(argv=None, fs=None, now: datetime = None) -> int:
             # products found but none downloaded: the last hour was not observed
             landed["error"] = f"no se pudo descargar ninguno de los {landed['fallidos']} productos encontrados"
             logger.error("Lightning: %s", landed["error"])
+        elif landed.get("fallidos"):
+            total = landed["fallidos"] + landed.get("descargados", 0)
+            landed["incompleta"] = f"lectura incompleta: {landed['fallidos']} de {total} productos sin descargar"
+            logger.warning("Lightning: %s", landed["incompleta"])
     recent = recent_flashes(fs, cfg, now, float(cfg["ventana_min"]))
-    payload = dashboard_payload(recent, read_risk(cfg["dashboard_dir"]), cfg, now, landed)
+    covered = covered_minutes(fs, cfg, now, float(cfg["ventana_min"]))
+    payload = dashboard_payload(recent, read_risk(cfg["dashboard_dir"]), cfg, now, landed, covered)
     write_dashboard(payload, cfg["dashboard_dir"])
     for block in payload["distribuidoras"]:
         logger.info("%s: %s", block["nombre"], block["texto"])

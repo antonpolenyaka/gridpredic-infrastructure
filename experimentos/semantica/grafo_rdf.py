@@ -1,7 +1,7 @@
 """
 Grafo RDF pequeño de GridPredic a partir de la exportación de Gold zonas_20261013_1041 y del riesgo del
-28.01.2026 de la demo (web/demo/data/riesgo_20260128.json). Solo lee ficheros locales: no consulta ningún
-servicio externo.
+28.01.2026 de la operación (dashboard/data/riesgo_20260128.json, con los INE reales; el de web/demo lleva los códigos
+99NNN de la demo pública y no casa con Gold). Solo lee ficheros locales: no consulta ningún servicio externo.
 
 - TBox: la ontología mínima de GridPredic (gpo:) apoyada en SOSA, OWL-Time, GeoSPARQL, SKOS y PROV-O.
 - ABox: distribuidoras, CT, líneas (grupo de red), municipios (con superficie, densidad y altitud, que
@@ -37,7 +37,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "salida")
 # La exportación de Gold (zonas_20261013_1041 en _runlogs/ml_resultados del portátil): primer argumento o variable.
 BASE_DEF = os.environ.get("GRIDPREDIC_EXPORTACION", "")
-RIESGO_DEF = os.path.join(HERE, "..", "..", "web", "demo", "data", "riesgo_20260128.json")
+# El riesgo de la operación (con los INE reales, como Gold); el de web/demo lleva códigos 99NNN y no casa con Gold.
+RIESGO_DEF = os.path.join(HERE, "..", "..", "dashboard", "data", "riesgo_20260128.json")
 
 GP = Namespace("https://gridpredic.com/id/")
 GPO = Namespace("https://gridpredic.com/ont#")
@@ -206,6 +207,13 @@ def tablas_anonimas(d: dict) -> dict:
     inter["int_uri"] = [f"d{a}/interrupcion/{i + 1:05d}" for i, a in enumerate(inter["dist"])]
 
     riesgo = d["riesgo"].copy()
+    comunes = set(riesgo["codigo_ine"]) & set(mun["codigo_ine"])
+    if len(riesgo) and not comunes:
+        # p. ej. el riesgo.json de la demo pública, con códigos 99NNN, frente a los INE reales de Gold
+        raise SystemExit("El riesgo y la exportación de Gold no comparten ningún municipio (la demo pública usa códigos "
+                         "99NNN y Gold los INE reales): usa el riesgo.json de la operación, no el de web/demo")
+    if len(comunes) < riesgo["codigo_ine"].nunique():
+        print(f"Aviso: {riesgo['codigo_ine'].nunique() - len(comunes)} municipios del riesgo no están en Gold", flush=True)
     riesgo["dist"] = riesgo["distribuidora_id"].map(DISTRIBUIDORAS)
     riesgo["orden"] = riesgo["nivel"].map(NIVELES)
 

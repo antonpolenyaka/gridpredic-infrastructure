@@ -71,6 +71,11 @@ function Trino([string]$Nombre, [string]$Sql) {
     $f = Join-Path $Dir "$Nombre.sql"
     [IO.File]::WriteAllText($f, (($Sql -replace "`r", "").Trim() + ";`n"), [Text.Encoding]::ASCII)
     docker compose -f $Compose cp $f "trino:$Tmp/$Nombre.sql" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        # sin la copia, el contenedor podria tener un $Nombre.sql de otra ejecucion: no se ejecuta nada
+        Say "  ERROR: no se pudo copiar $Nombre.sql al contenedor de Trino (codigo $LASTEXITCODE)"
+        return $null
+    }
     $a = @("compose", "-f", $Compose, "exec", "-T", "trino", "trino", "--output-format", "TSV_HEADER",
         "--session", "query_max_execution_time=20m", "--file", "$Tmp/$Nombre.sql")
     $todo = @(& docker @a 2>&1)
@@ -228,6 +233,10 @@ function PararSql() {
     if ($SqlArrancadoAqui) {
         Say "  SQL Server no estaba arrancado: lo paro otra vez"
         docker compose -f $Compose stop sqlserver 2>&1 | ForEach-Object { Say "    $_" }
+        if ($LASTEXITCODE -ne 0) {
+            $Script:Fallos++
+            Say "ERROR: no se pudo parar SQL Server (docker compose stop devolvio $LASTEXITCODE); sigue arrancado"
+        }
     }
 }
 docker compose -f $Compose exec -T sqlserver mkdir -p $Tmp 2>&1 | Out-Null

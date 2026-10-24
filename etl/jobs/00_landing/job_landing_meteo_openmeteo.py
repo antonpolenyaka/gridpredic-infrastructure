@@ -256,10 +256,14 @@ def main(argv=None):
     parser.add_argument("--config", default=None)
     parser.add_argument("--fuente", default="openmeteo",
                         help="Block of config_bronze_meteo.json: openmeteo (reanalysis), openmeteo_convectivo (CAPE), "
-                             "openmeteo_extra, openmeteo_previo* (Previous Runs API) or openmeteo_pasadas_ifs")
+                             "openmeteo_extra or openmeteo_previo* (Previous Runs API). openmeteo_pasadas_ifs has "
+                             "its own job, job_landing_meteo_pasadas.py, that asks each run of the Single Runs API")
     parser.add_argument("--max-peticiones", type=int, default=None, help="Stop after this many requests")
     args = parser.parse_args(argv)
 
+    if args.fuente == "openmeteo_pasadas_ifs" or "single-runs" in str(load_config(args.config)[args.fuente].get("api", "")):
+        # the Single Runs API needs the run of each request (run=...), which this generic job does not send
+        parser.error(f"{args.fuente} is downloaded with job_landing_meteo_pasadas.py, not with this job")
     cfg = load_config(args.config)[args.fuente]
     fs = filesystem()
     landing = cfg["landing"].rstrip("/")

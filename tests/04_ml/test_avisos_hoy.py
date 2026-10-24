@@ -129,3 +129,26 @@ def test_refresh_writes_the_file_next_to_riesgo_json(tmp_path, monkeypatch):
     # riesgo.json of another day: nothing to refresh.
     (dashboard / "riesgo.json").write_text(json.dumps({**RISK, "fecha": "2026-10-14"}), encoding="utf-8")
     assert ah.refresh(rcfg, str(dashboard), str(landing), now) == {}
+    # No riesgo.json yet (before the first evening run): nothing to refresh, no exception.
+    os.remove(dashboard / "riesgo.json")
+    assert ah.refresh(rcfg, str(dashboard), str(landing), now) == {}
+
+
+def test_the_raised_guard_that_the_webhook_did_not_take_is_an_error_and_is_sent_again(tmp_path, monkeypatch):
+    now = datetime(2026, 10, 15, 9, 20, tzinfo=timezone.utc)
+    rows = ah.parse_aemet_archive(tar_of({"a.xml": cap("new-storm", "2026-10-15T08:10:00+02:00", "2026-10-15T14:00:00+02:00",
+                                              "2026-10-15T23:59:00+02:00")}))
+    payload = ah.today_payload(RISK, rows, now, "Europe/Madrid")
+    assert payload["distribuidoras"][0]["subida"]
+    monkeypatch.setenv("AVISO_WEBHOOK_URL", "https://hook")
+    state = tmp_path / "estado.json"
+
+    def down(url, message, field, timeout):
+        raise TimeoutError("sin respuesta")
+
+    monkeypatch.setattr(ah.aviso_riesgo, "post", down)
+    assert ah.send_raised(payload, {}, str(state)).startswith("error")
+    assert not state.exists()  # not marked as sent, so the retry sends it
+    sent = []
+    monkeypatch.setattr(ah.aviso_riesgo, "post", lambda url, message, field, timeout: sent.append(message))
+    assert ah.send_raised(payload, {}, str(state)) == "enviado" and len(sent) == 1
