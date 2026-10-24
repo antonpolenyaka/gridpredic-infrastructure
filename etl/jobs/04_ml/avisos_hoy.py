@@ -214,6 +214,9 @@ def refresh(rcfg: dict, dashboard: str, landing: str, now: datetime = None, fs=N
     now = now or datetime.now(timezone.utc)
     zone = rcfg.get("zona_horaria", "Europe/Madrid")
     risk_path = os.path.join(dashboard, "riesgo.json")
+    if not os.path.exists(risk_path):
+        logger.warning("No riesgo.json in %s yet: nothing to refresh", dashboard)
+        return {}
     with open(risk_path, encoding="utf-8") as file:
         risk = json.load(file)
     today = now.astimezone(ZoneInfo(zone)).strftime("%Y-%m-%d")

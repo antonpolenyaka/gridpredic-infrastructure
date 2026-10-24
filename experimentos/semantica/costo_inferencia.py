@@ -6,7 +6,7 @@ y OWL 2 RL, y qué parte de lo inferido sirve.
 
 Reutiliza construir() de grafo_rdf.py, que solo lee la exportación de Gold.
 
-Uso: python costo_inferencia.py <carpeta zonas_20261013_1041> <riesgo_20260128.json> [salida.txt] [variantes]
+Uso: python costo_inferencia.py <carpeta zonas_20261013_1041> <dashboard/data/riesgo_20260128.json (el de la operación)> [salida.txt] [variantes]
      variantes: lista separada por comas de rdfs, rdfs_axiomas, owlrl, owlrl_sin_clave (por defecto las tres primeras)
 """
 import os

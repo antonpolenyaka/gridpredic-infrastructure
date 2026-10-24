@@ -8,8 +8,9 @@ de la carga de cálculo, sin Spark:
   escalabilidad de Gunther, C(n) = n / (1 + s (n - 1) + k n (n - 1)), las dos por mínimos cuadrados lineales sobre
   n T(n) / T(1) - 1. Se queda la USL si k supera dos errores típicos; si no, Amdahl.
 - Con los datos (8 núcleos, la cuarta parte, la mitad y todos los meses): el exponente b de T = a filas^b. Por
-  debajo de 0,9, la estimación lineal del coste de Gold con más distribuidoras es una cota superior; entre 0,9 y 1,1
-  se sostiene; por encima de 1,1 hay que corregirla.
+  debajo de 0,9, la estimación lineal del coste de Gold con más distribuidoras es orientativa y probablemente
+  pesimista para esta consulta (no un límite medido del pipeline completo); entre 0,9 y 1,1 se sostiene; por encima de
+  1,1 hay que corregirla.
 
 Marca los puntos con más de un 10 % entre las pasadas que cuentan, que hay que repetir. Los JSON de antes del
 20.10.2026 solo calentaban el recuento: en ellos la primera pasada del cálculo no cuenta (salía un 4 - 30 % más lenta
@@ -105,7 +106,7 @@ def main(argv) -> int:
         rows_read = np.array([r["filas"] for r in data], dtype=float)
         t = np.array([r["calculo_s"] for r in data], dtype=float)
         b, a = np.polyfit(np.log(rows_read), np.log(t), 1)
-        verdict = ("la estimación lineal de Gold es una cota superior" if b < 0.9 else
+        verdict = ("la estimación lineal de Gold es orientativa (para esta consulta crece más despacio que los datos; no es un límite medido del pipeline completo)" if b < 0.9 else
                    "la estimación lineal de Gold se sostiene" if b <= 1.1 else "hay que corregir la estimación lineal")
         lines.append(f"Datos (8 núcleos): {', '.join(f'{int(v):,}'.replace(',', '.') for v in rows_read)} filas; "
                      f"exponente b = {b:.2f}: {verdict}.")

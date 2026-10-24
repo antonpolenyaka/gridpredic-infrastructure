@@ -13,8 +13,9 @@ inicio de Calser, que es local, pasada a UTC con el horario de Madrid:
 1. Escala de red, con los puntos de los municipios de los CT de cada distribuidora, como en vivo: cuántas incidencias
    tuvieron algún rayo a 10 km o menos en la hora anterior, con el intervalo de Wilson al 95 %.
 2. Escala de línea, en esas incidencias: cuántas líneas de su red habría marcado la regla, si alguna línea de la
-   incidencia estaba entre ellas y la razón entre las dos proporciones (la línea que falla frente a una línea
-   cualquiera de la misma red en la misma hora). Con una razón cerca de 1 la regla no distingue la línea.
+   incidencia estaba entre ellas y la razón entre ese acierto y el que se tendría marcando al azar el mismo número de
+   líneas de la misma red (probabilidad hipergeométrica de que alguna línea afectada caiga entre las marcadas). Con
+   una razón cerca de 1 la regla no distingue la línea.
 
     python rayos_por_linea.py <carpeta de la exportación de Gold> <flashes.csv> <salida/>
 

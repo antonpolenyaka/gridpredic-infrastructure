@@ -273,3 +273,11 @@ def test_the_forecast_of_the_day_before_from_single_runs(monkeypatch, tmp_path):
         "39.50_-6.40": 30.0, "40.10_-5.90": 50.0}
     assert (hourly["hora"].dt.date == date(2025, 1, 16)).all()
     assert bronze.answers_of({"hourly": {}}) == [{"hourly": {}}]
+
+
+def test_the_generic_job_refuses_the_single_runs_source(monkeypatch):
+    # Segunda ronda A51: the Single Runs API needs run=..., that only job_landing_meteo_pasadas.py sends
+    monkeypatch.setattr(landing, "filesystem", lambda: (_ for _ in ()).throw(AssertionError("must not get here")))
+    with pytest.raises(SystemExit) as stop:
+        landing.main(["--fuente", "openmeteo_pasadas_ifs"])
+    assert stop.value.code == 2

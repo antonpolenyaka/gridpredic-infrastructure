@@ -178,3 +178,31 @@ def test_products_found_but_none_downloaded_is_no_data_and_an_error(fs, cfg, mon
     assert out["ultimo_producto"]["fallidos"] == 6 and out["ultimo_producto"]["descargados"] == 0
     assert out["ultimo_producto"]["error"].startswith("no se pudo descargar")
     assert out["distribuidoras"][0]["nivel"] == "sin datos"
+
+
+def test_some_products_failed_is_an_incomplete_reading_not_an_hour_without_lightning(fs, cfg, monkeypatch, tmp_path):
+    # Segunda ronda A04: one product of the hour fails and the rest have no flashes near the network
+    monkeypatch.setenv("EUMETSAT_CONSUMER_KEY", "k")
+    monkeypatch.setenv("EUMETSAT_CONSUMER_SECRET", "s")
+    monkeypatch.setattr(rayos, "token", lambda cfg, key, secret: "tok")
+    found = [product_id(NOW - timedelta(minutes=10 * (i + 1))) for i in range(6)]
+    monkeypatch.setattr(rayos, "search", lambda cfg, tok, since, now: found)
+
+    def download(cfg, tok, product):
+        if product == found[2]:
+            raise TimeoutError("timed out")
+        return b"zip"
+
+    monkeypatch.setattr(rayos, "download", download)
+    monkeypatch.setattr(rayos, "flashes", lambda raw, box, product="": rayos.pd.DataFrame(columns=rayos.COLUMNS))
+    monkeypatch.setattr(rayos.time, "sleep", lambda s: None)
+    risk = {"distribuidoras": [{"id": 2, "nombre": "Distribuidora 2", "municipios": [{"nombre": "Zafra", "lat": 38.42, "lon": -6.42, "zonas": ["Zafra"]}]}]}
+    with open(os.path.join(tmp_path, "riesgo.json"), "w", encoding="utf-8") as file:
+        json.dump(risk, file)
+    assert rayos.main(["--dashboard-dir", str(tmp_path), "--landing", cfg["landing"]], fs=fs, now=NOW) == 0
+    with open(os.path.join(tmp_path, "rayos.json"), encoding="utf-8") as file:
+        out = json.load(file)
+    assert out["ultimo_producto"]["fallidos"] == 1 and out["ultimo_producto"]["descargados"] == 5
+    assert out["ultimo_producto"]["incompleta"].startswith("lectura incompleta: 1 de 6")
+    assert out["distribuidoras"][0]["nivel"] == "lectura incompleta"
+    assert out["minutos_leidos"] < out["ventana_min"]

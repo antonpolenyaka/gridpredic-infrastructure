@@ -1241,8 +1241,8 @@ def section_when(data: Data, report: Report, state: dict):
     report.section(
         "4. Cuándo",
         "Incidencias imprevistas por familia de factor y parte que empieza en horario laboral (lunes a viernes, "
-        "de 8 a 18 h, el 30 % de las horas de la semana). Si las de terceros se concentran en ese horario, son "
-        "obras y maquinaria, y una fuente pública de obras tendría sentido.\n\n"
+        "de 8 a 18 h, el 30 % de las horas de la semana). Si las de terceros se concentran en ese horario, encaja "
+        "con obras y maquinaria (el horario solo no lo prueba), y una fuente pública de obras tendría sentido.\n\n"
         + md_table(working)
         + "\nParte de los kVA·h imprevistos por mes: "
         + ", ".join(f"{m}: {v}" for m, v in months.items()) + "\n"

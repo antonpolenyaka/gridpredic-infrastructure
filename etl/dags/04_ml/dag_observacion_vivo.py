@@ -67,7 +67,7 @@ def observar() -> None:
         raise RuntimeError(f"job_landing_observacion ended with code {code}")
 
 
-@task(retries=0)
+@task(retries=1, retry_delay=timedelta(minutes=5))
 def avisos_hoy() -> None:
     key = settings.get("avisos", {}).get("clave_env", "AEMET_API_KEY")
     if not os.environ.get(key):
@@ -83,6 +83,9 @@ def avisos_hoy() -> None:
         raise AirflowSkipException(f"AEMET did not answer: {error}") from error
     print("avisos de hoy: " + ("; ".join(d["texto"] for d in payload.get("distribuidoras", [])) if payload else "riesgo.json no es de hoy")
           + f"; envío: {payload.get('envio', '-') if payload else '-'}")
+    if payload and str(payload.get("envio", "")).startswith("error"):
+        # the webhook did not take the raised guard: a failure Airflow can retry (the state is only written when sent)
+        raise RuntimeError(f"Raised guard not sent: {payload['envio']}")
 
 
 @task(retries=1, retry_delay=timedelta(minutes=5), trigger_rule="none_failed_min_one_success")

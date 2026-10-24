@@ -170,6 +170,25 @@ def composite_rows(item: dict, cells: pd.DataFrame, box: tuple) -> list:
     return rows
 
 
+def composite_key(item: dict) -> tuple:
+    start = item["properties"].get("start_datetime") or item["properties"].get("datetime") or ""
+    return item["id"].split(".")[2], item["id"][:3], start
+
+
+def pending_composites(items: list, done: set) -> list:
+    """
+    The composites still to read. The catalogue keeps reprocessed copies of some composites (same tile and dates,
+    later production time): the latest of the whole catalogue is chosen first, and a composite with any revision
+    already in the CSV is not read again, so a second run never adds an older or a second revision of it.
+    """
+    latest = {}
+    for item in sorted(items, key=lambda i: i["id"].split(".")[-1]):
+        latest[composite_key(item)] = item
+    saved = {composite_key(i) for i in items if i["id"] in done}
+    return sorted((item for key, item in latest.items() if key not in saved),
+                  key=lambda i: i["properties"].get("start_datetime") or i["properties"].get("datetime") or "")
+
+
 def main(argv):
     out_csv = argv[0] if argv else "ndvi_celdas.csv"
     first, last = (int(argv[1]), int(argv[2])) if len(argv) > 2 else (2017, datetime.now(timezone.utc).year)
@@ -192,16 +211,7 @@ def main(argv):
         if new_file:
             writer.writeheader()
         for year in range(first, last + 1):
-            items = [i for i in search(list(box), year) if i["id"] not in done]
-            # The catalogue keeps reprocessed copies of some composites (same tile and dates, later production
-            # time): one per composite, the latest.
-            items.sort(key=lambda i: i["id"].split(".")[-1])
-            latest = {}
-            for item in items:
-                tile, platform = item["id"].split(".")[2], item["id"][:3]
-                start = item["properties"].get("start_datetime") or item["properties"].get("datetime") or ""
-                latest[(tile, platform, start)] = item
-            items = sorted(latest.values(), key=lambda i: i["properties"].get("start_datetime") or i["properties"].get("datetime") or "")
+            items = pending_composites(search(list(box), year), done)
             print(f"{year}: {len(items)} compuestos por leer", flush=True)
             for k, item in enumerate(items):
                 started = time.time()
