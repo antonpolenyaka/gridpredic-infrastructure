@@ -313,7 +313,7 @@ def test_the_shift_sheet_has_one_sheet_per_table(tmp_path):
         "fecha": "2026-01-15", "fecha_texto": "15.01.2026", "generado": "14.01.2026 19:40 UTC", "run_id": "manana_x",
         "reglas": {"texto": "Tras una avería, otra en 3 h en el 11 % de los casos."}, "notas": ["Calser hasta el 09.08.2026."],
         "distribuidoras": [{
-            "id": 3, "nombre": "EOSA", "nivel": "alto", "probabilidad": 0.31, "veces_tasa_base": 4.1, "esperadas": 0.4,
+            "id": 3, "nombre": "Distribuidora 1", "nivel": "alto", "probabilidad": 0.31, "veces_tasa_base": 4.1, "esperadas": 0.4,
             "motivos": "racha prevista (x3)", "impacto": {"ct_esperados": 1.2, "clientes_esperados": 80.0, "kva_esperados": 300.0},
             "franja": {"texto": "de 10:00 a 15:00", "pico": 12, "racha_pico": 85.0},
             "causas": [{"familia": "meteorología y vegetación", "parte": 0.6}, {"familia": "equipos", "parte": 0.4}],
