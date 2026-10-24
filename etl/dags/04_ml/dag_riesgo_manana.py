@@ -89,7 +89,7 @@ def dia() -> str:
 
 
 @task(retries=1, retry_delay=timedelta(minutes=2))
-def avisar() -> None:
+def avisar(day: str) -> None:
     if JOBS_DIR not in sys.path:
         sys.path.insert(0, JOBS_DIR)
     import aviso_riesgo
@@ -99,6 +99,9 @@ def avisar() -> None:
         raise AirflowSkipException(f"No {path}: nothing to send")
     with open(path, encoding="utf-8") as file:
         payload = json.load(file)
+    if payload.get("fecha") != day:
+        # never the message of another day: the evening's riesgo.json was not published
+        raise RuntimeError(f"{path} is for {payload.get('fecha')}, not for {day}: message not sent")
     result = aviso_riesgo.send(payload, settings, aviso_riesgo.read_ensemble(os.path.dirname(path)))
     if result in ("sin alerta", "sin url"):
         raise AirflowSkipException(f"Message of the evening not sent: {result}")
@@ -206,6 +209,6 @@ with DAG(
         trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,
     )
 
-    [prevision(day), avisos(day), ensemble(day), aemet_municipios(day), nao(day)] >> puntuar >> avisar()
+    [prevision(day), avisos(day), ensemble(day), aemet_municipios(day), nao(day)] >> puntuar >> avisar(day)
     # Beside the evening, never before the score.
     prevision_sombra(day)

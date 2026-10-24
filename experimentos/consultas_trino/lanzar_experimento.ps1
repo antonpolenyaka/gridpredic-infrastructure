@@ -15,7 +15,7 @@
 # antes de las 20:25. Este lanzador aun no lee esa duracion y la aplica de forma simplificada: no empieza
 # ninguna consulta ni la compactacion entre las 19:00 y las 21:00 (si le toca en esa franja, espera a las
 # 21:00), y la compactacion no empieza otra particion despues de la hora de -PararA (18 por defecto).
-param([string]$Repo = "D:\GitHub\gridpredic-infrastructure", [int]$PararA = 18, [switch]$SinCompactar,
+param([string]$Repo = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)), [int]$PararA = 18, [switch]$SinCompactar,
       [switch]$SoloEstadisticas)
 
 $Compose = "$Repo\compose.yaml"
@@ -64,8 +64,10 @@ function BorrarEstadisticas() {
 function Copiar() {
     New-Item -ItemType Directory -Force -Path "$Dir\json" | Out-Null
     docker compose -f $Compose cp "spark-master:/tmp/gp_planes/." "$Dir\json" 2>&1 | ForEach-Object { Say "  $_" }
+    if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "FALLO: no se pudieron copiar los resultados del contenedor" }
     $n = (Get-ChildItem -Path "$Dir\json" -Filter "*.json" -File -ErrorAction SilentlyContinue).Count
     Say "Ficheros de resultados: $n"
+    if ($n -eq 0) { $Script:Fallos++; Say "FALLO: ningun fichero de resultados" }
 }
 
 function Planes([string]$Fase, [string[]]$Consultas, [string[]]$Sesion = @(), [switch]$SinReinicio) {
@@ -80,7 +82,7 @@ function Planes([string]$Fase, [string[]]$Consultas, [string[]]$Sesion = @(), [s
     }
 }
 
-if (-not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
+if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
 Say "=== Planes de consulta (4.7.3) === Salida: $Dir"
 Say ("  Commit: " + (git -C $Repo log -1 --format="%h %s"))
 FueraDeLaTarde

@@ -1,6 +1,6 @@
 # M102: por que HistoricEvents no llego a Bronze. Busca en los registros de Airflow las tareas de ingest_sqlserver_batch_bronze
 # de esa tabla y ensena su estado y las ultimas lineas de error. Solo lee; un minuto.
-$Repo = "D:\GitHub\gridpredic-infrastructure"
+$Repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path   # la carpeta donde este clonado el repositorio
 $Compose = "$Repo\compose.yaml"
 $L = "$Repo\_runlogs"
 $Stamp = Get-Date -Format "yyyyMMdd_HHmm"
@@ -10,7 +10,7 @@ function Say($msg) {
     $line = (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + " " + $msg
     try { $line | Tee-Object -FilePath $Out -Append | Write-Host } catch { Write-Host $line }
 }
-if (-not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
+if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
 docker info *> $null
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: Docker Desktop no esta arrancado"; exit 1 }
 Say "=== M102: HistoricEvents en los registros de Airflow === Log: $Out"

@@ -1559,6 +1559,7 @@ def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day
         targets += ([] if dated_only else [os.path.join(dashboard, "riesgo.json")]) + [os.path.join(dashboard, f"riesgo_{day:%Y%m%d}.json")]
     elif dashboard:
         logger.warning("Dashboard folder %s not found: riesgo.json only in the export folder", dashboard)
+    failed = []
     for target in targets:
         try:
             os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -1566,6 +1567,7 @@ def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day
             logger.info("Dashboard JSON written in %s", target)
         except OSError as error:
             logger.error("Dashboard JSON not written in %s: %s", target, error)
+            failed.append(target)
             continue
         sheet = os.path.join(os.path.dirname(target), os.path.basename(target).replace("riesgo", "parte_guardia", 1)
                              .replace(".json", ".xlsx"))
@@ -1578,6 +1580,7 @@ def write_dashboard(config: dict, rcfg: dict, folder_id: str, payload: dict, day
             logger.error("Shift sheet not written in %s: %s", sheet, error)
     if dashboard and os.path.isdir(dashboard):
         write_index(dashboard)
+    return failed
 
 
 def main(argv=None):
@@ -1814,7 +1817,7 @@ def main(argv=None):
     export(config, folder_id, report_text(day, out, info, zone_out),
            {"prediccion": out, "zonas": zone_rows, "coeficientes": pd.DataFrame(ml_models.linear_terms(scorer))})
     save_model(config, folder_id, scorer)
-    write_dashboard(config, rcfg, folder_id, payload, day, args.solo_archivo)
+    not_published = write_dashboard(config, rcfg, folder_id, payload, day, args.solo_archivo)
 
     run = pd.DataFrame([{
         "run_id": args.run_id,
@@ -1836,6 +1839,10 @@ def main(argv=None):
     save_frame(spark, run, RUNS_TABLE, args.run_id)
     logger.info("Risk of %s saved in %s:\n%s", day.date(), rcfg["tabla"],
                 out[["distribuidora", "probabilidad", "percentil", "nivel", "motivos"]].to_string(index=False))
+    if not_published:
+        # the risk is in Delta, but the dashboard and the message of the evening would show the previous day
+        logger.error("Risk of %s not published in %s", day.date(), ", ".join(not_published))
+        return 1
     return 0
 
 

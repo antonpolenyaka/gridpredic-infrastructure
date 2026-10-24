@@ -584,9 +584,15 @@ def test_interval_values(silver):
 
 
 def test_interval_values_rerun_is_idempotent(silver):
-    before = table(silver, "f_tag_interval_value").count()
+    # The same rows with the same values, not only the same count (audit columns aside).
+    def snapshot():
+        df = table(silver, "f_tag_interval_value")
+        columns = [c for c in df.columns if not c.startswith("audit_")]
+        return sorted(repr(tuple(r)) for r in df.select(columns).collect())
+
+    before = snapshot()
     run_job("f_tag_interval_value", "--desde", "2026-01", "--hasta", "2026-01")
-    assert table(silver, "f_tag_interval_value").count() == before
+    assert snapshot() == before
 
 
 def test_command_final_state(silver):

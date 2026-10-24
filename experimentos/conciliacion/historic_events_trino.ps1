@@ -1,7 +1,7 @@
 # M102: HistoricEvents (2.757.447 filas en SQL Server) no esta en Bronze. Mira que tablas de eventos hay en
 # l1_bronze, que tiene l2_silver.f_evento (filas, fechas, origen) y que apunto Silver en dq_metrics la ultima vez.
 # Solo lee con Trino; un minuto.
-$Repo = "D:\GitHub\gridpredic-infrastructure"
+$Repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path   # la carpeta donde este clonado el repositorio
 $Compose = "$Repo\compose.yaml"
 $L = "$Repo\_runlogs"
 $Stamp = Get-Date -Format "yyyyMMdd_HHmm"
@@ -16,7 +16,7 @@ function Trino($titulo, $sql) {
     docker compose -f $Compose exec -T trino trino --output-format ALIGNED --execute $sql 2>&1 | ForEach-Object { Say ("    " + $_) }
     if ($LASTEXITCODE -ne 0) { $script:Fallos++; Say "    FALLO: Trino devolvio $LASTEXITCODE" }
 }
-if (-not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
+if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
 docker info *> $null
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: Docker Desktop no esta arrancado"; exit 1 }
 Say "=== M102: HistoricEvents en Bronze y f_evento en Silver === Log: $Out"

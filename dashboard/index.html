@@ -477,7 +477,8 @@
       if (!banner) { banner = document.createElement("div"); banner.className = "rayos"; sec.querySelector("h2").insertAdjacentElement("afterend", banner); }
       banner.className = "rayos " + klass;
       // When the Data Store of EUMETSAT did not answer, the flashes are the ones already landed, not of this hour.
-      const stale = r.ultimo_producto && r.ultimo_producto.error ? " El Data Store de EUMETSAT no respondió en la última lectura: rayos de la lectura anterior." : "";
+      // When the last hour could not be read (no answer, or every product failed), there are no current data.
+      const stale = r.ultimo_producto && r.ultimo_producto.error ? " Sin datos actuales: la última lectura del Data Store de EUMETSAT falló (" + r.ultimo_producto.error + "); solo cuentan los rayos de lecturas anteriores." : "";
       banner.innerHTML = `<b>Rayos ahora</b> (satélite MTG, actualizado a las ${esc(hora)}): ${esc(text)}.` + (block && block.municipios && block.municipios.length ? ` Municipios bajo la tormenta: ${esc(block.municipios.slice(0, 6).join(", "))}${block.municipios.length > 6 ? " y " + (block.municipios.length - 6) + " más" : ""}.` : "") + esc(stale);
       const map = maps[idx];
       if (!map) return;
@@ -829,7 +830,11 @@
     cargarRayos(data);
     cargarObservado(data);
     // An archived day has nothing live to read again.
-    if (!DIA) setInterval(() => { cargarRayos(data); cargarObservado(data); }, 5 * 60 * 1000);
+    // When a new evening run publishes riesgo.json, the page reloads, so the risk never stays from the run before.
+    const nuevaEjecucion = () => fetch(RIESGO, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null))
+      .then((otro) => { if (otro && (otro.run_id !== data.run_id || otro.fecha !== data.fecha)) location.reload(); })
+      .catch(() => null);
+    if (!DIA) setInterval(() => { nuevaEjecucion(); cargarRayos(data); cargarObservado(data); }, 5 * 60 * 1000);
   }
 
   // ?dia=YYYYMMDD shows an archived or replayed day (riesgo_<dia>.json, with its ensemble and AEMET files when they exist).

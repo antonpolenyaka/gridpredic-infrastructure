@@ -542,23 +542,24 @@ def test_the_zones_split_the_risk_of_the_day(first, spark, workdir):
     # The line that every incident cuts carries more risk than the one cut by one in three.
     assert one.iloc[0]["zona"] == "10" and one.iloc[0]["parte"] > 0.5
     assert rows.loc[1, "incidencias_esperadas"] == pytest.approx(one["probabilidad"].sum())
-    assert rows.loc[1, "clientes_esperados"] > 0 and rows.loc[1, "hora_pico"] == 10 or rows.loc[1, "hora_pico"] in (10, 11, 12, 13, 14, 15)
+    assert rows.loc[1, "clientes_esperados"] > 0
+    assert rows.loc[1, "hora_pico"] in (10, 11, 12, 13, 14, 15)
     assert rows.loc[1, "franja_inicio"] <= 10 and rows.loc[1, "franja_fin"] >= 15
     payload = json.load(open(os.path.join(workdir, "dashboard", "riesgo.json"), encoding="utf-8"))
     assert payload["fecha"] == "2026-01-15" and len(payload["distribuidoras"]) == 2
-    eosa = next(d for d in payload["distribuidoras"] if d["id"] == 1)
-    assert [z["zona"] for z in eosa["zonas"]][0] == "10"
-    assert eosa["municipios"][0]["nombre"] == "Montánchez" and eosa["municipios"][0]["probabilidad"] > 0
-    assert eosa["brigadas"]["n"] == 1 and eosa["brigadas"]["bases"][0]["municipio"] in ("Montánchez", "Torre de Santa María")
+    d1 = next(d for d in payload["distribuidoras"] if d["id"] == 1)
+    assert [z["zona"] for z in d1["zonas"]][0] == "10"
+    assert d1["municipios"][0]["nombre"] == "Montánchez" and d1["municipios"][0]["probabilidad"] > 0
+    assert d1["brigadas"]["n"] == 1 and d1["brigadas"]["bases"][0]["municipio"] in ("Montánchez", "Torre de Santa María")
     # The base of the configuration is farther from the risk than the best one.
-    assert eosa["brigadas"]["fijas"]["municipios"] == ["Torre de Santa María"]
-    assert eosa["brigadas"]["fijas"]["llegada_media_min"] >= eosa["brigadas"]["llegada_media_min"]
-    assert eosa["franja"]["inicio"] is not None and eosa["causas"] and eosa["impacto"]["ct_esperados"] > 0
-    assert len(eosa["cts"]) == 4 and eosa["cts"][0]["probabilidad"] >= eosa["cts"][-1]["probabilidad"]
+    assert d1["brigadas"]["fijas"]["municipios"] == ["Torre de Santa María"]
+    assert d1["brigadas"]["fijas"]["llegada_media_min"] >= d1["brigadas"]["llegada_media_min"]
+    assert d1["franja"]["inicio"] is not None and d1["causas"] and d1["impacto"]["ct_esperados"] > 0
+    assert len(d1["cts"]) == 4 and d1["cts"][0]["probabilidad"] >= d1["cts"][-1]["probabilidad"]
     assert payload["reglas"]["cascada"]["n"] > 0 and "pico de racha" in payload["reglas"]["texto"]
     assert os.path.exists(os.path.join(workdir, "dashboard", "riesgo_20260115.json"))
-    assert eosa["brigadas"]["posicionamiento"].startswith("brigadas en sus bases a las")
-    assert [c["n"] for c in eosa["brigadas"]["curva"]][:2] == [1, 2] and eosa["brigadas"]["bases"][0]["municipios"]
+    assert d1["brigadas"]["posicionamiento"].startswith("brigadas en sus bases a las")
+    assert [c["n"] for c in d1["brigadas"]["curva"]][:2] == [1, 2] and d1["brigadas"]["bases"][0]["municipios"]
     for name in ("parte_guardia.xlsx", "parte_guardia_20260115.xlsx"):
         assert os.path.getsize(os.path.join(workdir, "dashboard", name)) > 5000
     text = open(os.path.join(workdir, "resultados", RUN_ID, "resumen.md"), encoding="utf-8").read()
@@ -750,7 +751,7 @@ def test_without_the_forecast_there_is_nothing_to_score(config_path, workdir):
 
 def test_the_second_opinions_of_the_evening_are_attached_to_the_payload(tmp_path):
 
-    payload = {"fecha": "2026-10-15", "distribuidoras": [{"id": 3, "nombre": "EOSA"}, {"id": 2, "nombre": "Pitarch"}]}
+    payload = {"fecha": "2026-10-15", "distribuidoras": [{"id": 3, "nombre": "Distribuidora 1"}, {"id": 2, "nombre": "Distribuidora 2"}]}
     with open(tmp_path / "ensemble.json", "w", encoding="utf-8") as file:
         json.dump({"fecha": "2026-10-15", "distribuidoras": [{"id": 3, "horas": [{"hora": 0, "p10": 1, "p50": 2, "p90": 3}], "texto": "40 escenarios", "pico": {"p10": 30, "p50": 40, "p90": 55},
                                                              "supera": {"50": 0.2}, "miembros": 40, "modelo": "icon_eu"},
@@ -758,9 +759,9 @@ def test_the_second_opinions_of_the_evening_are_attached_to_the_payload(tmp_path
     with open(tmp_path / "aemet.json", "w", encoding="utf-8") as file:
         json.dump({"fecha": "2026-10-14", "distribuidoras": [{"id": 3, "horas": [{"hora": 0, "racha_kmh": 10}], "texto": "de ayer"}]}, file)
     out = rm.attach_second_opinions(payload, str(tmp_path))
-    eosa, pitarch = out["distribuidoras"]
-    assert eosa["escenarios"] == {"texto": "40 escenarios", "pico": {"p10": 30, "p50": 40, "p90": 55}, "supera": {"50": 0.2}, "miembros": 40, "modelo": "icon_eu"}
-    assert "escenarios" not in pitarch and "aemet" not in eosa  # no hours for Pitarch; the AEMET file is of another day
+    d1, d2 = out["distribuidoras"]
+    assert d1["escenarios"] == {"texto": "40 escenarios", "pico": {"p10": 30, "p50": 40, "p90": 55}, "supera": {"50": 0.2}, "miembros": 40, "modelo": "icon_eu"}
+    assert "escenarios" not in d2 and "aemet" not in d1  # no hours for Distribuidora 2; the AEMET file is of another day
     assert rm.attach_second_opinions({"fecha": "2026-10-15", "distribuidoras": [{"id": 3}]}, str(tmp_path / "no")) == {"fecha": "2026-10-15", "distribuidoras": [{"id": 3}]}
     sheets = rm.rz.shift_sheets({**out, "fecha_texto": "15.10.2026"})
     assert sheets["Resumen"]["escenarios de ICON-EU EPS"].tolist() == ["40 escenarios", None]
@@ -770,7 +771,7 @@ def test_the_index_of_the_dashboard_survives_a_broken_file(tmp_path):
     folder = str(tmp_path)
     good = {"fecha": "2026-02-03", "fecha_texto": "03.02.2026", "generado": "02.02.2026 18:31 UTC", "run_id": "scheduled__x",
             "fuentes": {"prevision_pedida": "02.02.2026 18:31 UTC"}, "modelo": {"descripcion": "regresión logística"},
-            "distribuidoras": [{"id": 3, "nombre": "EOSA", "nivel": "alto", "probabilidad": 0.12, "percentil": 0.95,
+            "distribuidoras": [{"id": 3, "nombre": "Distribuidora 1", "nivel": "alto", "probabilidad": 0.12, "percentil": 0.95,
                                 "aviso_max_nivel": 1.0, "guardia": {"reforzar": True, "motivo": "nivel alto"},
                                 "franja": {"texto": "de 6:00 a 14:00"}, "racha_max_kmh": 88.0}]}
     with open(os.path.join(folder, "riesgo_20260203.json"), "w", encoding="utf-8") as file:
@@ -871,3 +872,22 @@ def test_an_old_run_of_the_forecast_is_told_in_the_notes(tmp_path):
     info["prevision_modelos"] = rm.forecast_models(fs, str(folder))
     notes = rm.report_notes(out, info)
     assert notes == ["ICON-EU no respondió para 1 de 3 celdas: su previsión es la de gfs_seamless, el modelo de reserva."]
+
+
+def test_a_riesgo_json_not_written_is_returned_as_not_published(tmp_path, monkeypatch):
+    # Auditoria integral A02: the job must know the dashboard was not published, to end with an error
+    dashboard = tmp_path / "data"
+    dashboard.mkdir()
+    real = rm.rz.write_json
+
+    def refuse_live(payload, target):
+        if os.path.basename(target) == "riesgo.json":
+            raise PermissionError("held open")
+        real(payload, target)
+
+    monkeypatch.setattr(rm.rz, "write_json", refuse_live)
+    monkeypatch.setattr(rm.rz, "write_shift_sheet", lambda payload, sheet: True)
+    failed = rm.write_dashboard({}, {"dashboard_dir": str(dashboard)}, "run", {"fecha": "2026-10-25", "distribuidoras": []},
+                                pd.Timestamp("2026-10-25"))
+    assert failed == [os.path.join(str(dashboard), "riesgo.json")]
+    assert (dashboard / "riesgo_20261025.json").exists()

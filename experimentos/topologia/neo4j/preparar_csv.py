@@ -104,10 +104,29 @@ cor["incidencia"] = [inc_cod[(r, p, i)] for r, p, i in zip(cor.red, cor.periodo_
 cor["ct"] = [ct_cod[(r, c)] for r, c in zip(cor.red, cor.ct_id)]
 escribir("incidencia_ct.csv", cor[["red", "incidencia", "ct", "inicio", "duracion_s"]])
 
+
+
+def bases_reales() -> set:
+    """
+    Los nombres reales de las distribuidoras salen de los nombres de las bases
+    restauradas (la configuración de Bronze), sin escribirlos aquí: la base
+    entera, lo que va detrás de "Calser_" y ese mismo texto con espacios.
+    """
+    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "etl", "config", "01_bronze",
+                        "config_bronze_sqlserver.json")
+    with open(ruta, encoding="utf-8") as fh:
+        texto = fh.read()
+    nombres = set()
+    for base in set(__import__("re").findall(r'"((?:Calser|TedisNet)_[A-Za-z0-9]+)"', texto)):
+        sufijo = base.split("_", 1)[1]
+        nombres |= {base, sufijo, __import__("re").sub(r"(?<=[a-z])(?=[A-Z])", " ", sufijo)}
+    return nombres
+
+
 # Nada de lo real puede quedar en los CSV
 reales = set(dim.ct_id.astype(str)) | set(dim.municipio_nombre.astype(str)) | cabecera_real
 reales |= set(aa.elemento_corte_nombre.dropna().astype(str)) | set(dim.codigo_ine.astype(str))
-reales |= {"EOSA", "Pitarch", "Valle de Santa Ana", "Calser_"}
+reales |= bases_reales() | {"Calser_"}
 reales = {r for r in reales if len(r) >= 4}
 NUMERICAS = {"red", "kva", "abonados", "salidas", "cortes", "duracion_s", "cts"}
 for f in sorted(os.listdir(OUT)):

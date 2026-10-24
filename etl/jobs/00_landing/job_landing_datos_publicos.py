@@ -679,7 +679,8 @@ def land_catastro(fs, cfg: dict, landing: str, places: list, provinces: list, fo
               {"_peticion": stamp("catastro-inspire-buildings", provincias=provinces), "municipios": manifest})
     logger.info("Catastro: %s municipalities in Landing (%s now), %s failed, %s without a match by name",
                 len(manifest), done, failed, unmatched)
-    return done, failed
+    # a municipality without a match by name is as missing as one that failed: the coverage is not complete
+    return done, failed + unmatched
 
 
 # IEEX projections -----------------------------------------------------------

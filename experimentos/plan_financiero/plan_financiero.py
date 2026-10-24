@@ -1660,6 +1660,7 @@ def escribir_xlsx(res, ruta):
     except ImportError:
         return False
     P = res["P"]
+    S = res["S"]
     N = res["N"]
     anios = N // 12
     S = res["S"]
@@ -1789,7 +1790,7 @@ def escribir_xlsx(res, ruta):
         (23, "B", "BAII = Beneficio antes de intereses e impuestos {EBIT}", "={c}19-{c}21"),
         (25, "A", "Gastos financieros", None), (26, "B", "Intereses y comisiones de los préstamos", "financieros"),
         (28, "B", "BAI = Beneficios antes de impuestos {EBT}", "={c}23-{c}26"),
-        (30, "B", "Impuesto de sociedades (25 %, con las bases negativas compensadas)", "is"),
+        (30, "B", f"Impuesto de sociedades ({S['tipo_is'] * 100:.0f} %, con las bases negativas compensadas)", "is"),
         (32, "B", "BDI = Beneficios después de impuestos {Net profit}", "={c}28-{c}30"),
     ]
     memoria = [(35, "A", "Pro Memoria", None), (36, "B", "Gross Cash Flow (BAI + amortizaciones)", "={c}28+{c}21"),

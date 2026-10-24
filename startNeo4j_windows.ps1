@@ -78,8 +78,8 @@ if ($r[0] -ne 0) { Say "ERROR: Neo4j no responde. Mira: docker logs $Nombre"; ex
 Say "    Neo4j responde"
 
 $r = Cypher "MATCH (c:CT) RETURN count(c) AS n;"
-$hay = 0
-if ($r[1] -match "(\d+)\s*$") { $hay = [int]$Matches[1] }
+if ($r[0] -ne 0 -or $r[1] -notmatch "(\d+)\s*$") { Say "ERROR: no se pudo contar el grafo (codigo $($r[0])): no cargo ni borro nada."; exit 1 }
+$hay = [int]$Matches[1]
 if ($Recargar -and $hay -gt 0) {
     Say "Borro el grafo para recargarlo"
     $r = Cypher "MATCH (n) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS;"

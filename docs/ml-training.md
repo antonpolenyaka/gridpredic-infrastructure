@@ -69,7 +69,7 @@ La meteorología era lo que la model card daba como pendiente ("entrará cuando 
 - **Gold** (`job_gold_meteo_celda_hora.py`, en `dag_gold`): `l3_gold.map_ct_celda` cruza el municipio de cada CT en Calser (`dim_ct.municipio_id`, que es el código INE) con `d_meteo_celda` por código y, si falla, por nombre sin tildes (columna `cruce`). Las coordenadas del municipio entran como `ct_lat_municipio` y `ct_lon_municipio` y en la clusterización, porque las de `dim_ct` estaban vacías. Son tablas nuevas e independientes: no se reconstruye nada de lo que ya había en Silver ni en Gold, y la meteorología no se mete en `features_ct_hora`; el entrenamiento la une por `(celda_id, hora)`.
 - **Features** (`l3_gold.meteo_celda_hora`): `met_*` son las últimas horas (ráfaga y viento de la hora; ráfaga máxima de 3, 6 y 24 h; lluvia de 1, 3, 6 y 24 h; nieve de 24 h; temperatura, mínima y máxima de 24 h; humedad; presión y su cambio en 3 y 24 h). `metprev_*` son las 3 horas siguientes: ráfaga máxima, lluvia y nieve. `met_region_*` y `metprev_region_*` son el máximo de todas las celdas, que da el tamaño del temporal. La fila de cada hora describe la hora que termina entonces, así que se conoce a esa hora, igual que el resto de features.
 - **Sobre la previsión:** `metprev_*` usa el reanálisis como si fuera una previsión perfecta de las 3 horas siguientes. En operación sería la previsión de AEMET o del ECMWF, que a 1-3 horas es buena pero no perfecta, así que el resultado con estas features es una cota superior. Con `meteo.prevision: false` en `config_ml.json` el entrenamiento las deja fuera, para medir cuánto aporta solo la meteorología observada.
-- **Limitación:** ninguna fuente gratuita da rayos históricos y la propia Open-Meteo avisa de que con estos datos no se pueden estimar tormentas. Las tormentas eléctricas solo se aproximan con ráfagas y precipitación intensa y, desde la 0.9.0, con el CAPE de los modelos GFS archivados (`met_cape_*`).
+- **Limitación:** este modelo no usa rayos. Los del Lightning Imager de MTG (EUMETSAT, gratuitos) se usan en el cuadro de mando y en `experimentos/rayos/`, pero no entraron en el modelo por horas, y la propia Open-Meteo avisa de que con estos datos no se pueden estimar tormentas. Las tormentas eléctricas solo se aproximan con ráfagas y precipitación intensa y, desde la 0.9.0, con el CAPE de los modelos GFS archivados (`met_cape_*`).
 
 ## 6. Modelos
 
@@ -93,7 +93,7 @@ Todas salen por modelo, por split, por etiqueta (`y_1_3h` y `y_1_3h_local`) y po
 | --- | --- |
 | `pr_auc` | Average precision. Métrica principal |
 | `roc_auc` | Secundaria, para comparar con la literatura |
-| `lift_pr_auc` | `pr_auc / prevalencia`: cuántas veces mejor que puntuar al azar |
+| `lift_pr_auc` | `pr_auc / prevalencia`: cuántas veces la prevalencia de esa muestra es la PR-AUC (no una medida general de cuánto mejor ordena) |
 | `alertas@N`, `aciertos@N`, `precision@N` | Para cada distribuidora y día, las N filas (CT-hora) con más puntuación son las alertas. N sale de `presupuestos_alertas_dia` (5, 10, 20 y 50) |
 | `recall_filas@N` | Positivos alertados / positivos |
 | `recall_episodios@N` | Un episodio son las horas positivas seguidas de un mismo CT (una interrupción da unas tres). Es el recall que importa al operador: cuántas interrupciones tuvieron al menos un aviso |

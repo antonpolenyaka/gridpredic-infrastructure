@@ -85,7 +85,7 @@ def avisos_hoy() -> None:
           + f"; envío: {payload.get('envio', '-') if payload else '-'}")
 
 
-@task(retries=0, trigger_rule="none_failed_min_one_success")
+@task(retries=1, retry_delay=timedelta(minutes=5), trigger_rule="none_failed_min_one_success")
 def parte_manana() -> None:
     if JOBS_DIR not in sys.path:
         sys.path.insert(0, JOBS_DIR)
@@ -94,6 +94,9 @@ def parte_manana() -> None:
     folder = settings.get("dashboard_dir", "/app/dashboard/data")
     result = aviso_riesgo.send_morning(folder, settings, os.path.join(folder, "parte_manana.json"))
     print(f"parte de la mañana: {result}")
+    if result.startswith("error"):
+        # the webhook did not take it: a failure Airflow can retry, not a normal end
+        raise RuntimeError(f"Morning report not sent: {result}")
 
 
 with DAG(
