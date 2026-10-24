@@ -2,8 +2,10 @@
 Atomic writes of the files the dashboard reads (dashboard/data): the content
 goes to a temporary file in the same folder and os.replace puts it over the
 target, so a page (or a copy) never reads a half written file. If the
-replace is refused (a file held open on Windows), the file is written in
-place as before and the refusal is logged. If the temporary itself cannot be
+replace is refused (a file held open on Windows), it is retried a few times
+and, if it is still refused, the temporary is removed, the file in place is
+kept as it was and the error goes up: never a half written file in place.
+If the temporary itself cannot be
 written (no space left on the device, for example) the error goes up and the
 file in place is not touched. Only the standard library, so
 the Landing jobs and the ML jobs share it (riesgo_zonas.py adds this folder
@@ -13,6 +15,7 @@ to sys.path).
 import json
 import logging
 import os
+import time
 
 logger = logging.getLogger("escritura_atomica")
 
@@ -29,7 +32,7 @@ def remove_quietly(path: str) -> None:
         pass
 
 
-def replace_atomically(path: str, write) -> None:
+def replace_atomically(path: str, write, retries: int = 3, wait_s: float = 0.5) -> None:
     """write(target_path) writes the whole file; it goes to a temporary first and then replaces path."""
     temporary = temporary_of(path)
     try:
@@ -38,12 +41,18 @@ def replace_atomically(path: str, write) -> None:
         # the temporary could not be written (no space left, a failing dump): the file in place stays as it was
         remove_quietly(temporary)
         raise
-    try:
-        os.replace(temporary, path)
-    except OSError as error:
-        logger.warning("%s not replaced atomically (%s): written in place", path, error)
-        remove_quietly(temporary)
-        write(path)
+    for attempt in range(retries + 1):
+        try:
+            os.replace(temporary, path)
+            return
+        except OSError as error:
+            if attempt == retries:
+                # the previous file stays whole; whoever called knows it was not published
+                logger.error("%s not replaced (%s): the previous file is kept", path, error)
+                remove_quietly(temporary)
+                raise
+            logger.warning("%s not replaced yet (%s), retrying", path, error)
+            time.sleep(wait_s)
 
 
 def write_json_atomic(path: str, payload, **dump_args) -> None:

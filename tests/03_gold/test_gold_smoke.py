@@ -286,7 +286,7 @@ VALUE_SCHEMA = (
     "QualityId int, QualityDetailId int, QualitySourceId int"
 )
 
-# EOSA has no samples between 02:00 and 04:00 of 10.01.2026 (history gap).
+# Distribuidora 1 has no samples between 02:00 and 04:00 of 10.01.2026 (history gap).
 GAP = (ts("2026-01-10 02:00:00"), ts("2026-01-10 04:00:00"))
 
 
@@ -832,7 +832,7 @@ def test_calendar_static_and_activity(gold):
     assert feature_row(gold, "06011", "2026-01-05 12:00:00")["es_vispera_festivo"] == 1
     assert feature_row(gold, "06012", "2026-01-05 12:00:00")["ct_potencia_kva"] == 250
 
-    # history gap of EOSA between 02:00 and 04:00
+    # history gap of Distribuidora 1 between 02:00 and 04:00
     assert feature_row(gold, "06011", "2026-01-10 03:00:00")["scada_activo"] == 0
     assert feature_row(gold, "06011", "2026-01-10 05:00:00")["scada_activo"] == 1
     assert feature_row(gold, "33031", "2026-01-10 03:00:00")["scada_activo"] == 1

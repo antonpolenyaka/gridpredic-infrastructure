@@ -487,7 +487,8 @@ def crew_plan(municipalities: pd.DataFrame, crews: int, speed_kmh: float = 60.0,
     The crews bases that minimise the expected arrival time to the risk of
     tomorrow: a greedy p-median over the municipalities of the CTs (lat,
     lon), weighting each one by its expected customers out of service
-    (clientes_esperados, or its probability). The minutes between
+    (clientes_esperados, or its probability). The minutes are the ones of
+    the trip from the base to each municipality. The minutes between
     municipalities are the ones by road of road_minutes (a frame indexed
     by municipio in rows and columns, osrm_table) when it covers them, and
     straight lines times road_factor at speed_kmh otherwise. fixed:
@@ -509,6 +510,9 @@ def crew_plan(municipalities: pd.DataFrame, crews: int, speed_kmh: float = 60.0,
         if known.mean() >= 0.9:
             minutes = np.where(known, by_road, minutes)
             source = "carretera (OSRM sobre OpenStreetMap)"
+    # OSRM gives durations[i][j] from i to j; the crew goes from the base (column) to the municipality (row), so
+    # every cost below reads minutes[demand, base] = minutes from the base to the demand.
+    minutes = minutes.T
     chosen = []
     for _ in range(min(crews, len(m))):
         best = None

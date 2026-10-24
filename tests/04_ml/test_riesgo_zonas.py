@@ -294,8 +294,9 @@ def test_crew_plan_puts_the_bases_where_the_risk_is():
     assert rz.positioning({"inicio": 10}, {}) == ""
     # With the minutes by road the plan says so and uses them; a table that misses many municipalities is ignored.
     names = municipalities["municipio"].tolist()
-    road = pd.DataFrame(np.full((4, 4), 90.0), index=names, columns=names)
-    np.fill_diagonal(road.to_numpy(), 0.0)
+    grid = np.full((4, 4), 90.0)
+    np.fill_diagonal(grid, 0.0)
+    road = pd.DataFrame(grid, index=names, columns=names)
     road.loc["Norte", "Centro"] = road.loc["Centro", "Norte"] = 5.0
     by_road = rz.crew_plan(municipalities, 1, road_minutes=road)
     assert by_road["tiempos"].startswith("carretera") and one["tiempos"].startswith("línea recta")
@@ -306,6 +307,19 @@ def test_crew_plan_puts_the_bases_where_the_risk_is():
     assert rz.crew_plan(municipalities.assign(clientes_esperados=0.0), 1)["bases"][0]["municipio"] == "Centro"
     assert rz.crew_plan(municipalities, 0) == {}
     assert rz.crew_plan(municipalities.assign(lat=np.nan), 1) == {}
+
+
+def test_crew_plan_reads_the_road_minutes_from_the_base_to_the_municipality():
+    # Auditoria integral A06: OSRM tables are directional (row origin, column destination); the crew leaves the base
+    municipalities = pd.DataFrame({"municipio": ["A", "B"], "lat": [39.0, 39.001], "lon": [-6.0, -6.001], "n_ct": [1, 1],
+                                   "clientes_esperados": [9.0, 1.0]})
+    road = pd.DataFrame([[0.0, 10.0], [100.0, 0.0]], index=["A", "B"], columns=["A", "B"])
+    plan = rz.crew_plan(municipalities, 1, road_minutes=road)
+    # from A: 0 min to A and 10 to B (mean 1); from B: 100 to A and 0 to B (mean 90)
+    assert plan["bases"][0]["municipio"] == "A"
+    assert plan["llegada_media_min"] == pytest.approx(1.0) and plan["llegada_max_min"] == 10.0
+    fixed = rz.crew_plan(municipalities, 1, road_minutes=road, fixed=["B"])
+    assert fixed["fijas"]["llegada_media_min"] == pytest.approx(90.0)
 
 
 def test_the_shift_sheet_has_one_sheet_per_table(tmp_path):

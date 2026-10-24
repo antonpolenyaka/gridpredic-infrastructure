@@ -53,7 +53,7 @@ def rayos() -> None:
         raise RuntimeError(f"job_landing_rayos ended with code {code}")
 
 
-@task(retries=0)
+@task(retries=1, retry_delay=timedelta(minutes=1))
 def avisar_rayos() -> None:
     """A storm over some network goes to the webhook of the evening, once per distribuidora and hour."""
     if JOBS_DIR not in sys.path:
@@ -67,6 +67,9 @@ def avisar_rayos() -> None:
     with open(path, encoding="utf-8") as file:
         payload = json.load(file)
     result = aviso_riesgo.send_storm(payload, settings, os.path.join(folder, "rayos_aviso.json"))
+    if result.startswith("error"):
+        # a transport failure is a failure (retried), not a planned omission
+        raise RuntimeError(f"Storm message not sent: {result}")
     if result != "enviado":
         raise AirflowSkipException(f"Storm message not sent: {result}")
 

@@ -328,6 +328,22 @@ def near_network(recent: pd.DataFrame, risk: dict, radii: list) -> list:
     return out
 
 
+def unknown_without_reading(blocks: list, landed: dict) -> list:
+    """
+    When the last hour could not be read (the Data Store did not answer, or
+    every product found failed), "sin tormenta" would read as an observed
+    absence of lightning: those blocks say instead that there are no current
+    data. The flashes already landed still count when they are there.
+    """
+    if not landed.get("error"):
+        return blocks
+    for block in blocks:
+        if block.get("nivel") == "sin tormenta":
+            block["nivel"] = "sin datos"
+            block["texto"] = "sin datos actuales de rayos: no se pudo leer la última hora"
+    return blocks
+
+
 def dashboard_payload(recent: pd.DataFrame, risk: dict, cfg: dict, now: datetime, landed: dict) -> dict:
     radii = [float(r) for r in cfg["radio_km"]]
     rows = [{"ts": t.strftime("%Y-%m-%dT%H:%MZ"), "lat": round(float(a), 4), "lon": round(float(o), 4),
@@ -341,7 +357,7 @@ def dashboard_payload(recent: pd.DataFrame, risk: dict, cfg: dict, now: datetime
         "ultimo_producto": landed,
         "n_rayos": len(rows),
         "rayos": rows,
-        "distribuidoras": near_network(recent, risk, radii),
+        "distribuidoras": unknown_without_reading(near_network(recent, risk, radii), landed),
         "regla": ("Antes del 17 % de las incidencias de 2024 - 2025 hubo rayos a menos de 10 km de la red en la hora "
                   "anterior, frente al 1,1 % de las ventanas sin incidencias."),
     }
@@ -397,6 +413,10 @@ def main(argv=None, fs=None, now: datetime = None) -> int:
         except Exception as error:  # noqa: BLE001
             logger.error("The Data Store did not answer: %s", str(error)[:200])
             landed = {"error": str(error)[:200]}
+        if landed.get("fallidos") and not landed.get("descargados"):
+            # products found but none downloaded: the last hour was not observed
+            landed["error"] = f"no se pudo descargar ninguno de los {landed['fallidos']} productos encontrados"
+            logger.error("Lightning: %s", landed["error"])
     recent = recent_flashes(fs, cfg, now, float(cfg["ventana_min"]))
     payload = dashboard_payload(recent, read_risk(cfg["dashboard_dir"]), cfg, now, landed)
     write_dashboard(payload, cfg["dashboard_dir"])

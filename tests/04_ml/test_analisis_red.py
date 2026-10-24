@@ -301,9 +301,9 @@ def test_report_has_every_section(result):
 def test_tiepi_by_factor_matches_hand_calculation(result):
     _, folder = result
     table = read(folder, "tiepi_anual.csv")
-    eosa = table[(table["distribuidora_id"] == 1) & (table["anio"] == 2023)]
-    propias = eosa[(eosa["grupo"] == "imprevista") & (eosa["factor"] == "propias")].iloc[0]
-    terceros = eosa[(eosa["grupo"] == "imprevista") & (eosa["factor"] == "terceros")].iloc[0]
+    d1 = table[(table["distribuidora_id"] == 1) & (table["anio"] == 2023)]
+    propias = d1[(d1["grupo"] == "imprevista") & (d1["factor"] == "propias")].iloc[0]
+    terceros = d1[(d1["grupo"] == "imprevista") & (d1["factor"] == "terceros")].iloc[0]
     # I1: two CTs of 250 kVA for 0,5 h and two for 2 h; I2: 400 kVA for 1 h. Installed 4 x 250 + 4 x 400.
     assert propias["kva_h"] == pytest.approx(1250.0)
     assert terceros["kva_h"] == pytest.approx(400.0)
@@ -314,7 +314,7 @@ def test_tiepi_by_factor_matches_hand_calculation(result):
     row = summary[(summary["distribuidora"] == "Calser_EOSA") & (summary["anio"] == 2023)].iloc[0]
     assert row["tiepi_h"] == pytest.approx(1650.0 / 2600.0)
     assert row["tiepi_incentivo_h"] == pytest.approx(1250.0 / 2600.0)
-    # The client incident of Pitarch and the interruption without incident stay out.
+    # The client incident of Distribuidora 2 and the interruption without incident stay out.
     # Distribuidora 2 is shown with the name of riesgo_manana.nombres, never with its database.
     assert "Calser_Pitarch" not in set(summary["distribuidora"])
     pit = summary[(summary["distribuidora"] == "Distribuidora 2") & (summary["anio"] == 2025)]
@@ -412,11 +412,11 @@ def test_excluded_day_is_shown_apart(result):
     _, folder = result
     excluded = read(folder, "tiepi_dias_excluidos.csv")
     row = excluded[excluded["distribuidora"] == "Calser_EOSA"].iloc[0]
-    # Every CT of EOSA (2.600 kVA) for 10 h.
+    # Every CT of Distribuidora 1 (2.600 kVA) for 10 h.
     assert row["tiepi_h"] == pytest.approx(10.0)
     summary = read(folder, "tiepi_resumen.csv")
-    eosa = summary[(summary["distribuidora"] == "Calser_EOSA") & (summary["anio"] == 2025)].iloc[0]
-    assert eosa["tiepi_h"] == pytest.approx(1000.0 / 2600.0)
+    d1 = summary[(summary["distribuidora"] == "Calser_EOSA") & (summary["anio"] == 2025)].iloc[0]
+    assert d1["tiepi_h"] == pytest.approx(1000.0 / 2600.0)
     causes = read(folder, "causas_texto.csv")
     assert "apagon" not in set(causes["causa"])
 
