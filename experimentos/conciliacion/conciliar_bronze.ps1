@@ -11,7 +11,7 @@
 # Unos 5 minutos con SQL Server y Trino arrancados. Si SQL Server esta parado lo arranca, espera hasta 25 minutos a que
 # tenga sus cuatro bases en linea y lo vuelve a parar al acabar; si Trino esta parado lo arranca y lo deja arrancado.
 # No empieza entre las 18:30 y las 21:00 y espera si Spark tiene aplicaciones en marcha.
-$Repo = "D:\GitHub\gridpredic-infrastructure"
+$Repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path   # la carpeta donde este clonado el repositorio
 $Compose = "$Repo\compose.yaml"
 $L = "$Repo\_runlogs"
 $Stamp = Get-Date -Format "yyyyMMdd_HHmm"
@@ -121,7 +121,7 @@ function Num($v) {
     return ([double]$v).ToString("N0", $Es)
 }
 
-if (-not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
+if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
 docker info *> $null
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: Docker Desktop no esta arrancado"; exit 1 }
 if (EnLaTarde) { Say "ERROR: franja de la tarde (18:30 - 21:00), no se lanza"; exit 1 }
@@ -214,6 +214,10 @@ for ($i = 0; $i -lt $Bases.Count; $i++) {
 
 $SqlArrancadoAqui = $false
 $activos = @(docker compose -f $Compose ps --status running --services 2>$null)
+if ($LASTEXITCODE -ne 0) {
+    # sin la lista no se sabe si SQL Server estaba arrancado: ni lo arranco ni lo paro al acabar
+    Say "ERROR: docker compose ps fallo (codigo ${LASTEXITCODE}): estado de SQL Server desconocido"; exit 1
+}
 if (-not ($activos -contains "sqlserver")) {
     Say "  SQL Server no esta arrancado: lo arranco y lo paro al acabar"
     docker compose -f $Compose start sqlserver 2>&1 | ForEach-Object { Say "    $_" }

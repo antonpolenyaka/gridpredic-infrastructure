@@ -158,3 +158,23 @@ def test_without_credentials_nothing_is_asked(fs, cfg, monkeypatch, tmp_path):
         out = json.load(file)
     assert out["n_rayos"] == 0 and out["ultimo_producto"]["error"].startswith("HTTP 503")
     assert out["distribuidoras"] == []
+
+
+def test_products_found_but_none_downloaded_is_no_data_and_an_error(fs, cfg, monkeypatch, tmp_path):
+    # Auditoria integral A04: six products found and six failed downloads must not read as "sin tormenta"
+    monkeypatch.setenv("EUMETSAT_CONSUMER_KEY", "k")
+    monkeypatch.setenv("EUMETSAT_CONSUMER_SECRET", "s")
+    monkeypatch.setattr(rayos, "token", lambda cfg, key, secret: "tok")
+    found = [product_id(NOW - timedelta(minutes=10 * (i + 1))) for i in range(6)]
+    monkeypatch.setattr(rayos, "search", lambda cfg, tok, since, now: found)
+    monkeypatch.setattr(rayos, "download", lambda cfg, tok, product: (_ for _ in ()).throw(TimeoutError("timed out")))
+    monkeypatch.setattr(rayos.time, "sleep", lambda s: None)
+    risk = {"distribuidoras": [{"id": 2, "nombre": "Distribuidora 2", "municipios": [{"nombre": "Zafra", "lat": 38.42, "lon": -6.42, "zonas": ["Zafra"]}]}]}
+    with open(os.path.join(tmp_path, "riesgo.json"), "w", encoding="utf-8") as file:
+        json.dump(risk, file)
+    assert rayos.main(["--dashboard-dir", str(tmp_path), "--landing", cfg["landing"]], fs=fs, now=NOW) == 1
+    with open(os.path.join(tmp_path, "rayos.json"), encoding="utf-8") as file:
+        out = json.load(file)
+    assert out["ultimo_producto"]["fallidos"] == 6 and out["ultimo_producto"]["descargados"] == 0
+    assert out["ultimo_producto"]["error"].startswith("no se pudo descargar")
+    assert out["distribuidoras"][0]["nivel"] == "sin datos"

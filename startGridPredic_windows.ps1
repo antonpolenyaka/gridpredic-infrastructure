@@ -77,7 +77,9 @@ if ($Cdc) {
 foreach ($s in @("cola.ps1", "vigilar_airflow.ps1")) {
     if (Test-Path "$L\$s") {
         & $Pwsh -NoProfile -File "$L\arrancar_si_falta.ps1" -Script $s
-        Say "Comprobado $s (arrancado si no estaba)"
+        $codigoAyudante = $LASTEXITCODE
+        if ($codigoAyudante -eq 0) { Say "Comprobado $s (arrancado si no estaba)" }
+        else { Say "    AVISO: no se pudo comprobar ni arrancar $s (codigo ${codigoAyudante})"; $Fallos++ }
     }
 }
 

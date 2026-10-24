@@ -15,7 +15,7 @@
 # antes de las 20:25. Este lanzador aun no lee esa duracion y la aplica de forma simplificada: no empieza
 # ninguna consulta ni la compactacion entre las 19:00 y las 21:00 (si le toca en esa franja, espera a las
 # 21:00), y la compactacion no empieza otra particion despues de la hora de -PararA (18 por defecto).
-param([string]$Repo = "D:\GitHub\gridpredic-infrastructure", [int]$PararA = 18, [switch]$SinCompactar,
+param([string]$Repo = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)), [int]$PararA = 18, [switch]$SinCompactar,
       [switch]$SoloEstadisticas)
 
 $Compose = "$Repo\compose.yaml"
@@ -80,7 +80,7 @@ function Planes([string]$Fase, [string[]]$Consultas, [string[]]$Sesion = @(), [s
     }
 }
 
-if (-not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
+if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
 Say "=== Planes de consulta (4.7.3) === Salida: $Dir"
 Say ("  Commit: " + (git -C $Repo log -1 --format="%h %s"))
 FueraDeLaTarde

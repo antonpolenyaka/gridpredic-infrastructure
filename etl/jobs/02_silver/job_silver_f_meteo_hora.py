@@ -128,13 +128,16 @@ def transform(df_in: DataFrame):
     kept, duplicated = keep_first(kept, ["celda_id", "hora"], [F.col("_cargado").desc_nulls_last()], "DUPLICATE_KEY")
 
     out_of_range = F.lit(False)
+    for name, low, high in present.values():
+        out_of_range = out_of_range | F.coalesce((F.col(name) < F.lit(low)) | (F.col(name) > F.lit(high)), F.lit(False))
+
+    # The flag is materialised before the values out of range become null: the expressions read the columns by
+    # name, and after the cleaning they would only see the nulls.
+    kept = kept.withColumn("fuera_rango", out_of_range)
 
     for name, low, high in present.values():
         bad = (F.col(name) < F.lit(low)) | (F.col(name) > F.lit(high))
-        out_of_range = out_of_range | F.coalesce(bad, F.lit(False))
         kept = kept.withColumn(name, F.when(F.coalesce(bad, F.lit(False)), F.lit(None)).otherwise(F.col(name)))
-
-    kept = kept.withColumn("fuera_rango", out_of_range)
 
     if "racha_kmh" in kept.columns and "viento_kmh" in kept.columns:
         kept = kept.withColumn(

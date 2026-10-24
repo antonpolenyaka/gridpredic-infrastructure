@@ -42,7 +42,7 @@ param(
 
 $ErrorActionPreference = "Continue"
 
-$Repo = "D:\GitHub\gridpredic-infrastructure"
+$Repo = Split-Path -Parent $PSScriptRoot   # la carpeta donde este clonado el repositorio
 $Compose = "$Repo\compose.yaml"
 $L = "$Repo\_runlogs"
 $Stamp = Get-Date -Format "yyyyMMdd_HHmm"
