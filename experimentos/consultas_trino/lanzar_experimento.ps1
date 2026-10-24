@@ -89,7 +89,9 @@ FueraDeLaTarde
 docker compose -f $Compose exec -T spark-master mkdir -p /tmp/gp 2>&1 | Out-Null
 docker compose -f $Compose cp "$Repo\experimentos\consultas_trino\apps_spark.py" "spark-master:/tmp/gp/apps_spark.py" 2>&1 | Out-Null
 while ($true) {
-    $n = [int](((docker compose -f $Compose exec -T spark-master python3 /tmp/gp/apps_spark.py) -join "").Trim())
+    $salida = (((docker compose -f $Compose exec -T spark-master python3 /tmp/gp/apps_spark.py) -join "").Trim())
+    if ($LASTEXITCODE -ne 0 -or $salida -notmatch '^-?\d+$') { Say "ERROR: no he podido saber si Spark tiene aplicaciones en marcha (codigo $LASTEXITCODE, salida '$salida')"; exit 1 }
+    $n = [int]$salida
     if ($n -eq 0) { break }
     if ($n -lt 0) { Say "ERROR: el master de Spark no responde"; exit 1 }
     Say "Spark tiene $n aplicaciones en marcha, espero"; Start-Sleep -Seconds 120
@@ -134,6 +136,7 @@ Planes "F" @("c5c") @("enable_dynamic_filtering=false")
 Say "--- Fase C: estadisticas con ANALYZE"
 docker compose -f $Compose exec -T spark-master python3 /tmp/gp/planes.py --fase C --analyze --salida /tmp/gp_planes 2>&1 |
     ForEach-Object { Say ("    " + $_) }
+if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "FALLO: ANALYZE devolvio $LASTEXITCODE; las medidas de la fase C que siguen no cuentan como completadas" }
 Planes "C" @("c2a", "c2b", "c2d", "c5b", "c5c")
 
 if (-not $SinCompactar) {

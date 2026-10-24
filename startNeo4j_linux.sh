@@ -79,13 +79,17 @@ hay="$(cypher 'MATCH (c:CT) RETURN count(c) AS n;' | tail -1 | tr -dc '0-9')"
 hay="${hay:-0}"
 if [ "$RECARGAR" -eq 1 ] && [ "$hay" -gt 0 ]; then
     say "Borro el grafo para recargarlo"
-    cypher "MATCH (n) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS;" | tee -a "$OUT"
+    borrado=$(cypher "MATCH (n) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS;"); brc=$?
+    echo "$borrado" | tee -a "$OUT"
+    if [ "$brc" -ne 0 ]; then say "ERROR: el borrado del grafo ha fallado (codigo $brc): no cargo encima de lo que haya."; exit 1; fi
     hay=0
 fi
 if [ "$hay" -eq 0 ]; then
     say "Cargo el grafo desde $IMPORT"
-    if ! docker exec -i "$NOMBRE" cypher-shell --format plain < "$CARGA" 2>&1 | tee -a "$OUT"; then
-        say "ERROR: la carga ha fallado (ver arriba)."; exit 1
+    docker exec -i "$NOMBRE" cypher-shell --format plain < "$CARGA" 2>&1 | tee -a "$OUT"
+    carga_rc=${PIPESTATUS[0]}
+    if [ "$carga_rc" -ne 0 ]; then
+        say "ERROR: la carga ha fallado con codigo $carga_rc (ver arriba)."; exit 1
     fi
 else
     say "El grafo ya esta cargado ($hay CT). Para cargarlo de nuevo: --recargar"
