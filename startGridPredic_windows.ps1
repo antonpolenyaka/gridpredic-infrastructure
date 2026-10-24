@@ -13,7 +13,7 @@
 param([switch]$Cdc, [int]$MinutosMax = 30)
 
 $ErrorActionPreference = "Continue"
-$Repo = "D:\GitHub\gridpredic-infrastructure"
+$Repo = $PSScriptRoot   # la carpeta donde esta clonado el repositorio, sea cual sea
 $Compose = "$Repo\compose.yaml"
 $L = "$Repo\_runlogs"
 $Stamp = Get-Date -Format "yyyyMMdd_HHmm"
@@ -40,7 +40,7 @@ function Fase($titulo, [string[]]$servicios, [int]$segundos, [switch]$SinEsperar
     if ($ok) { Say "    listo en $min min" } else { Say "    AVISO: no todo esta sano tras $min min (ver arriba)"; $script:Fallos++ }
 }
 
-if (-not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D: (el disco de Docker vive ahi). Conectalo y vuelve a lanzar."; exit 1 }
+if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D: (el disco de Docker vive ahi). Conectalo y vuelve a lanzar."; exit 1 }
 Say "=== Arranque de GridPredic === Log: $Out"
 
 # 1. Docker Desktop
