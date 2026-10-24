@@ -36,7 +36,7 @@ def product_id(start: datetime, minutes: int = 10) -> str:
 
 def product(points: list, start: datetime) -> bytes:
     """A zip with one BODY NetCDF (HDF5) of flashes at points [(ts, lat, lon)], packed as the real product."""
-    import h5py
+    h5py = pytest.importorskip("h5py")
 
     body = io.BytesIO()
     with h5py.File(body, "w") as h:

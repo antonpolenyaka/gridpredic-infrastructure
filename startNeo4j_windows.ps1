@@ -14,11 +14,12 @@
 # Deja un registro en _runlogs\neo4j_start_<fecha>.log.
 
 param([switch]$Recargar, [int]$MinutosMax = 5,
-      [string]$Carga = "D:\GitHub\gridpredic-infrastructure\experimentos\topologia\neo4j\carga.cypher")
+      [string]$Carga = "")
 
 $ErrorActionPreference = "Continue"
-$Repo = "D:\GitHub\gridpredic-infrastructure"
+$Repo = $PSScriptRoot   # la carpeta donde esta clonado el repositorio, sea cual sea
 $L = "$Repo\_runlogs"
+if (-not $Carga) { $Carga = "$Repo\experimentos\topologia\neo4j\carga.cypher" }
 $Import = "$L\neo4j\import"
 $Nombre = "gridpredic-neo4j"
 $Imagen = "neo4j:5.26.31-community"
@@ -35,7 +36,7 @@ function Cypher([string]$query) {
     return @($LASTEXITCODE, ($r -join "`n"))
 }
 
-if (-not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D: (el disco de Docker vive ahi)."; exit 1 }
+if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D: (el disco de Docker vive ahi)."; exit 1 }
 New-Item -ItemType Directory -Force -Path $L | Out-Null
 Say "=== Arranque de Neo4j === Log: $Out"
 

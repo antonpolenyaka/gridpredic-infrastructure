@@ -20,13 +20,13 @@ PAYLOAD = {
     "fecha": "2026-01-15", "fecha_texto": "15.01.2026",
     "reglas": {"texto": "Tras una avería, otra en las 3 h siguientes en el 11 % de los casos."},
     "distribuidoras": [
-        {"id": 3, "nombre": "EOSA", "nivel": "muy alto", "probabilidad": 0.31, "veces_tasa_base": 4.1, "esperadas": 0.42,
+        {"id": 3, "nombre": "Distribuidora 1", "nivel": "muy alto", "probabilidad": 0.31, "veces_tasa_base": 4.1, "esperadas": 0.42,
          "motivos": "racha prevista de 1,6 veces el p98 (x12)", "impacto": {"clientes_esperados": 85.4},
          "franja": {"inicio": 10, "fin": 15, "racha_pico": 92.0},
          "zonas": [{"nombre": "Hervás", "probabilidad": 0.05}, {"nombre": "Montánchez / Torre", "probabilidad": 0.12},
                    {"nombre": "Plasencia", "probabilidad": 0.08}, {"nombre": "Jerte", "probabilidad": 0.02}],
          "brigadas": {"bases": [{"municipio": "Plasencia"}, {"municipio": "Montánchez"}], "posicionamiento": "brigadas en sus bases a las 9:00"}},
-        {"id": 2, "nombre": "Pitarch", "nivel": "medio", "probabilidad": 0.06, "veces_tasa_base": 1.5, "esperadas": 0.06,
+        {"id": 2, "nombre": "Distribuidora 2", "nivel": "medio", "probabilidad": 0.06, "veces_tasa_base": 1.5, "esperadas": 0.06,
          "motivos": "ninguno, por debajo de un día medio", "impacto": {}, "franja": {}, "zonas": [], "brigadas": {}},
     ],
 }
@@ -35,15 +35,15 @@ PAYLOAD = {
 def test_the_message_names_the_distribuidoras_in_alert_only():
     text = av.message_from(PAYLOAD, "alto")
     assert text.startswith("Riesgo de interrupción de mañana 15.01.2026:")
-    assert "- EOSA: MUY ALTO (31 %, 4.1 veces su tasa base); averías esperadas 0.4, clientes esperados sin luz 85" in text
+    assert "- Distribuidora 1: MUY ALTO (31 %, 4.1 veces su tasa base); averías esperadas 0.4, clientes esperados sin luz 85" in text
     assert "franja de 10:00 a 16:00 (pico 92 km/h)" in text
     assert "líneas: Montánchez / Torre (12.0 %), Plasencia (8.0 %), Hervás (5.0 %)" in text
     assert "brigadas en Plasencia, Montánchez (brigadas en sus bases a las 9:00)" in text
-    assert "motivos: racha prevista" in text and "Pitarch" not in text
+    assert "motivos: racha prevista" in text and "Distribuidora 2" not in text
     assert "11 % de los casos" in text and text.endswith("http://localhost:8086")
-    # With medio as the minimum, Pitarch enters without motives; with muy alto only EOSA; nothing above.
-    assert "- Pitarch: MEDIO (6 %" in av.message_from(PAYLOAD, "medio")
-    assert "motivos" not in av.message_from(PAYLOAD, "medio").split("- Pitarch")[1]
+    # With medio as the minimum, Distribuidora 2 enters without motives; with muy alto only Distribuidora 1; nothing above.
+    assert "- Distribuidora 2: MEDIO (6 %" in av.message_from(PAYLOAD, "medio")
+    assert "motivos" not in av.message_from(PAYLOAD, "medio").split("- Distribuidora 2")[1]
     assert av.message_from(PAYLOAD, "muy alto").count("\n- ") == 1
     assert av.message_from({"distribuidoras": [{"nombre": "x", "nivel": "bajo"}]}, "alto") == ""
     # With the ensemble of the same day, the spread of the runs goes after the motives; of another day, nothing.
@@ -63,7 +63,7 @@ def test_the_message_names_the_distribuidoras_in_alert_only():
     guarded = json.loads(json.dumps(PAYLOAD))
     guarded["distribuidoras"][1]["guardia"] = {"reforzar": True, "motivo": "aviso de tormenta de AEMET (amarillo)"}
     text = av.message_from(guarded, "alto")
-    assert "- Pitarch: MEDIO (6 %" in text and "guardia reforzada (aviso de tormenta de AEMET (amarillo))" in text
+    assert "- Distribuidora 2: MEDIO (6 %" in text and "guardia reforzada (aviso de tormenta de AEMET (amarillo))" in text
 
 
 def test_send_posts_json_only_with_the_url(monkeypatch, capsys, tmp_path):
@@ -89,7 +89,7 @@ def test_send_posts_json_only_with_the_url(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("AVISO_WEBHOOK_URL", "https://hooks.example/abc")
     assert av.send(PAYLOAD, {"aviso": {"campo": "content", "timeout_s": 7}}) == "enviado"
     assert sent[0][0] == "https://hooks.example/abc" and list(sent[0][1]) == ["content"] and sent[0][3] == 7.0
-    assert sent[0][2] == "application/json" and "EOSA" in sent[0][1]["content"]
+    assert sent[0][2] == "application/json" and "Distribuidora 1" in sent[0][1]["content"]
 
     def failing(request, timeout):
         raise OSError("down")
@@ -126,12 +126,12 @@ def test_a_storm_over_the_network_is_told_once_an_hour(monkeypatch, tmp_path):
     from datetime import datetime, timezone
 
     storm = {"generado": "2026-10-14T15:45Z", "fuente": "EUMETSAT MTG LI", "ventana_min": 60, "n_rayos": 12, "distribuidoras": [
-        {"id": 3, "nombre": "EOSA", "nivel": "tormenta sobre la red", "texto": "9 rayos a menos de 10 km de la red en la última hora (líneas: Hervás, Jerte)",
+        {"id": 3, "nombre": "Distribuidora 1", "nivel": "tormenta sobre la red", "texto": "9 rayos a menos de 10 km de la red en la última hora (líneas: Hervás, Jerte)",
          "lineas": ["Hervás", "Jerte"], "municipios": ["Hervás", "Baños de Montemayor", "Jerte", "Tornavacas", "Cabezuela", "Navaconcejo", "Rebollar"]},
-        {"id": 2, "nombre": "Pitarch", "nivel": "sin tormenta", "texto": "sin rayos", "lineas": [], "municipios": []}]}
+        {"id": 2, "nombre": "Distribuidora 2", "nivel": "sin tormenta", "texto": "sin rayos", "lineas": [], "municipios": []}]}
     text = av.storm_message(storm)
-    assert text.startswith("Rayos sobre la red a las 15:45 UTC (satélite MTG):\n- EOSA: 9 rayos a menos de 10 km de la red en la última hora (líneas: Hervás, Jerte); municipios bajo la tormenta: Hervás, Baños de Montemayor, Jerte, Tornavacas, Cabezuela, Navaconcejo, ....")
-    assert "Pitarch" not in text and text.endswith("http://localhost:8086")
+    assert text.startswith("Rayos sobre la red a las 15:45 UTC (satélite MTG):\n- Distribuidora 1: 9 rayos a menos de 10 km de la red en la última hora (líneas: Hervás, Jerte); municipios bajo la tormenta: Hervás, Baños de Montemayor, Jerte, Tornavacas, Cabezuela, Navaconcejo, ....")
+    assert "Distribuidora 2" not in text and text.endswith("http://localhost:8086")
     assert av.storm_message({"distribuidoras": [{"nivel": "tormenta cerca"}]}) == ""
     state = tmp_path / "rayos_aviso.json"
     sent = []
@@ -147,7 +147,7 @@ def test_a_storm_over_the_network_is_told_once_an_hour(monkeypatch, tmp_path):
     both = json.loads(json.dumps(storm))
     both["distribuidoras"][1]["nivel"] = "tormenta sobre la red"
     assert av.send_storm(both, {"aviso": {"rayos_cada_min": 30}}, str(state), now.replace(hour=16, minute=55)) == "enviado"
-    assert "Pitarch" in sent[2] and "EOSA" not in sent[2]
+    assert "Distribuidora 2" in sent[2] and "Distribuidora 1" not in sent[2]
     assert av.send_storm({"distribuidoras": []}, {}, str(state), now) == "sin tormenta"
 
 
@@ -155,26 +155,26 @@ def test_the_morning_report_tells_yesterday_and_today_once_a_day(monkeypatch, tm
     from datetime import datetime, timezone
 
     verification = {"generado": "2026-10-15T05:20Z", "hoy": {"fecha": "2026-10-15", "distribuidoras": [
-        {"id": 2, "nombre": "Pitarch", "nivel": "bajo", "probabilidad": 0.031, "racha_prevista_max": 50, "hora_prevista": 12, "racha_observada_max": None}]},
+        {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.031, "racha_prevista_max": 50, "hora_prevista": 12, "racha_observada_max": None}]},
         "ayer": {"fecha": "2026-10-14", "distribuidoras": [
-            {"id": 2, "nombre": "Pitarch", "nivel": "bajo", "probabilidad": 0.0307, "estaciones": 10, "horas_observadas": 24, "aviso_aemet": 0,
+            {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.0307, "estaciones": 10, "horas_observadas": 24, "aviso_aemet": 0,
              "racha_prevista_max": 60, "hora_prevista": 11, "racha_observada_max": 44, "hora_observada": 11, "error_kmh": -16, "pico_en_franja": True,
              "racha_aemet_max": 43, "hora_aemet": 11, "banda_p10": 40, "banda_p50": 49, "banda_p90": 60, "pico_en_banda": True},
-            {"id": 3, "nombre": "EOSA", "nivel": "alto", "probabilidad": 0.102, "estaciones": 17, "horas_observadas": 24, "aviso_aemet": 1,
+            {"id": 3, "nombre": "Distribuidora 1", "nivel": "alto", "probabilidad": 0.102, "estaciones": 17, "horas_observadas": 24, "aviso_aemet": 1,
              "racha_prevista_max": 75, "hora_prevista": 14, "racha_observada_max": 81, "hora_observada": 17, "pico_en_franja": False, "pico_en_banda": False}]}}
     risk = {"fecha": "2026-10-15", "distribuidoras": [
-        {"id": 3, "nombre": "EOSA", "nivel": "medio", "probabilidad": 0.052, "franja": {"inicio": 11, "fin": 17, "racha_pico": 48}, "aemet": {"pico": {"racha_kmh": 46}},
+        {"id": 3, "nombre": "Distribuidora 1", "nivel": "medio", "probabilidad": 0.052, "franja": {"inicio": 11, "fin": 17, "racha_pico": 48}, "aemet": {"pico": {"racha_kmh": 46}},
          "guardia": {"reforzar": True, "motivo": "aviso de tormenta de AEMET (amarillo)"}},
-        {"id": 2, "nombre": "Pitarch", "nivel": "bajo", "probabilidad": 0.031, "franja": {"inicio": 12, "fin": 18, "racha_pico": 50}}]}
+        {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.031, "franja": {"inicio": 12, "fin": 18, "racha_pico": 50}}]}
     text = av.morning_message(verification, risk)
-    assert text.startswith("GridPredic, parte de la mañana.\nAyer 14.10.2026: Pitarch BAJO (3 %): pico previsto 60 km/h a las 11 h, medido 44 km/h a las 11 h "
-                           "(en la franja, en la banda de los escenarios, AEMET decía 43 km/h); EOSA ALTO (10 %): pico previsto 75 km/h a las 14 h, "
+    assert text.startswith("GridPredic, parte de la mañana.\nAyer 14.10.2026: Distribuidora 2 BAJO (3 %): pico previsto 60 km/h a las 11 h, medido 44 km/h a las 11 h "
+                           "(en la franja, en la banda de los escenarios, AEMET decía 43 km/h); Distribuidora 1 ALTO (10 %): pico previsto 75 km/h a las 14 h, "
                            "medido 81 km/h a las 17 h (fuera de la franja, fuera de la banda de los escenarios, aviso de AEMET de nivel 1).")
-    assert ("Hoy 15.10.2026: EOSA MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h, guardia reforzada (aviso de tormenta de AEMET (amarillo)); "
-            "Pitarch BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h.") in text
+    assert ("Hoy 15.10.2026: Distribuidora 1 MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h, guardia reforzada (aviso de tormenta de AEMET (amarillo)); "
+            "Distribuidora 2 BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h.") in text
     assert text.endswith("http://localhost:8086")
     # Without the risk of today, the block hoy of the verification; with the date of today, a warning; without anything, no message.
-    assert "Hoy 15.10.2026: Pitarch BAJO (3 %)." in av.morning_message(verification, {"fecha": "2026-10-14"})
+    assert "Hoy 15.10.2026: Distribuidora 2 BAJO (3 %)." in av.morning_message(verification, {"fecha": "2026-10-14"})
     assert "Atención: no hay riesgo calculado para hoy (el último es del 14.10.2026)" in av.morning_message(verification, {"fecha": "2026-10-14"}, "2026-10-15")
     assert "Atención" not in av.morning_message(verification, risk, "2026-10-15")
     assert av.morning_message({}, {}) == ""
@@ -199,11 +199,11 @@ def test_the_morning_report_tells_yesterday_and_today_once_a_day(monkeypatch, tm
 
 def test_the_outlook_of_the_day_after_tomorrow_goes_in_one_line():
     payload = {**PAYLOAD, "pasado_manana": {"fecha": "2026-01-16", "fecha_texto": "16.01.2026", "variante": "operativa_48h",
-                                            "distribuidoras": [{"id": 3, "nombre": "EOSA", "nivel": "alto", "probabilidad": 0.14},
-                                                               {"id": 2, "nombre": "Pitarch", "nivel": "bajo", "probabilidad": 0.02}]}}
+                                            "distribuidoras": [{"id": 3, "nombre": "Distribuidora 1", "nivel": "alto", "probabilidad": 0.14},
+                                                               {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.02}]}}
     text = av.message_from(payload, "alto")
-    assert "Pasado mañana 16.01.2026, orientación a dos días: EOSA ALTO (14 %)." in text
-    assert "Pitarch BAJO" not in text and text.index("Pasado mañana") < text.index("11 % de los casos")
+    assert "Pasado mañana 16.01.2026, orientación a dos días: Distribuidora 1 ALTO (14 %)." in text
+    assert "Distribuidora 2 BAJO" not in text and text.index("Pasado mañana") < text.index("11 % de los casos")
     # Without any distribuidora reaching the minimum, no line; without the block, nothing changes.
     assert "Pasado mañana" not in av.message_from(payload, "muy alto")
     assert "Pasado mañana" not in av.message_from(PAYLOAD, "alto")
