@@ -64,8 +64,10 @@ function BorrarEstadisticas() {
 function Copiar() {
     New-Item -ItemType Directory -Force -Path "$Dir\json" | Out-Null
     docker compose -f $Compose cp "spark-master:/tmp/gp_planes/." "$Dir\json" 2>&1 | ForEach-Object { Say "  $_" }
+    if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "FALLO: no se pudieron copiar los resultados del contenedor" }
     $n = (Get-ChildItem -Path "$Dir\json" -Filter "*.json" -File -ErrorAction SilentlyContinue).Count
     Say "Ficheros de resultados: $n"
+    if ($n -eq 0) { $Script:Fallos++; Say "FALLO: ningun fichero de resultados" }
 }
 
 function Planes([string]$Fase, [string[]]$Consultas, [string[]]$Sesion = @(), [switch]$SinReinicio) {

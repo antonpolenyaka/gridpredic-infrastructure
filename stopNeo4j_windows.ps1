@@ -14,6 +14,7 @@ docker info *> $null
 if ($LASTEXITCODE -ne 0) { Write-Host "Docker no responde: no hay nada que parar."; exit 0 }
 
 $existe = docker ps -a --filter "name=^/$Nombre$" --format "{{.Names}}"
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: docker ps ha devuelto $LASTEXITCODE; no se sabe si $Nombre existe."; exit 1 }
 if (-not $existe) { Write-Host "No existe el contenedor $Nombre."; exit 0 }
 
 Write-Host "Paro $Nombre (hasta 60 s para cerrar bien)"

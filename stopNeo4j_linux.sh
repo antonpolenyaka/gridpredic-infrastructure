@@ -21,7 +21,10 @@ for arg in "$@"; do
 done
 
 if ! docker info >/dev/null 2>&1; then echo "Docker no responde: no hay nada que parar."; exit 0; fi
-if [ -z "$(docker ps -a --filter "name=^/${NOMBRE}$" --format '{{.Names}}')" ]; then
+if ! existe="$(docker ps -a --filter "name=^/${NOMBRE}$" --format '{{.Names}}')"; then
+    echo "ERROR: docker ps ha fallado; no se sabe si $NOMBRE existe."; exit 1
+fi
+if [ -z "$existe" ]; then
     echo "No existe el contenedor $NOMBRE."; exit 0
 fi
 

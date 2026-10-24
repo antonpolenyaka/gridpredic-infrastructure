@@ -290,8 +290,11 @@ def test_the_dashboard_json_is_replaced_atomically(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "replace", replace)
     write_json_atomic(str(target), {"nuevo": 2}, ensure_ascii=False)
     assert seen == [{"nuevo": 2}] and json.loads(target.read_text(encoding="utf-8")) == {"nuevo": 2}
-    # A replace refused by the system (a file held open on Windows) still writes the file, in place.
+    # A replace refused by the system (a file held open on Windows) keeps the previous file whole and raises.
+    import escritura_atomica
+    monkeypatch.setattr(escritura_atomica.time, "sleep", lambda s: None)
     monkeypatch.setattr(os, "replace", lambda a, b: (_ for _ in ()).throw(PermissionError("in use")))
-    write_json_atomic(str(target), {"nuevo": 3})
-    assert json.loads(target.read_text(encoding="utf-8")) == {"nuevo": 3}
+    with pytest.raises(PermissionError):
+        write_json_atomic(str(target), {"nuevo": 3})
+    assert json.loads(target.read_text(encoding="utf-8")) == {"nuevo": 2}
     assert sorted(os.listdir(tmp_path)) == ["rayos.json"]

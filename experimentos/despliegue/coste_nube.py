@@ -56,6 +56,14 @@ def load(path):
                                                            for k, v in dates.items()}
 
 
+def licencia_vigente() -> float:
+    """La licencia anual de la red tipo del plan financiero vigente (salida/cifras_v11.json, clave/licencia)."""
+    import json
+    path = os.path.join(HERE, "..", "plan_financiero", "salida", "cifras_v11.json")
+    with open(path, encoding="utf-8") as handle:
+        return float(json.load(handle)["clave"]["licencia"])
+
+
 def main(argv) -> int:
     prices_path = argv[0] if argv else os.path.join(HERE, "precios_nube.csv")
     out = argv[1] if len(argv) > 1 else os.path.join(HERE, "salida")
@@ -145,7 +153,7 @@ def main(argv) -> int:
         f"{num(P['EUS2-DataScannedInTB'], 2)}$ por TB")
     say(f"EMR Serverless, la tarde (4 vCPU, 16 GB, 15 min al día): {num(emr * 0.25 * 30, 2)}$ al mes; en continuo: "
         f"{num(emr * H, 0)}$")
-    say(f"\nLicencia: {euros(18000 / 12)} por cliente y mes")
+    say(f"\nLicencia: {euros(licencia_vigente() / 12)} por cliente y mes (red tipo del plan financiero)")
 
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, "coste_nube.txt"), "w", encoding="utf-8") as handle:

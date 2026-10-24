@@ -28,6 +28,7 @@ identificadores, fechas ni nombres. Tarda un par de segundos.
 
 import os
 import sys
+from math import comb
 
 import numpy as np
 import pandas as pd
@@ -109,13 +110,16 @@ def report(table: pd.DataFrame) -> str:
         hits = int(near["afectada_marcada"].sum())
         hit_rate = hits / k
         share = float((near["lineas_marcadas"] / near["lineas_red"]).mean())
+        # the same question by chance: marking as many lines at random, would some affected line be among them?
+        chance = float(near.apply(lambda r: 1.0 - comb(int(r.lineas_red - r.lineas_afectadas), int(r.lineas_marcadas))
+                                  / comb(int(r.lineas_red), int(r.lineas_marcadas)), axis=1).mean())
         lo2, hi2 = wilson(hits, k)
         whole = near[near["lineas_marcadas"] == near["lineas_red"]]
         lines += [f"2. Escala de línea, en esas {k}: la regla habría marcado de media {near['lineas_marcadas'].mean():.1f} "
                   f"de las {near['lineas_red'].mean():.1f} líneas de su red ({100 * share:.0f} %), y alguna línea de la "
                   f"incidencia estaba entre las marcadas en {hits} de {k} ({100 * hit_rate:.0f} %; Wilson al 95 %, de "
-                  f"{100 * lo2:.0f} a {100 * hi2:.0f} %). Razón entre la línea que falla y una línea cualquiera de la "
-                  f"misma red y hora: {hit_rate / share:.2f}. Incidencias con todas las líneas de su red marcadas: "
+                  f"{100 * lo2:.0f} a {100 * hi2:.0f} %). Marcando al azar el mismo número de líneas de la misma red, alguna "
+                  f"afectada habría caído entre las marcadas en el {100 * chance:.0f} % de los casos: razón {hit_rate / chance:.2f}. Incidencias con todas las líneas de su red marcadas: "
                   f"{len(whole)} ({'; '.join(f'{r.red}: {r.lineas_red} de {r.lineas_red}' for r in whole.itertuples())}).",
                   "",
                   near.drop(columns="rayos_cerca_red").to_string(index=False)]
