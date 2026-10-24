@@ -83,6 +83,7 @@ if ($Recargar -and $hay -gt 0) {
     Say "Borro el grafo para recargarlo"
     $r = Cypher "MATCH (n) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS;"
     Say ("    " + $r[1])
+    if ($r[0] -ne 0) { Say "ERROR: el borrado del grafo ha fallado (codigo $($r[0])): no cargo encima de lo que haya."; exit 1 }
     $hay = 0
 }
 if ($hay -eq 0) {

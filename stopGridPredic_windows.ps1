@@ -68,7 +68,9 @@ if ($motivos.Count -gt 0) {
 
 Say "--- Parando contenedores (hasta 2 minutos cada uno)"
 docker compose -f $Compose --profile cdc stop -t 120 2>&1 | ForEach-Object { Say ("    " + $_) }
+$codigoStop = $LASTEXITCODE
 docker compose -f $Compose --profile cdc ps -a --format "table {{.Service}}\t{{.Status}}" 2>&1 | ForEach-Object { Say ("    " + $_) }
+if ($codigoStop -ne 0) { Say "ERROR: docker compose stop devolvio ${codigoStop}: puede haber contenedores en marcha (mira la lista de arriba). No cierro Docker Desktop."; exit 1 }
 
 if ($ApagarDocker) {
     Say "--- Cerrando Docker Desktop"

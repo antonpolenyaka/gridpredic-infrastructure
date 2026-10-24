@@ -19,13 +19,13 @@ Say "=== M102: HistoricEvents en los registros de Airflow === Log: $Out"
 $sh = 'set -o pipefail; d=/opt/airflow/logs; { ls -d $d/dag_id=ingest_sqlserver_batch_bronze* 2>/dev/null || true; } | sed -n 1,3p; ' +
       'find $d -path "*ingest_sqlserver_batch_bronze*" -ipath "*historicevents*" -name "*.log" 2>/dev/null | sort | tail -20'
 $sh2 = 'set -o pipefail; d=/opt/airflow/logs; files=$(find $d -path "*ingest_sqlserver_batch_bronze*" -ipath "*historicevents*" -name "*.log" 2>/dev/null | sort | tail -3) || exit 1; ' +
-       'for f in $files; do echo "=== $f"; { grep -i -E "error|exception|traceback|failed|no data|success|marking task" "$f" || true; } | tail -15; done'
+       'for f in $files; do echo "=== $f"; grep -i -E "error|exception|traceback|failed|no data|success|marking task" "$f" | tail -15; g=${PIPESTATUS[0]}; if [ $g -gt 1 ]; then echo "FALLO al leer $f (grep $g)"; exit 1; fi; done'
 $sh3 = 'set -o pipefail; airflow dags list-runs ingest_sqlserver_batch_bronze 2>/dev/null | sed -n 1,15p'
 docker compose -f $Compose exec -T airflow bash -c $sh 2>&1 | ForEach-Object { Say ("  " + $_) }
 if ($LASTEXITCODE -ne 0) { $Fallos++; Say "  FALLO: la consulta de los registros devolvio $LASTEXITCODE" }
-docker compose -f $Compose exec -T airflow bash -c $sh2 2>&1 | ForEach-Object { Say ("  " + $_.Substring(0, [Math]::Min(300, $_.Length))) }
+docker compose -f $Compose exec -T airflow bash -c $sh2 2>&1 | ForEach-Object { Say ("  " + ([string]$_).Substring(0, [Math]::Min(300, ([string]$_).Length))) }
 if ($LASTEXITCODE -ne 0) { $Fallos++; Say "  FALLO: la lectura de los errores devolvio $LASTEXITCODE" }
-docker compose -f $Compose exec -T airflow bash -c $sh3 2>&1 | ForEach-Object { Say ("  " + $_.Substring(0, [Math]::Min(300, $_.Length))) }
+docker compose -f $Compose exec -T airflow bash -c $sh3 2>&1 | ForEach-Object { Say ("  " + ([string]$_).Substring(0, [Math]::Min(300, ([string]$_).Length))) }
 if ($LASTEXITCODE -ne 0) { $Fallos++; Say "  FALLO: la lista de ejecuciones devolvio $LASTEXITCODE" }
 if ($Fallos -gt 0) { Say "Terminado con $Fallos consultas fallidas: el resultado no es completo."; exit 1 }
 Say "Terminado sin errores."
