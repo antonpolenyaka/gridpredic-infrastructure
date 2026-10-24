@@ -26,10 +26,10 @@ if [ -z "$(docker ps -a --filter "name=^/${NOMBRE}$" --format '{{.Names}}')" ]; 
 fi
 
 echo "Paro $NOMBRE (hasta 60 s para cerrar bien)"
-docker stop -t 60 "$NOMBRE" >/dev/null
+if ! docker stop -t 60 "$NOMBRE" >/dev/null; then echo "ERROR: docker stop ha fallado; $NOMBRE puede seguir en marcha."; exit 1; fi
 if [ "$BORRAR" -eq 1 ]; then
     echo "Borro el contenedor $NOMBRE y el volumen $VOLUMEN"
-    docker rm "$NOMBRE" >/dev/null
-    docker volume rm "$VOLUMEN" >/dev/null
+    if ! docker rm "$NOMBRE" >/dev/null; then echo "ERROR: docker rm ha fallado."; exit 1; fi
+    if ! docker volume rm "$VOLUMEN" >/dev/null; then echo "ERROR: docker volume rm ha fallado."; exit 1; fi
 fi
 echo "Hecho."
