@@ -68,15 +68,15 @@ def tar_of(files: dict) -> bytes:
 
 
 RISK = {"generado": "14.10.2026 18:33 UTC", "fecha": "2026-10-15", "distribuidoras": [
-    {"id": 3, "nombre": "EOSA", "nivel": "medio", "guardia": {"reforzar": False, "motivo": "normal"},
+    {"id": 3, "nombre": "Distribuidora 1", "nivel": "medio", "guardia": {"reforzar": False, "motivo": "normal"},
      "municipios": [{"nombre": "Plasencia", "lat": 40.0312, "lon": -6.0884}, {"nombre": "Hervás", "lat": 40.2708, "lon": -5.8672}]},
-    {"id": 2, "nombre": "Pitarch", "nivel": "bajo", "guardia": {"reforzar": False, "motivo": "normal"},
+    {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "guardia": {"reforzar": False, "motivo": "normal"},
      "municipios": [{"nombre": "Casar de Cáceres", "lat": 39.5611, "lon": -6.4194}]}]}
 
 
 def test_the_warnings_of_the_day_in_the_municipalities_and_the_guard_recomputed(tmp_path, monkeypatch):
     now = datetime(2026, 10, 15, 9, 20, tzinfo=timezone.utc)
-    # A thunderstorm warning sent this morning for this afternoon over the north (EOSA), one of yesterday evening that the
+    # A thunderstorm warning sent this morning for this afternoon over the north (Distribuidora 1), one of yesterday evening that the
     # run already saw, a cancelled one and one for tomorrow.
     files = {
         "a.xml": cap("new-storm", "2026-10-15T08:10:00+02:00", "2026-10-15T14:00:00+02:00", "2026-10-15T23:59:00+02:00"),
@@ -88,22 +88,22 @@ def test_the_warnings_of_the_day_in_the_municipalities_and_the_guard_recomputed(
     rows = ah.parse_aemet_archive(tar_of(files))
     assert len(rows) == 4
     payload = ah.today_payload(RISK, rows, now, "Europe/Madrid")
-    eosa, pitarch = payload["distribuidoras"]
-    assert eosa["aviso_tormenta_nivel"] == 1 and eosa["aviso_viento_nivel"] == 1 and eosa["aviso_max_nivel"] == 1
-    assert [w["fenomeno"] for w in eosa["avisos"]] == ["TO", "VI"] and eosa["avisos"][0]["municipios"] == ["Plasencia", "Hervás"]
-    assert [w["fenomeno"] for w in eosa["nuevos"]] == ["TO"] and eosa["nuevos"][0]["inicio"] == "14:00"
+    d1, d2 = payload["distribuidoras"]
+    assert d1["aviso_tormenta_nivel"] == 1 and d1["aviso_viento_nivel"] == 1 and d1["aviso_max_nivel"] == 1
+    assert [w["fenomeno"] for w in d1["avisos"]] == ["TO", "VI"] and d1["avisos"][0]["municipios"] == ["Plasencia", "Hervás"]
+    assert [w["fenomeno"] for w in d1["nuevos"]] == ["TO"] and d1["nuevos"][0]["inicio"] == "14:00"
     # The guard goes up only because of the new one? No: the wind warning of yesterday already reinforced it in the evening
     # when the run saw it; here the evening said normal, so with the warnings of today it is reinforced and that is new.
-    assert eosa["guardia"]["reforzar"] and eosa["subida"]
-    assert eosa["texto"].startswith("EOSA: guardia reforzada desde las 11:20 por aviso nuevo de AEMET para hoy (tormenta amarillo de 14:00 a 15.10 23:59)")
-    assert not pitarch["avisos"] and not pitarch["guardia"]["reforzar"] and pitarch["texto"] == "Pitarch: sin avisos nuevos de AEMET desde anoche"
+    assert d1["guardia"]["reforzar"] and d1["subida"]
+    assert d1["texto"].startswith("Distribuidora 1: guardia reforzada desde las 11:20 por aviso nuevo de AEMET para hoy (tormenta amarillo de 14:00 a 15.10 23:59)")
+    assert not d2["avisos"] and not d2["guardia"]["reforzar"] and d2["texto"] == "Distribuidora 2: sin avisos nuevos de AEMET desde anoche"
     # The webhook: once per distribuidora and day.
     sent = []
     monkeypatch.setattr(ah.aviso_riesgo, "post", lambda url, message, field, timeout: sent.append(message) or 200)
     monkeypatch.setenv("AVISO_WEBHOOK_URL", "https://hooks.example/abc")
     state = tmp_path / "avisos_hoy_aviso.json"
     assert ah.send_raised(payload, {}, str(state)) == "enviado" and len(sent) == 1
-    assert sent[0].startswith("Avisos nuevos de AEMET para hoy 15.10.2026:\n- EOSA: guardia reforzada desde las 11:20") and "Pitarch" not in sent[0]
+    assert sent[0].startswith("Avisos nuevos de AEMET para hoy 15.10.2026:\n- Distribuidora 1: guardia reforzada desde las 11:20") and "Distribuidora 2" not in sent[0]
     assert ah.send_raised(payload, {}, str(state)) == "ya avisado" and len(sent) == 1
     quiet = ah.today_payload(RISK, [rows[1]], now, "Europe/Madrid")
     assert quiet["distribuidoras"][0]["subida"] and not quiet["distribuidoras"][0]["nuevos"]

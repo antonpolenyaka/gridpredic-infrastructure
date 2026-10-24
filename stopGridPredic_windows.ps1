@@ -14,7 +14,7 @@
 param([switch]$ApagarDocker, [switch]$Forzar)
 
 $ErrorActionPreference = "Continue"
-$Repo = "D:\GitHub\gridpredic-infrastructure"
+$Repo = $PSScriptRoot   # la carpeta donde esta clonado el repositorio, sea cual sea
 $Compose = "$Repo\compose.yaml"
 $L = "$Repo\_runlogs"
 $Stamp = Get-Date -Format "yyyyMMdd_HHmm"
