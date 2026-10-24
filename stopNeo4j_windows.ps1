@@ -18,10 +18,13 @@ if (-not $existe) { Write-Host "No existe el contenedor $Nombre."; exit 0 }
 
 Write-Host "Paro $Nombre (hasta 60 s para cerrar bien)"
 docker stop -t 60 $Nombre | Out-Null
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: docker stop ha devuelto $LASTEXITCODE; $Nombre puede seguir en marcha."; exit 1 }
 if ($Borrar) {
     Write-Host "Borro el contenedor $Nombre y el volumen $Volumen"
     docker rm $Nombre | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: docker rm ha devuelto $LASTEXITCODE."; exit 1 }
     docker volume rm $Volumen | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: docker volume rm ha devuelto $LASTEXITCODE."; exit 1 }
 }
 Write-Host "Hecho."
 exit 0

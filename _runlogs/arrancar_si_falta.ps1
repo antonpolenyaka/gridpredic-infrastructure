@@ -6,9 +6,12 @@ if (-not (Test-Path $Path)) { exit 1 }
 $running = Get-CimInstance Win32_Process -Filter "Name='pwsh.exe' or Name='powershell.exe'" |
     Where-Object { $_.CommandLine -match [regex]::Escape($Script) -and $_.CommandLine -notmatch 'arrancar_si_falta' }
 if ($running) { exit 0 }
+$dockerListo = $false
 for ($i = 0; $i -lt 60; $i++) {
     docker info *> $null
-    if ($LASTEXITCODE -eq 0) { break }
+    if ($LASTEXITCODE -eq 0) { $dockerListo = $true; break }
     Start-Sleep -Seconds 30
 }
+# Si Docker no ha respondido en 30 minutos no lanzo nada: la tarea programada vuelve a intentarlo en la siguiente vuelta.
+if (-not $dockerListo) { exit 1 }
 Start-Process pwsh -ArgumentList '-NoProfile', '-File', $Path -WindowStyle Hidden

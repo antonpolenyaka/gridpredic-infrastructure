@@ -34,7 +34,9 @@ function FueraDeLaTarde() {
 
 function SparkLibre() {
     while ($true) {
-        $n = [int](((docker compose -f $Compose exec -T spark-master python3 /tmp/gp/apps_spark.py) -join "").Trim())
+        $salida = (((docker compose -f $Compose exec -T spark-master python3 /tmp/gp/apps_spark.py) -join "").Trim())
+        if ($LASTEXITCODE -ne 0 -or $salida -notmatch '^-?\d+$') { Say "ERROR: no he podido saber si Spark tiene aplicaciones en marcha (codigo $LASTEXITCODE, salida '$salida')"; exit 1 }
+        $n = [int]$salida
         if ($n -eq 0) { return }
         if ($n -lt 0) { Say "ERROR: el master de Spark no responde"; exit 1 }
         Say "Spark tiene $n aplicaciones en marcha, espero"
@@ -74,6 +76,7 @@ foreach ($m in $Meses) { Medir 8 $m }
 
 docker compose -f $Compose exec -T spark-master python3 /tmp/gp/ajustar_escalado.py /tmp/gp_escalado /tmp/gp_escalado/salida 2>&1 |
     ForEach-Object { Say ("    " + $_) }
+if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "FALLO: el ajuste del escalado devolvio $LASTEXITCODE" }
 docker compose -f $Compose cp "spark-master:/tmp/gp_escalado/." "$Dir\json" 2>&1 | ForEach-Object { Say "  $_" }
 foreach ($f in @("escalado_nucleos.csv", "escalado_nucleos_ajuste.txt")) {
     Copy-Item -Force "$Dir\json\salida\$f" "$Repo\experimentos\consultas_trino\salida\$f"
