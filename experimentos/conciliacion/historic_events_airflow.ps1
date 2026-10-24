@@ -1,4 +1,4 @@
-# M102: por que HistoricEvents no llego a Bronze. Busca en los registros de Airflow las tareas de dag_bronze_sqlserver
+# M102: por que HistoricEvents no llego a Bronze. Busca en los registros de Airflow las tareas de ingest_sqlserver_batch_bronze
 # de esa tabla y ensena su estado y las ultimas lineas de error. Solo lee; un minuto.
 $Repo = "D:\GitHub\gridpredic-infrastructure"
 $Compose = "$Repo\compose.yaml"
@@ -16,11 +16,11 @@ if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: Docker Desktop no esta arrancado";
 Say "=== M102: HistoricEvents en los registros de Airflow === Log: $Out"
 # bash con pipefail: si falla find, ls o airflow, el fallo no se pierde en el sort, el tail o el sed que vienen detras.
 # sed -n en vez de head: head cierra la tuberia antes y daria un falso fallo (SIGPIPE) con pipefail.
-$sh = 'set -o pipefail; d=/opt/airflow/logs; { ls -d $d/dag_id=dag_bronze_sqlserver* 2>/dev/null || true; } | sed -n 1,3p; ' +
-      'find $d -path "*dag_bronze_sqlserver*" -ipath "*historicevents*" -name "*.log" 2>/dev/null | sort | tail -20'
-$sh2 = 'set -o pipefail; d=/opt/airflow/logs; files=$(find $d -path "*dag_bronze_sqlserver*" -ipath "*historicevents*" -name "*.log" 2>/dev/null | sort | tail -3) || exit 1; ' +
+$sh = 'set -o pipefail; d=/opt/airflow/logs; { ls -d $d/dag_id=ingest_sqlserver_batch_bronze* 2>/dev/null || true; } | sed -n 1,3p; ' +
+      'find $d -path "*ingest_sqlserver_batch_bronze*" -ipath "*historicevents*" -name "*.log" 2>/dev/null | sort | tail -20'
+$sh2 = 'set -o pipefail; d=/opt/airflow/logs; files=$(find $d -path "*ingest_sqlserver_batch_bronze*" -ipath "*historicevents*" -name "*.log" 2>/dev/null | sort | tail -3) || exit 1; ' +
        'for f in $files; do echo "=== $f"; { grep -i -E "error|exception|traceback|failed|no data|success|marking task" "$f" || true; } | tail -15; done'
-$sh3 = 'set -o pipefail; airflow dags list-runs dag_bronze_sqlserver 2>/dev/null | sed -n 1,15p'
+$sh3 = 'set -o pipefail; airflow dags list-runs ingest_sqlserver_batch_bronze 2>/dev/null | sed -n 1,15p'
 docker compose -f $Compose exec -T airflow bash -c $sh 2>&1 | ForEach-Object { Say ("  " + $_) }
 if ($LASTEXITCODE -ne 0) { $Fallos++; Say "  FALLO: la consulta de los registros devolvio $LASTEXITCODE" }
 docker compose -f $Compose exec -T airflow bash -c $sh2 2>&1 | ForEach-Object { Say ("  " + $_.Substring(0, [Math]::Min(300, $_.Length))) }
