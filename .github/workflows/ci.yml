@@ -5,7 +5,8 @@
 #   3. silver-smoke, gold-smoke y ml-smoke: los tests de extremo a extremo de Silver, de Gold
 #      y del entrenamiento en un Spark local, los mismos que se ejecutan con `make test`;
 #      silver-smoke pasa antes los de la Landing y Bronze (tests/01_bronze, sin Spark).
-#   4. negocio: el plan financiero cuadra y cumple las decisiones de negocio (sin Spark).
+#   4. negocio: el plan financiero cuadra y cumple las decisiones de negocio, y los scripts de parada
+#      de Linux no anuncian exito tras un fallo (tests/ops, con docker falso; sin Spark).
 # Python 3.10, el de la imagen de Airflow (infra/airflow/Dockerfile) donde se ajusta la tarde.
 name: CI
 
@@ -113,4 +114,4 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pytest openpyxl==3.1.5
-      - run: python -m pytest tests/negocio -q
+      - run: python -m pytest tests/negocio tests/ops -q

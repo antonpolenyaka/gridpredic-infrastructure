@@ -75,8 +75,11 @@ until cypher "RETURN 1;" >/dev/null; do
 done
 say "    Neo4j responde"
 
-hay="$(cypher 'MATCH (c:CT) RETURN count(c) AS n;' | tail -1 | tr -dc '0-9')"
-hay="${hay:-0}"
+if ! cuenta="$(cypher 'MATCH (c:CT) RETURN count(c) AS n;')"; then
+    say "ERROR: no se pudo contar el grafo: no cargo ni borro nada."; exit 1
+fi
+hay="$(echo "$cuenta" | tail -1 | tr -dc '0-9')"
+if [ -z "$hay" ]; then say "ERROR: la cuenta del grafo no trae un numero: no cargo ni borro nada."; exit 1; fi
 if [ "$RECARGAR" -eq 1 ] && [ "$hay" -gt 0 ]; then
     say "Borro el grafo para recargarlo"
     borrado=$(cypher "MATCH (n) CALL { WITH n DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS;"); brc=$?

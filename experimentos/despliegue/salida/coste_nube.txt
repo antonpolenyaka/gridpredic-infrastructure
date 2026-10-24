@@ -36,4 +36,4 @@ MWAA micro 0,29$/h (211,7$ al mes); pequeño 0,49$/h (357,7$); MWAA Serverless 0
 S3 0,023$ el GB al mes (2,53$ los 110 GB); PUT 0,0053$ por 1.000; Athena 5,65$ por TB
 EMR Serverless, la tarde (4 vCPU, 16 GB, 15 min al día): 2,61$ al mes; en continuo: 254$
 
-Licencia: 1.500 € por cliente y mes
+Licencia: 1.638 € por cliente y mes (red tipo del plan financiero)

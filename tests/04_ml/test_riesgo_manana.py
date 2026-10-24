@@ -542,7 +542,8 @@ def test_the_zones_split_the_risk_of_the_day(first, spark, workdir):
     # The line that every incident cuts carries more risk than the one cut by one in three.
     assert one.iloc[0]["zona"] == "10" and one.iloc[0]["parte"] > 0.5
     assert rows.loc[1, "incidencias_esperadas"] == pytest.approx(one["probabilidad"].sum())
-    assert rows.loc[1, "clientes_esperados"] > 0 and rows.loc[1, "hora_pico"] == 10 or rows.loc[1, "hora_pico"] in (10, 11, 12, 13, 14, 15)
+    assert rows.loc[1, "clientes_esperados"] > 0
+    assert rows.loc[1, "hora_pico"] in (10, 11, 12, 13, 14, 15)
     assert rows.loc[1, "franja_inicio"] <= 10 and rows.loc[1, "franja_fin"] >= 15
     payload = json.load(open(os.path.join(workdir, "dashboard", "riesgo.json"), encoding="utf-8"))
     assert payload["fecha"] == "2026-01-15" and len(payload["distribuidoras"]) == 2

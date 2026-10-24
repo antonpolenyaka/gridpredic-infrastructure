@@ -248,6 +248,10 @@ def main(argv=None) -> int:
             json.dump(result, handle, ensure_ascii=False, indent=1)
         times = [p.get("stats", {}).get("elapsedTimeMillis") for p in result["pasadas"]]
         errors = [p["error"]["message"][:160] for p in result["pasadas"] if "error" in p]
+        # the plans and the estimates explain the times: a failure there is a failure of the measure too
+        errors += [f"{k}: " + result[k]["error"]["message"][:120]
+                   for k in ("explain_io", "explain_distribuido", "explain_analyze", "estimacion")
+                   if isinstance(result.get(k), dict) and "error" in result[k]]
         failed += len(errors)
         print(f"{tag} {name}: ms {times}" + (f" ERROR {errors[0]}" if errors else ""))
     return 1 if failed else 0

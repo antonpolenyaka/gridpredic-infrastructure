@@ -326,8 +326,8 @@ Durante el arranque se realiza automáticamente:
 - creación de los schemas `l1_bronze`, `l2_silver` y `l3_gold`;
 - restauración de las cuatro bases de datos en **SQL Server**;
 - activación de **CDC** sobre las tablas configuradas de `TedisNet_GridPredic`;
-- arranque de **Kafka** y registro del conector de TedisNet (`infra/kafka-connect/connectors/`) en **Kafka Connect**;
-- arranque del clúster **Spark**, **Airflow**, **Trino**, **Kafka UI**, **Spark History Server** y el cuadro de mando (**nginx**).
+- arranque del clúster **Spark**, **Airflow**, **Trino**, **Spark History Server** y el cuadro de mando (**nginx**);
+- solo con `--profile cdc`: arranque de **Kafka**, registro del conector de TedisNet (`infra/kafka-connect/connectors/`) en **Kafka Connect** y **Kafka UI**.
 
 ---
 

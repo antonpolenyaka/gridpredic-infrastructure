@@ -1,7 +1,7 @@
 Incidencias de Calser de agosto de 2024 a noviembre de 2025 en la exportación: 44 (Distribuidora 1: 25, Distribuidora 2: 15, Distribuidora 3: 4).
 
 1. Escala de red: algún rayo a 10 km o menos de los municipios de su red en la hora anterior en 8 de 44 (18.2 %; Wilson al 95 %, de 9.5 a 32.0 %).
-2. Escala de línea, en esas 8: la regla habría marcado de media 10.0 de las 32.2 líneas de su red (41 %), y alguna línea de la incidencia estaba entre las marcadas en 4 de 8 (50 %; Wilson al 95 %, de 22 a 78 %). Razón entre la línea que falla y una línea cualquiera de la misma red y hora: 1.23. Incidencias con todas las líneas de su red marcadas: 2 (Distribuidora 3: 1 de 1; Distribuidora 1: 41 de 41).
+2. Escala de línea, en esas 8: la regla habría marcado de media 10.0 de las 32.2 líneas de su red (41 %), y alguna línea de la incidencia estaba entre las marcadas en 4 de 8 (50 %; Wilson al 95 %, de 22 a 78 %). Marcando al azar el mismo número de líneas de la misma red, alguna afectada habría caído entre las marcadas en el 47 % de los casos: razón 1.06. Incidencias con todas las líneas de su red marcadas: 2 (Distribuidora 3: 1 de 1; Distribuidora 1: 41 de 41).
 
  orden             red  lineas_red  lineas_marcadas  lineas_afectadas  afectada_marcada
      1 Distribuidora 2          26               17                 4              True

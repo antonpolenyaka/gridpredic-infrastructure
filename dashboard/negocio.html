@@ -413,7 +413,7 @@
       <div class="dos" style="margin-top:14px">
         <div><h3>Días con avería según el nivel de la víspera</h3>${bars(stats)}</div>
         <div><h3>Dónde cayeron las horas-cliente</h3>${stacked(stats)}
-          <p class="notas">Las probabilidades que ve el usuario cuadran con lo que pasó: los días "muy alto" llevaban de media un ${pct(stats.by["muy alto"].dias ? stats.by["muy alto"].p / stats.by["muy alto"].dias : 0, 1)} y tuvieron avería el ${pct(rate("muy alto"), 1)}; los "bajo", un ${pct(stats.by.bajo.dias ? stats.by.bajo.p / stats.by.bajo.dias : 0, 1)} y tuvieron avería el ${pct(rate("bajo"), 1)}.</p></div>
+          <p class="notas">Las probabilidades que ve el usuario cuadran con lo que pasó, con pocos días por nivel: los días "muy alto" llevaban de media un ${pct(stats.by["muy alto"].dias ? stats.by["muy alto"].p / stats.by["muy alto"].dias : 0, 1)} y tuvieron avería el ${pct(rate("muy alto"), 1)}; los "bajo", un ${pct(stats.by.bajo.dias ? stats.by.bajo.p / stats.by.bajo.dias : 0, 1)} y tuvieron avería el ${pct(rate("bajo"), 1)}.</p></div>
       </div></section>`;
 
     html += `<section><h2>La guardia a igual presupuesto</h2>

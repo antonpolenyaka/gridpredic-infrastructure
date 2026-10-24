@@ -1,6 +1,6 @@
 # Texto para la memoria: lo que probamos para mejorar el modelo del día
 
-Borrador del apartado de resultados sobre las pruebas de mejora del modelo del día siguiente (octubre de 2026). Las cifras salen de los cuadernos 3 a 3r de [investigacion-continua.md](investigacion-continua.md) y de la tabla 5 de [revision-literatura.md](revision-literatura.md); cada una tiene su ejecución (`run_id`) en el cuaderno. Escrito para pegarlo en la memoria y retocarlo allí.
+Borrador del apartado de resultados sobre las pruebas de mejora del modelo del día siguiente (octubre de 2026), sustituido por el texto de la memoria v11: algunas cifras cambiaron después (en 2024 - 2025 hay 51 días-red con incidencia de causa local en el histórico público del cuadro de mando). Las cifras salen de los cuadernos 3 a 3r de [investigacion-continua.md](investigacion-continua.md) y de la tabla 5 de [revision-literatura.md](revision-literatura.md); cada una tiene su ejecución (`run_id`) en el cuaderno. Escrito para pegarlo en la memoria y retocarlo allí.
 
 ---
 

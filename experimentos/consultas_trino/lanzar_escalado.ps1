@@ -78,8 +78,10 @@ docker compose -f $Compose exec -T spark-master python3 /tmp/gp/ajustar_escalado
     ForEach-Object { Say ("    " + $_) }
 if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "FALLO: el ajuste del escalado devolvio $LASTEXITCODE" }
 docker compose -f $Compose cp "spark-master:/tmp/gp_escalado/." "$Dir\json" 2>&1 | ForEach-Object { Say "  $_" }
+if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "FALLO: no se pudieron copiar los resultados del contenedor" }
 foreach ($f in @("escalado_nucleos.csv", "escalado_nucleos_ajuste.txt")) {
-    Copy-Item -Force "$Dir\json\salida\$f" "$Repo\experimentos\consultas_trino\salida\$f"
+    try { Copy-Item -Force -ErrorAction Stop "$Dir\json\salida\$f" "$Repo\experimentos\consultas_trino\salida\$f" }
+    catch { $Script:Fallos++; Say "FALLO: falta $f en los resultados ($($_.Exception.Message))" }
 }
 if ($Script:Fallos -eq 0) { Say "Terminado sin errores."; exit 0 }
 Say "Terminado con $($Script:Fallos) medidas con errores (ver el log)."
