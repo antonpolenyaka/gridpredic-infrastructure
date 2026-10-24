@@ -73,7 +73,9 @@ def late_for_big(steps: list, size_bytes: int, hour: int, args: argparse.Namespa
     return steps
 
 
-def delta_tables(spark, database: str) -> list:
+def delta_tables(spark, database: str, errors: list = None) -> list:
+    """The Delta tables of the database. A table that cannot be described for any reason other than
+    'it is not a Delta table' is added to `errors`, so the run does not count as clean."""
     if not spark.catalog.databaseExists(database):
         return []
     names = []
@@ -86,6 +88,8 @@ def delta_tables(spark, database: str) -> list:
                 names.append(name)
         except Exception as error:  # noqa: BLE001
             logger.warning("%s: not described (%s)", name, str(error)[:120])
+            if "not a delta table" not in str(error).lower() and errors is not None:
+                errors.append(name)
     return names
 
 
@@ -113,7 +117,10 @@ def main(argv=None) -> int:
     done, failed = 0, 0
     before_files = after_files = 0
     for database in [b.strip() for b in args.bases.split(",") if b.strip()]:
-        for name in delta_tables(spark, database):
+        discovery_errors = []
+        tables = delta_tables(spark, database, discovery_errors)
+        failed += len(discovery_errors)
+        for name in tables:
             if args.parar_a is not None and datetime.now(ZoneInfo("Europe/Madrid")).hour >= args.parar_a:
                 logger.info("Stopping at %s:00 before %s; the next run goes on", args.parar_a, name)
                 break
