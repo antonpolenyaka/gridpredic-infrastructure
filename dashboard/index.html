@@ -477,9 +477,10 @@
       if (!banner) { banner = document.createElement("div"); banner.className = "rayos"; sec.querySelector("h2").insertAdjacentElement("afterend", banner); }
       banner.className = "rayos " + klass;
       // When the Data Store of EUMETSAT did not answer, the flashes are the ones already landed, not of this hour.
-      // When the last hour could not be read (no answer, or every product failed), there are no current data.
+      // When nothing of the last hour is in the Landing there are no current data; when only part of it is, the
+      // reading is incomplete (the text already says how many minutes were read).
       const stale = r.ultimo_producto && r.ultimo_producto.error ? " Sin datos actuales: la última lectura del Data Store de EUMETSAT falló (" + r.ultimo_producto.error + "); solo cuentan los rayos de lecturas anteriores."
-        : (r.ultimo_producto && r.ultimo_producto.incompleta ? " Cobertura incompleta: " + r.ultimo_producto.incompleta + (r.minutos_leidos != null ? " (" + r.minutos_leidos + " de " + (r.ventana_min || 60) + " min leídos)" : "") + "." : "");
+        : (r.ultimo_producto && r.ultimo_producto.incompleta ? " Cobertura incompleta: " + r.ultimo_producto.incompleta + "." : "");
       banner.innerHTML = `<b>Rayos ahora</b> (satélite MTG, actualizado a las ${esc(hora)}): ${esc(text)}.` + (block && block.municipios && block.municipios.length ? ` Municipios bajo la tormenta: ${esc(block.municipios.slice(0, 6).join(", "))}${block.municipios.length > 6 ? " y " + (block.municipios.length - 6) + " más" : ""}.` : "") + esc(stale);
       const map = maps[idx];
       if (!map) return;

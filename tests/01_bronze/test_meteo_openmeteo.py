@@ -281,3 +281,49 @@ def test_the_generic_job_refuses_the_single_runs_source(monkeypatch):
     with pytest.raises(SystemExit) as stop:
         landing.main(["--fuente", "openmeteo_pasadas_ifs"])
     assert stop.value.code == 2
+
+
+def test_a_day_with_a_cell_left_empty_is_not_checkpointed_and_is_asked_again(monkeypatch, tmp_path):
+    # Tercera ronda A53: the answer has the 24 hours of the first cell and none of the second
+    import json
+    from datetime import datetime, timezone
+
+    import fsspec
+    import job_landing_meteo_pasadas as pasadas
+
+    cfg = landing.load_config()["openmeteo_pasadas_ifs"]
+    memory = fsspec.filesystem("memory")
+    memory.store.clear()
+    memory.pseudo_dirs.clear()
+    memory.pseudo_dirs.append("")
+    cells = [{"celda_id": "39.50_-6.40", "celda_latitud": 39.5, "celda_longitud": -6.4},
+             {"celda_id": "40.10_-5.90", "celda_latitud": 40.1, "celda_longitud": -5.9}]
+    monkeypatch.setattr(pasadas, "read_reference", lambda fs, path: [])
+    monkeypatch.setattr(pasadas, "municipality_cells", lambda rows, size: cells)
+    config = landing.load_config()
+    config["openmeteo_pasadas_ifs"] = {**cfg, "landing": "memory://pasadas3", "desde": "2025-06-02",
+                                       "hasta": "2025-06-02", "max_llamadas_dia": 100, "pausa_s": 0}
+    path = str(tmp_path / "config.json")
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(config, file)
+    answers = []
+
+    def fake_fetch(url, retries, wait_s):
+        stamp = url.split("run=")[1][:16]
+        first = single_run_answer(39.5, -6.4, stamp, lambda t: 30.0)
+        second = single_run_answer(40.1, -5.9, stamp, lambda t: 50.0)
+        if not answers:
+            second["hourly"] = {k: [] for k in second["hourly"]}
+        answers.append(stamp)
+        return [first, second]
+
+    monkeypatch.setattr(pasadas, "fetch", fake_fetch)
+    now = datetime(2026, 10, 25, 9, 0, tzinfo=timezone.utc)
+    with pytest.raises(RuntimeError, match="1 of 2 cells without the whole day 2025-06-02"):
+        pasadas.main(["--config", path], fs=memory, clock=lambda: now, sleep=lambda s: None)
+    assert not memory.exists("/pasadas3/dias/2025-06-02.json")
+    # The next run asks for the day again and, with both cells whole, keeps it.
+    assert pasadas.main(["--config", path], fs=memory, clock=lambda: now, sleep=lambda s: None) == 0
+    assert len(answers) == 2
+    saved = json.loads(memory.cat("/pasadas3/dias/2025-06-02.json"))
+    assert [len(u["hourly"]["time"]) for u in saved["ubicaciones"]] == [24, 24]

@@ -219,9 +219,14 @@ def main(argv=None, fs=None, clock=None, sleep=None) -> int:
                              "_peticion": {"celda_id": cell, "dia": day.isoformat(), "pasada_utc": run.isoformat()}}
                             for (cell, _), location in zip(cells, locations)],
         }
+        # every cell must have the day (23 to 25 hours with the changes of time), not only the first: a day with a
+        # cell left empty is not written, so the checkpoint does not hide it and the next run asks for it again
+        short = [(cell, len(location["hourly"]["time"])) for (cell, _), location in zip(cells, saved["ubicaciones"])
+                 if len(location["hourly"]["time"]) < 23]
+        if short:
+            raise RuntimeError(f"{len(short)} of {len(cells)} cells without the whole day {day} in the run {run} "
+                               f"(first: {short[0][0]} with {short[0][1]} hours): is dias_pasada long enough?")
         hours = len(saved["ubicaciones"][0]["hourly"]["time"])
-        if hours < 23:
-            raise RuntimeError(f"Only {hours} hours of {day} in the run {run}: is dias_pasada long enough?")
         write_json(fs, target, saved)
         requested += 1
         logger.info("Day %s from the run %s: %s hours of %s cells (%s requested, %s already there)", day,

@@ -199,14 +199,31 @@ def main(argv):
            cells["lon"].max() + CELL_DEGREES, cells["lat"].max() + CELL_DEGREES)
     print(f"{len(cells)} celdas, caja {tuple(round(b, 2) for b in box)}, {first} - {last}", flush=True)
 
+    # A composite counts as done only when all its rows are in the CSV: its id goes to <csv>.completos after the
+    # rows are flushed. Rows of a composite cut halfway (a full disk, a killed process) are dropped when resuming,
+    # and the composite is read again (tercera ronda de auditoria, A43). A CSV of before this list counts as done.
+    marks = out_csv + ".completos"
     done = set()
     if os.path.exists(out_csv):
         old = pd.read_csv(out_csv)
-        done = set(old["_item"].astype(str)) if "_item" in old.columns else set()
+        items_in_csv = set(old["_item"].astype(str)) if "_item" in old.columns else set()
+        if os.path.exists(marks):
+            with open(marks, encoding="utf-8") as file:
+                done = {line.strip() for line in file if line.strip()}
+            cut = old["_item"].astype(str).isin(items_in_csv - done) if "_item" in old.columns else None
+            if cut is not None and cut.any():
+                print(f"{int(cut.sum())} filas de compuestos a medias en {out_csv}: las quito y se vuelven a leer", flush=True)
+                tmp = out_csv + ".tmp"
+                old[~cut].to_csv(tmp, index=False)
+                os.replace(tmp, out_csv)
+        else:
+            done = items_in_csv
+            with open(marks, "w", encoding="utf-8") as file:
+                file.writelines(f"{i}\n" for i in sorted(done))
         print(f"{len(done)} compuestos ya en {out_csv}", flush=True)
     os.makedirs(os.path.dirname(os.path.abspath(out_csv)) or ".", exist_ok=True)
     new_file = not os.path.exists(out_csv)
-    with open(out_csv, "a", newline="", encoding="utf-8") as file:
+    with open(out_csv, "a", newline="", encoding="utf-8") as file, open(marks, "a", encoding="utf-8") as finished:
         writer = csv.DictWriter(file, fieldnames=COLUMNS + ["_item"])
         if new_file:
             writer.writeheader()
@@ -223,6 +240,8 @@ def main(argv):
                 for row in rows:
                     writer.writerow({key: ("" if value is None else value) for key, value in row.items()})
                 file.flush()
+                finished.write(item["id"] + "\n")
+                finished.flush()
                 done.add(item["id"])
                 if k % 10 == 0:
                     print(f"  {item['id']}: {len(rows)} celdas en {time.time() - started:.1f} s", flush=True)

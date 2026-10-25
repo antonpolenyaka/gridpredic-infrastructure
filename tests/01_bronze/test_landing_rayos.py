@@ -206,3 +206,83 @@ def test_some_products_failed_is_an_incomplete_reading_not_an_hour_without_light
     assert out["ultimo_producto"]["incompleta"].startswith("lectura incompleta: 1 de 6")
     assert out["distribuidoras"][0]["nivel"] == "lectura incompleta"
     assert out["minutos_leidos"] < out["ventana_min"]
+
+
+def landed_product(fs, cfg, start: datetime, minutes: int = 10) -> str:
+    """Writes an empty product of the Landing (only the header), as land() leaves it, and returns its id."""
+    pid = product_id(start, minutes)
+    with fs.open(rayos.product_path(cfg["landing"], pid), "w") as file:
+        rayos.pd.DataFrame(columns=rayos.COLUMNS).to_csv(file, index=False)
+    return pid
+
+
+ALIGNED = datetime(2026, 7, 20, 15, 0, tzinfo=timezone.utc)
+
+
+def test_the_coverage_is_the_union_of_the_intervals_clipped_to_the_window(fs, cfg):
+    # Tercera ronda A04: a product that ends when the window starts does not count, one that starts before it counts
+    # only from the window on, and two products over the same minutes count once.
+    landed_product(fs, cfg, ALIGNED - timedelta(minutes=80))             # 13:40-13:50, out
+    landed_product(fs, cfg, ALIGNED - timedelta(minutes=65))             # 13:55-14:05, 5 min in
+    landed_product(fs, cfg, ALIGNED - timedelta(minutes=30))             # 14:30-14:40
+    landed_product(fs, cfg, ALIGNED - timedelta(minutes=35), minutes=10)  # 14:25-14:35, overlaps 5 min
+    assert rayos.covered_minutes(fs, cfg, ALIGNED, 60) == 5 + 15
+    assert not rayos.window_complete(fs, cfg, ALIGNED, 60)
+    for m in (60, 50, 40, 20):
+        landed_product(fs, cfg, ALIGNED - timedelta(minutes=m))
+    assert rayos.covered_minutes(fs, cfg, ALIGNED, 60) == 50
+    # the last 15 minutes may not be published yet: 14:00-14:50 covers the window that counts
+    assert rayos.window_complete(fs, cfg, ALIGNED, 60)
+
+
+def run_with(fs, cfg, monkeypatch, tmp_path, found, fails=()):
+    monkeypatch.setenv("EUMETSAT_CONSUMER_KEY", "k")
+    monkeypatch.setenv("EUMETSAT_CONSUMER_SECRET", "s")
+    monkeypatch.setattr(rayos, "token", lambda cfg, key, secret: "tok")
+    monkeypatch.setattr(rayos, "search", lambda cfg, tok, since, now: found)
+
+    def download(cfg, tok, product):
+        if product in fails:
+            raise TimeoutError("timed out")
+        return b"zip"
+
+    monkeypatch.setattr(rayos, "download", download)
+    monkeypatch.setattr(rayos, "flashes", lambda raw, box, product="": rayos.pd.DataFrame(columns=rayos.COLUMNS))
+    monkeypatch.setattr(rayos.time, "sleep", lambda s: None)
+    risk = {"distribuidoras": [{"id": 2, "nombre": "Distribuidora 2", "municipios": [{"nombre": "Zafra", "lat": 38.42, "lon": -6.42, "zonas": ["Zafra"]}]}]}
+    with open(os.path.join(tmp_path, "riesgo.json"), "w", encoding="utf-8") as file:
+        json.dump(risk, file)
+    code = rayos.main(["--dashboard-dir", str(tmp_path), "--landing", cfg["landing"]], fs=fs, now=ALIGNED)
+    with open(os.path.join(tmp_path, "rayos.json"), encoding="utf-8") as file:
+        return code, json.load(file)
+
+
+def test_a_gap_in_the_catalogue_without_any_failure_is_an_incomplete_reading(fs, cfg, monkeypatch, tmp_path):
+    # Tercera ronda A04: the Data Store answers without the 14:20-14:30 product and nothing fails
+    found = [product_id(ALIGNED - timedelta(minutes=m)) for m in (60, 50, 30, 20, 10)]
+    code, out = run_with(fs, cfg, monkeypatch, tmp_path, found)
+    assert code == 0
+    assert out["minutos_leidos"] == 50
+    assert out["ultimo_producto"]["incompleta"] == "lectura incompleta: faltan productos de la ventana, 50 de 60 min leídos"
+    assert out["distribuidoras"][0]["nivel"] == "lectura incompleta"
+
+
+def test_the_last_product_failing_with_the_rest_already_landed_is_incomplete_not_no_data(fs, cfg, monkeypatch, tmp_path):
+    # Tercera ronda OPS-03: five products of the hour landed by the earlier runs and only the new one fails
+    for m in (60, 50, 40, 30, 20):
+        landed_product(fs, cfg, ALIGNED - timedelta(minutes=m))
+    newest = product_id(ALIGNED - timedelta(minutes=10))
+    found = [product_id(ALIGNED - timedelta(minutes=m)) for m in (60, 50, 40, 30, 20)] + [newest]
+    code, out = run_with(fs, cfg, monkeypatch, tmp_path, found, fails={newest})
+    assert code == 0
+    assert out["ultimo_producto"]["fallidos"] == 1 and out["ultimo_producto"]["descargados"] == 0
+    assert "error" not in out["ultimo_producto"]
+    assert out["ultimo_producto"]["incompleta"] == "lectura incompleta: 1 de 1 productos sin descargar, 50 de 60 min leídos"
+    assert out["minutos_leidos"] == 50 and out["distribuidoras"][0]["nivel"] == "lectura incompleta"
+
+
+def test_a_whole_window_read_is_not_incomplete(fs, cfg, monkeypatch, tmp_path):
+    found = [product_id(ALIGNED - timedelta(minutes=m)) for m in (60, 50, 40, 30, 20)]
+    code, out = run_with(fs, cfg, monkeypatch, tmp_path, found)
+    assert code == 0 and out["minutos_leidos"] == 50
+    assert "incompleta" not in out["ultimo_producto"] and out["distribuidoras"][0]["nivel"] == "sin tormenta"

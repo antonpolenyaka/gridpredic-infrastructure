@@ -65,6 +65,8 @@ DEFAULTS = {
     "caja": [38.1, -7.3, 40.6, -5.4],
     "ventana_min": 60,
     "retraso_min": 30,
+    # minutes at the end of the window that the Data Store may not have published yet: a gap there is not a gap
+    "margen_min": 15,
     "max_productos": 12,
     "radio_km": [10.0, 20.0],
     "clave_env": "EUMETSAT_CONSUMER_KEY",
@@ -330,10 +332,11 @@ def near_network(recent: pd.DataFrame, risk: dict, radii: list) -> list:
 
 def unknown_without_reading(blocks: list, landed: dict) -> list:
     """
-    When the last hour could not be read (the Data Store did not answer, or
-    every product found failed), "sin tormenta" would read as an observed
-    absence of lightning: those blocks say instead that there are no current
-    data. The flashes already landed still count when they are there.
+    When the last hour could not be read at all (no product of the window in
+    the Landing), "sin tormenta" would read as an observed absence of
+    lightning: those blocks say instead that there are no current data. When
+    only part of the window was read, they say it is an incomplete reading.
+    The flashes already landed still count when they are there.
     """
     if landed.get("error"):
         for block in blocks:
@@ -341,7 +344,7 @@ def unknown_without_reading(blocks: list, landed: dict) -> list:
                 block["nivel"] = "sin datos"
                 block["texto"] = "sin datos actuales de rayos: no se pudo leer la última hora"
     elif landed.get("incompleta"):
-        # some products of the hour failed: no lightning in what was read is not an hour without lightning
+        # part of the hour was not read: no lightning in what was read is not an hour without lightning
         for block in blocks:
             if block.get("nivel") == "sin tormenta":
                 block["nivel"] = "lectura incompleta"
@@ -349,19 +352,55 @@ def unknown_without_reading(blocks: list, landed: dict) -> list:
     return blocks
 
 
-def covered_minutes(fs, cfg: dict, now: datetime, minutes: float) -> int:
-    """The minutes of the last window covered by products already in the Landing (10 minutes each, at most the window)."""
-    since = now - timedelta(minutes=minutes)
-    seen = set()
-    for day in {since.strftime("%Y%m%d"), now.strftime("%Y%m%d")}:
+def landed_intervals(fs, cfg: dict, since: datetime, until: datetime) -> list:
+    """The sensing intervals [start, end) of the products in the Landing, clipped to [since, until], merged."""
+    spans = []
+    for day in sorted({since.strftime("%Y%m%d"), until.strftime("%Y%m%d")}):
         folder = day_folder(cfg["landing"], day)
         if not fs.exists(folder):
             continue
         for path in fs.ls(folder, detail=False):
             match = re.match(r"flashes_(\d{14})_(\d{14})\.csv$", os.path.basename(path))
-            if match and match.group(2) >= since.strftime("%Y%m%d%H%M%S"):
-                seen.add(match.group(1))
-    return int(min(len(seen) * 10, minutes))
+            if not match:
+                continue
+            start = datetime.strptime(match.group(1), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+            end = datetime.strptime(match.group(2), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+            start, end = max(start, since), min(end, until)
+            if end > start:
+                spans.append((start, end))
+    merged = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def covered_minutes(fs, cfg: dict, now: datetime, minutes: float) -> int:
+    """
+    The minutes of the last window really read: the union of the sensing
+    intervals of the products in the Landing, clipped to the window (a
+    product that ends before the window starts does not count, and two
+    products over the same minutes count once).
+    """
+    since = now - timedelta(minutes=minutes)
+    seconds = sum((end - start).total_seconds() for start, end in landed_intervals(fs, cfg, since, now))
+    return int(seconds // 60)
+
+
+def window_complete(fs, cfg: dict, now: datetime, minutes: float) -> bool:
+    """
+    Whether the products in the Landing cover the whole window except its
+    last margen_min minutes, which the Data Store may not have published yet
+    (a minute of tolerance for the stamps).
+    """
+    since = now - timedelta(minutes=minutes)
+    until = now - timedelta(minutes=float(cfg.get("margen_min", 15)))
+    if until <= since:
+        return True
+    seconds = sum((end - start).total_seconds() for start, end in landed_intervals(fs, cfg, since, until))
+    return seconds >= (until - since).total_seconds() - 60
 
 
 def dashboard_payload(recent: pd.DataFrame, risk: dict, cfg: dict, now: datetime, landed: dict,
@@ -435,16 +474,25 @@ def main(argv=None, fs=None, now: datetime = None) -> int:
         except Exception as error:  # noqa: BLE001
             logger.error("The Data Store did not answer: %s", str(error)[:200])
             landed = {"error": str(error)[:200]}
-        if landed.get("fallidos") and not landed.get("descargados"):
-            # products found but none downloaded: the last hour was not observed
-            landed["error"] = f"no se pudo descargar ninguno de los {landed['fallidos']} productos encontrados"
-            logger.error("Lightning: %s", landed["error"])
-        elif landed.get("fallidos"):
-            total = landed["fallidos"] + landed.get("descargados", 0)
-            landed["incompleta"] = f"lectura incompleta: {landed['fallidos']} de {total} productos sin descargar"
-            logger.warning("Lightning: %s", landed["incompleta"])
     recent = recent_flashes(fs, cfg, now, float(cfg["ventana_min"]))
     covered = covered_minutes(fs, cfg, now, float(cfg["ventana_min"]))
+    complete = window_complete(fs, cfg, now, float(cfg["ventana_min"]))
+    problem = landed.get("error")
+    if not problem and landed.get("fallidos"):
+        problem = f"{landed['fallidos']} de {landed['fallidos'] + landed.get('descargados', 0)} productos sin descargar"
+    if covered == 0:
+        # nothing of the window was read: the last hour was not observed
+        if landed.get("fallidos") and not landed.get("descargados") and not landed.get("error"):
+            problem = f"no se pudo descargar ninguno de los {landed['fallidos']} productos encontrados"
+        landed["error"] = problem or "ningún producto de la última hora en la Landing"
+        logger.error("Lightning: %s", landed["error"])
+    elif problem or not complete:
+        # part of the window was read (now or by the earlier runs): what was read counts, but it is not a whole
+        # hour, and a failed download of the last product is not an hour without data
+        landed.pop("error", None)
+        landed["incompleta"] = (f"lectura incompleta: {problem or 'faltan productos de la ventana'}, "
+                                f"{covered} de {int(float(cfg['ventana_min']))} min leídos")
+        logger.warning("Lightning: %s", landed["incompleta"])
     payload = dashboard_payload(recent, read_risk(cfg["dashboard_dir"]), cfg, now, landed, covered)
     write_dashboard(payload, cfg["dashboard_dir"])
     for block in payload["distribuidoras"]:

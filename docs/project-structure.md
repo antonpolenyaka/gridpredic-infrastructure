@@ -39,10 +39,10 @@ gridpredic-infrastructure/
 ├── web/                         # La página pública de GridPredic.com (index.html, gridpredic-web.css, web.js): estática, con la escena de la red ligada al scroll (GSAP y ScrollTrigger en vendor/) y dos capturas del cuadro de mando en img/; montar_sitio.py monta el sitio que publica GitHub Pages (la página en la raíz, dashboard/ en /demo/ con la copia congelada de datos de web/demo/data, que renueva congelar_demo.ps1)
 ├── docs/                        # Documentación: cards, capas Silver y Gold, modelos, operación, caso de negocio, cifras, licencias, el diagrama de la arquitectura, este documento
 ├── experimentos/                # El código de cada prueba del cuaderno de laboratorio (docs/investigacion-continua.md), fuera de Spark, y figuras/capturar.py, que saca las figuras de la memoria del cuadro de mando
-│   ├── arbolado/  aves/  avisos_antelacion/  causas_texto/  consultas_trino/  despliegue/  era5/  evaluacion/  federado/  fenologia/  figuras/
-│   └── formatos/  fragilidad/  perfil_dia/  plan_financiero/  prevision_tarde/  rayos/  semantica/  suelo_humedad/  topologia/  umbral_estacion/  validacion/
+│   ├── arbolado/  aves/  avisos_antelacion/  causas_texto/  conciliacion/  consultas_trino/  despliegue/  era5/  evaluacion/  federado/  fenologia/
+│   └── figuras/  formatos/  fragilidad/  perfil_dia/  plan_financiero/  prevision_tarde/  rayos/  semantica/  suelo_humedad/  topologia/  umbral_estacion/  validacion/
 ├── notebooks/                   # Exploración (convención de nombres en su README)
-├── tests/                       # Pruebas locales de los jobs, sin Docker (01_bronze ... 04_ml y negocio, el plan financiero)
+├── tests/                       # Pruebas locales de los jobs, sin Docker (01_bronze ... 04_ml; negocio, el plan financiero; ops, los códigos de salida de los scripts de parada)
 └── _runlogs/                    # Scripts de pruebas manuales y de la operación en el portátil; los logs que generan se ignoran
 ```
 
@@ -66,7 +66,7 @@ Dentro de `dags/`, `config/` y `jobs/` los ficheros se agrupan por capa (`00_lan
 | `references/` | Documentación de SITEL sobre Calser y TedisNet, fuera del repositorio | Son manuales confidenciales del fabricante. Lo que necesita el pipeline está resumido en `docs/silver-layer.md` |
 | `reports/` | Memoria del TFM, fuera del repositorio | El informe se entrega en el campus; las figuras salen del cuadro de mando con `experimentos/figuras/capturar.py` |
 | `.env`, `.gitignore` | `.env.example`, `.gitignore` | Credenciales fuera de Git; backups, logs y cachés también |
-| `tests/` | `tests/01_bronze` a `tests/04_ml` | Tests de extremo a extremo de Silver y de Gold en un Spark local (`test_silver_smoke.py`, `test_gold_smoke.py`), con los problemas reales de los datos sembrados a propósito y una prueba de leakage de las features; tests de las métricas y los modelos y del job de entrenamiento sobre un dataset sintético; y tests de la Landing, de las fuentes públicas, de la meteorología de Gold y de los jobs del riesgo y del caso de negocio |
+| `tests/` | `tests/01_bronze` a `tests/04_ml`, `tests/negocio` y `tests/ops` | Tests de extremo a extremo de Silver y de Gold en un Spark local (`test_silver_smoke.py`, `test_gold_smoke.py`), con los problemas reales de los datos sembrados a propósito y una prueba de leakage de las features; tests de las métricas y los modelos y del job de entrenamiento sobre un dataset sintético; y tests de la Landing, de las fuentes públicas, de la meteorología de Gold y de los jobs del riesgo y del caso de negocio |
 | (no existe en CCDS) | `compose.yaml`, `infra/` | La plataforma se levanta con Docker Compose; cada servicio tiene su carpeta con su Dockerfile y sus scripts |
 | (no existe en CCDS) | `etl/dags/`, `etl/config/` | Separar orquestación (Airflow), parámetros (JSON) y transformación (Spark) permite añadir una tabla o cambiar el orden sin tocar código |
 

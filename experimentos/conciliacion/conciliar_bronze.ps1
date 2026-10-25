@@ -41,8 +41,11 @@ function AppsSpark() {
     return -1
 }
 function EsperarSpark() {
+    # Si no se puede preparar la sonda se para aqui: se ejecutaria un apps_spark.py viejo (tercera ronda A52).
     docker compose -f $Compose exec -T spark-master mkdir -p /tmp/gp 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Say "ERROR: no se pudo crear /tmp/gp en spark-master (codigo $LASTEXITCODE)"; return $false }
     docker compose -f $Compose cp "$Repo\experimentos\consultas_trino\apps_spark.py" "spark-master:/tmp/gp/apps_spark.py" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Say "ERROR: no se pudo copiar apps_spark.py a spark-master (codigo $LASTEXITCODE)"; return $false }
     for ($i = 0; $i -lt 30; $i++) {
         $n = AppsSpark
         if ($n -eq 0) { return $true }
@@ -239,9 +242,13 @@ function PararSql() {
         }
     }
 }
+# Si falla un mkdir o un cp de las consultas no se sigue: se ejecutaria la consulta vieja que hubiera quedado en
+# $Tmp de otra pasada y su resultado se tomaria por el de esta (tercera ronda A52).
 docker compose -f $Compose exec -T sqlserver mkdir -p $Tmp 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "ERROR: no se pudo crear $Tmp en sqlserver (codigo $LASTEXITCODE)"; PararSql; exit 1 }
 foreach ($f in @(@("sqlcmd.sh", "estado.sql") + @($FicheroBase.Values))) {
     docker compose -f $Compose cp "$Dir\$f" "sqlserver:$Tmp/$f" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "ERROR: no se pudo copiar $f a sqlserver (codigo $LASTEXITCODE)"; PararSql; exit 1 }
 }
 $enLinea = $false
 for ($i = 0; $i -lt 100; $i++) {
@@ -277,6 +284,7 @@ foreach ($b in $Bases) {
 # --- Bronze con Trino
 if (-not (TrinoListo)) { Say "ERROR: Trino no responde"; PararSql; exit 1 }
 docker compose -f $Compose exec -T trino mkdir -p $Tmp 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { $Script:Fallos++; Say "ERROR: no se pudo crear $Tmp en trino (codigo $LASTEXITCODE)"; PararSql; exit 1 }
 $EnBronze = @{}
 $r = Trino "tablas_bronze" "SHOW TABLES FROM lakehouse.l1_bronze"
 if ($null -eq $r) { $Script:Fallos++; Say "ERROR: no se pueden listar las tablas de l1_bronze"; PararSql; exit 1 }
