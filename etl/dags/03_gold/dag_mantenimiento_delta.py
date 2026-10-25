@@ -26,19 +26,24 @@ with DAG(
     schedule=CronTriggerTimetable("10 4 * * 0", timezone="Europe/Madrid"),
     catchup=False,
     max_active_runs=1,
-    default_args={"retries": 0, "retry_delay": timedelta(minutes=10)},
+    default_args={"retries": 2, "retry_delay": timedelta(minutes=10)},
     tags=["mantenimiento"],
 ) as dag:
     SparkSubmitOperator(
         task_id="optimize_vacuum",
         conn_id="spark_default",
         application=f"{JOBS_DIR}/job_mantenimiento_delta.py",
-        application_args=["--parar-a", "18", "--parar-grandes-a", "17"],
+        application_args=["--parar-a", "18", "--parar-grandes-a", "17",
+                          "--progreso", "/opt/airflow/logs/mantenimiento_delta"],
         driver_memory="2g",
         conf={
             "spark.executor.memory": "6g",
             "spark.executor.memoryOverhead": "1g",
             "spark.cores.max": "4",
+            # A long OPTIMIZE or VACUUM can pause the executor in GC for minutes; on 25.10.2026 the default
+            # 120 s made the driver drop it three times at the same table.
+            "spark.network.timeout": "600s",
+            "spark.executor.heartbeatInterval": "60s",
         },
         name="job-mantenimiento-delta",
     )

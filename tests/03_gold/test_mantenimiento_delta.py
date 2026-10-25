@@ -79,7 +79,7 @@ def test_the_dag_gives_memory_to_the_executor():
         text = file.read()
     assert '"spark.executor.memory": "6g"' in text and '"spark.executor.memoryOverhead": "1g"' in text
     assert '"spark.cores.max": "4"' in text
-    assert 'application_args=["--parar-a", "18", "--parar-grandes-a", "17"]' in text
+    assert 'application_args=["--parar-a", "18", "--parar-grandes-a", "17",' in text
 
 
 def test_no_optimize_of_a_big_table_late_in_the_day():
@@ -127,7 +127,7 @@ def run_main(monkeypatch, ran_steps, files_error=False):
         monkeypatch.setattr(job, "files_of", broken)
     else:
         monkeypatch.setattr(job, "files_of", lambda spark, name: (3, 1000))
-    monkeypatch.setattr(job, "run_steps", lambda spark, name, steps, hours: ran_steps(steps))
+    monkeypatch.setattr(job, "run_steps", lambda spark, name, steps, hours, big=False: ran_steps(steps))
     return job.main([])
 
 
@@ -186,3 +186,72 @@ def test_the_run_fails_when_discovery_fails(monkeypatch):
     monkeypatch.setattr(SessionDouble, "catalog", CatalogDouble("x"), raising=False)
     monkeypatch.setattr(SessionDouble, "sql", lambda self, statement: (_ for _ in ()).throw(RuntimeError("MinIO unavailable")), raising=False)
     assert job.main([]) == 1
+
+
+def test_a_retry_of_the_same_day_goes_on_after_the_tables_already_done(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(job, "SparkSession", SessionDouble)
+    monkeypatch.setattr(job, "delta_tables", lambda spark, database, errors=None:
+                        ["l1_bronze.a", "l1_bronze.b", "l1_bronze.c"] if database == "l1_bronze" else [])
+    monkeypatch.setattr(job, "files_of", lambda spark, name: (3, 1000))
+
+    def first(spark, name, steps, hours, big=False):
+        seen.append(name)
+        if name == "l1_bronze.b":
+            raise SystemExit("executor lost")
+        return steps
+    monkeypatch.setattr(job, "run_steps", first)
+    try:
+        job.main(["--progreso", str(tmp_path)])
+    except SystemExit:
+        pass
+    assert seen == ["l1_bronze.a", "l1_bronze.b"]
+    seen.clear()
+    monkeypatch.setattr(job, "run_steps", lambda spark, name, steps, hours, big=False: seen.append(name) or steps)
+    assert job.main(["--progreso", str(tmp_path)]) == 0
+    assert seen == ["l1_bronze.b", "l1_bronze.c"]
+
+
+def test_without_progress_folder_nothing_is_skipped(tmp_path):
+    assert job.done_today(None, "2026-10-25") == set()
+    job.mark_done(None, "2026-10-25", "x")
+    job.mark_done(str(tmp_path), "2026-10-25", "l2_silver.x")
+    assert job.done_today(str(tmp_path), "2026-10-25") == {"l2_silver.x"}
+    assert job.done_today(str(tmp_path), "2026-10-26") == set()
+
+
+class PartitionedSpark:
+    def __init__(self, columns, values):
+        self.columns, self.values, self.statements = columns, values, []
+
+    def sql(self, statement):
+        self.statements.append(statement)
+        outer = self
+
+        class Result:
+            def first(self):
+                return {"partitionColumns": outer.columns}
+
+            def collect(self):
+                return [(v,) for v in outer.values]
+        return Result()
+
+
+def test_a_big_partitioned_table_is_optimized_one_partition_at_a_time():
+    spark = PartitionedSpark(["mes"], ["2025-02", "2025-01"])
+    assert run_steps(spark, "l2_silver.grande", ["optimize", "vacuum"], 168, big=True) == ["optimize", "vacuum"]
+    assert [s for s in spark.statements if s.startswith(("OPTIMIZE", "VACUUM"))] == [
+        "OPTIMIZE l2_silver.grande WHERE `mes` = '2025-01'", "OPTIMIZE l2_silver.grande WHERE `mes` = '2025-02'",
+        "VACUUM l2_silver.grande RETAIN 168 HOURS"]
+
+
+def test_a_big_table_without_partitions_only_gets_vacuum():
+    spark = PartitionedSpark([], [])
+    assert run_steps(spark, "l2_silver.grande", ["optimize", "vacuum"], 168, big=True) == ["optimize", "vacuum"]
+    assert [s for s in spark.statements if s.startswith(("OPTIMIZE", "VACUUM"))] == ["VACUUM l2_silver.grande RETAIN 168 HOURS"]
+
+
+def test_the_dag_resumes_and_tolerates_long_pauses():
+    with open(os.path.join(ROOT, "etl", "dags", "03_gold", "dag_mantenimiento_delta.py"), encoding="utf-8") as file:
+        text = file.read()
+    assert '"--progreso"' in text and '"spark.network.timeout": "600s"' in text and '"retries": 2' in text
