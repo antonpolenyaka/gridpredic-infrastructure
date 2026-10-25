@@ -743,6 +743,7 @@
       "horario": "*/15 * * * *",
       "ventana_min": 60,
       "retraso_min": 30,
+      "margen_min": 15,
       "max_productos": 12,
       "radio_km": [10.0, 20.0],
       "clave_env": "EUMETSAT_CONSUMER_KEY",

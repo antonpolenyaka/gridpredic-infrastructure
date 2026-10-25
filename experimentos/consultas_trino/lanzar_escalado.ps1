@@ -60,14 +60,23 @@ function Medir([int]$N, [double]$M) {
     if ($LASTEXITCODE -ne 0) { $Script:Fallos++ }
 }
 
+# Preparar el contenedor: si un mkdir, el borrado de la pasada anterior o un cp fallan no se sigue, porque se
+# ejecutaria o publicaria lo que hubiera quedado de otra pasada (auditoria, tercera ronda A52).
+function Entrada([string]$Que) {
+    if ($LASTEXITCODE -ne 0) { Say "ERROR: no se pudo $Que (codigo $LASTEXITCODE); no sigo para no usar una version anterior"; exit 1 }
+}
+
 if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
 Say "=== Escalado de la lectura de Gold === Salida: $Dir"
 Say ("  Commit: " + (git -C $Repo log -1 --format="%h %s"))
 docker compose -f $Compose exec -T spark-master mkdir -p /tmp/gp /tmp/gp_escalado 2>&1 | Out-Null
+Entrada "crear /tmp/gp y /tmp/gp_escalado en spark-master"
 # Sin restos de una pasada anterior: ni sus JSON ni su ajuste (salida/), para no publicar resultados viejos.
 docker compose -f $Compose exec -T spark-master sh -c "rm -rf /tmp/gp_escalado/*.json /tmp/gp_escalado/salida" 2>&1 | Out-Null
+Entrada "borrar los resultados de la pasada anterior"
 foreach ($f in @("escalado.py", "ajustar_escalado.py", "apps_spark.py")) {
     docker compose -f $Compose cp "$Repo\experimentos\consultas_trino\$f" "spark-master:/tmp/gp/$f" 2>&1 | ForEach-Object { Say "  $_" }
+    Entrada "copiar $f a spark-master"
 }
 
 Say "--- Nucleos: $($Nucleos -join ', ') con toda la tabla y $Pasadas pasadas"

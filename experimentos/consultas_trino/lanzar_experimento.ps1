@@ -82,6 +82,17 @@ function Planes([string]$Fase, [string[]]$Consultas, [string[]]$Sesion = @(), [s
     }
 }
 
+# Preparar el contenedor (carpetas y programas): si un mkdir o un cp falla no se sigue, porque se ejecutaria la copia
+# vieja que hubiera quedado en /tmp/gp de otra pasada (auditoria, tercera ronda A52).
+function Entrada([string]$Que) {
+    if ($LASTEXITCODE -ne 0) {
+        Say "ERROR: no se pudo $Que (codigo $LASTEXITCODE); no sigo para no ejecutar una version anterior"
+        if ($Script:TrinoArrancadoAqui) { docker compose -f $Compose stop trino 2>&1 | ForEach-Object { Say "  $_" } }
+        exit 1
+    }
+}
+$Script:TrinoArrancadoAqui = $false
+
 if ($Repo -like "D:*" -and -not (Test-Path "D:\")) { Write-Host "ERROR: no esta el disco D:"; exit 1 }
 Say "=== Planes de consulta (4.7.3) === Salida: $Dir"
 Say ("  Commit: " + (git -C $Repo log -1 --format="%h %s"))
@@ -89,7 +100,9 @@ FueraDeLaTarde
 # Spark ocupado segun la API del master (activeapps), que ve tambien lo que lanza Airflow: la tarde, dag_silver,
 # dag_gold y el mantenimiento. Contar procesos spark-submit en spark-master solo veia lo lanzado a mano.
 docker compose -f $Compose exec -T spark-master mkdir -p /tmp/gp 2>&1 | Out-Null
+Entrada "crear /tmp/gp en spark-master"
 docker compose -f $Compose cp "$Repo\experimentos\consultas_trino\apps_spark.py" "spark-master:/tmp/gp/apps_spark.py" 2>&1 | Out-Null
+Entrada "copiar apps_spark.py a spark-master"
 while ($true) {
     $salida = (((docker compose -f $Compose exec -T spark-master python3 /tmp/gp/apps_spark.py) -join "").Trim())
     if ($LASTEXITCODE -ne 0 -or $salida -notmatch '^-?\d+$') { Say "ERROR: no he podido saber si Spark tiene aplicaciones en marcha (codigo $LASTEXITCODE, salida '$salida')"; exit 1 }
@@ -101,14 +114,17 @@ while ($true) {
 
 $TrinoAntes = (docker compose -f $Compose ps --status running --services 2>$null) -contains "trino"
 Say ("Trino arrancado al empezar: " + $TrinoAntes)
-if (-not $TrinoAntes) { docker compose -f $Compose up -d trino 2>&1 | ForEach-Object { Say "  $_" } }
+if (-not $TrinoAntes) { docker compose -f $Compose up -d trino 2>&1 | ForEach-Object { Say "  $_" }; $Script:TrinoArrancadoAqui = $true }
 if (-not (EsperarTrino)) { Say "ERROR: Trino no responde"; exit 1 }
 
 docker compose -f $Compose exec -T spark-master mkdir -p /tmp/gp /tmp/gp_planes 2>&1 | Out-Null
+Entrada "crear /tmp/gp y /tmp/gp_planes en spark-master"
 # Cada ejecucion empieza sin los JSON de la anterior, para que resumir_planes.py no los mezcle.
 docker compose -f $Compose exec -T spark-master sh -c "rm -f /tmp/gp_planes/*.json" 2>&1 | Out-Null
+Entrada "borrar los JSON de la pasada anterior"
 foreach ($f in @("planes.py", "compactar_dataset.py")) {
     docker compose -f $Compose cp "$Repo\experimentos\consultas_trino\$f" "spark-master:/tmp/gp/$f" 2>&1 | ForEach-Object { Say "  $_" }
+    Entrada "copiar $f a spark-master"
 }
 
 Say "--- Tamano de cada zona y de las tablas mas grandes en MinIO"

@@ -8,7 +8,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 
 - La versión entregada con la memoria (M7, 26.10.2026) es la etiqueta `v0.16.0` de este repositorio; el [CHANGELOG](CHANGELOG.md) dice qué entró en cada versión y [CITATION.cff](CITATION.cff) cómo citarlo.
 - La memoria dice de dónde sale cada cifra: [docs/cifras.md](docs/cifras.md) da, para cada una, el documento y la ejecución que la produce, y `experimentos/` guarda los guiones con sus salidas.
-- Sin levantar el stack se puede revisar el código y correr las pruebas (apartado 14): `pip install -r requirements.txt`, `make lint` y `make test` (363 pruebas a 23.10.2026, de Landing a los modelos y al plan financiero), lo mismo que ejecuta la integración continua.
+- Sin levantar el stack se puede revisar el código y correr las pruebas (apartado 14): `pip install -r requirements.txt`, `make lint` y `make test` (400 pruebas a 25.10.2026, de Landing a los modelos y al plan financiero), lo mismo que ejecuta la integración continua.
 - El cuadro de mando con una copia congelada de datos está en https://gridpredic.com/demo/ (las tres redes como Distribuidora 1, 2 y 3); la página pública, en https://gridpredic.com.
 - Las copias de Calser y TedisNet no se distribuyen (confidencialidad, licencia y más de 60 GB): para repetir la carga completa hacen falta en un entorno controlado, siguiendo los apartados 1 a 13. El grafo de la red para la defensa se levanta aparte (apartado 8, Neo4j).
 
