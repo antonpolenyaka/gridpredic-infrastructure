@@ -156,8 +156,10 @@ def optimize_statements(spark, name: str, big: bool) -> list:
     return [f"OPTIMIZE {name} WHERE `{column}` = {literal(value)}" for column, value in parts]
 
 
-def run_steps(spark, name: str, steps: list, hours: int, big: bool = False) -> list:
-    """The steps that worked. Each one has its own try, so a failed OPTIMIZE does not leave the table without VACUUM."""
+def run_steps(spark, name: str, steps: list, hours: int, big: bool = False, stop_hour: int = None) -> list:
+    """The steps that worked. Each one has its own try, so a failed OPTIMIZE does not leave the table without VACUUM.
+    stop_hour: local hour from which no more partitions of a big table are compacted (the VACUUM still runs);
+    an OPTIMIZE cut there does not count as done, and the next run starts it again (done months cost little)."""
     ran = []
     for step in steps:
         try:
@@ -166,8 +168,23 @@ def run_steps(spark, name: str, steps: list, hours: int, big: bool = False) -> l
                 if not statements:
                     ran.append(step)
                     continue
-                for statement in statements:
-                    spark.sql(statement)
+                cut = False
+                for k, statement in enumerate(statements):
+                    if stop_hour is not None and datetime.now(ZoneInfo("Europe/Madrid")).hour >= stop_hour:
+                        logger.info("%s: OPTIMIZE stopped at %s:00 after %s of %s partitions", name, stop_hour, k, len(statements))
+                        cut = True
+                        break
+                    if len(statements) == 1:
+                        spark.sql(statement)
+                        continue
+                    try:  # one month that fails does not stop the others
+                        spark.sql(statement)
+                        logger.info("%s: %s", name, statement.split(" WHERE ", 1)[-1])
+                    except Exception as error:  # noqa: BLE001
+                        cut = True
+                        logger.warning("%s: OPTIMIZE %s failed (%s)", name, statement.split(" WHERE ", 1)[-1], str(error)[:200])
+                if cut:
+                    continue
             else:
                 spark.sql(f"VACUUM {name} RETAIN {hours} HOURS")
             ran.append(step)
@@ -213,7 +230,7 @@ def main(argv=None) -> int:
                 steps = planned
             if not steps:
                 continue
-            ran = run_steps(spark, name, steps, args.horas, big=size >= args.grandes_gb * 1e9)
+            ran = run_steps(spark, name, steps, args.horas, big=size >= args.grandes_gb * 1e9, stop_hour=args.parar_grandes_a)
             if len(ran) < len(steps):
                 failed += 1
             if not ran:

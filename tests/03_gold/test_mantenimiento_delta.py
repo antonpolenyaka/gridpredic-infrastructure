@@ -127,7 +127,7 @@ def run_main(monkeypatch, ran_steps, files_error=False):
         monkeypatch.setattr(job, "files_of", broken)
     else:
         monkeypatch.setattr(job, "files_of", lambda spark, name: (3, 1000))
-    monkeypatch.setattr(job, "run_steps", lambda spark, name, steps, hours, big=False: ran_steps(steps))
+    monkeypatch.setattr(job, "run_steps", lambda spark, name, steps, hours, big=False, stop_hour=None: ran_steps(steps))
     return job.main([])
 
 
@@ -195,7 +195,7 @@ def test_a_retry_of_the_same_day_goes_on_after_the_tables_already_done(monkeypat
                         ["l1_bronze.a", "l1_bronze.b", "l1_bronze.c"] if database == "l1_bronze" else [])
     monkeypatch.setattr(job, "files_of", lambda spark, name: (3, 1000))
 
-    def first(spark, name, steps, hours, big=False):
+    def first(spark, name, steps, hours, big=False, stop_hour=None):
         seen.append(name)
         if name == "l1_bronze.b":
             raise SystemExit("executor lost")
@@ -207,7 +207,7 @@ def test_a_retry_of_the_same_day_goes_on_after_the_tables_already_done(monkeypat
         pass
     assert seen == ["l1_bronze.a", "l1_bronze.b"]
     seen.clear()
-    monkeypatch.setattr(job, "run_steps", lambda spark, name, steps, hours, big=False: seen.append(name) or steps)
+    monkeypatch.setattr(job, "run_steps", lambda spark, name, steps, hours, big=False, stop_hour=None: seen.append(name) or steps)
     assert job.main(["--progreso", str(tmp_path)]) == 0
     assert seen == ["l1_bronze.b", "l1_bronze.c"]
 
@@ -255,3 +255,29 @@ def test_the_dag_resumes_and_tolerates_long_pauses():
     with open(os.path.join(ROOT, "etl", "dags", "03_gold", "dag_mantenimiento_delta.py"), encoding="utf-8") as file:
         text = file.read()
     assert '"--progreso"' in text and '"spark.network.timeout": "600s"' in text and '"retries": 2' in text
+
+
+def test_the_partitions_of_a_big_table_stop_at_the_late_hour(monkeypatch):
+    spark = PartitionedSpark(["fecha_mes"], ["2025-01", "2025-02"])
+
+    class Late:
+        @staticmethod
+        def now(tz=None):
+            import datetime as real
+            return real.datetime(2026, 10, 25, 17, 5)
+    monkeypatch.setattr(job, "datetime", Late)
+    assert run_steps(spark, "l2_silver.f_tag_interval_value", ["optimize", "vacuum"], 168, big=True, stop_hour=17) == ["vacuum"]
+    assert [s for s in spark.statements if s.startswith(("OPTIMIZE", "VACUUM"))] == [
+        "VACUUM l2_silver.f_tag_interval_value RETAIN 168 HOURS"]
+
+
+def test_a_failed_month_does_not_stop_the_other_months():
+    class OneMonthFails(PartitionedSpark):
+        def sql(self, statement):
+            if statement.endswith("'2025-01'"):
+                self.statements.append(statement)
+                raise RuntimeError("executor lost")
+            return super().sql(statement)
+    spark = OneMonthFails(["fecha_mes"], ["2025-01", "2025-02"])
+    assert run_steps(spark, "l2_silver.f_tag_interval_value", ["optimize", "vacuum"], 168, big=True) == ["vacuum"]
+    assert "OPTIMIZE l2_silver.f_tag_interval_value WHERE `fecha_mes` = '2025-02'" in spark.statements
