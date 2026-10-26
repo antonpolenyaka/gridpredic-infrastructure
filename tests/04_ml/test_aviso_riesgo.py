@@ -36,7 +36,7 @@ PAYLOAD = {
 def test_the_message_names_the_distribuidoras_in_alert_only():
     text = av.message_from(PAYLOAD, "alto")
     assert text.startswith("Riesgo de interrupción de mañana 15.01.2026:")
-    assert "- Distribuidora 1: MUY ALTO (31 %, 4,1 veces su tasa base)\n  💨 racha de 92 km/h\n  Averías esperadas 0,4; clientes esperados sin luz 85." in text
+    assert "- Distribuidora 1: MUY ALTO (31 %, 4,1 veces su tasa base) 💨\n  💨 racha de 92 km/h\n  Averías esperadas 0,4; clientes esperados sin luz 85." in text
     assert "  Franja de 10:00 a 16:00, pico de racha 92 km/h." in text
     assert "  Líneas: Montánchez / Torre (12,0 %), Plasencia (8,0 %), Hervás (5,0 %)." in text
     assert "  Brigadas: Plasencia (mapa: https://www.google.com/maps?q=40.03000,-6.09000), Montánchez (brigadas en sus bases a las 9:00)." in text
@@ -168,14 +168,18 @@ def test_the_morning_report_tells_yesterday_and_today_once_a_day(monkeypatch, tm
          "guardia": {"reforzar": True, "motivo": "aviso de tormenta de AEMET (amarillo)"}},
         {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.031, "franja": {"inicio": 12, "fin": 18, "racha_pico": 50}}]}
     text = av.morning_message(verification, risk)
-    assert text.startswith("GridPredic, parte de la mañana.\nAyer 14.10.2026:\n- Distribuidora 2 BAJO (3 %): pico previsto 60 km/h a las 11 h, medido 44 km/h a las 11 h "
-                           "(en la franja, en la banda de los escenarios, AEMET decía 43 km/h).\n- Distribuidora 1 ALTO (10 %): pico previsto 75 km/h a las 14 h, "
-                           "medido 81 km/h a las 17 h (fuera de la franja, fuera de la banda de los escenarios, aviso de AEMET de nivel 1).")
-    assert ("Hoy 15.10.2026:\n- Distribuidora 1 MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h, guardia reforzada (aviso de tormenta de AEMET (amarillo)).\n"
-            "- Distribuidora 2 BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h.") in text
+    # grouped by network: today's level and window, and under it what we said for yesterday and what was measured
+    assert text.startswith("GridPredic, parte de la mañana.\nHoy 15.10.2026 y lo que pasó ayer, 14.10.2026:\n"
+                           "- Distribuidora 1: MEDIO (5 %); guardia reforzada (aviso de tormenta de AEMET (amarillo))\n"
+                           "  Hoy: franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h.\n"
+                           "  Ayer: ALTO (10 %), pico previsto 75 km/h a las 14 h, medido 81 km/h a las 17 h "
+                           "(fuera de la franja, fuera de la banda de los escenarios, aviso de AEMET de nivel 1).\n"
+                           "- Distribuidora 2: BAJO (3 %)\n  Hoy: franja de 12:00 a 19:00, pico 50 km/h.\n"
+                           "  Ayer: BAJO (3 %), pico previsto 60 km/h a las 11 h, medido 44 km/h a las 11 h "
+                           "(en la franja, en la banda de los escenarios, AEMET decía 43 km/h).")
     assert text.endswith("http://localhost:8086")
     # Without the risk of today, the block hoy of the verification; with the date of today, a warning; without anything, no message.
-    assert "Hoy 15.10.2026:\n- Distribuidora 2 BAJO (3 %)." in av.morning_message(verification, {"fecha": "2026-10-14"})
+    assert "\n- Distribuidora 2: BAJO (3 %)\n  Ayer: BAJO (3 %)" in av.morning_message(verification, {"fecha": "2026-10-14"})
     assert "Atención: no hay riesgo calculado para hoy (el último es del 14.10.2026)" in av.morning_message(verification, {"fecha": "2026-10-14"}, "2026-10-15")
     assert "Atención" not in av.morning_message(verification, risk, "2026-10-15")
     assert av.morning_message({}, {}) == ""
@@ -285,12 +289,16 @@ def test_with_webhook_and_telegram_one_failing_still_sends_and_none_is_an_error(
 
 def test_the_daily_summary_goes_even_without_alert():
     calm = {"fecha": "2026-10-21", "fecha_texto": "21.10.2026", "distribuidoras": [
-        {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.019},
-        {"id": 3, "nombre": "Distribuidora 1", "nivel": "medio", "probabilidad": 0.05}]}
+        {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.019, "veces_tasa_base": 0.5},
+        {"id": 3, "nombre": "Distribuidora 1", "nivel": "medio", "probabilidad": 0.05, "veces_tasa_base": 1.3, "racha_max_kmh": 65,
+         "franja": {"inicio": 17, "fin": 23, "racha_pico": 65}, "brigadas": {"bases": [{"municipio": "Plasencia", "lat": 40.03, "lon": -6.09}]}}]}
     assert av.message_from(calm, "alto") == ""
     text = av.summary_message(calm, "alto")
-    assert text.startswith("Riesgo de interrupción de mañana 21.10.2026: guardia normal en todas las redes.\n- Distribuidora 1 MEDIO (5 %).\n- Distribuidora 2 BAJO (2 %).")
-    assert "Cuadro de mando" in text
+    # the same detail as an evening in alert, every network, with what stands out beside the level
+    assert text.startswith("Riesgo de interrupción de mañana 21.10.2026: guardia normal en todas las redes.\n"
+                           "- Distribuidora 1: MEDIO (5 %, 1,3 veces su tasa base) 💨\n  💨 racha de 65 km/h\n")
+    assert "  Franja de 17:00 a 24:00, pico de racha 65 km/h." in text and "  Brigadas: Plasencia (mapa:" in text
+    assert "\n- Distribuidora 2: BAJO (2 %, 0,5 veces su tasa base)\n" in text and text.endswith("Cuadro de mando: http://localhost:8086")
 
 
 def test_long_texts_are_cut_for_telegram_at_line_ends():

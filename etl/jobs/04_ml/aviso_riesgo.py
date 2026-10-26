@@ -141,7 +141,7 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         # One line per distribuidora with the level and the guard, and under it one short line per thing, so the
         # message reads on a phone (Telegram) as well as in Slack or Teams.
         head = (f"- {d.get('nombre')}: {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %, "
-                f"{dec(d.get('veces_tasa_base'), 1)} veces su tasa base)")
+                f"{dec(d.get('veces_tasa_base'), 1)} veces su tasa base)" + (" " + icons_of(d) if icons_of(d) else ""))
         guard = d.get("guardia") or {}
         if guard.get("reforzar"):
             head += f"; guardia reforzada ({guard.get('motivo', '')})"
@@ -180,21 +180,18 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
     return "\n".join(lines)
 
 
-def summary_message(payload: dict, minimum: str = "alto") -> str:
+def summary_message(payload: dict, minimum: str = "alto", ensemble: dict = None) -> str:
     """
-    The short text of an evening with no distribuidora in alert, for aviso.resumen_diario: the level and
-    probability of every network and that the guard stays normal, so the group knows the evening ran.
+    The text of an evening with no distribuidora in alert, for aviso.resumen_diario: the same detail of every
+    network as an evening in alert (level, what stands out, expected failures, window, lines, crews, reasons,
+    scenarios and AEMET), under a first line that says the guard stays normal, so the group knows the evening
+    ran and what it saw.
     """
-    nets = sorted(payload.get("distribuidoras", []), key=lambda d: str(d.get("nombre", "")))
-    if not nets:
+    if not payload.get("distribuidoras"):
         return ""
-    lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}: guardia normal en todas las redes."]
-    lines += [f"- {d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" + (" " + icons_of(d) if icons_of(d) else "") + "." for d in nets]
-    outlook = outlook_line(payload, minimum)
-    if outlook:
-        lines.append(outlook)
-    lines.append(f"Cuadro de mando: {DASHBOARD_URL}")
-    return "\n".join(lines)
+    text = message_from(payload, "bajo", ensemble)
+    head = f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}:"
+    return text.replace(head, head[:-1] + ": guardia normal en todas las redes.", 1)
 
 
 def outlook_line(payload: dict, minimum: str = "alto") -> str:
@@ -381,7 +378,7 @@ def send(payload: dict, rcfg: dict, ensemble: dict = None) -> str:
     cfg = alert_settings(rcfg)
     message = message_from(payload, cfg["nivel_minimo"], ensemble)
     if not message and cfg.get("resumen_diario"):
-        message = summary_message(payload, cfg["nivel_minimo"])
+        message = summary_message(payload, cfg["nivel_minimo"], ensemble)
     if not message:
         return "sin alerta"
     return deliver(message, cfg, "message of the evening")
@@ -458,12 +455,11 @@ def day_text(iso: str) -> str:
 
 def morning_message(verification: dict, risk: dict = None, today_iso: str = None) -> str:
     """
-    The text of the morning: what we said for yesterday and what the stations
-    measured (verificacion.json, block ayer), and what the system says for
-    today (riesgo.json when its fecha is today, else the block hoy of the
-    verification). With today_iso, a warning when riesgo.json is older than
-    today (the evening run did not leave the risk). Empty when there is
-    nothing of yesterday nor of today.
+    The text of the morning, grouped by network: for each distribuidora, the level of today with what stands
+    out (riesgo.json when its fecha is today, else the block hoy of the verification), its window and the guard,
+    and under it what we said for yesterday against what the stations measured (verificacion.json, block ayer).
+    With today_iso, a warning when riesgo.json is older than today (the evening run did not leave the risk).
+    Empty when there is nothing of yesterday nor of today.
     """
     yesterday = (verification or {}).get("ayer") or {}
     today = (verification or {}).get("hoy") or {}
@@ -471,48 +467,48 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
     if today_iso and (risk or {}).get("fecha") and str(risk["fecha"]) < today_iso:
         lines.append(f"Atención: no hay riesgo calculado para hoy (el último es del {day_text(risk['fecha'])}); "
                      f"mirar dag_riesgo_manana en Airflow ({AIRFLOW_URL}).")
-    if yesterday.get("distribuidoras"):
-        parts = []
-        for d in yesterday["distribuidoras"]:
-            if d.get("racha_observada_max") is None:
-                continue
-            text = (f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %): "
-                    f"pico previsto {float(d.get('racha_prevista_max') or 0):.0f} km/h a las {d.get('hora_prevista')} h, "
-                    f"medido {float(d['racha_observada_max']):.0f} km/h a las {d.get('hora_observada')} h")
-            marks = []
-            if d.get("pico_en_franja") is not None:
-                marks.append("en la franja" if d["pico_en_franja"] else "fuera de la franja")
-            if d.get("pico_en_banda") is not None:
-                marks.append("en la banda de los escenarios" if d["pico_en_banda"] else "fuera de la banda de los escenarios")
-            if d.get("racha_aemet_max") is not None:
-                marks.append(f"AEMET decía {float(d['racha_aemet_max']):.0f} km/h")
-            if d.get("aviso_aemet"):
-                marks.append(f"aviso de AEMET de nivel {int(d['aviso_aemet'])}")
-            parts.append("- " + text + (" (" + ", ".join(marks) + ")" if marks else "") + ".")
-        if parts:
-            lines.append(f"Ayer {day_text(yesterday.get('fecha'))}:")
-            lines.extend(parts)
     source = risk if (risk or {}).get("fecha") and risk.get("fecha") == today.get("fecha", risk.get("fecha")) else None
-    if source and source.get("distribuidoras"):
-        parts = []
-        for d in sorted(source["distribuidoras"], key=lambda b: -(b.get("probabilidad") or 0)):
-            fr = d.get("franja") or {}
-            text = f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" + (" " + icons_of(d) if icons_of(d) else "")
-            if fr.get("inicio") is not None:
-                text += f", franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico {float(fr.get('racha_pico') or 0):.0f} km/h"
-            if (d.get("aemet") or {}).get("pico"):
-                text += f", AEMET {float(d['aemet']['pico'].get('racha_kmh') or 0):.0f} km/h"
-            if (d.get("guardia") or {}).get("reforzar"):
-                text += f", guardia reforzada ({d['guardia'].get('motivo', '')})"
-            parts.append("- " + text + ".")
-        lines.append(f"Hoy {day_text(source.get('fecha'))}:")
-        lines.extend(parts)
-    elif today.get("distribuidoras"):
-        lines.append(f"Hoy {day_text(today.get('fecha'))}:")
-        lines.extend(f"- {d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)."
-                     for d in today["distribuidoras"])
-    if not lines:
+    today_nets = (source or {}).get("distribuidoras") or today.get("distribuidoras") or []
+    today_date = (source or {}).get("fecha") or today.get("fecha")
+    past = {str(d.get("nombre")): d for d in yesterday.get("distribuidoras") or [] if d.get("racha_observada_max") is not None}
+    now_by = {str(d.get("nombre")): d for d in today_nets}
+    names = sorted(set(past) | set(now_by), key=lambda s: [int(c) if c.isdigit() else c for c in re.split(r"(\d+)", s)])
+    if not names and not lines:
         return ""
+    if today_date or yesterday.get("fecha"):
+        lines.append("Hoy " + day_text(today_date) + (f" y lo que pasó ayer, {day_text(yesterday.get('fecha'))}" if past else "") + ":"
+                     if today_date else f"Ayer {day_text(yesterday.get('fecha'))}:")
+    for name in names:
+        d = now_by.get(name)
+        if d:
+            head = f"- {name}: {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" + (" " + icons_of(d) if icons_of(d) else "")
+            if (d.get("guardia") or {}).get("reforzar"):
+                head += f"; guardia reforzada ({d['guardia'].get('motivo', '')})"
+            lines.append(head)
+            fr, parts = d.get("franja") or {}, []
+            if fr.get("inicio") is not None:
+                parts.append(f"franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico {float(fr.get('racha_pico') or 0):.0f} km/h")
+            if (d.get("aemet") or {}).get("pico"):
+                parts.append(f"AEMET {float(d['aemet']['pico'].get('racha_kmh') or 0):.0f} km/h")
+            if parts:
+                lines.append("  Hoy: " + ", ".join(parts) + ".")
+        else:
+            lines.append(f"- {name}")
+        y = past.get(name)
+        if y:
+            text = (f"  Ayer: {str(y.get('nivel', '')).upper()} ({100 * float(y.get('probabilidad') or 0):.0f} %), "
+                    f"pico previsto {float(y.get('racha_prevista_max') or 0):.0f} km/h a las {y.get('hora_prevista')} h, "
+                    f"medido {float(y['racha_observada_max']):.0f} km/h a las {y.get('hora_observada')} h")
+            marks = []
+            if y.get("pico_en_franja") is not None:
+                marks.append("en la franja" if y["pico_en_franja"] else "fuera de la franja")
+            if y.get("pico_en_banda") is not None:
+                marks.append("en la banda de los escenarios" if y["pico_en_banda"] else "fuera de la banda de los escenarios")
+            if y.get("racha_aemet_max") is not None:
+                marks.append(f"AEMET decía {float(y['racha_aemet_max']):.0f} km/h")
+            if y.get("aviso_aemet"):
+                marks.append(f"aviso de AEMET de nivel {int(y['aviso_aemet'])}")
+            lines.append(text + (" (" + ", ".join(marks) + ")" if marks else "") + ".")
     return "GridPredic, parte de la mañana.\n" + "\n".join(lines) + f"\nCuadro de mando: {DASHBOARD_URL}"
 
 
