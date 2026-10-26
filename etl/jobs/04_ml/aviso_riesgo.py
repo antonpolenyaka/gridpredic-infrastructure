@@ -275,7 +275,10 @@ def telegram_format(message: str) -> str:
         line = esc(raw)
         link = _LINK_RE.match(raw)
         if link:
-            out.append(f'<a href="{esc(link.group(2))}">{"Abrir el cuadro de mando" if link.group(1) == "Cuadro de mando" else "Abrir Airflow"}</a>')
+            net = re.search(r"#distribuidora-(\d+)$", link.group(2))
+            label = (f"Abrir la Distribuidora {net.group(1)} en el cuadro de mando" if net else "Abrir el cuadro de mando") \
+                if link.group(1) == "Cuadro de mando" else "Abrir Airflow"
+            out.append(f'<a href="{esc(link.group(2))}">{label}</a>')
             continue
         line = _LEVEL_RE.sub(lambda m: f"{LEVEL_ICONS[m.group(1)]} {m.group(1).capitalize()}", line)
         line = line.replace("guardia reforzada", "👷 guardia reforzada").replace("Guardia normal", "👷 Guardia normal").replace("guardia normal", "👷 guardia normal")
@@ -296,11 +299,59 @@ def telegram_format(message: str) -> str:
     return "\n".join(out)
 
 
+_OUTLOOK_NET_RE = re.compile(r"(Distribuidora \d+) (MUY ALTO|ALTO|MEDIO|BAJO) \((\d+ %)\)")
+
+
+def split_by_network(message: str) -> list:
+    """
+    The message of the evening as one message per network, so the group reads one red at a time on the phone:
+    each one with the header, the block of that network (its line and the detail under it), its own line of the
+    day after tomorrow and the link; the general rules go only in the last one. A message with less than two
+    network blocks, or that is not the evening (the morning report, a storm), comes back whole.
+    """
+    lines = message.split("\n")
+    starts = [i for i, line in enumerate(lines) if line.startswith("- ")]
+    if len(starts) < 2 or not any(line.startswith("Riesgo de interrupción de") for line in lines[:starts[0]]):
+        return [message]
+    if not all(lines[i + 1].startswith("  ") for i in starts if i + 1 < len(lines)):
+        return [message]
+    pre = lines[:starts[0]]
+    blocks, end = [], starts[0]
+    for k, s in enumerate(starts):
+        e = starts[k + 1] if k + 1 < len(starts) else s + 1
+        while e < len(lines) and (k + 1 < len(starts) and e < starts[k + 1] or lines[e].startswith("  ")):
+            if k + 1 < len(starts) and e >= starts[k + 1]:
+                break
+            e += 1
+        blocks.append(lines[s:e])
+        end = e
+    tail = lines[end:]
+    outlook = next((line for line in tail if line.startswith("Pasado mañana")), "")
+    link = [line for line in tail if line.startswith(("Cuadro de mando:", "Airflow:"))]
+    rules = [line for line in tail if line != outlook and line not in link]
+    when = outlook.split(",")[0] if outlook else ""
+    by_net = {m.group(1): f"{m.group(2)} ({m.group(3)})" for m in _OUTLOOK_NET_RE.finditer(outlook)}
+    out = []
+    for k, block in enumerate(blocks):
+        name = block[0][2:].split(":")[0].strip()
+        piece = pre + block
+        if name in by_net:
+            piece.append(f"{when}, orientación a dos días: {by_net[name]}.")
+        if k == len(blocks) - 1:
+            piece += rules
+        # the link of each one goes straight to its network on the dashboard (#distribuidora-1)
+        anchor = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        own = [line if "#" in line or not line.startswith("Cuadro de mando:") else f"{line}#{anchor}" for line in link]
+        out.append("\n".join(piece + own))
+    return out
+
+
 def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0, thread_id: int = None, markup: dict = None) -> int:
-    """sendMessage of the Telegram Bot API, dressed with telegram_format and without link previews; returns the last
-    HTTP status. The token is part of the URL, so neither goes to the log."""
+    """sendMessage of the Telegram Bot API, dressed with telegram_format and without link previews, one message per
+    network for the evening (split_by_network); returns the last HTTP status. The token is part of the URL, so
+    neither goes to the log."""
     status = 0
-    for piece in chunks(telegram_format(message)):
+    for piece in (p for single in split_by_network(message) for p in chunks(telegram_format(single))):
         fields = {"chat_id": chat_id, "text": piece, "parse_mode": "HTML", "disable_web_page_preview": True}
         if thread_id:
             fields["message_thread_id"] = thread_id

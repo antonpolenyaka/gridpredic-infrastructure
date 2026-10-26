@@ -365,3 +365,26 @@ def test_a_long_line_is_never_cut_inside_a_tag_or_an_entity():
     assert len(pieces) == 3 and all(len(p) <= av.TELEGRAM_MAX for p in pieces)
     for p in pieces:
         assert p.count("<a ") == p.count("</a>") and p.count("<b>") == p.count("</b>") and p.rfind("&") <= p.rfind(";")
+
+
+def test_the_evening_goes_to_telegram_as_one_message_per_network():
+    calm = {"fecha": "2026-10-21", "fecha_texto": "21.10.2026", "reglas": {"texto": "Tras una avería, otra en las 3 h siguientes."},
+            "pasado_manana": {"fecha": "2026-10-22", "fecha_texto": "22.10.2026", "distribuidoras": [
+                {"nombre": "Distribuidora 1", "nivel": "medio", "probabilidad": 0.04}, {"nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.02}]},
+            "distribuidoras": [
+                {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.019, "veces_tasa_base": 0.5},
+                {"id": 3, "nombre": "Distribuidora 1", "nivel": "medio", "probabilidad": 0.05, "veces_tasa_base": 1.3,
+                 "franja": {"inicio": 17, "fin": 23, "racha_pico": 65}}]}
+    pieces = av.split_by_network(av.summary_message(calm, "alto"))
+    assert len(pieces) == 2
+    first, last = (p.split("\n") for p in pieces)
+    assert first[0] == last[0] == "Riesgo de interrupción de mañana 21.10.2026: guardia normal en todas las redes."
+    assert first[1].startswith("- Distribuidora 1: MEDIO") and "Distribuidora 2" not in pieces[0]
+    assert "Pasado mañana 22.10.2026, orientación a dos días: MEDIO (4 %)." in first
+    assert "Pasado mañana 22.10.2026, orientación a dos días: BAJO (2 %)." in last
+    # the general rules only once, at the end; the link in each one
+    assert "Tras una avería" not in pieces[0] and "Tras una avería, otra en las 3 h siguientes." in last
+    assert first[-1] == "Cuadro de mando: http://localhost:8086#distribuidora-1" and last[-1] == "Cuadro de mando: http://localhost:8086#distribuidora-2"
+    # anything else goes whole: one network, or the morning report
+    assert av.split_by_network(av.message_from(PAYLOAD, "alto")) == [av.message_from(PAYLOAD, "alto")]
+    assert av.split_by_network("GridPredic, parte de la mañana.\n- a\n  x\n- b\n  y") == ["GridPredic, parte de la mañana.\n- a\n  x\n- b\n  y"]
