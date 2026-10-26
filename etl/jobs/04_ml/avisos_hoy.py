@@ -189,15 +189,9 @@ def send_raised(payload: dict, rcfg: dict, state_path: str) -> str:
     lines = [f"Avisos nuevos de AEMET para hoy {aviso_riesgo.day_text(day)}:"] + [f"- {d['texto']}." for d in due]
     lines.append(f"Cuadro de mando: {aviso_riesgo.DASHBOARD_URL}")
     message = "\n".join(lines)
-    url = os.environ.get(cfg["url_env"], "").strip()
-    if not url:
-        logger.info("No %s in the environment: the message is not sent\n%s", cfg["url_env"], message)
-        return "sin url"
-    try:
-        aviso_riesgo.post(url, message, cfg["campo"], float(cfg["timeout_s"]))
-    except Exception as error:  # noqa: BLE001
-        logger.error("The webhook did not take the message: %s", type(error).__name__)
-        return f"error: {type(error).__name__}"
+    result = aviso_riesgo.deliver(message, cfg, "raised guard")
+    if result != "enviado":
+        return result
     for d in due:
         state[str(d.get("id"))] = day
     if state_path:
@@ -205,7 +199,6 @@ def send_raised(payload: dict, rcfg: dict, state_path: str) -> str:
             write_json_atomic(state_path, state)
         except OSError as error:
             logger.warning("State not written in %s: %s", state_path, error)
-    logger.info("Raised guard sent\n%s", message)
     return "enviado"
 
 

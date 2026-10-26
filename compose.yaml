@@ -290,6 +290,11 @@ services:
       # in alert, the report of the morning, the new warnings of the day, the lightning over the network and the
       # tasks that fail (optional).
       AVISO_WEBHOOK_URL: ${AVISO_WEBHOOK_URL:-}
+      # The same messages to a Telegram group through a bot (token of BotFather and the id of the group), and
+      # the link to the dashboard the messages carry (optional).
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      AVISO_CUADRO_URL: ${AVISO_CUADRO_URL:-}
 
     volumes:
       - airflow-data:/opt/airflow
