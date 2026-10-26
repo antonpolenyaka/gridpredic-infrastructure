@@ -817,6 +817,8 @@
       const sec = document.createElement("section");
       sec.className = "dist panel";
       sec.id = "dist-" + idx;
+      // A stable anchor by name ("#distribuidora-1"), the one the Telegram messages link to.
+      sec.dataset.ancla = String(d.nombre || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const imp = d.impacto || {}, fr = d.franja || {};
       const guardia = d.guardia && d.guardia.reforzar ? `<span class="nivel guardia-pill" title="${esc(d.guardia.motivo || "")}">guardia reforzada</span>` : "";
       sec.innerHTML = `<h2>${esc(d.nombre)} ${nivelPill(d.nivel)} ${guardia} <span class="notas">${esc(d.motivos || "")}</span>${d.guardia && d.guardia.reforzar ? `<span class="notas">guardia: ${esc(d.guardia.motivo || "")}</span>` : ""}</h2>
@@ -873,6 +875,8 @@
     DATOS = data;
     // With every network on the page, the profiles again on the common scale.
     redibujarTodos();
+    // The sections are drawn after the page loads, so the browser cannot jump to #distribuidora-N by itself.
+    irAlAncla();
     const seg = seguimiento(data.seguimiento);
     if (seg) main.insertAdjacentHTML("beforeend", seg);
     if (data.notas && data.notas.length) main.insertAdjacentHTML("beforeend", `<section class="dist panel notas-seccion"><h2>Notas</h2><ul class="notas">${data.notas.map((n) => "<li>" + esc(n) + "</li>").join("")}</ul></section>`);
@@ -885,6 +889,15 @@
       .catch(() => null);
     if (!DIA) setInterval(() => { nuevaEjecucion(); cargarRayos(data); cargarObservado(data); }, 5 * 60 * 1000);
   }
+
+  // #distribuidora-N in the address (the link of a Telegram message) scrolls to that network once it is drawn.
+  function irAlAncla() {
+    const want = decodeURIComponent((location.hash || "").slice(1));
+    if (!want) return;
+    const sec = [...document.querySelectorAll("section.dist")].find((s) => s.dataset.ancla === want || s.id === want);
+    if (sec) { sec.style.scrollMarginTop = "72px"; sec.scrollIntoView({ block: "start" }); }
+  }
+  window.addEventListener("hashchange", irAlAncla);
 
   // The day selector of the header. The date of the page opens a calendar of the days with a saved risk
   // (data/indice.json), each one in the tint of the worst level of its networks and with a dot when the guard was
