@@ -8,7 +8,7 @@ GridPredic es el TFM de Josep Morancho i Poyatos y Anton Shebarshinov Polenyaka 
 
 - La versión entregada con la memoria (M7, 26.10.2026) es la etiqueta `v0.16.0` de este repositorio; el [CHANGELOG](CHANGELOG.md) dice qué entró en cada versión y [CITATION.cff](CITATION.cff) cómo citarlo.
 - La memoria dice de dónde sale cada cifra: [docs/cifras.md](docs/cifras.md) da, para cada una, el documento y la ejecución que la produce, y `experimentos/` guarda los guiones con sus salidas.
-- Sin levantar el stack se puede revisar el código y correr las pruebas (apartado 14): `pip install -r requirements.txt`, `make lint` y `make test` (414 pruebas a 26.10.2026, de Landing a los modelos y al plan financiero), lo mismo que ejecuta la integración continua.
+- Sin levantar el stack se puede revisar el código y correr las pruebas (apartado 14): `pip install -r requirements.txt`, `make lint` y `make test` (416 pruebas a 26.10.2026, de Landing a los modelos y al plan financiero), lo mismo que ejecuta la integración continua.
 - El cuadro de mando con una copia congelada de datos está en https://gridpredic.com/demo/ (las tres redes como Distribuidora 1, 2 y 3); la página pública, en https://gridpredic.com.
 - Las copias de Calser y TedisNet no se distribuyen (confidencialidad, licencia y más de 60 GB): para repetir la carga completa hacen falta en un entorno controlado, siguiendo los apartados 1 a 13. El grafo de la red para la defensa se levanta aparte (apartado 8, Neo4j).
 
@@ -347,7 +347,7 @@ Durante el arranque se realiza automáticamente:
 | Spark History Server | http://localhost:18080 | Histórico de aplicaciones Spark |
 | Neo4j Browser y Bolt | http://localhost:7474 y `localhost:7687` | El grafo de la red para la defensa (solo con `startNeo4j_*`) |
 
-> **Si algún puerto está ocupado en tu máquina.** El puerto 8080 de la UI de Spark Master es configurable desde el `.env` con `SPARK_MASTER_UI_PORT`, porque en Windows suele estar tomado por IIS u otro servicio sobre `http.sys`. El síntoma al levantar el stack es:
+> **Si algún puerto está ocupado en el equipo.** El puerto 8080 de la UI de Spark Master es configurable desde el `.env` con `SPARK_MASTER_UI_PORT`, porque en Windows suele estar tomado por IIS u otro servicio sobre `http.sys`. El síntoma al levantar el stack es:
 >
 > ```text
 > Error response from daemon: ports are not available: exposing port TCP
