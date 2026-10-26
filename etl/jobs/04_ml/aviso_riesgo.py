@@ -81,6 +81,45 @@ def reached(level: str, minimum: str) -> bool:
         return False
 
 
+def highlights(d: dict) -> list:
+    """
+    What stands out of a network's day, as (icon, short text), to read at a glance before the detail: strong
+    wind (racha of 50 km/h or more, or 0,9 of the p98 of the cell), rain of 5 mm or more, the warnings of AEMET
+    (storm, wind, other), heat of 35 degrees or more. Empty on a calm day.
+    """
+    out = []
+    gust, climate = float(d.get("racha_max_kmh") or 0), float(d.get("racha_clima_max") or 0)
+    if gust >= 50 or climate >= 0.9:
+        out.append(("💨", f"racha de {gust:.0f} km/h" + (f" ({dec(climate, 2)} veces su p98)" if climate >= 0.9 else "")))
+    rain = float(d.get("lluvia_mm") or 0)
+    if rain >= 5:
+        out.append(("🌧️", f"{dec(rain, 1)} mm de lluvia"))
+    storm, wind, top = (float(d.get(k) or 0) for k in ("aviso_tormenta_nivel", "aviso_viento_nivel", "aviso_max_nivel"))
+    if storm >= 1:
+        out.append(("⛈️", f"aviso {LEVEL_NAMES.get(int(storm), int(storm))} de tormenta"))
+    if wind >= 1:
+        out.append(("🌬️", f"aviso {LEVEL_NAMES.get(int(wind), int(wind))} de viento"))
+    if top >= 1 and storm < 1 and wind < 1:
+        out.append(("⚠️", f"aviso {LEVEL_NAMES.get(int(top), int(top))} de AEMET"))
+    heat = d.get("temp_max_c")
+    if heat is not None and float(heat) >= 35:
+        out.append(("🌡️", f"{float(heat):.0f} °C"))
+    return out
+
+
+def icons_of(d: dict) -> str:
+    """The icons of highlights(d) in a row (" 💨🌧️"), or "" on a calm day."""
+    return "".join(icon for icon, _ in highlights(d))
+
+
+def maps_link(base: dict) -> str:
+    """A Google Maps link to the base (opens the maps app on a phone, with the way there); "" without coordinates."""
+    lat, lon = base.get("lat"), base.get("lon")
+    if lat is None or lon is None:
+        return ""
+    return f"https://www.google.com/maps?q={float(lat):.5f},{float(lon):.5f}"
+
+
 def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) -> str:
     """
     The text of the evening from riesgo.json of the dashboard: one line per
@@ -107,13 +146,17 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         if guard.get("reforzar"):
             head += f"; guardia reforzada ({guard.get('motivo', '')})"
         lines.append(head)
+        marks = highlights(d)
+        if marks:
+            lines.append("  " + " · ".join(f"{icon} {text}" for icon, text in marks))
         lines.append(f"  Averías esperadas {dec(d.get('esperadas'), 1)}; clientes esperados sin luz {float(imp.get('clientes_esperados') or 0):.0f}.")
         if fr.get("inicio") is not None:
             lines.append(f"  Franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico de racha {float(fr.get('racha_pico') or 0):.0f} km/h.")
         if zones:
             lines.append("  Líneas: " + ", ".join(f"{z.get('nombre')} ({dec(100 * float(z.get('probabilidad') or 0), 1)} %)" for z in zones) + ".")
         if plan.get("bases"):
-            bases = "  Brigadas: " + ", ".join(b.get("municipio", "") for b in plan["bases"])
+            # each base with the way there (a maps link), for the crews on the road
+            bases = "  Brigadas: " + ", ".join(b.get("municipio", "") + (f" (mapa: {maps_link(b)})" if maps_link(b) else "") for b in plan["bases"])
             if plan.get("posicionamiento"):
                 bases += f" ({plan['posicionamiento']})"
             lines.append(bases + ".")
@@ -146,7 +189,7 @@ def summary_message(payload: dict, minimum: str = "alto") -> str:
     if not nets:
         return ""
     lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}: guardia normal en todas las redes."]
-    lines += [f"- {d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)." for d in nets]
+    lines += [f"- {d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" + (" " + icons_of(d) if icons_of(d) else "") + "." for d in nets]
     outlook = outlook_line(payload, minimum)
     if outlook:
         lines.append(outlook)
@@ -206,6 +249,7 @@ def chunks(message: str, size: int = TELEGRAM_MAX) -> list:
 LEVEL_ICONS = {"BAJO": "🟢", "MEDIO": "🟡", "ALTO": "🟠", "MUY ALTO": "🔴"}
 _LEVEL_RE = re.compile(r"\b(MUY ALTO|ALTO|MEDIO|BAJO)\b")
 _LINK_RE = re.compile(r"^(Cuadro de mando|Airflow): (\S+)$")
+_MAP_RE = re.compile(r"([^,:]+?) \(mapa: (https?://\S+?)\)")
 
 
 def telegram_format(message: str) -> str:
@@ -231,7 +275,8 @@ def telegram_format(message: str) -> str:
             # the name of the network in bold: what goes before its level or its colon
             out.append("• " + re.sub(r"^(.+?)(?=: | 🟢| 🟡| 🟠| 🔴)", r"<b>\1</b>", line[2:], count=1))
         elif raw.startswith("  "):
-            out.append("   · " + line.strip())
+            # the bases of the crews as links ("📍 Municipio 24"), the rest as it comes
+            out.append("   · " + _MAP_RE.sub(lambda m: f'{m.group(1)[:len(m.group(1)) - len(m.group(1).lstrip())]}📍 <a href="{m.group(2)}">{m.group(1).strip()}</a>', line.strip()))
         elif raw.startswith(("Ayer ", "Hoy ", "Pasado mañana ")):
             out.append(f"<b>{line}</b>")
         elif raw.startswith("Atención"):
@@ -439,7 +484,7 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
         parts = []
         for d in sorted(source["distribuidoras"], key=lambda b: -(b.get("probabilidad") or 0)):
             fr = d.get("franja") or {}
-            text = f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
+            text = f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" + (" " + icons_of(d) if icons_of(d) else "")
             if fr.get("inicio") is not None:
                 text += f", franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico {float(fr.get('racha_pico') or 0):.0f} km/h"
             if (d.get("aemet") or {}).get("pico"):

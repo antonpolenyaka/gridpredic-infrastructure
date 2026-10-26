@@ -25,7 +25,8 @@ PAYLOAD = {
          "franja": {"inicio": 10, "fin": 15, "racha_pico": 92.0},
          "zonas": [{"nombre": "Hervás", "probabilidad": 0.05}, {"nombre": "Montánchez / Torre", "probabilidad": 0.12},
                    {"nombre": "Plasencia", "probabilidad": 0.08}, {"nombre": "Jerte", "probabilidad": 0.02}],
-         "brigadas": {"bases": [{"municipio": "Plasencia"}, {"municipio": "Montánchez"}], "posicionamiento": "brigadas en sus bases a las 9:00"}},
+         "brigadas": {"bases": [{"municipio": "Plasencia", "lat": 40.03, "lon": -6.09}, {"municipio": "Montánchez"}], "posicionamiento": "brigadas en sus bases a las 9:00"},
+         "racha_max_kmh": 92.0, "lluvia_mm": 1.0},
         {"id": 2, "nombre": "Distribuidora 2", "nivel": "medio", "probabilidad": 0.06, "veces_tasa_base": 1.5, "esperadas": 0.06,
          "motivos": "ninguno, por debajo de un día medio", "impacto": {}, "franja": {}, "zonas": [], "brigadas": {}},
     ],
@@ -35,10 +36,10 @@ PAYLOAD = {
 def test_the_message_names_the_distribuidoras_in_alert_only():
     text = av.message_from(PAYLOAD, "alto")
     assert text.startswith("Riesgo de interrupción de mañana 15.01.2026:")
-    assert "- Distribuidora 1: MUY ALTO (31 %, 4,1 veces su tasa base)\n  Averías esperadas 0,4; clientes esperados sin luz 85." in text
+    assert "- Distribuidora 1: MUY ALTO (31 %, 4,1 veces su tasa base)\n  💨 racha de 92 km/h\n  Averías esperadas 0,4; clientes esperados sin luz 85." in text
     assert "  Franja de 10:00 a 16:00, pico de racha 92 km/h." in text
     assert "  Líneas: Montánchez / Torre (12,0 %), Plasencia (8,0 %), Hervás (5,0 %)." in text
-    assert "  Brigadas: Plasencia, Montánchez (brigadas en sus bases a las 9:00)." in text
+    assert "  Brigadas: Plasencia (mapa: https://www.google.com/maps?q=40.03000,-6.09000), Montánchez (brigadas en sus bases a las 9:00)." in text
     assert "  Motivos: racha prevista" in text and "Distribuidora 2" not in text
     assert "11 % de los casos" in text and text.endswith("http://localhost:8086")
     # With medio as the minimum, Distribuidora 2 enters without motives; with muy alto only Distribuidora 1; nothing above.
@@ -251,6 +252,19 @@ def test_telegram_dresses_the_message_with_bold_icons_and_a_link():
     assert lines[3] == "<b>Ayer 14.01.2026:</b>" and lines[4] == "• <b>Distribuidora 2</b> 🟢 Bajo (3 %): pico &lt;5 &amp; 6&gt;."
     assert lines[5] == "⚠️ Atención: no hay riesgo."
     assert lines[6] == '<a href="https://gridpredic.com/demo/">Abrir el cuadro de mando</a>'
+    bases = av.telegram_format("x\n  Brigadas: Plasencia (mapa: https://www.google.com/maps?q=40.03000,-6.09000), Hervás (brigadas en sus bases a las 9:00).")
+    assert bases.split("\n")[1] == '   · Brigadas: 📍 <a href="https://www.google.com/maps?q=40.03000,-6.09000">Plasencia</a>, Hervás (brigadas en sus bases a las 9:00).'
+
+
+def test_what_stands_out_of_a_day_goes_as_icons():
+    calm = {"racha_max_kmh": 30, "racha_clima_max": 0.5, "lluvia_mm": 1, "aviso_max_nivel": 0, "temp_max_c": 20}
+    assert av.highlights(calm) == [] and av.icons_of(calm) == ""
+    rough = {"racha_max_kmh": 99, "racha_clima_max": 1.96, "lluvia_mm": 26.8, "aviso_max_nivel": 2, "aviso_viento_nivel": 2, "aviso_tormenta_nivel": 1, "temp_max_c": 12}
+    assert av.highlights(rough) == [("💨", "racha de 99 km/h (1,96 veces su p98)"), ("🌧️", "26,8 mm de lluvia"), ("⛈️", "aviso amarillo de tormenta"), ("🌬️", "aviso naranja de viento")]
+    assert av.icons_of(rough) == "💨🌧️⛈️🌬️"
+    # a warning of another kind (snow, rain) and the heat
+    assert av.highlights({"aviso_max_nivel": 1, "temp_max_c": 38}) == [("⚠️", "aviso amarillo de AEMET"), ("🌡️", "38 °C")]
+    assert av.maps_link({"lat": 40.03, "lon": -6.09}) == "https://www.google.com/maps?q=40.03000,-6.09000" and av.maps_link({"municipio": "x"}) == ""
 
 
 def test_with_webhook_and_telegram_one_failing_still_sends_and_none_is_an_error(monkeypatch):
