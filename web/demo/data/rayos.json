@@ -1,6 +1,7 @@
 {
- "generado": "2026-10-20T11:00Z",
+ "generado": "2026-10-26T19:45Z",
  "ventana_min": 60.0,
+ "minutos_leidos": 54,
  "fuente": "EUMETSAT, Lightning Imager de MTG (LI-2-LFL, cada 10 minutos)",
  "caja": [
   38.1,
@@ -10,7 +11,7 @@
  ],
  "ultimo_producto": {
   "encontrados": 9,
-  "descargados": 1,
+  "descargados": 2,
   "fallidos": 0,
   "flashes": 0
  },

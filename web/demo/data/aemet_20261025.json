@@ -1,0 +1,481 @@
+{
+ "generado": "2026-10-24T18:30Z",
+ "fecha": "2026-10-25",
+ "fuente": "AEMET OpenData, predicción horaria por municipios",
+ "distribuidoras": [
+  {
+   "id": 3,
+   "nombre": "Distribuidora 1",
+   "municipios": 43,
+   "elaborado": "2026-10-24T16:59:08",
+   "horas": [
+    {
+     "hora": 0,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": null
+    },
+    {
+     "hora": 1,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 2,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 3,
+     "racha_kmh": 21,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 30,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 31,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 37,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 41,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 9,
+     "racha_kmh": 48,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 10,
+     "racha_kmh": 50,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 50,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 49,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 45,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 38,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 29,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 22,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 21,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 20,
+     "racha_kmh": 29,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 21,
+     "racha_kmh": 32,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 22,
+     "racha_kmh": 40,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 23,
+     "racha_kmh": 40,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    }
+   ],
+   "pico": {
+    "racha_kmh": 50,
+    "hora": 10,
+    "municipio": "Municipio 31"
+   },
+   "texto": "AEMET por municipios (43 municipios, elaborada 16:59): pico de racha 50 km/h a las 10:00 en Municipio 31"
+  },
+  {
+   "id": 2,
+   "nombre": "Distribuidora 2",
+   "municipios": 25,
+   "elaborado": "2026-10-24T16:59:08",
+   "horas": [
+    {
+     "hora": 0,
+     "racha_kmh": 18,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": null
+    },
+    {
+     "hora": 1,
+     "racha_kmh": 18,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 2,
+     "racha_kmh": 16,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 3,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 14,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 9,
+     "racha_kmh": 15,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 10,
+     "racha_kmh": 21,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 22,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 27,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 23,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 18,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 16,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 20,
+     "racha_kmh": 19,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 21,
+     "racha_kmh": 20,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 22,
+     "racha_kmh": 19,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 23,
+     "racha_kmh": 17,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    }
+   ],
+   "pico": {
+    "racha_kmh": 27,
+    "hora": 14,
+    "municipio": "Municipio 28"
+   },
+   "texto": "AEMET por municipios (25 municipios, elaborada 16:59): pico de racha 27 km/h a las 14:00 en Municipio 28"
+  },
+  {
+   "id": 1366,
+   "nombre": "Distribuidora 3",
+   "municipios": 1,
+   "elaborado": "2026-10-24T16:59:08",
+   "horas": [
+    {
+     "hora": 0,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": null
+    },
+    {
+     "hora": 1,
+     "racha_kmh": 11,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 2,
+     "racha_kmh": 7,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 3,
+     "racha_kmh": 9,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 7,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 2,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 3,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 4,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 4,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 9,
+     "racha_kmh": 7,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 10,
+     "racha_kmh": 10,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 11,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 9,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 21,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 21,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 20,
+     "racha_kmh": 9,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 21,
+     "racha_kmh": 3,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 22,
+     "racha_kmh": 5,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    },
+    {
+     "hora": 23,
+     "racha_kmh": 7,
+     "lluvia_mm": 0.0,
+     "tormenta_pct": 0
+    }
+   ],
+   "pico": {
+    "racha_kmh": 21,
+    "hora": 17,
+    "municipio": "Municipio 20"
+   },
+   "texto": "AEMET por municipios (1 municipio, elaborada 16:59): pico de racha 21 km/h a las 17:00 en Municipio 20"
+  }
+ ]
+}
