@@ -30,9 +30,9 @@ gridpredic-infrastructure/
 │       ├── backups/             # Los .bak (ignorados por Git)
 │       └── scripts/             # restore_databases.sql, enable_cdc.sql
 ├── etl/                         # El pipeline, agrupado por capa de destino
-│   ├── dags/                    # Orquestación con Airflow (01_bronze, 02_silver, 03_gold con el mantenimiento semanal de Delta y, en 04_ml, el riesgo de mañana, los rayos y las observaciones en vivo)
+│   ├── dags/                    # Orquestación con Airflow (01_bronze, 02_silver, 03_gold con el mantenimiento semanal de Delta y, en 04_ml, el riesgo de mañana, los rayos, las observaciones en vivo y las órdenes del bot de Telegram)
 │   ├── config/                  # Parámetros de los procesos en JSON (qué tablas, qué orden, qué recursos, reglas de Gold y de los modelos) y los CSV de referencia de 01_bronze
-│   └── jobs/                    # Transformaciones con Spark (00_landing ... 03_gold) y modelos, análisis y operación (04_ml)
+│   └── jobs/                    # Transformaciones con Spark (00_landing ... 03_gold) y modelos, análisis y operación (04_ml: los avisos en aviso_riesgo.py, el bot en bot_telegram.py)
 ├── data/
 │   └── reference_data/          # Datos externos pequeños que sí van en Git (municipios.xlsx)
 ├── dashboard/                   # Cuadro de mando estático (en el portátil, puerto 8086, y como demo pública en gridpredic.com/demo/ con demo.js): index.html (riesgo de mañana, Leaflet y OpenStreetMap), dias.html (días archivados, desde data/indice.json), historial.html y negocio.html (lo que habría dicho en 2022 - 2026); gridpredic.css es el sistema de diseño común, motion.js el movimiento (GSAP y ScrollTrigger) y vendor/ lleva Leaflet, GSAP y la tipografía (IBM Plex Sans, OFL); data/ recibe los JSON de los jobs

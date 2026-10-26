@@ -338,3 +338,22 @@ def test_the_bot_answers_the_group_and_its_members_in_private(monkeypatch, tmp_p
     assert bt.answer("otra", str(folder), {}) == "" and "/lightning" in bt.answer("help", str(folder), {})
     assert "falta rayos.json" in bt.answer("lightning", str(folder), {})
     assert all(c in bt.COMMANDS for c in bt.BUTTONS.values())
+    # during the day riesgo.json is the risk of today; older than today, a warning; a command of yesterday is not answered
+    from datetime import datetime, timezone
+    noon = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
+    assert bt.answer("forecast", str(folder), {}, noon).startswith("Riesgo de interrupción de hoy 15.01.2026:")
+    assert "Atención: el último riesgo calculado es del 15.01.2026" in bt.answer("forecast", str(folder), {}, datetime(2026, 1, 17, 11, 0, tzinfo=timezone.utc))
+    updates[:] = [{"update_id": 16, "message": {"chat": group, "text": "/forecast", "date": noon.timestamp() - 3600}},
+                  {"update_id": 17, "message": {"chat": group, "text": "/help", "date": noon.timestamp() - 60}}]
+    sent.clear()
+    monkeypatch.setattr(bt, "get_updates", lambda token, offset=None, timeout=30.0: updates if offset == 16 else [])
+    assert bt.poll(str(folder), {}, noon) == [("help", "enviado")] and len(sent) == 1
+    assert json.load(open(tmp_path / "estado" / "comandos.json", encoding="utf-8"))["offset"] == 18
+
+
+def test_a_long_line_is_never_cut_inside_a_tag_or_an_entity():
+    bases = "x\n  Brigadas: " + ", ".join(f"Municipio {i} (mapa: https://www.google.com/maps?q=40.0{i:03d},-6.0{i:03d})" for i in range(80)) + "."
+    pieces = av.chunks(av.telegram_format(bases))
+    assert len(pieces) == 3 and all(len(p) <= av.TELEGRAM_MAX for p in pieces)
+    for p in pieces:
+        assert p.count("<a ") == p.count("</a>") and p.count("<b>") == p.count("</b>") and p.rfind("&") <= p.rfind(";")

@@ -235,14 +235,27 @@ def telegram_settings() -> tuple:
     return (token, chat) if token and chat else None
 
 
+_OPEN_TAG_RE = re.compile(r"<[a-z]")
+
+
+def balanced(text: str) -> bool:
+    """Whether every HTML tag opened in text is closed in it and no entity (&amp;) is left half written."""
+    return len(_OPEN_TAG_RE.findall(text)) == text.count("</") and text.rfind("&") <= text.rfind(";")
+
+
 def chunks(message: str, size: int = TELEGRAM_MAX) -> list:
-    """The text cut into pieces of at most size characters, at the end of a line when there is one."""
+    """
+    The text cut into pieces of at most size characters, at the end of a line when there is one. A single line
+    longer than size is cut at a space that leaves every tag closed and no entity half written, so a piece never
+    ends inside <b>, <a> or &amp; (Telegram would refuse the whole piece with "can't parse entities").
+    """
     out, rest = [], message
     while len(rest) > size:
         cut = rest.rfind("\n", 0, size)
-        cut = cut if cut > 0 else size
+        if cut <= 0:
+            cut = next((i for i in range(size, 0, -1) if rest[i] == " " and balanced(rest[:i])), size)
         out.append(rest[:cut])
-        rest = rest[cut:].lstrip("\n")
+        rest = rest[cut:].lstrip("\n ")
     return out + ([rest] if rest else [])
 
 

@@ -54,6 +54,9 @@ BUTTONS = {
 _LABELS = list(BUTTONS)
 KEYBOARD = {"keyboard": [_LABELS[0:2], _LABELS[2:4], _LABELS[4:6]], "resize_keyboard": True, "is_persistent": True}
 MEMBER_STATES = ("creator", "administrator", "member", "restricted")
+# A command read more than this after it was written (the DAG paused, the laptop off) is not answered: Telegram
+# keeps the updates 24 hours, and answering them all at once would be a burst in the group.
+STALE_S = 15 * 60
 CONFIG_PATH = "/opt/airflow/config/04_ml/config_ml.json"
 
 
@@ -66,13 +69,21 @@ def read_json(path: str) -> dict:
         return {}
 
 
-def evening_text(folder: str, rcfg: dict) -> str:
+def evening_text(folder: str, rcfg: dict, now: datetime = None) -> str:
     risk = read_json(os.path.join(folder, "riesgo.json"))
     if not risk:
         return "Todavía no hay riesgo calculado (falta riesgo.json): lo deja la tarde de las 20:30."
     cfg = av.alert_settings(rcfg)
-    return (av.message_from(risk, cfg["nivel_minimo"], av.read_ensemble(folder))
+    text = (av.message_from(risk, cfg["nivel_minimo"], av.read_ensemble(folder))
             or av.summary_message(risk, cfg["nivel_minimo"]))
+    zone = ZoneInfo(rcfg.get("zona_horaria", "Europe/Madrid"))
+    today = (now or datetime.now(timezone.utc)).astimezone(zone).strftime("%Y-%m-%d")
+    if str(risk.get("fecha", "")) == today:
+        # during the day riesgo.json is the risk of today (scored last evening): say so, as the dashboard does
+        text = text.replace("Riesgo de interrupción de mañana", "Riesgo de interrupción de hoy", 1)
+    elif str(risk.get("fecha", "")) < today:
+        text += f"\nAtención: el último riesgo calculado es del {av.day_text(risk.get('fecha'))}; mirar dag_riesgo_manana en Airflow ({av.AIRFLOW_URL})."
+    return text
 
 
 def morning_text(folder: str, rcfg: dict, now: datetime) -> str:
@@ -121,7 +132,7 @@ def answer(command: str, folder: str, rcfg: dict, now: datetime = None) -> str:
     """The text for a command (without the slash), or "" when it is not one of COMMANDS."""
     now = now or datetime.now(timezone.utc)
     if command == "forecast":
-        return evening_text(folder, rcfg)
+        return evening_text(folder, rcfg, now)
     if command == "morning":
         return morning_text(folder, rcfg, now)
     if command == "lightning":
@@ -176,6 +187,7 @@ def poll(folder: str, rcfg: dict, now: datetime = None) -> list:
     telegram = av.telegram_settings()
     if not telegram:
         return []
+    now = now or datetime.now(timezone.utc)
     token, chat = telegram
     state_path = os.path.join(av.STATE_DIR, "comandos.json")
     state = read_json(state_path)
@@ -184,6 +196,8 @@ def poll(folder: str, rcfg: dict, now: datetime = None) -> list:
     for update in updates:
         state["offset"] = int(update["update_id"]) + 1
         message = update.get("message") or update.get("channel_post") or {}
+        if message.get("date") and now.timestamp() - float(message["date"]) > STALE_S:
+            continue  # read (the offset moves on) but not answered: it would be a burst of stale answers
         where = message.get("chat") or {}
         private = where.get("type") == "private"
         if not private and str(where.get("id")) != str(chat):
