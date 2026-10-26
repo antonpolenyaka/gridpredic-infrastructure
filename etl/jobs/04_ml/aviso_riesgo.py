@@ -20,6 +20,7 @@ secrets and are never logged.
 import json
 import logging
 import os
+import re
 import sys
 import urllib.request
 from datetime import datetime, timezone
@@ -40,10 +41,13 @@ GUARD_LEVELS = ("alto", "muy alto")
 
 
 def write_state(path: str, state: dict) -> None:
-    """A state file of the dashboard folder, replaced atomically (riesgo_zonas.write_json_atomic)."""
-    import riesgo_zonas
+    """A state file, replaced atomically (escritura_atomica.write_json_atomic of the Landing, only the standard library)."""
+    landing = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "00_landing")
+    if landing not in sys.path:
+        sys.path.append(landing)
+    from escritura_atomica import write_json_atomic
 
-    riesgo_zonas.write_json_atomic(path, state)
+    write_json_atomic(path, state, ensure_ascii=False)
 
 
 def guard_advice(level: str, wind: float, storm: float) -> dict:
@@ -77,6 +81,45 @@ def reached(level: str, minimum: str) -> bool:
         return False
 
 
+def highlights(d: dict) -> list:
+    """
+    What stands out of a network's day, as (icon, short text), to read at a glance before the detail: strong
+    wind (racha of 50 km/h or more, or 0,9 of the p98 of the cell), rain of 5 mm or more, the warnings of AEMET
+    (storm, wind, other), heat of 35 degrees or more. Empty on a calm day.
+    """
+    out = []
+    gust, climate = float(d.get("racha_max_kmh") or 0), float(d.get("racha_clima_max") or 0)
+    if gust >= 50 or climate >= 0.9:
+        out.append(("💨", f"racha de {gust:.0f} km/h" + (f" ({dec(climate, 2)} veces su p98)" if climate >= 0.9 else "")))
+    rain = float(d.get("lluvia_mm") or 0)
+    if rain >= 5:
+        out.append(("🌧️", f"{dec(rain, 1)} mm de lluvia"))
+    storm, wind, top = (float(d.get(k) or 0) for k in ("aviso_tormenta_nivel", "aviso_viento_nivel", "aviso_max_nivel"))
+    if storm >= 1:
+        out.append(("⛈️", f"aviso {LEVEL_NAMES.get(int(storm), int(storm))} de tormenta"))
+    if wind >= 1:
+        out.append(("🌬️", f"aviso {LEVEL_NAMES.get(int(wind), int(wind))} de viento"))
+    if top >= 1 and storm < 1 and wind < 1:
+        out.append(("⚠️", f"aviso {LEVEL_NAMES.get(int(top), int(top))} de AEMET"))
+    heat = d.get("temp_max_c")
+    if heat is not None and float(heat) >= 35:
+        out.append(("🌡️", f"{float(heat):.0f} °C"))
+    return out
+
+
+def icons_of(d: dict) -> str:
+    """The icons of highlights(d) in a row (" 💨🌧️"), or "" on a calm day."""
+    return "".join(icon for icon, _ in highlights(d))
+
+
+def maps_link(base: dict) -> str:
+    """A Google Maps link to the base (opens the maps app on a phone, with the way there); "" without coordinates."""
+    lat, lon = base.get("lat"), base.get("lon")
+    if lat is None or lon is None:
+        return ""
+    return f"https://www.google.com/maps?q={float(lat):.5f},{float(lon):.5f}"
+
+
 def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) -> str:
     """
     The text of the evening from riesgo.json of the dashboard: one line per
@@ -103,13 +146,17 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         if guard.get("reforzar"):
             head += f"; guardia reforzada ({guard.get('motivo', '')})"
         lines.append(head)
+        marks = highlights(d)
+        if marks:
+            lines.append("  " + " · ".join(f"{icon} {text}" for icon, text in marks))
         lines.append(f"  Averías esperadas {dec(d.get('esperadas'), 1)}; clientes esperados sin luz {float(imp.get('clientes_esperados') or 0):.0f}.")
         if fr.get("inicio") is not None:
             lines.append(f"  Franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico de racha {float(fr.get('racha_pico') or 0):.0f} km/h.")
         if zones:
             lines.append("  Líneas: " + ", ".join(f"{z.get('nombre')} ({dec(100 * float(z.get('probabilidad') or 0), 1)} %)" for z in zones) + ".")
         if plan.get("bases"):
-            bases = "  Brigadas: " + ", ".join(b.get("municipio", "") for b in plan["bases"])
+            # each base with the way there (a maps link), for the crews on the road
+            bases = "  Brigadas: " + ", ".join(b.get("municipio", "") + (f" (mapa: {maps_link(b)})" if maps_link(b) else "") for b in plan["bases"])
             if plan.get("posicionamiento"):
                 bases += f" ({plan['posicionamiento']})"
             lines.append(bases + ".")
@@ -141,8 +188,8 @@ def summary_message(payload: dict, minimum: str = "alto") -> str:
     nets = sorted(payload.get("distribuidoras", []), key=lambda d: str(d.get("nombre", "")))
     if not nets:
         return ""
-    parts = "; ".join(f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" for d in nets)
-    lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}: {parts}. Guardia normal en todas las redes."]
+    lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}: guardia normal en todas las redes."]
+    lines += [f"- {d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" + (" " + icons_of(d) if icons_of(d) else "") + "." for d in nets]
     outlook = outlook_line(payload, minimum)
     if outlook:
         lines.append(outlook)
@@ -175,6 +222,9 @@ def post(url: str, message: str, field: str = "text", timeout: float = 30.0) -> 
 
 
 TELEGRAM_API = "https://api.telegram.org"
+# Where the last message sent is kept, for the /last command of the Telegram bot (bot_telegram.py): out of
+# dashboard/data on purpose, because that folder is served and copied to the public demo.
+STATE_DIR = os.environ.get("AVISO_ESTADO_DIR", "/opt/airflow/logs/telegram")
 TELEGRAM_MAX = 4000  # sendMessage takes up to 4096 characters; longer texts go in several messages
 
 
@@ -185,23 +235,81 @@ def telegram_settings() -> tuple:
     return (token, chat) if token and chat else None
 
 
+_OPEN_TAG_RE = re.compile(r"<[a-z]")
+
+
+def balanced(text: str) -> bool:
+    """Whether every HTML tag opened in text is closed in it and no entity (&amp;) is left half written."""
+    return len(_OPEN_TAG_RE.findall(text)) == text.count("</") and text.rfind("&") <= text.rfind(";")
+
+
 def chunks(message: str, size: int = TELEGRAM_MAX) -> list:
-    """The text cut into pieces of at most size characters, at the end of a line when there is one."""
+    """
+    The text cut into pieces of at most size characters, at the end of a line when there is one. A single line
+    longer than size is cut at a space that leaves every tag closed and no entity half written, so a piece never
+    ends inside <b>, <a> or &amp; (Telegram would refuse the whole piece with "can't parse entities").
+    """
     out, rest = [], message
     while len(rest) > size:
         cut = rest.rfind("\n", 0, size)
-        cut = cut if cut > 0 else size
+        if cut <= 0:
+            cut = next((i for i in range(size, 0, -1) if rest[i] == " " and balanced(rest[:i])), size)
         out.append(rest[:cut])
-        rest = rest[cut:].lstrip("\n")
+        rest = rest[cut:].lstrip("\n ")
     return out + ([rest] if rest else [])
 
 
-def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0) -> int:
-    """sendMessage of the Telegram Bot API, as plain text and without link previews; returns the last HTTP status.
-    The token is part of the URL, so neither goes to the log."""
+LEVEL_ICONS = {"BAJO": "🟢", "MEDIO": "🟡", "ALTO": "🟠", "MUY ALTO": "🔴"}
+_LEVEL_RE = re.compile(r"\b(MUY ALTO|ALTO|MEDIO|BAJO)\b")
+_LINK_RE = re.compile(r"^(Cuadro de mando|Airflow): (\S+)$")
+_MAP_RE = re.compile(r"([^,:]+?) \(mapa: (https?://\S+?)\)")
+
+
+def telegram_format(message: str) -> str:
+    """
+    The same message dressed for Telegram (HTML parse mode): the first line in bold, the levels with their colour
+    (🟢 Bajo, 🟡 Medio, 🟠 Alto, 🔴 Muy alto), the name of the network in bold at the head of its block, the lines of
+    detail indented with a middle dot, the guard with its icon and the link to the dashboard as a link. The webhook
+    keeps the plain text, which is what Slack and Teams show as it comes.
+    """
+    esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")  # noqa: E731
+    out = []
+    for i, raw in enumerate(message.split("\n")):
+        line = esc(raw)
+        link = _LINK_RE.match(raw)
+        if link:
+            out.append(f'<a href="{esc(link.group(2))}">{"Abrir el cuadro de mando" if link.group(1) == "Cuadro de mando" else "Abrir Airflow"}</a>')
+            continue
+        line = _LEVEL_RE.sub(lambda m: f"{LEVEL_ICONS[m.group(1)]} {m.group(1).capitalize()}", line)
+        line = line.replace("guardia reforzada", "👷 guardia reforzada").replace("Guardia normal", "👷 Guardia normal").replace("guardia normal", "👷 guardia normal")
+        if i == 0:
+            out.append(f"<b>{line}</b>")
+        elif raw.startswith("- "):
+            # the name of the network in bold: what goes before its level or its colon
+            out.append("• " + re.sub(r"^(.+?)(?=: | 🟢| 🟡| 🟠| 🔴)", r"<b>\1</b>", line[2:], count=1))
+        elif raw.startswith("  "):
+            # the bases of the crews as links ("📍 Municipio 24"), the rest as it comes
+            out.append("   · " + _MAP_RE.sub(lambda m: f'{m.group(1)[:len(m.group(1)) - len(m.group(1).lstrip())]}📍 <a href="{m.group(2)}">{m.group(1).strip()}</a>', line.strip()))
+        elif raw.startswith(("Ayer ", "Hoy ", "Pasado mañana ")):
+            out.append(f"<b>{line}</b>")
+        elif raw.startswith("Atención"):
+            out.append(f"⚠️ {line}")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0, thread_id: int = None, markup: dict = None) -> int:
+    """sendMessage of the Telegram Bot API, dressed with telegram_format and without link previews; returns the last
+    HTTP status. The token is part of the URL, so neither goes to the log."""
     status = 0
-    for piece in chunks(message):
-        body = json.dumps({"chat_id": chat_id, "text": piece, "disable_web_page_preview": True}, ensure_ascii=False).encode("utf-8")
+    for piece in chunks(telegram_format(message)):
+        fields = {"chat_id": chat_id, "text": piece, "parse_mode": "HTML", "disable_web_page_preview": True}
+        if thread_id:
+            fields["message_thread_id"] = thread_id
+        if markup:
+            fields["reply_markup"] = markup
+        body = json.dumps(fields, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(f"{TELEGRAM_API}/bot{token}/sendMessage", data=body,
                                          headers={"Content-Type": "application/json", "User-Agent": "GridPredic-TFM/1.0"})
         with urllib.request.urlopen(request, timeout=timeout) as answer:
@@ -238,7 +346,19 @@ def deliver(message: str, cfg: dict, what: str = "message") -> str:
     if not taken:
         return f"error: {errors[0]}"
     logger.info("The %s went to %s\n%s", what, " and ".join(taken), message)
+    if what != "test message":
+        remember(message, what)
     return "enviado"
+
+
+def remember(message: str, what: str) -> None:
+    """Keeps the last message sent (ultimo.json in STATE_DIR); a folder that cannot be written is only a warning."""
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        write_state(os.path.join(STATE_DIR, "ultimo.json"),
+                    {"texto": message, "que": what, "cuando": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Last message not kept in %s: %s", STATE_DIR, type(error).__name__)
 
 
 def read_ensemble(folder: str) -> dict:
@@ -368,27 +488,29 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
                 marks.append(f"AEMET decía {float(d['racha_aemet_max']):.0f} km/h")
             if d.get("aviso_aemet"):
                 marks.append(f"aviso de AEMET de nivel {int(d['aviso_aemet'])}")
-            parts.append(text + (" (" + ", ".join(marks) + ")" if marks else ""))
+            parts.append("- " + text + (" (" + ", ".join(marks) + ")" if marks else "") + ".")
         if parts:
-            lines.append(f"Ayer {day_text(yesterday.get('fecha'))}: " + "; ".join(parts) + ".")
+            lines.append(f"Ayer {day_text(yesterday.get('fecha'))}:")
+            lines.extend(parts)
     source = risk if (risk or {}).get("fecha") and risk.get("fecha") == today.get("fecha", risk.get("fecha")) else None
     if source and source.get("distribuidoras"):
         parts = []
         for d in sorted(source["distribuidoras"], key=lambda b: -(b.get("probabilidad") or 0)):
             fr = d.get("franja") or {}
-            text = f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
+            text = f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" + (" " + icons_of(d) if icons_of(d) else "")
             if fr.get("inicio") is not None:
                 text += f", franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico {float(fr.get('racha_pico') or 0):.0f} km/h"
             if (d.get("aemet") or {}).get("pico"):
                 text += f", AEMET {float(d['aemet']['pico'].get('racha_kmh') or 0):.0f} km/h"
             if (d.get("guardia") or {}).get("reforzar"):
                 text += f", guardia reforzada ({d['guardia'].get('motivo', '')})"
-            parts.append(text)
-        lines.append(f"Hoy {day_text(source.get('fecha'))}: " + "; ".join(parts) + ".")
+            parts.append("- " + text + ".")
+        lines.append(f"Hoy {day_text(source.get('fecha'))}:")
+        lines.extend(parts)
     elif today.get("distribuidoras"):
-        parts = [f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
-                 for d in today["distribuidoras"]]
-        lines.append(f"Hoy {day_text(today.get('fecha'))}: " + "; ".join(parts) + ".")
+        lines.append(f"Hoy {day_text(today.get('fecha'))}:")
+        lines.extend(f"- {d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)."
+                     for d in today["distribuidoras"])
     if not lines:
         return ""
     return "GridPredic, parte de la mañana.\n" + "\n".join(lines) + f"\nCuadro de mando: {DASHBOARD_URL}"

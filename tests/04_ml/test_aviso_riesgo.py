@@ -25,7 +25,8 @@ PAYLOAD = {
          "franja": {"inicio": 10, "fin": 15, "racha_pico": 92.0},
          "zonas": [{"nombre": "Hervás", "probabilidad": 0.05}, {"nombre": "Montánchez / Torre", "probabilidad": 0.12},
                    {"nombre": "Plasencia", "probabilidad": 0.08}, {"nombre": "Jerte", "probabilidad": 0.02}],
-         "brigadas": {"bases": [{"municipio": "Plasencia"}, {"municipio": "Montánchez"}], "posicionamiento": "brigadas en sus bases a las 9:00"}},
+         "brigadas": {"bases": [{"municipio": "Plasencia", "lat": 40.03, "lon": -6.09}, {"municipio": "Montánchez"}], "posicionamiento": "brigadas en sus bases a las 9:00"},
+         "racha_max_kmh": 92.0, "lluvia_mm": 1.0},
         {"id": 2, "nombre": "Distribuidora 2", "nivel": "medio", "probabilidad": 0.06, "veces_tasa_base": 1.5, "esperadas": 0.06,
          "motivos": "ninguno, por debajo de un día medio", "impacto": {}, "franja": {}, "zonas": [], "brigadas": {}},
     ],
@@ -35,10 +36,10 @@ PAYLOAD = {
 def test_the_message_names_the_distribuidoras_in_alert_only():
     text = av.message_from(PAYLOAD, "alto")
     assert text.startswith("Riesgo de interrupción de mañana 15.01.2026:")
-    assert "- Distribuidora 1: MUY ALTO (31 %, 4,1 veces su tasa base)\n  Averías esperadas 0,4; clientes esperados sin luz 85." in text
+    assert "- Distribuidora 1: MUY ALTO (31 %, 4,1 veces su tasa base)\n  💨 racha de 92 km/h\n  Averías esperadas 0,4; clientes esperados sin luz 85." in text
     assert "  Franja de 10:00 a 16:00, pico de racha 92 km/h." in text
     assert "  Líneas: Montánchez / Torre (12,0 %), Plasencia (8,0 %), Hervás (5,0 %)." in text
-    assert "  Brigadas: Plasencia, Montánchez (brigadas en sus bases a las 9:00)." in text
+    assert "  Brigadas: Plasencia (mapa: https://www.google.com/maps?q=40.03000,-6.09000), Montánchez (brigadas en sus bases a las 9:00)." in text
     assert "  Motivos: racha prevista" in text and "Distribuidora 2" not in text
     assert "11 % de los casos" in text and text.endswith("http://localhost:8086")
     # With medio as the minimum, Distribuidora 2 enters without motives; with muy alto only Distribuidora 1; nothing above.
@@ -167,14 +168,14 @@ def test_the_morning_report_tells_yesterday_and_today_once_a_day(monkeypatch, tm
          "guardia": {"reforzar": True, "motivo": "aviso de tormenta de AEMET (amarillo)"}},
         {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.031, "franja": {"inicio": 12, "fin": 18, "racha_pico": 50}}]}
     text = av.morning_message(verification, risk)
-    assert text.startswith("GridPredic, parte de la mañana.\nAyer 14.10.2026: Distribuidora 2 BAJO (3 %): pico previsto 60 km/h a las 11 h, medido 44 km/h a las 11 h "
-                           "(en la franja, en la banda de los escenarios, AEMET decía 43 km/h); Distribuidora 1 ALTO (10 %): pico previsto 75 km/h a las 14 h, "
+    assert text.startswith("GridPredic, parte de la mañana.\nAyer 14.10.2026:\n- Distribuidora 2 BAJO (3 %): pico previsto 60 km/h a las 11 h, medido 44 km/h a las 11 h "
+                           "(en la franja, en la banda de los escenarios, AEMET decía 43 km/h).\n- Distribuidora 1 ALTO (10 %): pico previsto 75 km/h a las 14 h, "
                            "medido 81 km/h a las 17 h (fuera de la franja, fuera de la banda de los escenarios, aviso de AEMET de nivel 1).")
-    assert ("Hoy 15.10.2026: Distribuidora 1 MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h, guardia reforzada (aviso de tormenta de AEMET (amarillo)); "
-            "Distribuidora 2 BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h.") in text
+    assert ("Hoy 15.10.2026:\n- Distribuidora 1 MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h, guardia reforzada (aviso de tormenta de AEMET (amarillo)).\n"
+            "- Distribuidora 2 BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h.") in text
     assert text.endswith("http://localhost:8086")
     # Without the risk of today, the block hoy of the verification; with the date of today, a warning; without anything, no message.
-    assert "Hoy 15.10.2026: Distribuidora 2 BAJO (3 %)." in av.morning_message(verification, {"fecha": "2026-10-14"})
+    assert "Hoy 15.10.2026:\n- Distribuidora 2 BAJO (3 %)." in av.morning_message(verification, {"fecha": "2026-10-14"})
     assert "Atención: no hay riesgo calculado para hoy (el último es del 14.10.2026)" in av.morning_message(verification, {"fecha": "2026-10-14"}, "2026-10-15")
     assert "Atención" not in av.morning_message(verification, risk, "2026-10-15")
     assert av.morning_message({}, {}) == ""
@@ -236,8 +237,34 @@ def test_every_message_also_goes_to_telegram(monkeypatch, tmp_path):
     assert av.send(PAYLOAD, {}) == "enviado"
     url, body = calls[-1]
     assert url == "https://api.telegram.org/bot123:ABC/sendMessage"
-    assert body["chat_id"] == "-100200" and body["text"].startswith("Riesgo de interrupción de mañana")
-    assert body["disable_web_page_preview"] is True
+    assert body["chat_id"] == "-100200" and body["text"].startswith("<b>Riesgo de interrupción de mañana")
+    assert body["disable_web_page_preview"] is True and body["parse_mode"] == "HTML"
+
+
+def test_telegram_dresses_the_message_with_bold_icons_and_a_link():
+    text = av.telegram_format("Riesgo de interrupción de mañana 15.01.2026:\n- Distribuidora 1: MUY ALTO (31 %); guardia reforzada (nivel muy alto)\n"
+                              "  Franja de 10:00 a 16:00, pico de racha 92 km/h.\nAyer 14.01.2026:\n- Distribuidora 2 BAJO (3 %): pico <5 & 6>.\n"
+                              "Atención: no hay riesgo.\nCuadro de mando: https://gridpredic.com/demo/")
+    lines = text.split("\n")
+    assert lines[0] == "<b>Riesgo de interrupción de mañana 15.01.2026:</b>"
+    assert lines[1] == "• <b>Distribuidora 1</b>: 🔴 Muy alto (31 %); 👷 guardia reforzada (nivel muy alto)"
+    assert lines[2] == "   · Franja de 10:00 a 16:00, pico de racha 92 km/h."
+    assert lines[3] == "<b>Ayer 14.01.2026:</b>" and lines[4] == "• <b>Distribuidora 2</b> 🟢 Bajo (3 %): pico &lt;5 &amp; 6&gt;."
+    assert lines[5] == "⚠️ Atención: no hay riesgo."
+    assert lines[6] == '<a href="https://gridpredic.com/demo/">Abrir el cuadro de mando</a>'
+    bases = av.telegram_format("x\n  Brigadas: Plasencia (mapa: https://www.google.com/maps?q=40.03000,-6.09000), Hervás (brigadas en sus bases a las 9:00).")
+    assert bases.split("\n")[1] == '   · Brigadas: 📍 <a href="https://www.google.com/maps?q=40.03000,-6.09000">Plasencia</a>, Hervás (brigadas en sus bases a las 9:00).'
+
+
+def test_what_stands_out_of_a_day_goes_as_icons():
+    calm = {"racha_max_kmh": 30, "racha_clima_max": 0.5, "lluvia_mm": 1, "aviso_max_nivel": 0, "temp_max_c": 20}
+    assert av.highlights(calm) == [] and av.icons_of(calm) == ""
+    rough = {"racha_max_kmh": 99, "racha_clima_max": 1.96, "lluvia_mm": 26.8, "aviso_max_nivel": 2, "aviso_viento_nivel": 2, "aviso_tormenta_nivel": 1, "temp_max_c": 12}
+    assert av.highlights(rough) == [("💨", "racha de 99 km/h (1,96 veces su p98)"), ("🌧️", "26,8 mm de lluvia"), ("⛈️", "aviso amarillo de tormenta"), ("🌬️", "aviso naranja de viento")]
+    assert av.icons_of(rough) == "💨🌧️⛈️🌬️"
+    # a warning of another kind (snow, rain) and the heat
+    assert av.highlights({"aviso_max_nivel": 1, "temp_max_c": 38}) == [("⚠️", "aviso amarillo de AEMET"), ("🌡️", "38 °C")]
+    assert av.maps_link({"lat": 40.03, "lon": -6.09}) == "https://www.google.com/maps?q=40.03000,-6.09000" and av.maps_link({"municipio": "x"}) == ""
 
 
 def test_with_webhook_and_telegram_one_failing_still_sends_and_none_is_an_error(monkeypatch):
@@ -262,11 +289,71 @@ def test_the_daily_summary_goes_even_without_alert():
         {"id": 3, "nombre": "Distribuidora 1", "nivel": "medio", "probabilidad": 0.05}]}
     assert av.message_from(calm, "alto") == ""
     text = av.summary_message(calm, "alto")
-    assert text.startswith("Riesgo de interrupción de mañana 21.10.2026: Distribuidora 1 MEDIO (5 %); Distribuidora 2 BAJO (2 %).")
-    assert "Guardia normal" in text and "Cuadro de mando" in text
+    assert text.startswith("Riesgo de interrupción de mañana 21.10.2026: guardia normal en todas las redes.\n- Distribuidora 1 MEDIO (5 %).\n- Distribuidora 2 BAJO (2 %).")
+    assert "Cuadro de mando" in text
 
 
 def test_long_texts_are_cut_for_telegram_at_line_ends():
     text = "\n".join("x" * 100 for _ in range(90))
     pieces = av.chunks(text, 1000)
     assert all(len(p) <= 1000 for p in pieces) and "\n".join(pieces) == text
+
+
+def test_the_bot_answers_the_group_and_its_members_in_private(monkeypatch, tmp_path):
+    import bot_telegram as bt
+
+    folder = tmp_path / "data"
+    folder.mkdir()
+    (folder / "riesgo.json").write_text(json.dumps(PAYLOAD), encoding="utf-8")
+    monkeypatch.setattr(av, "STATE_DIR", str(tmp_path / "estado"))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100200")
+    group = {"id": -100200, "type": "supergroup"}
+    updates = [
+        {"update_id": 10, "message": {"chat": group, "text": "/forecast@gridpredic_avisos_bot"}},
+        {"update_id": 11, "message": {"chat": {"id": 555, "type": "group"}, "text": "/forecast"}},
+        {"update_id": 12, "message": {"chat": group, "text": "hola"}},
+        {"update_id": 13, "message": {"chat": group, "text": "/last", "message_thread_id": 7}},
+        {"update_id": 14, "message": {"chat": {"id": 42, "type": "private"}, "from": {"id": 42}, "text": "📈 Riesgo de mañana"}},
+        {"update_id": 15, "message": {"chat": {"id": 99, "type": "private"}, "from": {"id": 99}, "text": "/start"}},
+    ]
+    asked = []
+    monkeypatch.setattr(bt, "get_updates", lambda token, offset=None, timeout=30.0: asked.append(offset) or (updates if offset is None else []))
+    monkeypatch.setattr(bt, "is_member", lambda token, group_id, user_id, timeout=30.0: user_id == 42)
+    sent = []
+    monkeypatch.setattr(av, "post_telegram", lambda token, chat, text, timeout=30.0, thread_id=None, markup=None: sent.append((chat, text, thread_id, markup)) or 200)
+    assert bt.poll(str(folder), {}) == [("forecast", "enviado"), ("last", "enviado"), ("forecast", "enviado"), ("start", "enviado")]
+    assert sent[0][0] == "-100200" and sent[0][1].startswith("Riesgo de interrupción de mañana 15.01.2026:") and sent[0][3] is None
+    # nothing sent yet: /last shows how the evening would be, in the topic it was asked in
+    assert sent[1][1].startswith("Todavía no se ha enviado ningún aviso") and sent[1][2] == 7
+    # a member in private, with a button: the same text and the keyboard; a stranger, only that the bot is not for him
+    assert sent[2][0] == "42" and sent[2][1].startswith("Riesgo de interrupción") and sent[2][3] == bt.KEYBOARD
+    assert sent[3][0] == "99" and "solo contesta a los miembros" in sent[3][1] and sent[3][3] is None
+    # the next read starts after the last update, so nothing is answered twice
+    assert bt.poll(str(folder), {}) == [] and asked == [None, 16]
+    # once a message has been sent, /last repeats it
+    av.remember("Rayos sobre la red", "storm message")
+    assert bt.answer("last", str(folder), {}).splitlines()[1] == "Rayos sobre la red"
+    assert bt.command_of("/morning extra") == "morning" and bt.command_of("⚡ Rayos") == "lightning" and bt.command_of("Rayos") == "lightning" and bt.command_of("tarde") == ""
+    assert bt.answer("otra", str(folder), {}) == "" and "/lightning" in bt.answer("help", str(folder), {})
+    assert "falta rayos.json" in bt.answer("lightning", str(folder), {})
+    assert all(c in bt.COMMANDS for c in bt.BUTTONS.values())
+    # during the day riesgo.json is the risk of today; older than today, a warning; a command of yesterday is not answered
+    from datetime import datetime, timezone
+    noon = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
+    assert bt.answer("forecast", str(folder), {}, noon).startswith("Riesgo de interrupción de hoy 15.01.2026:")
+    assert "Atención: el último riesgo calculado es del 15.01.2026" in bt.answer("forecast", str(folder), {}, datetime(2026, 1, 17, 11, 0, tzinfo=timezone.utc))
+    updates[:] = [{"update_id": 16, "message": {"chat": group, "text": "/forecast", "date": noon.timestamp() - 3600}},
+                  {"update_id": 17, "message": {"chat": group, "text": "/help", "date": noon.timestamp() - 60}}]
+    sent.clear()
+    monkeypatch.setattr(bt, "get_updates", lambda token, offset=None, timeout=30.0: updates if offset == 16 else [])
+    assert bt.poll(str(folder), {}, noon) == [("help", "enviado")] and len(sent) == 1
+    assert json.load(open(tmp_path / "estado" / "comandos.json", encoding="utf-8"))["offset"] == 18
+
+
+def test_a_long_line_is_never_cut_inside_a_tag_or_an_entity():
+    bases = "x\n  Brigadas: " + ", ".join(f"Municipio {i} (mapa: https://www.google.com/maps?q=40.0{i:03d},-6.0{i:03d})" for i in range(80)) + "."
+    pieces = av.chunks(av.telegram_format(bases))
+    assert len(pieces) == 3 and all(len(p) <= av.TELEGRAM_MAX for p in pieces)
+    for p in pieces:
+        assert p.count("<a ") == p.count("</a>") and p.count("<b>") == p.count("</b>") and p.rfind("&") <= p.rfind(";")
