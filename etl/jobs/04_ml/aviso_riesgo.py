@@ -20,6 +20,7 @@ secrets and are never logged.
 import json
 import logging
 import os
+import re
 import sys
 import urllib.request
 from datetime import datetime, timezone
@@ -144,8 +145,8 @@ def summary_message(payload: dict, minimum: str = "alto") -> str:
     nets = sorted(payload.get("distribuidoras", []), key=lambda d: str(d.get("nombre", "")))
     if not nets:
         return ""
-    parts = "; ".join(f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" for d in nets)
-    lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}: {parts}. Guardia normal en todas las redes."]
+    lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}: guardia normal en todas las redes."]
+    lines += [f"- {d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)." for d in nets]
     outlook = outlook_line(payload, minimum)
     if outlook:
         lines.append(outlook)
@@ -202,12 +203,50 @@ def chunks(message: str, size: int = TELEGRAM_MAX) -> list:
     return out + ([rest] if rest else [])
 
 
+LEVEL_ICONS = {"BAJO": "🟢", "MEDIO": "🟡", "ALTO": "🟠", "MUY ALTO": "🔴"}
+_LEVEL_RE = re.compile(r"\b(MUY ALTO|ALTO|MEDIO|BAJO)\b")
+_LINK_RE = re.compile(r"^(Cuadro de mando|Airflow): (\S+)$")
+
+
+def telegram_format(message: str) -> str:
+    """
+    The same message dressed for Telegram (HTML parse mode): the first line in bold, the levels with their colour
+    (🟢 Bajo, 🟡 Medio, 🟠 Alto, 🔴 Muy alto), the name of the network in bold at the head of its block, the lines of
+    detail indented with a middle dot, the guard with its icon and the link to the dashboard as a link. The webhook
+    keeps the plain text, which is what Slack and Teams show as it comes.
+    """
+    esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")  # noqa: E731
+    out = []
+    for i, raw in enumerate(message.split("\n")):
+        line = esc(raw)
+        link = _LINK_RE.match(raw)
+        if link:
+            out.append(f'<a href="{esc(link.group(2))}">{"Abrir el cuadro de mando" if link.group(1) == "Cuadro de mando" else "Abrir Airflow"}</a>')
+            continue
+        line = _LEVEL_RE.sub(lambda m: f"{LEVEL_ICONS[m.group(1)]} {m.group(1).capitalize()}", line)
+        line = line.replace("guardia reforzada", "👷 guardia reforzada").replace("Guardia normal", "👷 Guardia normal").replace("guardia normal", "👷 guardia normal")
+        if i == 0:
+            out.append(f"<b>{line}</b>")
+        elif raw.startswith("- "):
+            # the name of the network in bold: what goes before its level or its colon
+            out.append("• " + re.sub(r"^(.+?)(?=: | 🟢| 🟡| 🟠| 🔴)", r"<b>\1</b>", line[2:], count=1))
+        elif raw.startswith("  "):
+            out.append("   · " + line.strip())
+        elif raw.startswith(("Ayer ", "Hoy ", "Pasado mañana ")):
+            out.append(f"<b>{line}</b>")
+        elif raw.startswith("Atención"):
+            out.append(f"⚠️ {line}")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0, thread_id: int = None, markup: dict = None) -> int:
-    """sendMessage of the Telegram Bot API, as plain text and without link previews; returns the last HTTP status.
-    The token is part of the URL, so neither goes to the log."""
+    """sendMessage of the Telegram Bot API, dressed with telegram_format and without link previews; returns the last
+    HTTP status. The token is part of the URL, so neither goes to the log."""
     status = 0
-    for piece in chunks(message):
-        fields = {"chat_id": chat_id, "text": piece, "disable_web_page_preview": True}
+    for piece in chunks(telegram_format(message)):
+        fields = {"chat_id": chat_id, "text": piece, "parse_mode": "HTML", "disable_web_page_preview": True}
         if thread_id:
             fields["message_thread_id"] = thread_id
         if markup:
@@ -391,9 +430,10 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
                 marks.append(f"AEMET decía {float(d['racha_aemet_max']):.0f} km/h")
             if d.get("aviso_aemet"):
                 marks.append(f"aviso de AEMET de nivel {int(d['aviso_aemet'])}")
-            parts.append(text + (" (" + ", ".join(marks) + ")" if marks else ""))
+            parts.append("- " + text + (" (" + ", ".join(marks) + ")" if marks else "") + ".")
         if parts:
-            lines.append(f"Ayer {day_text(yesterday.get('fecha'))}: " + "; ".join(parts) + ".")
+            lines.append(f"Ayer {day_text(yesterday.get('fecha'))}:")
+            lines.extend(parts)
     source = risk if (risk or {}).get("fecha") and risk.get("fecha") == today.get("fecha", risk.get("fecha")) else None
     if source and source.get("distribuidoras"):
         parts = []
@@ -406,12 +446,13 @@ def morning_message(verification: dict, risk: dict = None, today_iso: str = None
                 text += f", AEMET {float(d['aemet']['pico'].get('racha_kmh') or 0):.0f} km/h"
             if (d.get("guardia") or {}).get("reforzar"):
                 text += f", guardia reforzada ({d['guardia'].get('motivo', '')})"
-            parts.append(text)
-        lines.append(f"Hoy {day_text(source.get('fecha'))}: " + "; ".join(parts) + ".")
+            parts.append("- " + text + ".")
+        lines.append(f"Hoy {day_text(source.get('fecha'))}:")
+        lines.extend(parts)
     elif today.get("distribuidoras"):
-        parts = [f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
-                 for d in today["distribuidoras"]]
-        lines.append(f"Hoy {day_text(today.get('fecha'))}: " + "; ".join(parts) + ".")
+        lines.append(f"Hoy {day_text(today.get('fecha'))}:")
+        lines.extend(f"- {d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)."
+                     for d in today["distribuidoras"])
     if not lines:
         return ""
     return "GridPredic, parte de la mañana.\n" + "\n".join(lines) + f"\nCuadro de mando: {DASHBOARD_URL}"

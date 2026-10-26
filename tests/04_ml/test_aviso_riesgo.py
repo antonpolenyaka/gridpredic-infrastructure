@@ -167,14 +167,14 @@ def test_the_morning_report_tells_yesterday_and_today_once_a_day(monkeypatch, tm
          "guardia": {"reforzar": True, "motivo": "aviso de tormenta de AEMET (amarillo)"}},
         {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.031, "franja": {"inicio": 12, "fin": 18, "racha_pico": 50}}]}
     text = av.morning_message(verification, risk)
-    assert text.startswith("GridPredic, parte de la mañana.\nAyer 14.10.2026: Distribuidora 2 BAJO (3 %): pico previsto 60 km/h a las 11 h, medido 44 km/h a las 11 h "
-                           "(en la franja, en la banda de los escenarios, AEMET decía 43 km/h); Distribuidora 1 ALTO (10 %): pico previsto 75 km/h a las 14 h, "
+    assert text.startswith("GridPredic, parte de la mañana.\nAyer 14.10.2026:\n- Distribuidora 2 BAJO (3 %): pico previsto 60 km/h a las 11 h, medido 44 km/h a las 11 h "
+                           "(en la franja, en la banda de los escenarios, AEMET decía 43 km/h).\n- Distribuidora 1 ALTO (10 %): pico previsto 75 km/h a las 14 h, "
                            "medido 81 km/h a las 17 h (fuera de la franja, fuera de la banda de los escenarios, aviso de AEMET de nivel 1).")
-    assert ("Hoy 15.10.2026: Distribuidora 1 MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h, guardia reforzada (aviso de tormenta de AEMET (amarillo)); "
-            "Distribuidora 2 BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h.") in text
+    assert ("Hoy 15.10.2026:\n- Distribuidora 1 MEDIO (5 %), franja de 11:00 a 18:00, pico 48 km/h, AEMET 46 km/h, guardia reforzada (aviso de tormenta de AEMET (amarillo)).\n"
+            "- Distribuidora 2 BAJO (3 %), franja de 12:00 a 19:00, pico 50 km/h.") in text
     assert text.endswith("http://localhost:8086")
     # Without the risk of today, the block hoy of the verification; with the date of today, a warning; without anything, no message.
-    assert "Hoy 15.10.2026: Distribuidora 2 BAJO (3 %)." in av.morning_message(verification, {"fecha": "2026-10-14"})
+    assert "Hoy 15.10.2026:\n- Distribuidora 2 BAJO (3 %)." in av.morning_message(verification, {"fecha": "2026-10-14"})
     assert "Atención: no hay riesgo calculado para hoy (el último es del 14.10.2026)" in av.morning_message(verification, {"fecha": "2026-10-14"}, "2026-10-15")
     assert "Atención" not in av.morning_message(verification, risk, "2026-10-15")
     assert av.morning_message({}, {}) == ""
@@ -236,8 +236,21 @@ def test_every_message_also_goes_to_telegram(monkeypatch, tmp_path):
     assert av.send(PAYLOAD, {}) == "enviado"
     url, body = calls[-1]
     assert url == "https://api.telegram.org/bot123:ABC/sendMessage"
-    assert body["chat_id"] == "-100200" and body["text"].startswith("Riesgo de interrupción de mañana")
-    assert body["disable_web_page_preview"] is True
+    assert body["chat_id"] == "-100200" and body["text"].startswith("<b>Riesgo de interrupción de mañana")
+    assert body["disable_web_page_preview"] is True and body["parse_mode"] == "HTML"
+
+
+def test_telegram_dresses_the_message_with_bold_icons_and_a_link():
+    text = av.telegram_format("Riesgo de interrupción de mañana 15.01.2026:\n- Distribuidora 1: MUY ALTO (31 %); guardia reforzada (nivel muy alto)\n"
+                              "  Franja de 10:00 a 16:00, pico de racha 92 km/h.\nAyer 14.01.2026:\n- Distribuidora 2 BAJO (3 %): pico <5 & 6>.\n"
+                              "Atención: no hay riesgo.\nCuadro de mando: https://gridpredic.com/demo/")
+    lines = text.split("\n")
+    assert lines[0] == "<b>Riesgo de interrupción de mañana 15.01.2026:</b>"
+    assert lines[1] == "• <b>Distribuidora 1</b>: 🔴 Muy alto (31 %); 👷 guardia reforzada (nivel muy alto)"
+    assert lines[2] == "   · Franja de 10:00 a 16:00, pico de racha 92 km/h."
+    assert lines[3] == "<b>Ayer 14.01.2026:</b>" and lines[4] == "• <b>Distribuidora 2</b> 🟢 Bajo (3 %): pico &lt;5 &amp; 6&gt;."
+    assert lines[5] == "⚠️ Atención: no hay riesgo."
+    assert lines[6] == '<a href="https://gridpredic.com/demo/">Abrir el cuadro de mando</a>'
 
 
 def test_with_webhook_and_telegram_one_failing_still_sends_and_none_is_an_error(monkeypatch):
@@ -262,8 +275,8 @@ def test_the_daily_summary_goes_even_without_alert():
         {"id": 3, "nombre": "Distribuidora 1", "nivel": "medio", "probabilidad": 0.05}]}
     assert av.message_from(calm, "alto") == ""
     text = av.summary_message(calm, "alto")
-    assert text.startswith("Riesgo de interrupción de mañana 21.10.2026: Distribuidora 1 MEDIO (5 %); Distribuidora 2 BAJO (2 %).")
-    assert "Guardia normal" in text and "Cuadro de mando" in text
+    assert text.startswith("Riesgo de interrupción de mañana 21.10.2026: guardia normal en todas las redes.\n- Distribuidora 1 MEDIO (5 %).\n- Distribuidora 2 BAJO (2 %).")
+    assert "Cuadro de mando" in text
 
 
 def test_long_texts_are_cut_for_telegram_at_line_ends():
