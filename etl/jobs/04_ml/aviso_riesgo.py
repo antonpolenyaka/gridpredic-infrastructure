@@ -302,7 +302,7 @@ def telegram_format(message: str) -> str:
 def split_by_network(message: str) -> list:
     """
     The message of the evening as one message per network, so the group reads one network at a time on the phone:
-    each one with the header, the block of that network (its line and the detail under it) and a link to it; the
+    the first one with the header, each one with the block of that network (its line and the detail under it) and a link to it; the
     day after tomorrow and the general rules go in a last message of their own. A message with less than two
     network blocks, or that is not the evening (the morning report, a storm), comes back whole.
     """
@@ -331,7 +331,8 @@ def split_by_network(message: str) -> list:
         # the link of each one goes straight to its network on the dashboard (#distribuidora-1)
         anchor = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
         own = [line if "#" in line or not line.startswith("Cuadro de mando:") else f"{line}#{anchor}" for line in link]
-        out.append("\n".join(pre + block + own))
+        # the header (the day and the guard of all the networks) only in the first one: the others are just their network
+        out.append("\n".join((pre if not out else []) + block + own))
     # the day after tomorrow and the general rules, in a message of their own at the end
     if rest:
         out.append("\n".join(rest + link))
