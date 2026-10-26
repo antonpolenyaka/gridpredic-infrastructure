@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "Si lo citas, hazlo así."
 title: "GridPredic infrastructure: plataforma de datos para la predicción de interrupciones en redes de distribución eléctrica"
 type: software
-version: 0.15.0
-date-released: "2026-10-17"
+version: 0.16.0
+date-released: "2026-10-26"
 repository-code: "https://github.com/antonpolenyaka/gridpredic-infrastructure"
 authors:
   - family-names: "Morancho i Poyatos"
