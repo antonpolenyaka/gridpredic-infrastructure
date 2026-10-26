@@ -2,7 +2,7 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las fechas son las de la mezcla en `main`.
 
-## [0.16.0] - sin publicar
+## [0.16.0] - 26.10.2026
 
 Lo que sale de las tres pasadas de investigación del 17.10.2026: la calibración y el valor económico de la víspera, dos logísticas para pocos eventos, la previsión de ICON-EU en su rejilla nativa e IFS guardadas cada tarde, la previsión de IFS de la víspera para 2024 - 2025 y los límites mensuales de Extremadura. Y de revisar el código frente a los apuntes y las clases del máster y frente a los datos de TedisNet y Calser: los datos de los abonados fuera de la captura de cambios, la tarde con la copia de Calser desfasada medida (la mediana de la historia frente a entrenar sin ella), los coeficientes y la calibración año a año, Spark en UTC y las fuentes y licencias en el cuadro de mando.
 
