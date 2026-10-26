@@ -347,7 +347,7 @@ Durante el arranque se realiza automáticamente:
 | Spark History Server | http://localhost:18080 | Histórico de aplicaciones Spark |
 | Neo4j Browser y Bolt | http://localhost:7474 y `localhost:7687` | El grafo de la red para la defensa (solo con `startNeo4j_*`) |
 
-> **Si algún puerto está ocupado en tu máquina.** El puerto 8080 de la UI de Spark Master es configurable desde el `.env` con `SPARK_MASTER_UI_PORT`, porque en Windows suele estar tomado por IIS u otro servicio sobre `http.sys`. El síntoma al levantar el stack es:
+> **Si algún puerto está ocupado en el equipo.** El puerto 8080 de la UI de Spark Master es configurable desde el `.env` con `SPARK_MASTER_UI_PORT`, porque en Windows suele estar tomado por IIS u otro servicio sobre `http.sys`. El síntoma al levantar el stack es:
 >
 > ```text
 > Error response from daemon: ports are not available: exposing port TCP
