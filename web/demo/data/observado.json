@@ -1,30 +1,19 @@
 {
- "generado": "2026-10-20T10:20Z",
- "fecha": "2026-10-20",
+ "generado": "2026-10-26T19:20Z",
+ "fecha": "2026-10-26",
  "fuente": "AEMET OpenData, observación convencional",
  "radio_km": 25.0,
  "estaciones": [
   {
-   "idema": "E37",
-   "nombre": "Estación 37",
-   "lat": 40.2966,
-   "lon": -6.8129,
-   "hora": "08:00",
-   "racha_kmh": 3,
-   "viento_kmh": 0,
-   "lluvia_mm": 0.0,
-   "temp_c": 1.5
-  },
-  {
-   "idema": "E12",
-   "nombre": "Estación 12",
-   "lat": 40.4851,
-   "lon": -6.5771,
+   "idema": "E46",
+   "nombre": "Estación 46",
+   "lat": 38.2087,
+   "lon": -6.3113,
    "hora": "10:00",
-   "racha_kmh": 12,
-   "viento_kmh": 8,
+   "racha_kmh": 16,
+   "viento_kmh": 10,
    "lluvia_mm": 0.0,
-   "temp_c": 5.2
+   "temp_c": 18.8
   },
   {
    "idema": "E49",
@@ -32,560 +21,571 @@
    "lat": 40.1111,
    "lon": -5.7847,
    "hora": "10:00",
-   "racha_kmh": 6,
-   "viento_kmh": 2,
+   "racha_kmh": 9,
+   "viento_kmh": 5,
    "lluvia_mm": 0.0,
-   "temp_c": 11.7
+   "temp_c": 17.4
   },
   {
    "idema": "E17",
    "nombre": "Estación 17",
    "lat": 40.0808,
    "lon": -6.3389,
-   "hora": "10:00",
-   "racha_kmh": 2,
-   "viento_kmh": 0,
+   "hora": "17:00",
+   "racha_kmh": 20,
+   "viento_kmh": 8,
    "lluvia_mm": 0.0,
-   "temp_c": 10.2
+   "temp_c": 25.9
   },
   {
    "idema": "E33",
    "nombre": "Estación 33",
    "lat": 40.3554,
    "lon": -5.5191,
-   "hora": "10:00",
-   "racha_kmh": 8,
-   "viento_kmh": 4,
-   "lluvia_mm": 0.0,
-   "temp_c": 6.3
-  },
-  {
-   "idema": "E45",
-   "nombre": "Estación 45",
-   "lat": 38.6889,
-   "lon": -6.361,
-   "hora": "11:00",
-   "racha_kmh": 23,
-   "viento_kmh": 13,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.5
-  },
-  {
-   "idema": "E02",
-   "nombre": "Estación 2",
-   "lat": 40.2651,
-   "lon": -5.8612,
-   "hora": "11:00",
-   "racha_kmh": 8,
-   "viento_kmh": 1,
-   "lluvia_mm": 0.0,
-   "temp_c": 11.9
-  },
-  {
-   "idema": "E19",
-   "nombre": "Estación 19",
-   "lat": 38.6186,
-   "lon": -6.6275,
-   "hora": "11:00",
-   "racha_kmh": 22,
-   "viento_kmh": 13,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.6
-  },
-  {
-   "idema": "E52",
-   "nombre": "Estación 52",
-   "lat": 40.2586,
-   "lon": -5.6783,
-   "hora": "11:00",
-   "racha_kmh": 7,
-   "viento_kmh": 3,
-   "lluvia_mm": 0.0,
-   "temp_c": 11.4
-  },
-  {
-   "idema": "E09",
-   "nombre": "Estación 9",
-   "lat": 40.1894,
-   "lon": -6.1675,
-   "hora": "11:00",
-   "racha_kmh": 14,
-   "viento_kmh": 7,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.1
-  },
-  {
-   "idema": "E50",
-   "nombre": "Estación 50",
-   "lat": 38.2985,
-   "lon": -6.7651,
-   "hora": "11:00",
-   "racha_kmh": 19,
-   "viento_kmh": 13,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.8
-  },
-  {
-   "idema": "E15",
-   "nombre": "Estación 15",
-   "lat": 38.4728,
-   "lon": -6.9233,
-   "hora": "11:00",
-   "racha_kmh": 15,
-   "viento_kmh": 9,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.9
-  },
-  {
-   "idema": "E34",
-   "nombre": "Estación 34",
-   "lat": 38.4259,
-   "lon": -6.4366,
-   "hora": "11:00",
-   "racha_kmh": 17,
-   "viento_kmh": 7,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.9
-  },
-  {
-   "idema": "E10",
-   "nombre": "Estación 10",
-   "lat": 40.5047,
-   "lon": -5.9025,
-   "hora": "11:00",
-   "racha_kmh": 15,
-   "viento_kmh": 4,
-   "lluvia_mm": 0.0,
-   "temp_c": 7.7
-  },
-  {
-   "idema": "E25",
-   "nombre": "Estación 25",
-   "lat": 38.1784,
-   "lon": -6.6618,
-   "hora": "11:00",
-   "racha_kmh": 14,
-   "viento_kmh": 7,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.0
-  },
-  {
-   "idema": "E44",
-   "nombre": "Estación 44",
-   "lat": 38.6975,
-   "lon": -7.0844,
-   "hora": "11:00",
+   "hora": "18:00",
    "racha_kmh": 25,
+   "viento_kmh": 8,
+   "lluvia_mm": 0.0,
+   "temp_c": 19.5
+  },
+  {
+   "idema": "E12",
+   "nombre": "Estación 12",
+   "lat": 40.4851,
+   "lon": -6.5771,
+   "hora": "18:00",
+   "racha_kmh": 27,
    "viento_kmh": 14,
    "lluvia_mm": 0.0,
-   "temp_c": 13.0
-  },
-  {
-   "idema": "E53",
-   "nombre": "Estación 53",
-   "lat": 39.8207,
-   "lon": -6.1275,
-   "hora": "11:00",
-   "racha_kmh": 4,
-   "viento_kmh": 1,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.9
-  },
-  {
-   "idema": "E40",
-   "nombre": "Estación 40",
-   "lat": 39.7906,
-   "lon": -6.3764,
-   "hora": "11:00",
-   "racha_kmh": 6,
-   "viento_kmh": 3,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.1
-  },
-  {
-   "idema": "E11",
-   "nombre": "Estación 11",
-   "lat": 39.4714,
-   "lon": -6.3389,
-   "hora": "11:00",
-   "racha_kmh": 4,
-   "viento_kmh": 2,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.9
-  },
-  {
-   "idema": "E05",
-   "nombre": "Estación 5",
-   "lat": 39.1819,
-   "lon": -6.9952,
-   "hora": "11:00",
-   "racha_kmh": 5,
-   "viento_kmh": 2,
-   "lluvia_mm": 0.0,
-   "temp_c": 11.6
-  },
-  {
-   "idema": "E08",
-   "nombre": "Estación 8",
-   "lat": 39.4642,
-   "lon": -5.8742,
-   "hora": "11:00",
-   "racha_kmh": 9,
-   "viento_kmh": 6,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.2
-  },
-  {
-   "idema": "E14",
-   "nombre": "Estación 14",
-   "lat": 39.6699,
-   "lon": -5.8083,
-   "hora": "11:00",
-   "racha_kmh": 6,
-   "viento_kmh": 4,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.0
-  },
-  {
-   "idema": "E26",
-   "nombre": "Estación 26",
-   "lat": 39.1766,
-   "lon": -6.6008,
-   "hora": "11:00",
-   "racha_kmh": 8,
-   "viento_kmh": 5,
-   "lluvia_mm": 0.0,
-   "temp_c": 10.9
-  },
-  {
-   "idema": "E38",
-   "nombre": "Estación 38",
-   "lat": 40.4081,
-   "lon": -6.2397,
-   "hora": "11:00",
-   "racha_kmh": 3,
-   "viento_kmh": 0,
-   "lluvia_mm": 0.0,
-   "temp_c": 9.2
-  },
-  {
-   "idema": "E39",
-   "nombre": "Estación 39",
-   "lat": 38.8834,
-   "lon": -6.8139,
-   "hora": "11:00",
-   "racha_kmh": 18,
-   "viento_kmh": 7,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.0
-  },
-  {
-   "idema": "E21",
-   "nombre": "Estación 21",
-   "lat": 39.1976,
-   "lon": -6.231,
-   "hora": "11:00",
-   "racha_kmh": 21,
-   "viento_kmh": 7,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.0
-  },
-  {
-   "idema": "E32",
-   "nombre": "Estación 32",
-   "lat": 40.0619,
-   "lon": -6.0453,
-   "hora": "11:00",
-   "racha_kmh": 4,
-   "viento_kmh": 0,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.1
-  },
-  {
-   "idema": "E06",
-   "nombre": "Estación 6",
-   "lat": 38.9556,
-   "lon": -5.8805,
-   "hora": "11:00",
-   "racha_kmh": 17,
-   "viento_kmh": 10,
-   "lluvia_mm": 0.0,
-   "temp_c": 13.9
-  },
-  {
-   "idema": "E30",
-   "nombre": "Estación 30",
-   "lat": 38.5765,
-   "lon": -5.8458,
-   "hora": "11:00",
-   "racha_kmh": 21,
-   "viento_kmh": 13,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.4
-  },
-  {
-   "idema": "E20",
-   "nombre": "Estación 20",
-   "lat": 39.2828,
-   "lon": -5.7103,
-   "hora": "11:00",
-   "racha_kmh": 10,
-   "viento_kmh": 4,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.6
-  },
-  {
-   "idema": "E04",
-   "nombre": "Estación 4",
-   "lat": 39.1035,
-   "lon": -5.4613,
-   "hora": "11:00",
-   "racha_kmh": 29,
-   "viento_kmh": 16,
-   "lluvia_mm": 0.0,
-   "temp_c": 15.5
-  },
-  {
-   "idema": "E01",
-   "nombre": "Estación 1",
-   "lat": 38.7418,
-   "lon": -5.5291,
-   "hora": "11:00",
-   "racha_kmh": 28,
-   "viento_kmh": 18,
-   "lluvia_mm": 0.0,
-   "temp_c": 15.2
-  },
-  {
-   "idema": "E31",
-   "nombre": "Estación 31",
-   "lat": 38.2317,
-   "lon": -6.017,
-   "hora": "11:00",
-   "racha_kmh": 18,
-   "viento_kmh": 13,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.5
-  },
-  {
-   "idema": "E24",
-   "nombre": "Estación 24",
-   "lat": 38.4797,
-   "lon": -5.5775,
-   "hora": "11:00",
-   "racha_kmh": 24,
-   "viento_kmh": 9,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.5
-  },
-  {
-   "idema": "E23",
-   "nombre": "Estación 23",
-   "lat": 39.4149,
-   "lon": -7.2311,
-   "hora": "11:00",
-   "racha_kmh": 6,
-   "viento_kmh": 4,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.8
-  },
-  {
-   "idema": "E28",
-   "nombre": "Estación 28",
-   "lat": 38.5517,
-   "lon": -6.3067,
-   "hora": "11:00",
-   "racha_kmh": 13,
-   "viento_kmh": 9,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.2
-  },
-  {
-   "idema": "E51",
-   "nombre": "Estación 51",
-   "lat": 38.3722,
-   "lon": -7.1581,
-   "hora": "11:00",
-   "racha_kmh": 10,
-   "viento_kmh": 6,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.9
-  },
-  {
-   "idema": "E41",
-   "nombre": "Estación 41",
-   "lat": 40.5694,
-   "lon": -6.2236,
-   "hora": "11:00",
-   "racha_kmh": 6,
-   "viento_kmh": 4,
-   "lluvia_mm": 0.0,
-   "temp_c": 9.4
-  },
-  {
-   "idema": "E18",
-   "nombre": "Estación 18",
-   "lat": 40.1208,
-   "lon": -5.8324,
-   "hora": "11:00",
-   "racha_kmh": 9,
-   "viento_kmh": 4,
-   "lluvia_mm": 0.0,
-   "temp_c": 8.9
-  },
-  {
-   "idema": "E29",
-   "nombre": "Estación 29",
-   "lat": 39.6181,
-   "lon": -6.745,
-   "hora": "11:00",
-   "racha_kmh": 9,
-   "viento_kmh": 4,
-   "lluvia_mm": 0.0,
-   "temp_c": 11.7
-  },
-  {
-   "idema": "E03",
-   "nombre": "Estación 3",
-   "lat": 39.4275,
-   "lon": -6.7364,
-   "hora": "11:00",
-   "racha_kmh": 15,
-   "viento_kmh": 10,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.7
-  },
-  {
-   "idema": "E07",
-   "nombre": "Estación 7",
-   "lat": 40.2072,
-   "lon": -6.8961,
-   "hora": "11:00",
-   "racha_kmh": 5,
-   "viento_kmh": 3,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.4
-  },
-  {
-   "idema": "E36",
-   "nombre": "Estación 36",
-   "lat": 38.9159,
-   "lon": -6.3856,
-   "hora": "11:00",
-   "racha_kmh": 14,
-   "viento_kmh": 11,
-   "lluvia_mm": 0.0,
-   "temp_c": 12.6
-  },
-  {
-   "idema": "E16",
-   "nombre": "Estación 16",
-   "lat": 39.8714,
-   "lon": -6.86,
-   "hora": "11:00",
-   "racha_kmh": 8,
-   "viento_kmh": 3,
-   "lluvia_mm": 0.0,
-   "temp_c": 11.6
-  },
-  {
-   "idema": "E13",
-   "nombre": "Estación 13",
-   "lat": 40.1748,
-   "lon": -6.7244,
-   "hora": "11:00",
-   "racha_kmh": 9,
-   "viento_kmh": 4,
-   "lluvia_mm": 0.0,
-   "temp_c": 14.2
+   "temp_c": 19.8
   },
   {
    "idema": "E35",
    "nombre": "Estación 35",
    "lat": 40.3551,
    "lon": -5.6899,
-   "hora": "11:00",
-   "racha_kmh": 28,
-   "viento_kmh": 13,
+   "hora": "19:00",
+   "racha_kmh": 38,
+   "viento_kmh": 14,
    "lluvia_mm": 0.0,
-   "temp_c": 3.2
+   "temp_c": 11.5
   },
   {
-   "idema": "E46",
-   "nombre": "Estación 46",
-   "lat": 38.2087,
-   "lon": -6.3113,
-   "hora": "11:00",
-   "racha_kmh": 15,
-   "viento_kmh": 13,
+   "idema": "E52",
+   "nombre": "Estación 52",
+   "lat": 40.2586,
+   "lon": -5.6783,
+   "hora": "19:00",
+   "racha_kmh": 13,
+   "viento_kmh": 6,
    "lluvia_mm": 0.0,
-   "temp_c": 12.1
+   "temp_c": 15.4
   },
   {
-   "idema": "E43",
-   "nombre": "Estación 43",
-   "lat": 38.4847,
-   "lon": -7.2819,
-   "hora": "11:00",
-   "racha_kmh": 9,
-   "viento_kmh": 4,
+   "idema": "E23",
+   "nombre": "Estación 23",
+   "lat": 39.4149,
+   "lon": -7.2311,
+   "hora": "19:00",
+   "racha_kmh": 12,
+   "viento_kmh": 6,
+   "lluvia_mm": 0.0,
+   "temp_c": 20.5
+  },
+  {
+   "idema": "E44",
+   "nombre": "Estación 44",
+   "lat": 38.6975,
+   "lon": -7.0844,
+   "hora": "19:00",
+   "racha_kmh": 10,
+   "viento_kmh": 6,
+   "lluvia_mm": 0.0,
+   "temp_c": 22.7
+  },
+  {
+   "idema": "E29",
+   "nombre": "Estación 29",
+   "lat": 39.6181,
+   "lon": -6.745,
+   "hora": "19:00",
+   "racha_kmh": 10,
+   "viento_kmh": 6,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.9
+  },
+  {
+   "idema": "E50",
+   "nombre": "Estación 50",
+   "lat": 38.2985,
+   "lon": -6.7651,
+   "hora": "19:00",
+   "racha_kmh": 23,
+   "viento_kmh": 16,
+   "lluvia_mm": 0.0,
+   "temp_c": 23.2
+  },
+  {
+   "idema": "E39",
+   "nombre": "Estación 39",
+   "lat": 38.8834,
+   "lon": -6.8139,
+   "hora": "19:00",
+   "racha_kmh": 6,
+   "viento_kmh": 2,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.4
+  },
+  {
+   "idema": "E41",
+   "nombre": "Estación 41",
+   "lat": 40.5694,
+   "lon": -6.2236,
+   "hora": "19:00",
+   "racha_kmh": 27,
+   "viento_kmh": 14,
+   "lluvia_mm": 0.0,
+   "temp_c": 16.9
+  },
+  {
+   "idema": "E07",
+   "nombre": "Estación 7",
+   "lat": 40.2072,
+   "lon": -6.8961,
+   "hora": "19:00",
+   "racha_kmh": 12,
+   "viento_kmh": 10,
+   "lluvia_mm": 0.0,
+   "temp_c": 18.2
+  },
+  {
+   "idema": "E02",
+   "nombre": "Estación 2",
+   "lat": 40.2651,
+   "lon": -5.8612,
+   "hora": "19:00",
+   "racha_kmh": 13,
+   "viento_kmh": 9,
    "lluvia_mm": 0.0,
    "temp_c": 13.2
+  },
+  {
+   "idema": "E25",
+   "nombre": "Estación 25",
+   "lat": 38.1784,
+   "lon": -6.6618,
+   "hora": "19:00",
+   "racha_kmh": 13,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 18.4
   },
   {
    "idema": "E47",
    "nombre": "Estación 47",
    "lat": 39.9458,
    "lon": -5.5826,
-   "hora": "11:00",
-   "racha_kmh": 6,
+   "hora": "19:00",
+   "racha_kmh": 7,
    "viento_kmh": 4,
    "lluvia_mm": 0.0,
-   "temp_c": 11.8
+   "temp_c": 18.2
+  },
+  {
+   "idema": "E18",
+   "nombre": "Estación 18",
+   "lat": 40.1208,
+   "lon": -5.8324,
+   "hora": "19:00",
+   "racha_kmh": 19,
+   "viento_kmh": 8,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.1
+  },
+  {
+   "idema": "E16",
+   "nombre": "Estación 16",
+   "lat": 39.8714,
+   "lon": -6.86,
+   "hora": "19:00",
+   "racha_kmh": 3,
+   "viento_kmh": 0,
+   "lluvia_mm": 0.0,
+   "temp_c": 23.5
+  },
+  {
+   "idema": "E13",
+   "nombre": "Estación 13",
+   "lat": 40.1748,
+   "lon": -6.7244,
+   "hora": "19:00",
+   "racha_kmh": 6,
+   "viento_kmh": 5,
+   "lluvia_mm": 0.0,
+   "temp_c": 14.6
+  },
+  {
+   "idema": "E26",
+   "nombre": "Estación 26",
+   "lat": 39.1766,
+   "lon": -6.6008,
+   "hora": "19:00",
+   "racha_kmh": 7,
+   "viento_kmh": 3,
+   "lluvia_mm": 0.0,
+   "temp_c": 18.0
+  },
+  {
+   "idema": "E32",
+   "nombre": "Estación 32",
+   "lat": 40.0619,
+   "lon": -6.0453,
+   "hora": "19:00",
+   "racha_kmh": 9,
+   "viento_kmh": 2,
+   "lluvia_mm": 0.0,
+   "temp_c": 18.8
   },
   {
    "idema": "E27",
    "nombre": "Estación 27",
    "lat": 40.2549,
    "lon": -6.4117,
-   "hora": "11:00",
-   "racha_kmh": 13,
+   "hora": "19:00",
+   "racha_kmh": 9,
+   "viento_kmh": 2,
+   "lluvia_mm": 0.0,
+   "temp_c": 15.7
+  },
+  {
+   "idema": "E03",
+   "nombre": "Estación 3",
+   "lat": 39.4275,
+   "lon": -6.7364,
+   "hora": "19:00",
+   "racha_kmh": 11,
+   "viento_kmh": 10,
+   "lluvia_mm": 0.0,
+   "temp_c": 20.2
+  },
+  {
+   "idema": "E05",
+   "nombre": "Estación 5",
+   "lat": 39.1819,
+   "lon": -6.9952,
+   "hora": "19:00",
+   "racha_kmh": 5,
    "viento_kmh": 3,
    "lluvia_mm": 0.0,
+   "temp_c": 19.5
+  },
+  {
+   "idema": "E53",
+   "nombre": "Estación 53",
+   "lat": 39.8207,
+   "lon": -6.1275,
+   "hora": "19:00",
+   "racha_kmh": 12,
+   "viento_kmh": 7,
+   "lluvia_mm": 0.0,
+   "temp_c": 20.6
+  },
+  {
+   "idema": "E37",
+   "nombre": "Estación 37",
+   "lat": 40.2966,
+   "lon": -6.8129,
+   "hora": "19:00",
+   "racha_kmh": 8,
+   "viento_kmh": 2,
+   "lluvia_mm": 0.0,
    "temp_c": 11.8
+  },
+  {
+   "idema": "E08",
+   "nombre": "Estación 8",
+   "lat": 39.4642,
+   "lon": -5.8742,
+   "hora": "19:00",
+   "racha_kmh": 8,
+   "viento_kmh": 7,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.6
+  },
+  {
+   "idema": "E36",
+   "nombre": "Estación 36",
+   "lat": 38.9159,
+   "lon": -6.3856,
+   "hora": "19:00",
+   "racha_kmh": 10,
+   "viento_kmh": 8,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.3
   },
   {
    "idema": "E42",
    "nombre": "Estación 42",
    "lat": 40.0035,
    "lon": -6.5575,
-   "hora": "11:00",
+   "hora": "19:00",
+   "racha_kmh": 10,
+   "viento_kmh": 6,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.9
+  },
+  {
+   "idema": "E11",
+   "nombre": "Estación 11",
+   "lat": 39.4714,
+   "lon": -6.3389,
+   "hora": "19:00",
+   "racha_kmh": 10,
+   "viento_kmh": 7,
+   "lluvia_mm": 0.0,
+   "temp_c": 18.6
+  },
+  {
+   "idema": "E28",
+   "nombre": "Estación 28",
+   "lat": 38.5517,
+   "lon": -6.3067,
+   "hora": "19:00",
+   "racha_kmh": 15,
+   "viento_kmh": 6,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.6
+  },
+  {
+   "idema": "E15",
+   "nombre": "Estación 15",
+   "lat": 38.4728,
+   "lon": -6.9233,
+   "hora": "19:00",
+   "racha_kmh": 9,
+   "viento_kmh": 6,
+   "lluvia_mm": 0.0,
+   "temp_c": 19.8
+  },
+  {
+   "idema": "E43",
+   "nombre": "Estación 43",
+   "lat": 38.4847,
+   "lon": -7.2819,
+   "hora": "19:00",
    "racha_kmh": 4,
+   "viento_kmh": 0,
+   "lluvia_mm": 0.0,
+   "temp_c": 23.8
+  },
+  {
+   "idema": "E40",
+   "nombre": "Estación 40",
+   "lat": 39.7906,
+   "lon": -6.3764,
+   "hora": "19:00",
+   "racha_kmh": 11,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.4
+  },
+  {
+   "idema": "E31",
+   "nombre": "Estación 31",
+   "lat": 38.2317,
+   "lon": -6.017,
+   "hora": "19:00",
+   "racha_kmh": 26,
+   "viento_kmh": 10,
+   "lluvia_mm": 0.0,
+   "temp_c": 20.5
+  },
+  {
+   "idema": "E34",
+   "nombre": "Estación 34",
+   "lat": 38.4259,
+   "lon": -6.4366,
+   "hora": "19:00",
+   "racha_kmh": 14,
    "viento_kmh": 2,
    "lluvia_mm": 0.0,
-   "temp_c": 11.8
+   "temp_c": 19.4
+  },
+  {
+   "idema": "E30",
+   "nombre": "Estación 30",
+   "lat": 38.5765,
+   "lon": -5.8458,
+   "hora": "19:00",
+   "racha_kmh": 21,
+   "viento_kmh": 14,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.5
+  },
+  {
+   "idema": "E24",
+   "nombre": "Estación 24",
+   "lat": 38.4797,
+   "lon": -5.5775,
+   "hora": "19:00",
+   "racha_kmh": 25,
+   "viento_kmh": 13,
+   "lluvia_mm": 0.0,
+   "temp_c": 22.2
   },
   {
    "idema": "E22",
    "nombre": "Estación 22",
    "lat": 38.8862,
    "lon": -7.0095,
-   "hora": "11:00",
+   "hora": "19:00",
+   "racha_kmh": 4,
+   "viento_kmh": 2,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.1
+  },
+  {
+   "idema": "E06",
+   "nombre": "Estación 6",
+   "lat": 38.9556,
+   "lon": -5.8805,
+   "hora": "19:00",
+   "racha_kmh": 5,
+   "viento_kmh": 1,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.3
+  },
+  {
+   "idema": "E45",
+   "nombre": "Estación 45",
+   "lat": 38.6889,
+   "lon": -6.361,
+   "hora": "19:00",
+   "racha_kmh": 15,
+   "viento_kmh": 10,
+   "lluvia_mm": 0.0,
+   "temp_c": 21.6
+  },
+  {
+   "idema": "E51",
+   "nombre": "Estación 51",
+   "lat": 38.3722,
+   "lon": -7.1581,
+   "hora": "19:00",
+   "racha_kmh": 8,
+   "viento_kmh": 3,
+   "lluvia_mm": 0.0,
+   "temp_c": 23.0
+  },
+  {
+   "idema": "E14",
+   "nombre": "Estación 14",
+   "lat": 39.6699,
+   "lon": -5.8083,
+   "hora": "19:00",
    "racha_kmh": 13,
+   "viento_kmh": 5,
+   "lluvia_mm": 0.0,
+   "temp_c": 19.3
+  },
+  {
+   "idema": "E38",
+   "nombre": "Estación 38",
+   "lat": 40.4081,
+   "lon": -6.2397,
+   "hora": "19:00",
+   "racha_kmh": 6,
+   "viento_kmh": 1,
+   "lluvia_mm": 0.0,
+   "temp_c": 13.4
+  },
+  {
+   "idema": "E20",
+   "nombre": "Estación 20",
+   "lat": 39.2828,
+   "lon": -5.7103,
+   "hora": "19:00",
+   "racha_kmh": 10,
    "viento_kmh": 8,
    "lluvia_mm": 0.0,
-   "temp_c": 13.5
+   "temp_c": 19.6
+  },
+  {
+   "idema": "E04",
+   "nombre": "Estación 4",
+   "lat": 39.1035,
+   "lon": -5.4613,
+   "hora": "19:00",
+   "racha_kmh": 5,
+   "viento_kmh": 3,
+   "lluvia_mm": 0.0,
+   "temp_c": 19.4
+  },
+  {
+   "idema": "E19",
+   "nombre": "Estación 19",
+   "lat": 38.6186,
+   "lon": -6.6275,
+   "hora": "19:00",
+   "racha_kmh": 13,
+   "viento_kmh": 9,
+   "lluvia_mm": 0.0,
+   "temp_c": 22.0
+  },
+  {
+   "idema": "E09",
+   "nombre": "Estación 9",
+   "lat": 40.1894,
+   "lon": -6.1675,
+   "hora": "19:00",
+   "racha_kmh": 12,
+   "viento_kmh": 6,
+   "lluvia_mm": 0.0,
+   "temp_c": 19.3
+  },
+  {
+   "idema": "E01",
+   "nombre": "Estación 1",
+   "lat": 38.7418,
+   "lon": -5.5291,
+   "hora": "19:00",
+   "racha_kmh": 29,
+   "viento_kmh": 20,
+   "lluvia_mm": 0.0,
+   "temp_c": 24.9
+  },
+  {
+   "idema": "E21",
+   "nombre": "Estación 21",
+   "lat": 39.1976,
+   "lon": -6.231,
+   "hora": "19:00",
+   "racha_kmh": 7,
+   "viento_kmh": 5,
+   "lluvia_mm": 0.0,
+   "temp_c": 20.8
+  },
+  {
+   "idema": "E10",
+   "nombre": "Estación 10",
+   "lat": 40.5047,
+   "lon": -5.9025,
+   "hora": "19:00",
+   "racha_kmh": 9,
+   "viento_kmh": 4,
+   "lluvia_mm": 0.0,
+   "temp_c": 17.3
   },
   {
    "idema": "E48",
    "nombre": "Estación 48",
    "lat": 38.2678,
    "lon": -5.686,
-   "hora": "11:00",
-   "racha_kmh": 19,
-   "viento_kmh": 9,
+   "hora": "19:00",
+   "racha_kmh": 16,
+   "viento_kmh": 6,
    "lluvia_mm": 0.0,
-   "temp_c": 14.5
+   "temp_c": 21.3
   }
  ],
  "distribuidoras": [
@@ -596,92 +596,148 @@
    "horas": [
     {
      "hora": 0,
-     "racha_kmh": 17,
+     "racha_kmh": 27,
      "lluvia_mm": 0.0,
-     "temp_c": 14.9,
+     "temp_c": 17.4,
      "estaciones": 10
     },
     {
      "hora": 1,
-     "racha_kmh": 14,
+     "racha_kmh": 22,
      "lluvia_mm": 0.0,
-     "temp_c": 14.3,
+     "temp_c": 16.6,
      "estaciones": 10
     },
     {
      "hora": 2,
-     "racha_kmh": 12,
+     "racha_kmh": 20,
      "lluvia_mm": 0.0,
-     "temp_c": 13.7,
+     "temp_c": 15.4,
      "estaciones": 10
     },
     {
      "hora": 3,
-     "racha_kmh": 12,
+     "racha_kmh": 18,
      "lluvia_mm": 0.0,
-     "temp_c": 13.7,
+     "temp_c": 14.0,
      "estaciones": 10
     },
     {
      "hora": 4,
-     "racha_kmh": 12,
+     "racha_kmh": 18,
      "lluvia_mm": 0.0,
-     "temp_c": 13.4,
+     "temp_c": 13.8,
      "estaciones": 10
     },
     {
      "hora": 5,
-     "racha_kmh": 19,
+     "racha_kmh": 24,
      "lluvia_mm": 0.0,
-     "temp_c": 12.8,
+     "temp_c": 14.1,
      "estaciones": 10
     },
     {
      "hora": 6,
-     "racha_kmh": 13,
+     "racha_kmh": 22,
      "lluvia_mm": 0.0,
-     "temp_c": 12.8,
+     "temp_c": 13.2,
      "estaciones": 10
     },
     {
      "hora": 7,
-     "racha_kmh": 11,
+     "racha_kmh": 21,
      "lluvia_mm": 0.0,
-     "temp_c": 12.7,
+     "temp_c": 13.2,
      "estaciones": 10
     },
     {
      "hora": 8,
-     "racha_kmh": 12,
+     "racha_kmh": 17,
      "lluvia_mm": 0.0,
-     "temp_c": 11.7,
+     "temp_c": 11.8,
      "estaciones": 10
     },
     {
      "hora": 9,
-     "racha_kmh": 13,
+     "racha_kmh": 17,
      "lluvia_mm": 0.0,
-     "temp_c": 12.6,
+     "temp_c": 15.3,
      "estaciones": 10
     },
     {
      "hora": 10,
-     "racha_kmh": 21,
+     "racha_kmh": 26,
      "lluvia_mm": 0.0,
-     "temp_c": 14.4,
+     "temp_c": 17.6,
      "estaciones": 10
     },
     {
      "hora": 11,
-     "racha_kmh": 21,
+     "racha_kmh": 27,
      "lluvia_mm": 0.0,
-     "temp_c": 14.2,
+     "temp_c": 20.3,
+     "estaciones": 10
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 35,
+     "lluvia_mm": 0.0,
+     "temp_c": 21.9,
+     "estaciones": 10
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 36,
+     "lluvia_mm": 0.0,
+     "temp_c": 23.7,
+     "estaciones": 10
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 37,
+     "lluvia_mm": 0.0,
+     "temp_c": 25.8,
+     "estaciones": 10
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 28,
+     "lluvia_mm": 0.0,
+     "temp_c": 26.8,
+     "estaciones": 10
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 25,
+     "lluvia_mm": 0.0,
+     "temp_c": 27.3,
+     "estaciones": 10
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 23,
+     "lluvia_mm": 0.0,
+     "temp_c": 26.5,
+     "estaciones": 10
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 19,
+     "lluvia_mm": 0.0,
+     "temp_c": 26.2,
+     "estaciones": 9
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "temp_c": 23.5,
      "estaciones": 9
     }
    ],
-   "racha_max_kmh": 21,
-   "hora_racha_max": 10,
-   "texto": "racha máxima observada hoy 21 km/h a las 10:00 (10 estaciones a menos de 25 km de la red)"
+   "racha_max_kmh": 37,
+   "hora_racha_max": 14,
+   "texto": "racha máxima observada hoy 37 km/h a las 14:00 (10 estaciones a menos de 25 km de la red)"
   },
   {
    "id": 3,
@@ -690,92 +746,148 @@
    "horas": [
     {
      "hora": 0,
-     "racha_kmh": 25,
+     "racha_kmh": 42,
      "lluvia_mm": 0.0,
-     "temp_c": 15.9,
+     "temp_c": 16.9,
      "estaciones": 17
     },
     {
      "hora": 1,
-     "racha_kmh": 24,
+     "racha_kmh": 50,
      "lluvia_mm": 0.0,
-     "temp_c": 16.0,
+     "temp_c": 15.0,
      "estaciones": 17
     },
     {
      "hora": 2,
-     "racha_kmh": 26,
-     "lluvia_mm": 0.0,
-     "temp_c": 15.1,
-     "estaciones": 17
-    },
-    {
-     "hora": 3,
-     "racha_kmh": 39,
-     "lluvia_mm": 0.0,
-     "temp_c": 14.1,
-     "estaciones": 17
-    },
-    {
-     "hora": 4,
-     "racha_kmh": 44,
-     "lluvia_mm": 0.0,
-     "temp_c": 14.0,
-     "estaciones": 17
-    },
-    {
-     "hora": 5,
-     "racha_kmh": 40,
-     "lluvia_mm": 0.0,
-     "temp_c": 13.0,
-     "estaciones": 17
-    },
-    {
-     "hora": 6,
-     "racha_kmh": 37,
-     "lluvia_mm": 0.0,
-     "temp_c": 13.2,
-     "estaciones": 17
-    },
-    {
-     "hora": 7,
-     "racha_kmh": 38,
-     "lluvia_mm": 0.0,
-     "temp_c": 13.1,
-     "estaciones": 17
-    },
-    {
-     "hora": 8,
-     "racha_kmh": 28,
-     "lluvia_mm": 0.0,
-     "temp_c": 13.2,
-     "estaciones": 17
-    },
-    {
-     "hora": 9,
-     "racha_kmh": 30,
-     "lluvia_mm": 0.0,
-     "temp_c": 13.1,
-     "estaciones": 17
-    },
-    {
-     "hora": 10,
-     "racha_kmh": 27,
+     "racha_kmh": 41,
      "lluvia_mm": 0.0,
      "temp_c": 14.9,
      "estaciones": 17
     },
     {
-     "hora": 11,
+     "hora": 3,
+     "racha_kmh": 35,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.9,
+     "estaciones": 17
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 27,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.4,
+     "estaciones": 17
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "temp_c": 14.0,
+     "estaciones": 17
+    },
+    {
+     "hora": 6,
      "racha_kmh": 28,
      "lluvia_mm": 0.0,
-     "temp_c": 14.6,
+     "temp_c": 14.7,
+     "estaciones": 17
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.6,
+     "estaciones": 17
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 27,
+     "lluvia_mm": 0.0,
+     "temp_c": 13.0,
+     "estaciones": 17
+    },
+    {
+     "hora": 9,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "temp_c": 16.2,
+     "estaciones": 17
+    },
+    {
+     "hora": 10,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "temp_c": 17.9,
+     "estaciones": 17
+    },
+    {
+     "hora": 11,
+     "racha_kmh": 26,
+     "lluvia_mm": 0.0,
+     "temp_c": 20.3,
+     "estaciones": 16
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 35,
+     "lluvia_mm": 0.0,
+     "temp_c": 23.7,
+     "estaciones": 16
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 36,
+     "lluvia_mm": 0.0,
+     "temp_c": 24.4,
+     "estaciones": 16
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 37,
+     "lluvia_mm": 0.0,
+     "temp_c": 26.3,
+     "estaciones": 16
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 31,
+     "lluvia_mm": 0.0,
+     "temp_c": 26.6,
+     "estaciones": 16
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 37,
+     "lluvia_mm": 0.0,
+     "temp_c": 27.3,
+     "estaciones": 16
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 35,
+     "lluvia_mm": 0.0,
+     "temp_c": 26.4,
+     "estaciones": 16
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 36,
+     "lluvia_mm": 0.0,
+     "temp_c": 24.8,
+     "estaciones": 15
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 38,
+     "lluvia_mm": 0.0,
+     "temp_c": 21.6,
      "estaciones": 14
     }
    ],
-   "racha_max_kmh": 44,
-   "hora_racha_max": 4,
-   "texto": "racha máxima observada hoy 44 km/h a las 4:00 (17 estaciones a menos de 25 km de la red)"
+   "racha_max_kmh": 50,
+   "hora_racha_max": 1,
+   "texto": "racha máxima observada hoy 50 km/h a las 1:00 (17 estaciones a menos de 25 km de la red)"
   },
   {
    "id": 1366,
@@ -784,92 +896,148 @@
    "horas": [
     {
      "hora": 0,
-     "racha_kmh": 10,
+     "racha_kmh": 13,
      "lluvia_mm": 0.0,
-     "temp_c": 17.1,
+     "temp_c": 11.3,
      "estaciones": 3
     },
     {
      "hora": 1,
-     "racha_kmh": 10,
+     "racha_kmh": 12,
      "lluvia_mm": 0.0,
-     "temp_c": 16.2,
+     "temp_c": 11.3,
      "estaciones": 3
     },
     {
      "hora": 2,
-     "racha_kmh": 17,
-     "lluvia_mm": 0.0,
-     "temp_c": 15.5,
-     "estaciones": 3
-    },
-    {
-     "hora": 3,
-     "racha_kmh": 17,
-     "lluvia_mm": 0.0,
-     "temp_c": 14.0,
-     "estaciones": 3
-    },
-    {
-     "hora": 4,
-     "racha_kmh": 17,
-     "lluvia_mm": 0.0,
-     "temp_c": 13.3,
-     "estaciones": 3
-    },
-    {
-     "hora": 5,
-     "racha_kmh": 14,
-     "lluvia_mm": 0.0,
-     "temp_c": 12.6,
-     "estaciones": 3
-    },
-    {
-     "hora": 6,
-     "racha_kmh": 13,
-     "lluvia_mm": 0.0,
-     "temp_c": 11.9,
-     "estaciones": 3
-    },
-    {
-     "hora": 7,
-     "racha_kmh": 13,
-     "lluvia_mm": 0.0,
-     "temp_c": 11.2,
-     "estaciones": 3
-    },
-    {
-     "hora": 8,
      "racha_kmh": 12,
      "lluvia_mm": 0.0,
      "temp_c": 10.6,
      "estaciones": 3
     },
     {
+     "hora": 3,
+     "racha_kmh": 13,
+     "lluvia_mm": 0.0,
+     "temp_c": 9.7,
+     "estaciones": 3
+    },
+    {
+     "hora": 4,
+     "racha_kmh": 10,
+     "lluvia_mm": 0.0,
+     "temp_c": 9.5,
+     "estaciones": 3
+    },
+    {
+     "hora": 5,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "temp_c": 8.6,
+     "estaciones": 3
+    },
+    {
+     "hora": 6,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "temp_c": 9.9,
+     "estaciones": 3
+    },
+    {
+     "hora": 7,
+     "racha_kmh": 10,
+     "lluvia_mm": 0.0,
+     "temp_c": 9.0,
+     "estaciones": 3
+    },
+    {
+     "hora": 8,
+     "racha_kmh": 12,
+     "lluvia_mm": 0.0,
+     "temp_c": 8.9,
+     "estaciones": 3
+    },
+    {
      "hora": 9,
      "racha_kmh": 12,
      "lluvia_mm": 0.0,
-     "temp_c": 10.3,
+     "temp_c": 12.8,
      "estaciones": 3
     },
     {
      "hora": 10,
-     "racha_kmh": 19,
+     "racha_kmh": 11,
      "lluvia_mm": 0.0,
-     "temp_c": 11.2,
+     "temp_c": 19.6,
      "estaciones": 3
     },
     {
      "hora": 11,
-     "racha_kmh": 19,
+     "racha_kmh": 15,
      "lluvia_mm": 0.0,
-     "temp_c": 13.0,
+     "temp_c": 23.1,
+     "estaciones": 3
+    },
+    {
+     "hora": 12,
+     "racha_kmh": 15,
+     "lluvia_mm": 0.0,
+     "temp_c": 25.1,
+     "estaciones": 3
+    },
+    {
+     "hora": 13,
+     "racha_kmh": 18,
+     "lluvia_mm": 0.0,
+     "temp_c": 26.2,
+     "estaciones": 3
+    },
+    {
+     "hora": 14,
+     "racha_kmh": 22,
+     "lluvia_mm": 0.0,
+     "temp_c": 27.3,
+     "estaciones": 3
+    },
+    {
+     "hora": 15,
+     "racha_kmh": 20,
+     "lluvia_mm": 0.0,
+     "temp_c": 28.4,
+     "estaciones": 3
+    },
+    {
+     "hora": 16,
+     "racha_kmh": 21,
+     "lluvia_mm": 0.0,
+     "temp_c": 28.7,
+     "estaciones": 3
+    },
+    {
+     "hora": 17,
+     "racha_kmh": 24,
+     "lluvia_mm": 0.0,
+     "temp_c": 27.8,
+     "estaciones": 3
+    },
+    {
+     "hora": 18,
+     "racha_kmh": 21,
+     "lluvia_mm": 0.0,
+     "temp_c": 26.1,
+     "estaciones": 3
+    },
+    {
+     "hora": 19,
+     "racha_kmh": 23,
+     "lluvia_mm": 0.0,
+     "temp_c": 23.2,
      "estaciones": 3
     }
    ],
-   "racha_max_kmh": 19,
-   "hora_racha_max": 10,
-   "texto": "racha máxima observada hoy 19 km/h a las 10:00 (3 estaciones a menos de 25 km de la red)"
+   "racha_max_kmh": 24,
+   "hora_racha_max": 17,
+   "texto": "racha máxima observada hoy 24 km/h a las 17:00 (3 estaciones a menos de 25 km de la red)"
   }
  ]
 }
