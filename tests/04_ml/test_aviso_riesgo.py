@@ -287,7 +287,7 @@ def test_the_bot_answers_the_group_and_its_members_in_private(monkeypatch, tmp_p
         {"update_id": 11, "message": {"chat": {"id": 555, "type": "group"}, "text": "/forecast"}},
         {"update_id": 12, "message": {"chat": group, "text": "hola"}},
         {"update_id": 13, "message": {"chat": group, "text": "/last", "message_thread_id": 7}},
-        {"update_id": 14, "message": {"chat": {"id": 42, "type": "private"}, "from": {"id": 42}, "text": "Riesgo de mañana"}},
+        {"update_id": 14, "message": {"chat": {"id": 42, "type": "private"}, "from": {"id": 42}, "text": "📈 Riesgo de mañana"}},
         {"update_id": 15, "message": {"chat": {"id": 99, "type": "private"}, "from": {"id": 99}, "text": "/start"}},
     ]
     asked = []
@@ -307,7 +307,7 @@ def test_the_bot_answers_the_group_and_its_members_in_private(monkeypatch, tmp_p
     # once a message has been sent, /last repeats it
     av.remember("Rayos sobre la red", "storm message")
     assert bt.answer("last", str(folder), {}).splitlines()[1] == "Rayos sobre la red"
-    assert bt.command_of("/morning extra") == "morning" and bt.command_of("Rayos") == "lightning" and bt.command_of("tarde") == ""
+    assert bt.command_of("/morning extra") == "morning" and bt.command_of("⚡ Rayos") == "lightning" and bt.command_of("Rayos") == "lightning" and bt.command_of("tarde") == ""
     assert bt.answer("otra", str(folder), {}) == "" and "/lightning" in bt.answer("help", str(folder), {})
     assert "falta rayos.json" in bt.answer("lightning", str(folder), {})
     assert all(c in bt.COMMANDS for c in bt.BUTTONS.values())

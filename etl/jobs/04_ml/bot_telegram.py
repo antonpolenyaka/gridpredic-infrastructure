@@ -42,17 +42,17 @@ COMMANDS = {
     "last": "repite el último aviso enviado",
     "help": "qué se le puede pedir al bot",
 }
-# The buttons of the private chat: what each one says and the command it stands for.
+# The buttons of the private chat: what each one says, with its icon, and the command it stands for.
 BUTTONS = {
-    "Riesgo de mañana": "forecast",
-    "Parte de la mañana": "morning",
-    "Rayos": "lightning",
-    "Avisos de AEMET": "warnings",
-    "Último aviso": "last",
-    "Ayuda": "help",
+    "📈 Riesgo de mañana": "forecast",
+    "☀️ Parte de la mañana": "morning",
+    "⚡ Rayos": "lightning",
+    "⚠️ Avisos de AEMET": "warnings",
+    "🔁 Último aviso": "last",
+    "❓ Ayuda": "help",
 }
-KEYBOARD = {"keyboard": [["Riesgo de mañana", "Parte de la mañana"], ["Rayos", "Avisos de AEMET"], ["Último aviso", "Ayuda"]],
-            "resize_keyboard": True, "is_persistent": True}
+_LABELS = list(BUTTONS)
+KEYBOARD = {"keyboard": [_LABELS[0:2], _LABELS[2:4], _LABELS[4:6]], "resize_keyboard": True, "is_persistent": True}
 MEMBER_STATES = ("creator", "administrator", "member", "restricted")
 CONFIG_PATH = "/opt/airflow/config/04_ml/config_ml.json"
 
@@ -140,6 +140,10 @@ def command_of(text: str) -> str:
     text = (text or "").strip()
     if text in BUTTONS:
         return BUTTONS[text]
+    # the same button without its icon (an older keyboard, or typed by hand)
+    plain = {label.split(" ", 1)[1]: command for label, command in BUTTONS.items()}
+    if text in plain:
+        return plain[text]
     if not text.startswith("/"):
         return ""
     return text.split()[0][1:].split("@")[0].lower()
