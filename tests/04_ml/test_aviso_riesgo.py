@@ -35,29 +35,29 @@ PAYLOAD = {
 def test_the_message_names_the_distribuidoras_in_alert_only():
     text = av.message_from(PAYLOAD, "alto")
     assert text.startswith("Riesgo de interrupción de mañana 15.01.2026:")
-    assert "- Distribuidora 1: MUY ALTO (31 %, 4.1 veces su tasa base); averías esperadas 0.4, clientes esperados sin luz 85" in text
-    assert "franja de 10:00 a 16:00 (pico 92 km/h)" in text
-    assert "líneas: Montánchez / Torre (12.0 %), Plasencia (8.0 %), Hervás (5.0 %)" in text
-    assert "brigadas en Plasencia, Montánchez (brigadas en sus bases a las 9:00)" in text
-    assert "motivos: racha prevista" in text and "Distribuidora 2" not in text
+    assert "- Distribuidora 1: MUY ALTO (31 %, 4,1 veces su tasa base)\n  Averías esperadas 0,4; clientes esperados sin luz 85." in text
+    assert "  Franja de 10:00 a 16:00, pico de racha 92 km/h." in text
+    assert "  Líneas: Montánchez / Torre (12,0 %), Plasencia (8,0 %), Hervás (5,0 %)." in text
+    assert "  Brigadas: Plasencia, Montánchez (brigadas en sus bases a las 9:00)." in text
+    assert "  Motivos: racha prevista" in text and "Distribuidora 2" not in text
     assert "11 % de los casos" in text and text.endswith("http://localhost:8086")
     # With medio as the minimum, Distribuidora 2 enters without motives; with muy alto only Distribuidora 1; nothing above.
     assert "- Distribuidora 2: MEDIO (6 %" in av.message_from(PAYLOAD, "medio")
-    assert "motivos" not in av.message_from(PAYLOAD, "medio").split("- Distribuidora 2")[1]
+    assert "Motivos" not in av.message_from(PAYLOAD, "medio").split("- Distribuidora 2")[1]
     assert av.message_from(PAYLOAD, "muy alto").count("\n- ") == 1
     assert av.message_from({"distribuidoras": [{"nombre": "x", "nivel": "bajo"}]}, "alto") == ""
     # With the ensemble of the same day, the spread of the runs goes after the motives; of another day, nothing.
     band = {"fecha": "2026-01-15", "distribuidoras": [{"id": 3, "horas": [{"hora": 0, "p10": 1, "p50": 2, "p90": 3}],
                                                        "texto": "40 escenarios de icon_eu en 21 celdas de la red: el 80 % central da el pico de racha entre 70 y 95 km/h (mediana 84)"}]}
     with_band = av.message_from(PAYLOAD, "alto", band)
-    assert "motivos: racha prevista de 1,6 veces el p98 (x12); escenarios: 40 escenarios de icon_eu en 21 celdas de la red: el 80 % central da el pico de racha entre 70 y 95 km/h (mediana 84)." in with_band
-    assert "escenarios" not in av.message_from(PAYLOAD, "alto", {**band, "fecha": "2026-01-14"})
+    assert "  Motivos: racha prevista de 1,6 veces el p98 (x12).\n  Escenarios: 40 escenarios de icon_eu en 21 celdas de la red: el 80 % central da el pico de racha entre 70 y 95 km/h (mediana 84)." in with_band
+    assert "Escenarios" not in av.message_from(PAYLOAD, "alto", {**band, "fecha": "2026-01-14"})
     # riesgo.json may carry them itself (attached by the scoring job), with the forecast of AEMET by municipality.
     carried = json.loads(json.dumps(PAYLOAD))
     carried["distribuidoras"][0]["escenarios"] = {"texto": "40 escenarios de icon_eu en 21 celdas de la red: mediana 84"}
     carried["distribuidoras"][0]["aemet"] = {"texto": "AEMET por municipios (40 municipios, elaborada 18:55): pico de racha 70 km/h a las 12:00 en Hervás"}
     text = av.message_from(carried, "alto")
-    assert "; escenarios: 40 escenarios de icon_eu en 21 celdas de la red: mediana 84; AEMET por municipios (40 municipios, elaborada 18:55): pico de racha 70 km/h a las 12:00 en Hervás." in text
+    assert "  Escenarios: 40 escenarios de icon_eu en 21 celdas de la red: mediana 84.\n  AEMET por municipios (40 municipios, elaborada 18:55): pico de racha 70 km/h a las 12:00 en Hervás." in text
     assert not av.reached("raro", "alto") and av.reached("muy alto", "alto") and not av.reached("medio", "alto")
     # A distribuidora below the minimum enters when its guard is reinforced by a wind or thunderstorm warning.
     guarded = json.loads(json.dumps(PAYLOAD))
@@ -208,3 +208,65 @@ def test_the_outlook_of_the_day_after_tomorrow_goes_in_one_line():
     assert "Pasado mañana" not in av.message_from(payload, "muy alto")
     assert "Pasado mañana" not in av.message_from(PAYLOAD, "alto")
     assert av.outlook_line({}) == ""
+
+
+def test_every_message_also_goes_to_telegram(monkeypatch, tmp_path):
+    calls = []
+
+    class Answer:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        calls.append((request.full_url, json.loads(request.data.decode("utf-8"))))
+        return Answer()
+
+    monkeypatch.setattr(av.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.delenv("AVISO_WEBHOOK_URL", raising=False)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    # the token alone is not a channel
+    assert av.send(PAYLOAD, {}) == "sin url" and not calls
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100200")
+    assert av.send(PAYLOAD, {}) == "enviado"
+    url, body = calls[-1]
+    assert url == "https://api.telegram.org/bot123:ABC/sendMessage"
+    assert body["chat_id"] == "-100200" and body["text"].startswith("Riesgo de interrupción de mañana")
+    assert body["disable_web_page_preview"] is True
+
+
+def test_with_webhook_and_telegram_one_failing_still_sends_and_none_is_an_error(monkeypatch):
+    monkeypatch.setenv("AVISO_WEBHOOK_URL", "https://hooks.example/abc")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100200")
+    sent = []
+
+    def down(*a, **k):
+        raise OSError("down")
+
+    monkeypatch.setattr(av, "post", down)
+    monkeypatch.setattr(av, "post_telegram", lambda token, chat, message, timeout: sent.append(message) or 200)
+    assert av.send(PAYLOAD, {}) == "enviado" and sent
+    monkeypatch.setattr(av, "post_telegram", down)
+    assert av.send(PAYLOAD, {}) == "error: OSError"
+
+
+def test_the_daily_summary_goes_even_without_alert():
+    calm = {"fecha": "2026-10-21", "fecha_texto": "21.10.2026", "distribuidoras": [
+        {"id": 2, "nombre": "Distribuidora 2", "nivel": "bajo", "probabilidad": 0.019},
+        {"id": 3, "nombre": "Distribuidora 1", "nivel": "medio", "probabilidad": 0.05}]}
+    assert av.message_from(calm, "alto") == ""
+    text = av.summary_message(calm, "alto")
+    assert text.startswith("Riesgo de interrupción de mañana 21.10.2026: Distribuidora 1 MEDIO (5 %); Distribuidora 2 BAJO (2 %).")
+    assert "Guardia normal" in text and "Cuadro de mando" in text
+
+
+def test_long_texts_are_cut_for_telegram_at_line_ends():
+    text = "\n".join("x" * 100 for _ in range(90))
+    pieces = av.chunks(text, 1000)
+    assert all(len(p) <= 1000 for p in pieces) and "\n".join(pieces) == text

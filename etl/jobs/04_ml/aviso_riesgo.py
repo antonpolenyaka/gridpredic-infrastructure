@@ -2,11 +2,19 @@
 The message of the evening: a short text with the risk of tomorrow of every
 distribuidora, sent to a webhook (Slack, Teams, Discord or any endpoint
 that takes a JSON with a text field) when some distribuidora reaches the
-level of riesgo_manana.aviso.nivel_minimo. The URL of the webhook comes from
-the environment variable aviso.url_env (compose.yaml takes it from .env);
-without it nothing is sent. The URL is a secret and is never logged.
+level of riesgo_manana.aviso.nivel_minimo, or every evening with
+aviso.resumen_diario. The URL of the webhook comes from the environment
+variable aviso.url_env (compose.yaml takes it from .env). Every message of the
+operation (the evening, the morning report, the new warnings of the day, the
+storms and the failed tasks) can also go to a Telegram group: with
+TELEGRAM_BOT_TOKEN (the token BotFather gives) and TELEGRAM_CHAT_ID (the group,
+a negative number) the same text goes through the sendMessage of the Bot API.
+Without a webhook nor Telegram nothing is sent. The URL and the token are
+secrets and are never logged.
 
-    python aviso_riesgo.py /app/dashboard/data/riesgo.json   # prints the message, sends it if the URL is set
+    python aviso_riesgo.py /app/dashboard/data/riesgo.json   # prints the message, sends it if a channel is set
+    python aviso_riesgo.py --telegram-chats                  # the groups the bot is in, to find TELEGRAM_CHAT_ID
+    python aviso_riesgo.py --prueba                          # a test message to every channel set
 """
 
 import json
@@ -20,10 +28,11 @@ from zoneinfo import ZoneInfo
 logger = logging.getLogger("aviso")
 
 DEFAULTS = {"url_env": "AVISO_WEBHOOK_URL", "nivel_minimo": "alto", "campo": "text", "timeout_s": 30, "rayos_cada_min": 60,
-            "parte_manana_hora": 7}
+            "parte_manana_hora": 7, "resumen_diario": False}
 LEVEL_NAMES = {1: "amarillo", 2: "naranja", 3: "rojo"}
-# The addresses the messages point at (the ports of compose.yaml: the dashboard and Airflow).
-DASHBOARD_URL = "http://localhost:8086"
+# The addresses the messages point at (the ports of compose.yaml: the dashboard and Airflow). AVISO_CUADRO_URL
+# changes the one of the dashboard, for people who read the messages on the phone and cannot open localhost.
+DASHBOARD_URL = os.environ.get("AVISO_CUADRO_URL", "").strip() or "http://localhost:8086"
 AIRFLOW_URL = "http://localhost:8084"
 # The guard: reinforce it the days in alert (alto or muy alto) and the days with a wind or thunderstorm warning of
 # AEMET, the policy that covers most customer-hours per day spent in the replay of 2024 - 2026 (caso-de-negocio.md, 2b).
@@ -50,6 +59,11 @@ def guard_advice(level: str, wind: float, storm: float) -> dict:
 
 
 ORDER = ["bajo", "medio", "alto", "muy alto"]
+
+
+def dec(x, digits: int = 1) -> str:
+    """A number with the decimal comma of Spanish ("4,1", "0,4")."""
+    return f"{float(x or 0):.{digits}f}".replace(".", ",")
 
 
 def alert_settings(rcfg: dict) -> dict:
@@ -81,29 +95,32 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
     for d in sorted(blocks, key=lambda b: -(b.get("probabilidad") or 0)):
         imp, fr, plan = d.get("impacto") or {}, d.get("franja") or {}, d.get("brigadas") or {}
         zones = sorted(d.get("zonas", []), key=lambda z: -(z.get("probabilidad") or 0))[:3]
-        line = (f"- {d.get('nombre')}: {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %, "
-                f"{float(d.get('veces_tasa_base') or 0):.1f} veces su tasa base); averías esperadas {float(d.get('esperadas') or 0):.1f}, "
-                f"clientes esperados sin luz {float(imp.get('clientes_esperados') or 0):.0f}")
+        # One line per distribuidora with the level and the guard, and under it one short line per thing, so the
+        # message reads on a phone (Telegram) as well as in Slack or Teams.
+        head = (f"- {d.get('nombre')}: {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %, "
+                f"{dec(d.get('veces_tasa_base'), 1)} veces su tasa base)")
         guard = d.get("guardia") or {}
         if guard.get("reforzar"):
-            line += f"; guardia reforzada ({guard.get('motivo', '')})"
+            head += f"; guardia reforzada ({guard.get('motivo', '')})"
+        lines.append(head)
+        lines.append(f"  Averías esperadas {dec(d.get('esperadas'), 1)}; clientes esperados sin luz {float(imp.get('clientes_esperados') or 0):.0f}.")
         if fr.get("inicio") is not None:
-            line += f"; franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00 (pico {float(fr.get('racha_pico') or 0):.0f} km/h)"
+            lines.append(f"  Franja de {int(fr['inicio'])}:00 a {int(fr['fin']) + 1}:00, pico de racha {float(fr.get('racha_pico') or 0):.0f} km/h.")
         if zones:
-            line += "; líneas: " + ", ".join(f"{z.get('nombre')} ({100 * float(z.get('probabilidad') or 0):.1f} %)" for z in zones)
+            lines.append("  Líneas: " + ", ".join(f"{z.get('nombre')} ({dec(100 * float(z.get('probabilidad') or 0), 1)} %)" for z in zones) + ".")
         if plan.get("bases"):
-            line += "; brigadas en " + ", ".join(b.get("municipio", "") for b in plan["bases"])
+            bases = "  Brigadas: " + ", ".join(b.get("municipio", "") for b in plan["bases"])
             if plan.get("posicionamiento"):
-                line += f" ({plan['posicionamiento']})"
+                bases += f" ({plan['posicionamiento']})"
+            lines.append(bases + ".")
         if d.get("motivos") and not str(d["motivos"]).startswith("ninguno"):
-            line += f"; motivos: {d['motivos']}"
+            lines.append(f"  Motivos: {d['motivos']}.")
         band = bands.get(str(d.get("id"))) or {}
         scenarios = (band.get("texto") if band.get("horas") else None) or (d.get("escenarios") or {}).get("texto")
         if scenarios:
-            line += f"; escenarios: {scenarios}"
+            lines.append(f"  Escenarios: {scenarios}.")
         if (d.get("aemet") or {}).get("texto"):
-            line += f"; {d['aemet']['texto']}"
-        lines.append(line + ".")
+            lines.append(f"  {d['aemet']['texto']}.")
     outlook = outlook_line(payload, minimum)
     if outlook:
         lines.append(outlook)
@@ -112,6 +129,23 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         lines.append(rule)
     if payload.get("artefactos_error"):
         lines.append(f"El modelo de esta tarde no se ha guardado en el almacén de modelos ({payload['artefactos_error']}).")
+    lines.append(f"Cuadro de mando: {DASHBOARD_URL}")
+    return "\n".join(lines)
+
+
+def summary_message(payload: dict, minimum: str = "alto") -> str:
+    """
+    The short text of an evening with no distribuidora in alert, for aviso.resumen_diario: the level and
+    probability of every network and that the guard stays normal, so the group knows the evening ran.
+    """
+    nets = sorted(payload.get("distribuidoras", []), key=lambda d: str(d.get("nombre", "")))
+    if not nets:
+        return ""
+    parts = "; ".join(f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" for d in nets)
+    lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}: {parts}. Guardia normal en todas las redes."]
+    outlook = outlook_line(payload, minimum)
+    if outlook:
+        lines.append(outlook)
     lines.append(f"Cuadro de mando: {DASHBOARD_URL}")
     return "\n".join(lines)
 
@@ -140,6 +174,73 @@ def post(url: str, message: str, field: str = "text", timeout: float = 30.0) -> 
         return int(answer.status)
 
 
+TELEGRAM_API = "https://api.telegram.org"
+TELEGRAM_MAX = 4000  # sendMessage takes up to 4096 characters; longer texts go in several messages
+
+
+def telegram_settings() -> tuple:
+    """(token, chat_id) from TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, or None when one of them is missing."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    return (token, chat) if token and chat else None
+
+
+def chunks(message: str, size: int = TELEGRAM_MAX) -> list:
+    """The text cut into pieces of at most size characters, at the end of a line when there is one."""
+    out, rest = [], message
+    while len(rest) > size:
+        cut = rest.rfind("\n", 0, size)
+        cut = cut if cut > 0 else size
+        out.append(rest[:cut])
+        rest = rest[cut:].lstrip("\n")
+    return out + ([rest] if rest else [])
+
+
+def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0) -> int:
+    """sendMessage of the Telegram Bot API, as plain text and without link previews; returns the last HTTP status.
+    The token is part of the URL, so neither goes to the log."""
+    status = 0
+    for piece in chunks(message):
+        body = json.dumps({"chat_id": chat_id, "text": piece, "disable_web_page_preview": True}, ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(f"{TELEGRAM_API}/bot{token}/sendMessage", data=body,
+                                         headers={"Content-Type": "application/json", "User-Agent": "GridPredic-TFM/1.0"})
+        with urllib.request.urlopen(request, timeout=timeout) as answer:
+            status = int(answer.status)
+    return status
+
+
+def deliver(message: str, cfg: dict, what: str = "message") -> str:
+    """
+    The text to every channel that is set: the webhook of cfg["url_env"] and the Telegram group. "enviado" when
+    at least one took it (the other, if it failed, goes to the log), "sin url" when there is no channel and
+    "error: <type>" when none took it, so the DAG can retry.
+    """
+    url = os.environ.get(cfg["url_env"], "").strip()
+    telegram = telegram_settings()
+    if not url and not telegram:
+        logger.info("No %s nor Telegram in the environment: the %s is not sent\n%s", cfg["url_env"], what, message)
+        return "sin url"
+    taken, errors = [], []
+    if url:
+        try:
+            post(url, message, cfg["campo"], float(cfg["timeout_s"]))
+            taken.append("webhook")
+        except Exception as error:  # noqa: BLE001
+            errors.append(type(error).__name__)
+            logger.error("The webhook did not take the %s: %s", what, type(error).__name__)
+    if telegram:
+        try:
+            post_telegram(telegram[0], telegram[1], message, float(cfg["timeout_s"]))
+            taken.append("Telegram")
+        except Exception as error:  # noqa: BLE001
+            errors.append(type(error).__name__)
+            logger.error("Telegram did not take the %s: %s", what, type(error).__name__)
+    if not taken:
+        return f"error: {errors[0]}"
+    logger.info("The %s went to %s\n%s", what, " and ".join(taken), message)
+    return "enviado"
+
+
 def read_ensemble(folder: str) -> dict:
     """ensemble.json of the dashboard folder, or None."""
     path = os.path.join(folder or "", "ensemble.json")
@@ -159,19 +260,11 @@ def send(payload: dict, rcfg: dict, ensemble: dict = None) -> str:
     """
     cfg = alert_settings(rcfg)
     message = message_from(payload, cfg["nivel_minimo"], ensemble)
+    if not message and cfg.get("resumen_diario"):
+        message = summary_message(payload, cfg["nivel_minimo"])
     if not message:
         return "sin alerta"
-    url = os.environ.get(cfg["url_env"], "").strip()
-    if not url:
-        logger.info("No %s in the environment: the message is not sent\n%s", cfg["url_env"], message)
-        return "sin url"
-    try:
-        status = post(url, message, cfg["campo"], float(cfg["timeout_s"]))
-    except Exception as error:  # noqa: BLE001
-        logger.error("The webhook did not take the message: %s", type(error).__name__)
-        return f"error: {type(error).__name__}"
-    logger.info("Message of the evening sent (HTTP %s)\n%s", status, message)
-    return "enviado"
+    return deliver(message, cfg, "message of the evening")
 
 
 def storm_message(payload: dict) -> str:
@@ -222,15 +315,9 @@ def send_storm(payload: dict, rcfg: dict, state_path: str, now: datetime = None)
     if not due:
         return "ya avisado"
     message = storm_message({**payload, "distribuidoras": due})
-    url = os.environ.get(cfg["url_env"], "").strip()
-    if not url:
-        logger.info("No %s in the environment: the storm message is not sent\n%s", cfg["url_env"], message)
-        return "sin url"
-    try:
-        post(url, message, cfg["campo"], float(cfg["timeout_s"]))
-    except Exception as error:  # noqa: BLE001
-        logger.error("The webhook did not take the storm message: %s", type(error).__name__)
-        return f"error: {type(error).__name__}"
+    result = deliver(message, cfg, "storm message")
+    if result != "enviado":
+        return result
     for d in due:
         state[str(d.get("id"))] = now.isoformat(timespec="seconds")
     if state_path:
@@ -238,7 +325,6 @@ def send_storm(payload: dict, rcfg: dict, state_path: str, now: datetime = None)
             write_state(state_path, state)
         except OSError as error:
             logger.warning("Storm state not written in %s: %s", state_path, error)
-    logger.info("Storm message sent\n%s", message)
     return "enviado"
 
 
@@ -346,21 +432,14 @@ def send_morning(folder: str, rcfg: dict, state_path: str, now: datetime = None)
     message = morning_message(verification, risk, today)
     if not message:
         return "sin datos"
-    url = os.environ.get(cfg["url_env"], "").strip()
-    if not url:
-        logger.info("No %s in the environment: the morning report is not sent\n%s", cfg["url_env"], message)
-        return "sin url"
-    try:
-        post(url, message, cfg["campo"], float(cfg["timeout_s"]))
-    except Exception as error:  # noqa: BLE001
-        logger.error("The webhook did not take the morning report: %s", type(error).__name__)
-        return f"error: {type(error).__name__}"
+    result = deliver(message, cfg, "morning report")
+    if result != "enviado":
+        return result
     if state_path:
         try:
             write_state(state_path, {"enviado": today})
         except OSError as error:
             logger.warning("Morning state not written in %s: %s", state_path, error)
-    logger.info("Morning report sent\n%s", message)
     return "enviado"
 
 
@@ -389,23 +468,47 @@ def failure_message(context: dict) -> str:
 
 
 def notify_failure(context: dict) -> str:
-    """on_failure_callback of the DAGs: the failure goes to the same webhook as the message of the evening; silent without URL."""
-    url = os.environ.get(DEFAULTS["url_env"], "").strip()
+    """on_failure_callback of the DAGs: the failure goes to the same channels as the message of the evening; silent without them."""
     message = failure_message(context)
-    if not url:
-        logger.warning("Task failed and no %s to tell it: %s", DEFAULTS["url_env"], message)
+    if not os.environ.get(DEFAULTS["url_env"], "").strip() and not telegram_settings():
+        logger.warning("Task failed and no %s nor Telegram to tell it: %s", DEFAULTS["url_env"], message)
         return "sin url"
-    try:
-        post(url, message, DEFAULTS["campo"], float(DEFAULTS["timeout_s"]))
-    except Exception as error:  # noqa: BLE001
-        logger.error("The webhook did not take the failure: %s", type(error).__name__)
-        return f"error: {type(error).__name__}"
-    return "enviado"
+    return deliver(message, DEFAULTS, "failure")
+
+
+def telegram_chats(timeout: float = 30.0) -> list:
+    """The chats that wrote to the bot or added it lately (getUpdates), as (chat_id, type, title): the way to find
+    TELEGRAM_CHAT_ID after adding the bot to the group and writing something there."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("No TELEGRAM_BOT_TOKEN in the environment")
+    with urllib.request.urlopen(f"{TELEGRAM_API}/bot{token}/getUpdates", timeout=timeout) as answer:
+        updates = json.load(answer).get("result", [])
+    seen = {}
+    for update in updates:
+        for key in ("message", "my_chat_member", "channel_post", "edited_message"):
+            chat = (update.get(key) or {}).get("chat")
+            if chat:
+                seen[chat["id"]] = (chat["id"], chat.get("type", ""), chat.get("title") or chat.get("username") or chat.get("first_name") or "")
+    return list(seen.values())
 
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    if argv and argv[0] == "--telegram-chats":
+        chats = telegram_chats()
+        for chat_id, kind, title in chats:
+            print(f"{chat_id}\t{kind}\t{title}")
+        if not chats:
+            print("El bot no ha visto ningún chat: añádelo al grupo, escribe algo en el grupo y vuelve a probar.")
+        return 0
+    if argv and argv[0] == "--prueba":
+        result = deliver("GridPredic: mensaje de prueba de los avisos. Si lo lees aquí, este canal recibirá la tarde, "
+                         f"el parte de la mañana, los avisos nuevos, los rayos y los fallos. Cuadro de mando: {DASHBOARD_URL}",
+                         DEFAULTS, "test message")
+        print(result)
+        return 0 if result == "enviado" else 1
     path = argv[0] if argv else "/app/dashboard/data/riesgo.json"
     with open(path, encoding="utf-8") as file:
         payload = json.load(file)
