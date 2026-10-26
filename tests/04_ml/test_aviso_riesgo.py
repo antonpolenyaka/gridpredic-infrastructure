@@ -270,3 +270,35 @@ def test_long_texts_are_cut_for_telegram_at_line_ends():
     text = "\n".join("x" * 100 for _ in range(90))
     pieces = av.chunks(text, 1000)
     assert all(len(p) <= 1000 for p in pieces) and "\n".join(pieces) == text
+
+
+def test_the_bot_answers_the_commands_of_the_group_only(monkeypatch, tmp_path):
+    import bot_telegram as bt
+
+    folder = tmp_path / "data"
+    folder.mkdir()
+    (folder / "riesgo.json").write_text(json.dumps(PAYLOAD), encoding="utf-8")
+    monkeypatch.setattr(av, "STATE_DIR", str(tmp_path / "estado"))
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100200")
+    updates = [
+        {"update_id": 10, "message": {"chat": {"id": -100200}, "text": "/tarde@gridpredic_avisos_bot"}},
+        {"update_id": 11, "message": {"chat": {"id": 555}, "text": "/tarde"}},
+        {"update_id": 12, "message": {"chat": {"id": -100200}, "text": "hola"}},
+        {"update_id": 13, "message": {"chat": {"id": -100200}, "text": "/ultimo", "message_thread_id": 7}},
+    ]
+    asked = []
+    monkeypatch.setattr(bt, "get_updates", lambda token, offset=None, timeout=30.0: asked.append(offset) or (updates if offset is None else []))
+    sent = []
+    monkeypatch.setattr(av, "post_telegram", lambda token, chat, text, timeout=30.0, thread_id=None: sent.append((chat, text, thread_id)) or 200)
+    assert bt.poll(str(folder), {}) == [("tarde", "enviado"), ("ultimo", "enviado")]
+    assert sent[0][0] == "-100200" and sent[0][1].startswith("Riesgo de interrupción de mañana 15.01.2026:")
+    # nothing sent yet: /ultimo shows how the evening would be, in the topic it was asked in
+    assert sent[1][1].startswith("Todavía no se ha enviado ningún aviso") and sent[1][2] == 7
+    # the next read starts after the last update, so nothing is answered twice
+    assert bt.poll(str(folder), {}) == [] and asked == [None, 14]
+    # once a message has been sent, /ultimo repeats it
+    av.remember("Rayos sobre la red", "storm message")
+    assert bt.answer("ultimo", str(folder), {}).splitlines()[1] == "Rayos sobre la red"
+    assert bt.command_of("/manana extra") == "manana" and bt.command_of("tarde") == "" and bt.answer("otra", str(folder), {}) == ""
+    assert "/rayos" in bt.answer("ayuda", str(folder), {}) and "falta rayos.json" in bt.answer("rayos", str(folder), {})

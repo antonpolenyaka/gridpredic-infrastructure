@@ -40,10 +40,13 @@ GUARD_LEVELS = ("alto", "muy alto")
 
 
 def write_state(path: str, state: dict) -> None:
-    """A state file of the dashboard folder, replaced atomically (riesgo_zonas.write_json_atomic)."""
-    import riesgo_zonas
+    """A state file, replaced atomically (escritura_atomica.write_json_atomic of the Landing, only the standard library)."""
+    landing = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "00_landing")
+    if landing not in sys.path:
+        sys.path.append(landing)
+    from escritura_atomica import write_json_atomic
 
-    riesgo_zonas.write_json_atomic(path, state)
+    write_json_atomic(path, state, ensure_ascii=False)
 
 
 def guard_advice(level: str, wind: float, storm: float) -> dict:
@@ -175,6 +178,9 @@ def post(url: str, message: str, field: str = "text", timeout: float = 30.0) -> 
 
 
 TELEGRAM_API = "https://api.telegram.org"
+# Where the last message sent is kept, for the /ultimo command of the Telegram group (bot_telegram.py): out of
+# dashboard/data on purpose, because that folder is served and copied to the public demo.
+STATE_DIR = os.environ.get("AVISO_ESTADO_DIR", "/opt/airflow/logs/telegram")
 TELEGRAM_MAX = 4000  # sendMessage takes up to 4096 characters; longer texts go in several messages
 
 
@@ -196,12 +202,15 @@ def chunks(message: str, size: int = TELEGRAM_MAX) -> list:
     return out + ([rest] if rest else [])
 
 
-def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0) -> int:
+def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0, thread_id: int = None) -> int:
     """sendMessage of the Telegram Bot API, as plain text and without link previews; returns the last HTTP status.
     The token is part of the URL, so neither goes to the log."""
     status = 0
     for piece in chunks(message):
-        body = json.dumps({"chat_id": chat_id, "text": piece, "disable_web_page_preview": True}, ensure_ascii=False).encode("utf-8")
+        fields = {"chat_id": chat_id, "text": piece, "disable_web_page_preview": True}
+        if thread_id:
+            fields["message_thread_id"] = thread_id
+        body = json.dumps(fields, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(f"{TELEGRAM_API}/bot{token}/sendMessage", data=body,
                                          headers={"Content-Type": "application/json", "User-Agent": "GridPredic-TFM/1.0"})
         with urllib.request.urlopen(request, timeout=timeout) as answer:
@@ -238,7 +247,19 @@ def deliver(message: str, cfg: dict, what: str = "message") -> str:
     if not taken:
         return f"error: {errors[0]}"
     logger.info("The %s went to %s\n%s", what, " and ".join(taken), message)
+    if what != "test message":
+        remember(message, what)
     return "enviado"
+
+
+def remember(message: str, what: str) -> None:
+    """Keeps the last message sent (ultimo.json in STATE_DIR); a folder that cannot be written is only a warning."""
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        write_state(os.path.join(STATE_DIR, "ultimo.json"),
+                    {"texto": message, "que": what, "cuando": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Last message not kept in %s: %s", STATE_DIR, type(error).__name__)
 
 
 def read_ensemble(folder: str) -> dict:
