@@ -378,7 +378,8 @@ def test_the_evening_goes_to_telegram_as_one_message_per_network():
     pieces = av.split_by_network(av.summary_message(calm, "alto"))
     assert len(pieces) == 3
     first, second, last = (p.split("\n") for p in pieces)
-    assert first[0] == second[0] == "Riesgo de interrupción de mañana 21.10.2026: guardia normal en todas las redes."
+    assert first[0] == "Riesgo de interrupción de mañana 21.10.2026: guardia normal en todas las redes."
+    assert second[0].startswith("- Distribuidora 2: BAJO") and "Riesgo de interrupción" not in pieces[1]
     assert first[1].startswith("- Distribuidora 1: MEDIO") and "Distribuidora 2" not in pieces[0] and "Pasado mañana" not in pieces[0]
     assert first[-1] == "Cuadro de mando: http://localhost:8086#distribuidora-1" and second[-1] == "Cuadro de mando: http://localhost:8086#distribuidora-2"
     # the day after tomorrow and the rules, apart and at the end, with the general link
