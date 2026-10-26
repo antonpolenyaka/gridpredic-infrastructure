@@ -24,6 +24,53 @@
   .causas .v { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
   .mapa-panel .panel-b, .perfil-panel .panel-b { padding-top: var(--s-2); }
   .perfil-panel .verificacion { margin-top: var(--s-3); }
+  /* The day selector of the header: the date is a button that opens a month calendar of the days with a saved risk,
+     each one in the tint of the worst level of its networks (the tints of the calendar of Día a día). The calendar
+     hangs from the body, because the header clips what goes out of it and the map would cover it. */
+  :root { --cal-bajo: #dde3ea; --cal-medio: #f4cf4f; --cal-alto: #e0741f; --cal-muy-alto: #86202f;
+          --cal-bajo-ink: #1b2430; --cal-medio-ink: #1b2430; --cal-alto-ink: #1b2430; --cal-muy-alto-ink: #ffffff; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cal-bajo: #323f49; --cal-medio: #6e561f; --cal-alto: #fb7309; --cal-muy-alto: #fca3ac;
+          --cal-bajo-ink: #e7ecf3; --cal-medio-ink: #f6f0dc; --cal-alto-ink: #0b1017; --cal-muy-alto-ink: #0b1017; } }
+  :root[data-theme="dark"] { --cal-bajo: #323f49; --cal-medio: #6e561f; --cal-alto: #fb7309; --cal-muy-alto: #fca3ac;
+          --cal-bajo-ink: #e7ecf3; --cal-medio-ink: #f6f0dc; --cal-alto-ink: #0b1017; --cal-muy-alto-ink: #0b1017; }
+  button.fecha-chip { border: 1px solid transparent; font-family: inherit; cursor: default; }
+  button.fecha-chip svg { width: 15px; height: 15px; flex: none; }
+  button.fecha-chip .caret { width: 11px; height: 11px; transition: transform var(--t-fast) var(--ease); }
+  button.fecha-chip:not([data-activo]) svg { display: none; }
+  button.fecha-chip[data-activo] { cursor: pointer; }
+  button.fecha-chip[data-activo]:hover { border-color: var(--accent); }
+  button.fecha-chip:focus-visible { outline: none; box-shadow: var(--focus); }
+  button.fecha-chip[aria-expanded="true"] { border-color: var(--accent); }
+  button.fecha-chip[aria-expanded="true"] .caret { transform: rotate(180deg); }
+  .calendario { position: absolute; z-index: 1100; width: 312px; max-width: calc(100vw - 32px); padding: var(--s-3) var(--s-4) var(--s-4);
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line-strong); border-radius: var(--r-2); box-shadow: var(--shadow); font-size: var(--fs-1); }
+  .calendario[hidden] { display: none; }
+  .calendario .cal-cab { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); margin-bottom: var(--s-2); }
+  .calendario .cal-cab b { font-size: var(--fs-2); }
+  .calendario .cal-cab button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--fg); cursor: pointer; font: inherit; font-size: 16px; line-height: 1; }
+  .calendario .cal-cab button:disabled { opacity: 0.35; cursor: default; }
+  .calendario .cal-cab button:focus-visible, .calendario a:focus-visible { outline: none; box-shadow: var(--focus); }
+  .calendario .cal-semana, .calendario .cal-dias { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .calendario .cal-semana span { text-align: center; color: var(--faint); font-size: var(--fs-0); padding-bottom: 2px; }
+  .calendario .cal-dias > * { position: relative; display: flex; align-items: center; justify-content: center; height: 34px; border-radius: 7px; font-variant-numeric: tabular-nums; }
+  .calendario .cal-dias .sin { color: var(--faint); opacity: 0.55; }
+  .calendario .cal-dias a { text-decoration: none; font-weight: 600; }
+  .calendario .cal-dias a:hover { filter: brightness(1.08); }
+  .calendario .n0 { background: var(--cal-bajo); color: var(--cal-bajo-ink); }
+  .calendario .n1 { background: var(--cal-medio); color: var(--cal-medio-ink); }
+  .calendario .n2 { background: var(--cal-alto); color: var(--cal-alto-ink); }
+  .calendario .n3 { background: var(--cal-muy-alto); color: var(--cal-muy-alto-ink); }
+  .calendario .cal-dias a.actual { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--fg); }
+  /* Reinforced guard: a small dot in the corner, in the colour of the guard of the rest of the page. */
+  .calendario .cal-dias a.guardia::after { content: ""; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--guardia); box-shadow: 0 0 0 1.5px var(--panel); }
+  .calendario .cal-leyenda { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: var(--s-3); color: var(--muted); font-size: var(--fs-0); }
+  .calendario .cal-leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  .calendario .cal-leyenda i.punto { width: 7px; height: 7px; border-radius: 50%; background: var(--guardia); }
+  .calendario .cal-saltos { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+  .calendario .cal-saltos p { color: var(--muted); font-size: var(--fs-0); margin-bottom: var(--s-2); }
+  .calendario .cal-saltos div { display: flex; flex-wrap: wrap; gap: 6px; }
+  .calendario .cal-saltos a { padding: 3px 9px; border-radius: 999px; font-size: var(--fs-0); font-weight: 600; text-decoration: none; font-variant-numeric: tabular-nums; }
+  .calendario .cal-pie { margin-top: var(--s-3); color: var(--muted); font-size: var(--fs-0); }
   /* On a phone the tables of the last days keep a narrow date column and readable cells, and scroll sideways. */
   @media (max-width: 560px) {
     #diario th:first-child, #diario td:first-child, section.seguimiento th:first-child, section.seguimiento td:first-child { min-width: 96px; }
@@ -45,7 +92,7 @@
 <header class="page">
   <div class="aurora" data-parallax-layer aria-hidden="true"></div>
   <div class="page-top">
-    <div class="titulo"><h1 id="titulo">Riesgo de mañana</h1><span class="fecha-chip" id="fecha-chip" style="display:none"></span></div>
+    <div class="titulo"><h1 id="titulo">Riesgo de mañana</h1><button type="button" class="fecha-chip" id="fecha-boton" aria-haspopup="dialog" aria-expanded="false" aria-controls="calendario" style="display:none"><svg class="noimprimir" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 10h17M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span id="fecha-chip"></span><svg class="caret noimprimir" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
     <div class="acciones" id="acciones"></div>
   </div>
   <div class="strip" id="guardia" style="display:none"></div>
@@ -142,7 +189,7 @@
     const titulo = document.getElementById("titulo"), chip = document.getElementById("fecha-chip");
     titulo.textContent = DIA ? "Riesgo visto la tarde anterior" : cuando;
     chip.textContent = `${diaSemana(data.fecha)} ${data.fecha_texto || data.fecha}`.trim();
-    chip.style.display = "";
+    document.getElementById("fecha-boton").style.display = "";
     let aviso = document.getElementById("vejez");
     if (!aviso) { aviso = document.createElement("div"); aviso.id = "vejez"; aviso.className = "rayos vejez"; document.getElementById("main").insertAdjacentElement("beforebegin", aviso); }
     if (DIA) {
@@ -839,6 +886,80 @@
     if (!DIA) setInterval(() => { nuevaEjecucion(); cargarRayos(data); cargarObservado(data); }, 5 * 60 * 1000);
   }
 
+  // The day selector of the header. The date of the page opens a calendar of the days with a saved risk
+  // (data/indice.json), each one in the tint of the worst level of its networks and with a dot when the guard was
+  // reinforced; a day reloads the page with ?dia=, and the day in vivo goes back to the page without it. The arrows
+  // jump between the months that have days, because the archived days are few and far apart (a few repeated days of
+  // 2025 and 2026 and the evenings since 14.10.2026). Below, the last twelve days of high or very high risk, to show
+  // them in one click. Without an index the date stays as it was, a label.
+  const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  function selectorDia(idx, actual) {
+    const days = ((idx && idx.dias) || []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha || "")) && /^\d{8}$/.test(String(d.dia || "")));
+    const boton = document.getElementById("fecha-boton");
+    if (!boton || !days.length) return;
+    days.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+    const porFecha = {};
+    for (const d of days) porFecha[d.fecha] = d;
+    const vivo = idx.vivo && idx.vivo.fecha;
+    const meses = [...new Set(days.map((d) => d.fecha.slice(0, 7)))];
+    let mes = (porFecha[actual] ? actual : days[days.length - 1].fecha).slice(0, 7);
+    const peor = (d) => (d.distribuidoras || []).reduce((w, x) => Math.max(w, ORDEN[x.nivel] == null ? 0 : ORDEN[x.nivel]), 0);
+    const guardia = (d) => (d.distribuidoras || []).some((x) => x.guardia_reforzada);
+    const enlace = (d) => (d.fecha === vivo ? "index.html" : `index.html?dia=${encodeURIComponent(d.dia)}`);
+    const texto = (d) => `${diaSemana(d.fecha)} ${d.fecha_texto || d.fecha}: `
+      + ordenar(d.distribuidoras).map((x) => `${x.nombre} ${x.nivel || "?"} ${pct(x.probabilidad)}`).join(", ")
+      + (guardia(d) ? "; guardia reforzada" : "") + (d.repetido ? "; día repetido con la previsión guardada" : d.fecha === vivo ? "; el último riesgo" : "");
+    const pop = document.createElement("div");
+    pop.id = "calendario";
+    pop.className = "calendario";
+    pop.setAttribute("role", "dialog");
+    pop.setAttribute("aria-label", "Elegir el día del riesgo");
+    pop.hidden = true;
+    document.body.appendChild(pop);
+    function dibujar() {
+      const [y, m] = mes.split("-").map(Number);
+      const offset = (new Date(y, m - 1, 1).getDay() + 6) % 7, total = new Date(y, m, 0).getDate(), i = meses.indexOf(mes);
+      let celdas = "<span></span>".repeat(offset);
+      for (let n = 1; n <= total; n++) {
+        const iso = `${mes}-${String(n).padStart(2, "0")}`, d = porFecha[iso];
+        celdas += d ? `<a class="n${peor(d)}${iso === actual ? " actual" : ""}${guardia(d) ? " guardia" : ""}" href="${esc(enlace(d))}" title="${esc(texto(d))}" aria-label="${esc(texto(d))}"${iso === actual ? ' aria-current="date"' : ""}>${n}</a>`
+          : `<span class="sin">${n}</span>`;
+      }
+      const altos = days.filter((d) => peor(d) >= 2).reverse().slice(0, 12);
+      const saltos = altos.length ? `<div class="cal-saltos"><p>Días de riesgo alto o muy alto</p><div>${altos.map((d) => `<a class="n${peor(d)}" href="${esc(enlace(d))}" title="${esc(texto(d))}">${esc(d.fecha_texto || d.fecha)}</a>`).join("")}</div></div>` : "";
+      pop.innerHTML = `<div class="cal-cab"><button type="button" data-paso="-1" aria-label="Mes anterior con días guardados"${i <= 0 ? " disabled" : ""}>&lsaquo;</button><b>${mayuscula(MESES[m - 1])} ${y}</b><button type="button" data-paso="1" aria-label="Mes siguiente con días guardados"${i >= meses.length - 1 ? " disabled" : ""}>&rsaquo;</button></div>`
+        + `<div class="cal-semana" aria-hidden="true"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div><div class="cal-dias">${celdas}</div>`
+        + `<div class="cal-leyenda"><span>Peor nivel de las redes:</span><span><i class="n0"></i>bajo</span><span><i class="n1"></i>medio</span><span><i class="n2"></i>alto</span><span><i class="n3"></i>muy alto</span><span><i class="punto"></i>guardia reforzada</span></div>`
+        + saltos
+        + `<p class="cal-pie">${days.length} días guardados, del ${esc(days[0].fecha_texto || days[0].fecha)} al ${esc(days[days.length - 1].fecha_texto || days[days.length - 1].fecha)}. <a href="dias.html">Verlos en Días archivados</a></p>`;
+    }
+    function colocar() {
+      const r = boton.getBoundingClientRect(), ancho = pop.offsetWidth;
+      pop.style.top = `${window.scrollY + r.bottom + 8}px`;
+      pop.style.left = `${window.scrollX + Math.max(16, Math.min(r.left, document.documentElement.clientWidth - ancho - 16))}px`;
+    }
+    function abrir(si) {
+      pop.hidden = !si;
+      boton.setAttribute("aria-expanded", si ? "true" : "false");
+      if (si) { dibujar(); colocar(); (pop.querySelector("a.actual") || pop.querySelector(".cal-dias a") || pop).focus(); }
+    }
+    boton.dataset.activo = "1";
+    boton.title = "Elegir otro día";
+    boton.addEventListener("click", () => abrir(pop.hidden));
+    pop.addEventListener("click", (e) => {
+      // The arrows redraw the calendar, so the button clicked is no longer in the page when the click reaches the
+      // document: it stops here, or the document would take it for a click outside and close the calendar.
+      e.stopPropagation();
+      const paso = e.target.closest("button[data-paso]");
+      if (!paso) return;
+      const i = meses.indexOf(mes) + Number(paso.dataset.paso);
+      if (i >= 0 && i < meses.length) { mes = meses[i]; dibujar(); colocar(); pop.querySelector(`button[data-paso="${paso.dataset.paso}"]`).focus(); }
+    });
+    document.addEventListener("click", (e) => { if (!pop.hidden && e.target.isConnected && !pop.contains(e.target) && !boton.contains(e.target)) abrir(false); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !pop.hidden) { abrir(false); boton.focus(); } });
+    window.addEventListener("resize", () => { if (!pop.hidden) colocar(); });
+  }
+
   // ?dia=YYYYMMDD shows an archived or replayed day (riesgo_<dia>.json, with its ensemble and AEMET files when they exist).
   const RAW_DIA = (new URLSearchParams(location.search).get("dia") || "").replace(/[^0-9]/g, "").slice(0, 8);
   const DIA = RAW_DIA.length === 8 ? RAW_DIA : "";
@@ -846,10 +967,9 @@
   // A day replayed from the saved forecast (the job marks it in prevision_pedida, as the index does), and the files
   // that the index lists for an archived day (null when there is no index or the day is not in it).
   let REPETIDO = false, FICHEROS = null;
+  const INDICE = fetch("data/indice.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   function archivo() {
-    return fetch("data/indice.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null))
-      .then((idx) => { const day = ((idx && idx.dias) || []).find((x) => String(x.dia) === DIA); return day && day.ficheros ? day.ficheros : null; })
-      .catch(() => null);
+    return INDICE.then((idx) => { const day = ((idx && idx.dias) || []).find((x) => String(x.dia) === DIA); return day && day.ficheros ? day.ficheros : null; });
   }
   function fallo(html) { document.getElementById("fuentes").innerHTML = `<div><dt>Estado</dt><dd>${html}</dd></div>`; document.getElementById("meta").open = true; }
   // The networks always in the same order, by name (Distribuidora 1, 2, 3), whatever the order of the JSON.
@@ -861,6 +981,7 @@
       if (data.pasado_manana) data.pasado_manana.distribuidoras = ordenar(data.pasado_manana.distribuidoras);
       REPETIDO = /repetido|Gold/.test(String((data.fuentes || {}).prevision_pedida || ""));
       try { render(data); } catch (e) { fallo(`No se ha podido pintar ${esc(RIESGO)} (${esc(e)}). Vuelve a cargar la página; si sigue igual, el fichero está incompleto.`); }
+      INDICE.then((idx) => { try { selectorDia(idx, data.fecha); } catch (e) { /* without the selector the date stays a label */ } });
     }, () => fallo(DIA
       ? `No hay riesgo guardado para el ${DIA.slice(6, 8)}.${DIA.slice(4, 6)}.${DIA.slice(0, 4)} (falta ${esc(RIESGO)}). Los días guardados están en <a href="dias.html">Días archivados</a>.`
       : `Todavía no hay riesgo (falta ${esc(RIESGO)}). Lo deja la ejecución de las 20:30: mira dag_riesgo_manana en <a href="http://localhost:8084" target="_blank" rel="noopener">Airflow</a>.`));
