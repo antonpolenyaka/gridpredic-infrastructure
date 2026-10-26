@@ -272,7 +272,7 @@ def test_long_texts_are_cut_for_telegram_at_line_ends():
     assert all(len(p) <= 1000 for p in pieces) and "\n".join(pieces) == text
 
 
-def test_the_bot_answers_the_commands_of_the_group_only(monkeypatch, tmp_path):
+def test_the_bot_answers_the_group_and_its_members_in_private(monkeypatch, tmp_path):
     import bot_telegram as bt
 
     folder = tmp_path / "data"
@@ -281,24 +281,33 @@ def test_the_bot_answers_the_commands_of_the_group_only(monkeypatch, tmp_path):
     monkeypatch.setattr(av, "STATE_DIR", str(tmp_path / "estado"))
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100200")
+    group = {"id": -100200, "type": "supergroup"}
     updates = [
-        {"update_id": 10, "message": {"chat": {"id": -100200}, "text": "/tarde@gridpredic_avisos_bot"}},
-        {"update_id": 11, "message": {"chat": {"id": 555}, "text": "/tarde"}},
-        {"update_id": 12, "message": {"chat": {"id": -100200}, "text": "hola"}},
-        {"update_id": 13, "message": {"chat": {"id": -100200}, "text": "/ultimo", "message_thread_id": 7}},
+        {"update_id": 10, "message": {"chat": group, "text": "/forecast@gridpredic_avisos_bot"}},
+        {"update_id": 11, "message": {"chat": {"id": 555, "type": "group"}, "text": "/forecast"}},
+        {"update_id": 12, "message": {"chat": group, "text": "hola"}},
+        {"update_id": 13, "message": {"chat": group, "text": "/last", "message_thread_id": 7}},
+        {"update_id": 14, "message": {"chat": {"id": 42, "type": "private"}, "from": {"id": 42}, "text": "Riesgo de mañana"}},
+        {"update_id": 15, "message": {"chat": {"id": 99, "type": "private"}, "from": {"id": 99}, "text": "/start"}},
     ]
     asked = []
     monkeypatch.setattr(bt, "get_updates", lambda token, offset=None, timeout=30.0: asked.append(offset) or (updates if offset is None else []))
+    monkeypatch.setattr(bt, "is_member", lambda token, group_id, user_id, timeout=30.0: user_id == 42)
     sent = []
-    monkeypatch.setattr(av, "post_telegram", lambda token, chat, text, timeout=30.0, thread_id=None: sent.append((chat, text, thread_id)) or 200)
-    assert bt.poll(str(folder), {}) == [("tarde", "enviado"), ("ultimo", "enviado")]
-    assert sent[0][0] == "-100200" and sent[0][1].startswith("Riesgo de interrupción de mañana 15.01.2026:")
-    # nothing sent yet: /ultimo shows how the evening would be, in the topic it was asked in
+    monkeypatch.setattr(av, "post_telegram", lambda token, chat, text, timeout=30.0, thread_id=None, markup=None: sent.append((chat, text, thread_id, markup)) or 200)
+    assert bt.poll(str(folder), {}) == [("forecast", "enviado"), ("last", "enviado"), ("forecast", "enviado"), ("start", "enviado")]
+    assert sent[0][0] == "-100200" and sent[0][1].startswith("Riesgo de interrupción de mañana 15.01.2026:") and sent[0][3] is None
+    # nothing sent yet: /last shows how the evening would be, in the topic it was asked in
     assert sent[1][1].startswith("Todavía no se ha enviado ningún aviso") and sent[1][2] == 7
+    # a member in private, with a button: the same text and the keyboard; a stranger, only that the bot is not for him
+    assert sent[2][0] == "42" and sent[2][1].startswith("Riesgo de interrupción") and sent[2][3] == bt.KEYBOARD
+    assert sent[3][0] == "99" and "solo contesta a los miembros" in sent[3][1] and sent[3][3] is None
     # the next read starts after the last update, so nothing is answered twice
-    assert bt.poll(str(folder), {}) == [] and asked == [None, 14]
-    # once a message has been sent, /ultimo repeats it
+    assert bt.poll(str(folder), {}) == [] and asked == [None, 16]
+    # once a message has been sent, /last repeats it
     av.remember("Rayos sobre la red", "storm message")
-    assert bt.answer("ultimo", str(folder), {}).splitlines()[1] == "Rayos sobre la red"
-    assert bt.command_of("/manana extra") == "manana" and bt.command_of("tarde") == "" and bt.answer("otra", str(folder), {}) == ""
-    assert "/rayos" in bt.answer("ayuda", str(folder), {}) and "falta rayos.json" in bt.answer("rayos", str(folder), {})
+    assert bt.answer("last", str(folder), {}).splitlines()[1] == "Rayos sobre la red"
+    assert bt.command_of("/morning extra") == "morning" and bt.command_of("Rayos") == "lightning" and bt.command_of("tarde") == ""
+    assert bt.answer("otra", str(folder), {}) == "" and "/lightning" in bt.answer("help", str(folder), {})
+    assert "falta rayos.json" in bt.answer("lightning", str(folder), {})
+    assert all(c in bt.COMMANDS for c in bt.BUTTONS.values())

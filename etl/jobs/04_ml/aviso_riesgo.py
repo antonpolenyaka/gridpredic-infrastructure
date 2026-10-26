@@ -178,7 +178,7 @@ def post(url: str, message: str, field: str = "text", timeout: float = 30.0) -> 
 
 
 TELEGRAM_API = "https://api.telegram.org"
-# Where the last message sent is kept, for the /ultimo command of the Telegram group (bot_telegram.py): out of
+# Where the last message sent is kept, for the /last command of the Telegram bot (bot_telegram.py): out of
 # dashboard/data on purpose, because that folder is served and copied to the public demo.
 STATE_DIR = os.environ.get("AVISO_ESTADO_DIR", "/opt/airflow/logs/telegram")
 TELEGRAM_MAX = 4000  # sendMessage takes up to 4096 characters; longer texts go in several messages
@@ -202,7 +202,7 @@ def chunks(message: str, size: int = TELEGRAM_MAX) -> list:
     return out + ([rest] if rest else [])
 
 
-def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0, thread_id: int = None) -> int:
+def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0, thread_id: int = None, markup: dict = None) -> int:
     """sendMessage of the Telegram Bot API, as plain text and without link previews; returns the last HTTP status.
     The token is part of the URL, so neither goes to the log."""
     status = 0
@@ -210,6 +210,8 @@ def post_telegram(token: str, chat_id: str, message: str, timeout: float = 30.0,
         fields = {"chat_id": chat_id, "text": piece, "disable_web_page_preview": True}
         if thread_id:
             fields["message_thread_id"] = thread_id
+        if markup:
+            fields["reply_markup"] = markup
         body = json.dumps(fields, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(f"{TELEGRAM_API}/bot{token}/sendMessage", data=body,
                                          headers={"Content-Type": "application/json", "User-Agent": "GridPredic-TFM/1.0"})

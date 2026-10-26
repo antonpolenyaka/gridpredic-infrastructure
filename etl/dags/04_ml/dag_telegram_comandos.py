@@ -1,10 +1,11 @@
 """
 The commands of the Telegram group, every minute.
 
-One task, atender, that reads the new messages of the bot (bot_telegram.poll) and answers in the group the
-commands /tarde, /manana, /rayos, /avisos, /ultimo and /ayuda with the message built at that moment from the
-files of the dashboard, so a message can be seen or shown without waiting for its hour. Only the chat of
-TELEGRAM_CHAT_ID is answered. Python in the airflow container, without Spark: it does not compete with the
+One task, atender, that reads the new messages of the bot (bot_telegram.poll) and answers the commands
+/forecast, /morning, /lightning, /warnings, /last and /help, typed in the group or pressed as buttons in a private
+chat with the bot, with the message built at that moment from the files of the dashboard, so a message can be
+seen or shown without waiting for its hour. Only the group of TELEGRAM_CHAT_ID and, in private, its members are
+answered. Python in the airflow container, without Spark: it does not compete with the
 evening. Without TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID the run is skipped. A failed run is not told to the
 group (it would be one message a minute): the next run tries again.
 """
@@ -42,7 +43,7 @@ def atender() -> None:
 
 with DAG(
     dag_id="dag_telegram_comandos",
-    description="Órdenes del grupo de Telegram (/tarde, /manana, /rayos, /avisos, /ultimo, /ayuda)",
+    description="Órdenes del bot de Telegram (/forecast, /morning, /lightning, /warnings, /last, /help), en el grupo o con botones en privado",
     schedule=CronTriggerTimetable("* * * * *", timezone=ZONE),
     catchup=False,
     max_active_runs=1,

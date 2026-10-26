@@ -1,23 +1,24 @@
 """
-The commands of the Telegram group: whoever is in the group of TELEGRAM_CHAT_ID asks the bot for a message and the
-bot answers in the group with the same text the operation sends, built at that moment from the files of the
-dashboard. It is the way to see a message without waiting for its hour (the evening at 20:30, the morning at
-07:20) and to show it.
+The commands of the Telegram bot: whoever is in the group of TELEGRAM_CHAT_ID asks the bot for a message and the
+bot answers with the same text the operation sends, built at that moment from the files of the dashboard. It is
+the way to see a message without waiting for its hour (the evening at 20:30, the morning at 07:20) and to show it.
 
-    /tarde    the risk of tomorrow as the evening sends it (with the detail of each network in alert, or the summary)
-    /manana   the morning report: yesterday against what the stations measured, and today
-    /rayos    the lightning of the last hour by network
-    /avisos   the warnings of AEMET of today and the guard
-    /ultimo   the last message the system sent, again (or the evening, if it has sent none yet)
-    /ayuda    this list
+    /forecast   the risk of tomorrow as the evening sends it (with the detail of each network in alert, or the summary)
+    /morning    the morning report: yesterday against what the stations measured, and today
+    /lightning  the lightning of the last hour by network
+    /warnings   the warnings of AEMET of today and the guard
+    /last       the last message the system sent, again (or the evening, if it has sent none yet)
+    /help       this list
 
-Only the chat of TELEGRAM_CHAT_ID is answered; a command from anywhere else is ignored. dag_telegram_comandos
-reads the new messages every minute (getUpdates, with the last update read kept in STATE_DIR), so the answer
-takes up to a minute. Without TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID it does nothing.
+In the group the commands are typed. In a private chat with the bot there is also a menu of buttons (a reply
+keyboard) with the same messages, so nothing has to be typed; the bot answers there only to the members of the
+group (getChatMember), and to anyone else it says so. A command from any other group is ignored.
+dag_telegram_comandos reads the new messages every minute (getUpdates, with the last update read kept in
+STATE_DIR), so the answer takes up to a minute. Without TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID it does nothing.
 
-    python bot_telegram.py                 # reads the new commands once and answers them
-    python bot_telegram.py --enviar tarde  # sends that message to the group now, without a command
-    python bot_telegram.py --registrar     # registers the list of commands, so Telegram suggests them after "/"
+    python bot_telegram.py                    # reads the new commands once and answers them
+    python bot_telegram.py --enviar forecast  # sends that message to the group now, without a command
+    python bot_telegram.py --registrar        # registers the list of commands, so Telegram suggests them after "/"
 """
 
 import json
@@ -34,13 +35,25 @@ import aviso_riesgo as av  # noqa: E402
 logger = logging.getLogger("bot_telegram")
 
 COMMANDS = {
-    "tarde": "el riesgo de mañana, como sale a las 20:30",
-    "manana": "el parte de la mañana",
-    "rayos": "los rayos de la última hora",
-    "avisos": "los avisos de AEMET de hoy",
-    "ultimo": "repite el último aviso enviado",
-    "ayuda": "qué puede pedir el grupo",
+    "forecast": "el riesgo de mañana, como sale a las 20:30",
+    "morning": "el parte de la mañana",
+    "lightning": "los rayos de la última hora",
+    "warnings": "los avisos de AEMET de hoy",
+    "last": "repite el último aviso enviado",
+    "help": "qué se le puede pedir al bot",
 }
+# The buttons of the private chat: what each one says and the command it stands for.
+BUTTONS = {
+    "Riesgo de mañana": "forecast",
+    "Parte de la mañana": "morning",
+    "Rayos": "lightning",
+    "Avisos de AEMET": "warnings",
+    "Último aviso": "last",
+    "Ayuda": "help",
+}
+KEYBOARD = {"keyboard": [["Riesgo de mañana", "Parte de la mañana"], ["Rayos", "Avisos de AEMET"], ["Último aviso", "Ayuda"]],
+            "resize_keyboard": True, "is_persistent": True}
+MEMBER_STATES = ("creator", "administrator", "member", "restricted")
 CONFIG_PATH = "/opt/airflow/config/04_ml/config_ml.json"
 
 
@@ -99,33 +112,49 @@ def last_text(folder: str, rcfg: dict) -> str:
 
 
 def help_text() -> str:
-    return "GridPredic responde a estas órdenes en el grupo (tarda hasta un minuto):\n" + "\n".join(f"/{k} - {v}" for k, v in COMMANDS.items())
+    return ("GridPredic contesta a estas órdenes, en el grupo o en privado (tarda hasta un minuto):\n"
+            + "\n".join(f"/{k} - {v}" for k, v in COMMANDS.items())
+            + "\nEn privado también están los botones de abajo.")
 
 
 def answer(command: str, folder: str, rcfg: dict, now: datetime = None) -> str:
     """The text for a command (without the slash), or "" when it is not one of COMMANDS."""
     now = now or datetime.now(timezone.utc)
-    if command == "tarde":
+    if command == "forecast":
         return evening_text(folder, rcfg)
-    if command == "manana":
+    if command == "morning":
         return morning_text(folder, rcfg, now)
-    if command == "rayos":
+    if command == "lightning":
         return lightning_text(folder)
-    if command == "avisos":
+    if command == "warnings":
         return warnings_text(folder)
-    if command == "ultimo":
+    if command == "last":
         return last_text(folder, rcfg)
-    if command in ("ayuda", "start", "help"):
+    if command in ("help", "start"):
         return help_text()
     return ""
 
 
 def command_of(text: str) -> str:
-    """'/tarde@gridpredic_avisos_bot hoy' -> 'tarde'; '' for a text that is not a command."""
+    """'/forecast@gridpredic_avisos_bot hoy' -> 'forecast', a button -> its command; '' for anything else."""
     text = (text or "").strip()
+    if text in BUTTONS:
+        return BUTTONS[text]
     if not text.startswith("/"):
         return ""
     return text.split()[0][1:].split("@")[0].lower()
+
+
+def is_member(token: str, group: str, user_id, timeout: float = 30.0) -> bool:
+    """Whether the user is in the group (getChatMember); False when Telegram does not say."""
+    try:
+        url = f"{av.TELEGRAM_API}/bot{token}/getChatMember?chat_id={group}&user_id={int(user_id)}"
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            status = (json.load(response).get("result") or {}).get("status")
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Telegram did not say whether %s is in the group: %s", user_id, type(error).__name__)
+        return False
+    return status in MEMBER_STATES
 
 
 def get_updates(token: str, offset: int = None, timeout: float = 30.0) -> list:
@@ -151,14 +180,22 @@ def poll(folder: str, rcfg: dict, now: datetime = None) -> list:
     for update in updates:
         state["offset"] = int(update["update_id"]) + 1
         message = update.get("message") or update.get("channel_post") or {}
-        if str((message.get("chat") or {}).get("id")) != str(chat):
+        where = message.get("chat") or {}
+        private = where.get("type") == "private"
+        if not private and str(where.get("id")) != str(chat):
             continue
         command = command_of(message.get("text"))
-        text = answer(command, folder, rcfg, now) if command else ""
+        if not command:
+            continue
+        if private and not is_member(token, chat, (message.get("from") or {}).get("id")):
+            text, markup = "Este bot solo contesta a los miembros del grupo de la guardia de GridPredic.", None
+        else:
+            text = answer(command, folder, rcfg, now)
+            markup = KEYBOARD if private else None
         if not text:
             continue
         try:
-            av.post_telegram(token, chat, text, 30.0, message.get("message_thread_id"))
+            av.post_telegram(token, str(where.get("id")), text, 30.0, message.get("message_thread_id"), markup)
             done.append((command, "enviado"))
         except Exception as error:  # noqa: BLE001
             logger.error("Telegram did not take the answer to /%s: %s", command, type(error).__name__)
