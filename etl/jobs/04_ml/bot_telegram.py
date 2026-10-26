@@ -75,7 +75,7 @@ def evening_text(folder: str, rcfg: dict, now: datetime = None) -> str:
         return "Todavía no hay riesgo calculado (falta riesgo.json): lo deja la tarde de las 20:30."
     cfg = av.alert_settings(rcfg)
     text = (av.message_from(risk, cfg["nivel_minimo"], av.read_ensemble(folder))
-            or av.summary_message(risk, cfg["nivel_minimo"]))
+            or av.summary_message(risk, cfg["nivel_minimo"], av.read_ensemble(folder)))
     zone = ZoneInfo(rcfg.get("zona_horaria", "Europe/Madrid"))
     today = (now or datetime.now(timezone.utc)).astimezone(zone).strftime("%Y-%m-%d")
     if str(risk.get("fecha", "")) == today:

@@ -141,7 +141,7 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         # One line per distribuidora with the level and the guard, and under it one short line per thing, so the
         # message reads on a phone (Telegram) as well as in Slack or Teams.
         head = (f"- {d.get('nombre')}: {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %, "
-                f"{dec(d.get('veces_tasa_base'), 1)} veces su tasa base)")
+                f"{dec(d.get('veces_tasa_base'), 1)} veces su tasa base)" + (" " + icons_of(d) if icons_of(d) else ""))
         guard = d.get("guardia") or {}
         if guard.get("reforzar"):
             head += f"; guardia reforzada ({guard.get('motivo', '')})"
@@ -180,21 +180,18 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
     return "\n".join(lines)
 
 
-def summary_message(payload: dict, minimum: str = "alto") -> str:
+def summary_message(payload: dict, minimum: str = "alto", ensemble: dict = None) -> str:
     """
-    The short text of an evening with no distribuidora in alert, for aviso.resumen_diario: the level and
-    probability of every network and that the guard stays normal, so the group knows the evening ran.
+    The text of an evening with no distribuidora in alert, for aviso.resumen_diario: the same detail of every
+    network as an evening in alert (level, what stands out, expected failures, window, lines, crews, reasons,
+    scenarios and AEMET), under a first line that says the guard stays normal, so the group knows the evening
+    ran and what it saw.
     """
-    nets = sorted(payload.get("distribuidoras", []), key=lambda d: str(d.get("nombre", "")))
-    if not nets:
+    if not payload.get("distribuidoras"):
         return ""
-    lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}: guardia normal en todas las redes."]
-    lines += [f"- {d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)" + (" " + icons_of(d) if icons_of(d) else "") + "." for d in nets]
-    outlook = outlook_line(payload, minimum)
-    if outlook:
-        lines.append(outlook)
-    lines.append(f"Cuadro de mando: {DASHBOARD_URL}")
-    return "\n".join(lines)
+    text = message_from(payload, "bajo", ensemble)
+    head = f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}:"
+    return text.replace(head, head[:-1] + ": guardia normal en todas las redes.", 1)
 
 
 def outlook_line(payload: dict, minimum: str = "alto") -> str:
@@ -381,7 +378,7 @@ def send(payload: dict, rcfg: dict, ensemble: dict = None) -> str:
     cfg = alert_settings(rcfg)
     message = message_from(payload, cfg["nivel_minimo"], ensemble)
     if not message and cfg.get("resumen_diario"):
-        message = summary_message(payload, cfg["nivel_minimo"])
+        message = summary_message(payload, cfg["nivel_minimo"], ensemble)
     if not message:
         return "sin alerta"
     return deliver(message, cfg, "message of the evening")
