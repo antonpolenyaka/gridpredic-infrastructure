@@ -299,14 +299,11 @@ def telegram_format(message: str) -> str:
     return "\n".join(out)
 
 
-_OUTLOOK_NET_RE = re.compile(r"(Distribuidora \d+) (MUY ALTO|ALTO|MEDIO|BAJO) \((\d+ %)\)")
-
-
 def split_by_network(message: str) -> list:
     """
-    The message of the evening as one message per network, so the group reads one red at a time on the phone:
-    each one with the header, the block of that network (its line and the detail under it), its own line of the
-    day after tomorrow and the link; the general rules go only in the last one. A message with less than two
+    The message of the evening as one message per network, so the group reads one network at a time on the phone:
+    each one with the header, the block of that network (its line and the detail under it) and a link to it; the
+    day after tomorrow and the general rules go in a last message of their own. A message with less than two
     network blocks, or that is not the evening (the morning report, a storm), comes back whole.
     """
     lines = message.split("\n")
@@ -326,23 +323,18 @@ def split_by_network(message: str) -> list:
         blocks.append(lines[s:e])
         end = e
     tail = lines[end:]
-    outlook = next((line for line in tail if line.startswith("Pasado mañana")), "")
     link = [line for line in tail if line.startswith(("Cuadro de mando:", "Airflow:"))]
-    rules = [line for line in tail if line != outlook and line not in link]
-    when = outlook.split(",")[0] if outlook else ""
-    by_net = {m.group(1): f"{m.group(2)} ({m.group(3)})" for m in _OUTLOOK_NET_RE.finditer(outlook)}
+    rest = [line for line in tail if line not in link]
     out = []
-    for k, block in enumerate(blocks):
+    for block in blocks:
         name = block[0][2:].split(":")[0].strip()
-        piece = pre + block
-        if name in by_net:
-            piece.append(f"{when}, orientación a dos días: {by_net[name]}.")
-        if k == len(blocks) - 1:
-            piece += rules
         # the link of each one goes straight to its network on the dashboard (#distribuidora-1)
         anchor = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
         own = [line if "#" in line or not line.startswith("Cuadro de mando:") else f"{line}#{anchor}" for line in link]
-        out.append("\n".join(piece + own))
+        out.append("\n".join(pre + block + own))
+    # the day after tomorrow and the general rules, in a message of their own at the end
+    if rest:
+        out.append("\n".join(rest + link))
     return out
 
 
