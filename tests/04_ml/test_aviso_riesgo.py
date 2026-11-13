@@ -40,7 +40,9 @@ def test_the_message_names_the_distribuidoras_in_alert_only():
     assert "  Franja de 10:00 a 16:00, pico de racha 92 km/h." in text
     assert "  Líneas: Montánchez / Torre (12,0 %), Plasencia (8,0 %), Hervás (5,0 %)." in text
     assert "  Brigadas: Plasencia (mapa: https://www.google.com/maps?q=40.03000,-6.09000), Montánchez (brigadas en sus bases a las 9:00)." in text
-    assert "  Motivos: racha prevista" in text and "Distribuidora 2" not in text
+    assert "  Motivos: racha prevista" in text and "- Distribuidora 2" not in text
+    # The network left out goes in one line under the header, with its level, so every evening names the three.
+    assert text.split("\n")[1] == "Guardia normal en Distribuidora 2 MEDIO (6 %)."
     assert "11 % de los casos" in text and text.endswith("http://localhost:8086")
     # With medio as the minimum, Distribuidora 2 enters without motives; with muy alto only Distribuidora 1; nothing above.
     assert "- Distribuidora 2: MEDIO (6 %" in av.message_from(PAYLOAD, "medio")
