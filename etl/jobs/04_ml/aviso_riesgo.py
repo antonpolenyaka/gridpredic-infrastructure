@@ -127,7 +127,8 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
     thunderstorm warning of AEMET, with the level, the probability, the expected
     incidents and customers, the window, the zones of most risk, the bases
     of the crews and, with ensemble.json of the same day, the spread of the
-    runs; empty when no distribuidora reaches minimum.
+    runs; empty when no distribuidora reaches minimum. The networks left out go in one line under the header,
+    with their level and probability, so the group sees every network every evening.
     """
     blocks = [d for d in payload.get("distribuidoras", [])
               if reached(d.get("nivel", "bajo"), minimum) or (d.get("guardia") or {}).get("reforzar")]
@@ -135,6 +136,11 @@ def message_from(payload: dict, minimum: str = "alto", ensemble: dict = None) ->
         return ""
     bands = {str(b.get("id")): b for b in (ensemble or {}).get("distribuidoras", [])} if (ensemble or {}).get("fecha") == payload.get("fecha") else {}
     lines = [f"Riesgo de interrupción de mañana {payload.get('fecha_texto') or payload.get('fecha', '')}:"]
+    others = [d for d in payload.get("distribuidoras", []) if d not in blocks]
+    if others:
+        lines.append("Guardia normal en " + ", ".join(
+            f"{d.get('nombre')} {str(d.get('nivel', '')).upper()} ({100 * float(d.get('probabilidad') or 0):.0f} %)"
+            for d in sorted(others, key=lambda b: str(b.get("nombre")))) + ".")
     for d in sorted(blocks, key=lambda b: -(b.get("probabilidad") or 0)):
         imp, fr, plan = d.get("impacto") or {}, d.get("franja") or {}, d.get("brigadas") or {}
         zones = sorted(d.get("zonas", []), key=lambda z: -(z.get("probabilidad") or 0))[:3]
